@@ -61,6 +61,7 @@ test("gateway sanitizer hook forwards client headers without overriding provider
     request: {
       headers: {
         authorization: "Bearer ccr-client-token",
+        "api-key": "legacy-client-token",
         connection: "keep-alive, x-hop-only",
         "content-length": "123",
         "content-type": "text/plain",
@@ -71,9 +72,13 @@ test("gateway sanitizer hook forwards client headers without overriding provider
         "x-auth-api-key-id": "profile:codex",
         "x-auth-provider-extension": "provider-extension",
         "x-ccr-core-auth": "core-secret",
+        "x-codex-access-token": "codex-client-token",
         "x-custom-provider-header": "custom-value",
         "x-custom-list": ["one", "two"],
+        "x-goog-api-key": "google-client-token",
         "x-hop-only": "remove-me",
+        "x-mcp-key": "mcp-client-token",
+        "x-api-key": "client-token",
         "x-target-model": "internal-provider/internal-model",
         "x-target-provider": "internal-provider",
         "x-title": "Claude Code Router"

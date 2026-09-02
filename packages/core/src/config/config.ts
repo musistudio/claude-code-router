@@ -717,15 +717,13 @@ async function writeSanitizedConfig(config: AppConfig): Promise<void> {
   await replacePersistedAppConfig(sanitizeConfigForDisk(config));
 }
 
-function sanitizeConfigForDisk(config: AppConfig): AppConfig {
+function sanitizeConfigForDisk(config: AppConfig): Record<string, unknown> {
+  const { coreHost: _coreHost, corePort: _corePort, ...gateway } = config.gateway;
   return {
     ...config,
     APIKEY: "",
     APIKEYS: [],
-    gateway: {
-      ...config.gateway,
-      coreHost: INTERNAL_GATEWAY_CORE_HOST
-    },
+    gateway,
     Providers: withProviderIds(config.Providers),
     profile: sanitizeProfileConfigForDisk(config.profile)
   };
@@ -3435,17 +3433,19 @@ function parseGatewayPluginCoreGateway(value: unknown): GatewayPluginConfig["cor
     return undefined;
   }
   const providerPlugins = Array.isArray(value.providerPlugins) ? value.providerPlugins : undefined;
+  const plugins = Array.isArray(value.plugins) ? value.plugins : undefined;
   const virtualModelProfiles = Array.isArray(value.virtualModelProfiles)
     ? value.virtualModelProfiles as NonNullable<GatewayPluginConfig["coreGateway"]>["virtualModelProfiles"]
     : undefined;
   const config = isObject(value.config) ? { ...(value.config as Record<string, unknown>) } : undefined;
 
-  if (!providerPlugins && !virtualModelProfiles && !config) {
+  if (!providerPlugins && !plugins && !virtualModelProfiles && !config) {
     return undefined;
   }
 
   return {
     ...(config ? { config } : {}),
+    ...(plugins ? { plugins } : {}),
     ...(providerPlugins ? { providerPlugins } : {}),
     ...(virtualModelProfiles ? { virtualModelProfiles } : {})
   };
@@ -3466,6 +3466,10 @@ function parseProfile(value: unknown): LoadedProfileConfig | undefined {
     profile.claudeCode = {};
     if (typeof claudeCode.enabled === "boolean") {
       profile.claudeCode.enabled = claudeCode.enabled;
+    }
+    const claudeSettings = parseUnknownRecord(claudeCode.claudeSettings ?? claudeCode.claude_settings ?? claudeCode.settings);
+    if (claudeSettings) {
+      profile.claudeCode.claudeSettings = claudeSettings;
     }
     const managedCompact = readManagedCompact(claudeCode);
     if (managedCompact !== undefined) {
@@ -3622,11 +3626,13 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
 
       if (agent === "claude-code") {
         const appPath = readProfileAppPath(item, agent);
+        const claudeSettings = parseUnknownRecord(item.claudeSettings ?? item.claude_settings);
         return {
           agent,
           ...(appPath ? { appPath } : {}),
           ...(botConfigId ? { botConfigId } : {}),
           ...(botGateway ? { botGateway } : {}),
+          ...(claudeSettings ? { claudeSettings } : {}),
           enabled,
           env: claudeCodeProfileEnv(env),
           fableModel: readString(item.fableModel) || readString(item.defaultFableModel) || "",
@@ -3872,6 +3878,7 @@ function normalizeCodexConfigFileForAgent(agent: ProfileConfig["agent"], value: 
 function profileFromClaudeCodeConfig(config: ClaudeCodeProfileConfig): ProfileConfig {
   return {
     agent: "claude-code",
+    ...(config.claudeSettings ? { claudeSettings: { ...config.claudeSettings } } : {}),
     enabled: config.enabled,
     env: claudeCodeProfileEnv(),
     fableModel: config.fableModel,

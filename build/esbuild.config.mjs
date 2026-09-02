@@ -28,8 +28,8 @@ export const cliMainOutDir = path.join(cliDistDir, "main");
 export const coreMainOutDir = path.join(coreDistDir, "main");
 export const electronMainOutDir = path.join(electronDistDir, "main");
 export const mainOutDir = electronMainOutDir;
-export const gatewayPackageRoot = path.dirname(requireFromHere.resolve("@the-next-ai/ai-gateway/package.json"));
-export const gatewayRuntimeInput = path.join(gatewayPackageRoot, "bin", "next-ai-gateway.js");
+export const gatewayPackageRoot = resolveGatewayPackageRoot();
+export const gatewayRuntimeInput = resolveGatewayRuntimeInput(gatewayPackageRoot);
 export const electronGatewayRuntimeOutput = path.join(electronMainOutDir, "next-ai-gateway.js");
 export const botGatewaySdkPackageRoot = path.dirname(requireFromHere.resolve("@the-next-ai/bot-gateway-sdk/package.json"));
 export const botGatewaySdkEntryInput = path.join(botGatewaySdkPackageRoot, "dist", "index.js");
@@ -70,6 +70,7 @@ export const requestLogBodyWorkerOutput = path.join(rendererAssetsDir, "log-body
 export const requestLogBodyWorkerInput = path.join(rendererRoot, "pages", "home", "shared", "log-body.worker.ts");
 export const electronUndiciProxyAgentInput = path.join(coreSourceRoot, "proxy", "undici-proxy-agent.ts");
 export const localAgentAuthProviderHookInput = path.join(coreSourceRoot, "gateway", "core-runtime", "local-agent-auth-provider-hook.ts");
+export const routerPluginInput = path.join(coreSourceRoot, "gateway", "core-runtime", "router-plugin.ts");
 export const upstreamHeaderSanitizerInput = path.join(coreSourceRoot, "gateway", "core-runtime", "upstream-header-sanitizer.ts");
 const lightweightMcpBundleNames = ["browser-web-search-proxy-mcp.js", "fusion-vision-mcp.js", "fusion-tool-fallback-mcp.js", "media-tools-proxy-mcp.js"];
 const lightweightMcpBundleMaxBytes = 128 * 1024;
@@ -89,6 +90,91 @@ const nodeExternals = [
   ...builtinModules,
   ...builtinModules.map((moduleName) => `node:${moduleName}`)
 ];
+
+function resolveGatewayPackageRoot() {
+  for (const envName of ["CCR_GATEWAY_SOURCE_DIR", "CCR_GATEWAY_PACKAGE_DIR", "CCR_LOCAL_AI_GATEWAY_DIR"]) {
+    const value = process.env[envName]?.trim();
+    if (!value) continue;
+    const root = path.resolve(projectRoot, value);
+    if (!isGatewayPackageRoot(root)) {
+      throw new Error(`${envName} must point to an ai-gateway package root: ${root}`);
+    }
+    return root;
+  }
+
+  const gatewayEntry = process.env.CCR_GATEWAY_ENTRY?.trim();
+  if (gatewayEntry) {
+    const entry = path.resolve(projectRoot, gatewayEntry);
+    const root = nearestPackageRoot(entry);
+    if (!root || !isGatewayPackageRoot(root)) {
+      throw new Error(`CCR_GATEWAY_ENTRY must point inside an ai-gateway package: ${entry}`);
+    }
+    return root;
+  }
+
+  const siblingGatewayRoot = path.resolve(projectRoot, "..", "..", "next-ai", "gateway");
+  if (isGatewayPackageRoot(siblingGatewayRoot)) {
+    return siblingGatewayRoot;
+  }
+
+  for (const packageName of ["@the-next-ai/ai-gateway", "gateway"]) {
+    try {
+      const root = nearestPackageRoot(requireFromHere.resolve(packageName));
+      if (root && isGatewayPackageRoot(root)) {
+        return root;
+      }
+    } catch {
+      // Try the next known package name.
+    }
+  }
+  throw new Error("Unable to resolve an installed ai-gateway package.");
+}
+
+function resolveGatewayRuntimeInput(packageRoot) {
+  const manifestFile = path.join(packageRoot, "package.json");
+  const manifest = JSON.parse(readFileSync(manifestFile, "utf8"));
+  const binEntry = typeof manifest.bin === "string"
+    ? manifest.bin
+    : manifest.bin?.["next-ai-gateway"];
+  const candidate = binEntry
+    ? path.join(packageRoot, binEntry)
+    : path.join(packageRoot, "bin", "next-ai-gateway.js");
+  if (!existsSync(candidate)) {
+    throw new Error(`ai-gateway runtime bin entry was not found: ${candidate}`);
+  }
+  return candidate;
+}
+
+function nearestPackageRoot(fileOrDirectory) {
+  let current = fileOrDirectory;
+  if (!existsSync(path.join(current, "package.json"))) {
+    current = path.dirname(current);
+  }
+  for (let depth = 0; depth < 8; depth += 1) {
+    if (existsSync(path.join(current, "package.json"))) {
+      return current;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return undefined;
+    }
+    current = parent;
+  }
+  return undefined;
+}
+
+function isGatewayPackageRoot(candidate) {
+  const manifestFile = path.join(candidate, "package.json");
+  if (!existsSync(manifestFile)) {
+    return false;
+  }
+  try {
+    const manifest = JSON.parse(readFileSync(manifestFile, "utf8"));
+    return manifest.name === "@the-next-ai/ai-gateway" || manifest.name === "gateway";
+  } catch {
+    return false;
+  }
+}
 
 export function cleanDist() {
   rmSync(legacyDistDir, { force: true, recursive: true });
@@ -238,6 +324,7 @@ export function createMainBuildOptions({ mode = "production", plugins = [] } = {
       path.join(coreSourceRoot, "observability", "request-log-worker.ts"),
       path.join(coreSourceRoot, "routing", "route-script-worker.ts"),
       localAgentAuthProviderHookInput,
+      routerPluginInput,
       upstreamHeaderSanitizerInput,
       electronUndiciProxyAgentInput,
       path.join(electronSourceRoot, "main", "preload.ts")
@@ -263,6 +350,7 @@ export function createCliBuildOptions({ mode = "production", plugins = [] } = {}
     entryNames: "[name]",
     entryPoints: [
       path.join(cliSourceRoot, "cli.ts"),
+      gatewayRuntimeInput,
       path.join(coreSourceRoot, "gateway", "core-runtime", "gateway-bootstrap.ts"),
       path.join(coreSourceRoot, "mcp", "fusion-vision-mcp.ts"),
       path.join(coreSourceRoot, "mcp", "fusion-tool-fallback-mcp.ts"),
@@ -271,6 +359,7 @@ export function createCliBuildOptions({ mode = "production", plugins = [] } = {}
       path.join(coreSourceRoot, "observability", "request-log-worker.ts"),
       path.join(coreSourceRoot, "routing", "route-script-worker.ts"),
       localAgentAuthProviderHookInput,
+      routerPluginInput,
       upstreamHeaderSanitizerInput
     ],
     external: nodeExternals.filter((moduleName) => moduleName !== "electron"),
@@ -293,6 +382,7 @@ export function createCoreServerBuildOptions({ mode = "production", plugins = []
     entryNames: "[name]",
     entryPoints: [
       path.join(coreSourceRoot, "entrypoints", "server.ts"),
+      gatewayRuntimeInput,
       path.join(coreSourceRoot, "gateway", "core-runtime", "gateway-bootstrap.ts"),
       path.join(coreSourceRoot, "mcp", "fusion-vision-mcp.ts"),
       path.join(coreSourceRoot, "mcp", "fusion-tool-fallback-mcp.ts"),
@@ -301,6 +391,7 @@ export function createCoreServerBuildOptions({ mode = "production", plugins = []
       path.join(coreSourceRoot, "observability", "request-log-worker.ts"),
       path.join(coreSourceRoot, "routing", "route-script-worker.ts"),
       localAgentAuthProviderHookInput,
+      routerPluginInput,
       upstreamHeaderSanitizerInput
     ],
     external: nodeExternals.filter((moduleName) => moduleName !== "electron"),

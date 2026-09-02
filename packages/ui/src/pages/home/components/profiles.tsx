@@ -1,21 +1,48 @@
 import {
   AddProfileDraft, AddRoutingRuleDraft, AgentLogo, AnimatedIconSwap, AnimatedPopover, AnimatePresence, AppConfig, Badge, BotGatewaySavedConfig, botGatewaySavedConfigLabel, BotHandoffScanTarget, Button,
   Card, CardContent, CardHeader, CardTitle, Check, ChevronDown, CircleAlert, Copy,
+  createKeyValueDraftRow,
   createRoutingRuleDraft, createRoutingRuleDraftFromRule,
   cn, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader,
   DialogTitle, Field, GatewayProviderConfig, Info, Input, KeyValueRowsControl, LoaderCircle, motion,
   normalizeProfileScope, normalizeProfileSurface, Pencil, Plus, PopoverContent,
   profileAgentLabel, profileAgentOptions, ProfileConfig, type ProfileAgentOption, profileModelProviderOptions, profileOpenSurfaces, profileScopeLabel, profileScopeOptions, profileSummaryItems, profileSurfaceLabel, profileSurfaceOptions,
-  Play, Power, RefreshCw, Select, SelectControl, Terminal, Toggle, translateOptions, Trash2, useAppErrorText, useAppText, useLayoutEffect, type ProfileOpenSurface, type ProfileRuntimeStatus, type ReactDragEvent, type ReactNode, type VirtualModelProfileConfig,
-  copyTextToClipboard, formatRouterRuleCondition, formatRouterRuleTarget, isRoutingRuleDraftSubmittable, normalizeProviderModelSelector, routerRuleTypeLabel, routingRuleFromDraft, type RouterRule, uniqueStrings, validateProfileEnvRows,
+  Play, Power, RefreshCw, Search, Select, SelectControl, Settings, Terminal, Toggle, translateOptions, Trash2, useAppErrorText, useAppText, useLayoutEffect, type KeyValueDraftRow, type ProfileOpenSurface, type ProfileRuntimeStatus, type ReactDragEvent, type ReactNode, type VirtualModelProfileConfig,
+  copyTextToClipboard, formatClaudeSettingsDraft, formatRouterRuleCondition, formatRouterRuleTarget, isClaudeSettingsDraftValid, isPlainRecord, isRoutingRuleDraftSubmittable, normalizeProviderModelSelector, routerRuleTypeLabel, routingRuleFromDraft, type RouterRule, uniqueStrings, useResolvedAppLanguage, validateProfileEnvRows,
   useCallback, useEffect, useMemo, useRef, useState, X
 } from "../shared/index";
+import claudeCodeConfigOptionsJson from "@/generated/claude-code-config-options.json";
 import { PopoverPortal } from "@/components/ui/popover";
 import { Tooltip } from "@/components/ui/tooltip";
 import { ModelMultiSelector, ModelSelector } from "./model-selector";
 import { AddRoutingRuleDialog } from "./routing";
 
 const useClientLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+
+type ClaudeCodeConfigOption = {
+  default?: string;
+  description?: {
+    en?: string;
+    zh?: string;
+  };
+  enumValues?: string[];
+  example?: string;
+  key: string;
+  path?: string[];
+  scope?: string;
+  type?: string;
+  valueKind?: string;
+};
+
+type ClaudeCodeConfigCatalog = {
+  env: ClaudeCodeConfigOption[];
+  generatedAt?: string;
+  settings: ClaudeCodeConfigOption[];
+};
+
+const claudeCodeConfigOptions = claudeCodeConfigOptionsJson as ClaudeCodeConfigCatalog;
+const CLAUDE_CONFIG_SETTINGS_TAB = "settings";
+const CLAUDE_CONFIG_ENV_TAB = "env";
 
 type ProfileActionBusy = {
   profileId: string;
@@ -727,12 +754,13 @@ export function AddProfileForm({
   const advancedIssueCount = [
     validation.allowedModels,
     validation.bot,
+    validation.claudeSettings,
     validation.handoff,
     validation.env
   ].filter(Boolean).length;
   const advancedSummary = advancedIssueCount > 0
     ? t("Advanced settings need attention")
-    : t("Models, paths, routing, bot, compact, and env");
+    : t("Models, paths, routing, bot, compact, Claude settings, and env");
   const handleAppPathDrop = useCallback((event: ReactDragEvent<HTMLElement>) => {
     if (!showAppPathField) {
       return;
@@ -1029,6 +1057,13 @@ export function AddProfileForm({
                         />
                       </Field>
                     ) : null}
+                    {draft.agent === "claude-code" ? (
+                      <ClaudeConfigEditor
+                        draft={draft}
+                        error={validation.claudeSettings ? t(validation.claudeSettings) : ""}
+                        onChange={onChange}
+                      />
+                    ) : null}
                     <Field className="sm:col-span-2" label={t("Environment variables")} requirement="optional" requirementLabel={optionalFieldLabel}>
                       <KeyValueRowsControl
                         addLabel={t("Add env variable")}
@@ -1241,6 +1276,523 @@ function ProfileEnhancedRouteSetting({
   );
 }
 
+function ClaudeConfigEditor({
+  draft,
+  error,
+  onChange
+}: {
+  draft: AddProfileDraft;
+  error: string;
+  onChange: (patch: Partial<AddProfileDraft>) => void;
+}) {
+  const t = useAppText();
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="sm:col-span-2 rounded-md border border-border bg-muted/20 p-3">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-2">
+            <Settings className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="truncate text-[12px] font-semibold">{t("Claude settings")}</span>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button onClick={() => setOpen(true)} size="sm" type="button" variant="outline">
+            <Settings className="h-3.5 w-3.5" />
+            {t("Edit Claude settings")}
+          </Button>
+        </div>
+      </div>
+      {error ? <ProfileFieldHint>{error}</ProfileFieldHint> : null}
+      {open ? (
+        <Dialog onOpenChange={setOpen} open>
+          <DialogContent className="h-[min(780px,calc(100dvh-1.5rem))] max-w-[980px]">
+            <DialogHeader>
+              <DialogTitle>{t("Claude settings")}</DialogTitle>
+              <Button aria-label={t("Close dialog")} onClick={() => setOpen(false)} size="iconSm" title={t("Close")} type="button" variant="ghost">
+                <X className="h-4 w-4" />
+              </Button>
+            </DialogHeader>
+            <DialogBody className="overflow-hidden p-0">
+              <ClaudeConfigEditorContent
+                draft={draft}
+                error={error}
+                onChange={onChange}
+              />
+            </DialogBody>
+            <DialogFooter>
+              <Button onClick={() => setOpen(false)} type="button" variant="outline">
+                {t("Done")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+    </div>
+  );
+}
+
+function ClaudeConfigEditorContent({
+  draft,
+  error,
+  onChange
+}: {
+  draft: AddProfileDraft;
+  error: string;
+  onChange: (patch: Partial<AddProfileDraft>) => void;
+}) {
+  const t = useAppText();
+  const language = useResolvedAppLanguage();
+  const [tab, setTab] = useState<typeof CLAUDE_CONFIG_SETTINGS_TAB | typeof CLAUDE_CONFIG_ENV_TAB>(CLAUDE_CONFIG_SETTINGS_TAB);
+  const [query, setQuery] = useState("");
+  const [configuredFilter, setConfiguredFilter] = useState("all");
+  const [rawInputs, setRawInputs] = useState<Record<string, string>>({});
+  const [inputErrors, setInputErrors] = useState<Record<string, string>>({});
+  const settings = useMemo(() => claudeSettingsDraftObject(draft.claudeSettingsText), [draft.claudeSettingsText]);
+  const env = useMemo(() => envRowsRecord(draft.envRows), [draft.envRows]);
+  const options = tab === CLAUDE_CONFIG_SETTINGS_TAB ? claudeCodeConfigOptions.settings : claudeCodeConfigOptions.env;
+  const filteredOptions = useMemo(() =>
+    options.filter((option) => claudeConfigOptionVisible(option, {
+      configuredFilter,
+      env,
+      language,
+      query,
+      settings,
+      tab
+    })),
+  [configuredFilter, env, language, options, query, settings, tab]);
+
+  function clearInputState(inputId: string) {
+    setRawInputs((current) => {
+      if (!hasOwnValue(current, inputId)) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[inputId];
+      return next;
+    });
+    setInputErrors((current) => {
+      if (!hasOwnValue(current, inputId)) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[inputId];
+      return next;
+    });
+  }
+
+  function setInputError(inputId: string, value: string, issue: string) {
+    setRawInputs((current) => ({ ...current, [inputId]: value }));
+    setInputErrors((current) => ({ ...current, [inputId]: issue }));
+  }
+
+  function updateSetting(option: ClaudeCodeConfigOption, value: unknown | undefined) {
+    const nextSettings = cloneSettingsObject(settings);
+    const pathParts = claudeConfigOptionPath(option);
+    if (value === undefined) {
+      deleteSettingsPath(nextSettings, pathParts);
+    } else {
+      setSettingsPath(nextSettings, pathParts, value);
+    }
+    onChange({ claudeSettingsText: formatClaudeSettingsDraft(nextSettings) });
+  }
+
+  function updateSettingInput(option: ClaudeCodeConfigOption, value: string) {
+    const inputId = claudeConfigInputId(CLAUDE_CONFIG_SETTINGS_TAB, option.key);
+    const parsed = parseClaudeConfigInputValue(option, value);
+    if (!parsed.ok) {
+      setInputError(inputId, value, parsed.error);
+      return;
+    }
+    clearInputState(inputId);
+    updateSetting(option, parsed.value);
+  }
+
+  function updateEnv(option: ClaudeCodeConfigOption, value: string) {
+    const inputId = claudeConfigInputId(CLAUDE_CONFIG_ENV_TAB, option.key);
+    clearInputState(inputId);
+    onChange({ envRows: updateEnvRows(draft.envRows, option.key, value) });
+  }
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex min-w-0 flex-wrap items-center gap-2 border-b border-border p-3">
+        <div className="grid h-8 shrink-0 grid-cols-2 rounded-md border border-border bg-background p-0.5">
+          {([
+            { label: "Settings", value: CLAUDE_CONFIG_SETTINGS_TAB },
+            { label: "Environment", value: CLAUDE_CONFIG_ENV_TAB }
+          ] as const).map((item) => (
+            <button
+              className={cn(
+                "h-7 rounded-[5px] px-3 text-[12px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
+                tab === item.value ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+              )}
+              key={item.value}
+              onClick={() => setTab(item.value)}
+              type="button"
+            >
+              {t(item.label)}
+            </button>
+          ))}
+        </div>
+        <div className="relative min-w-[220px] flex-1">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            className="h-8 pl-8"
+            placeholder={t(tab === CLAUDE_CONFIG_SETTINGS_TAB ? "Search Claude settings" : "Search environment variables")}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
+        <div className="min-w-[150px] shrink-0">
+          <SelectControl
+            onChange={setConfiguredFilter}
+            options={translateOptions([
+              { label: "All items", value: "all" },
+              { label: "Configured", value: "configured" },
+              { label: "Unset", value: "unset" }
+            ], t)}
+            value={configuredFilter}
+          />
+        </div>
+      </div>
+
+      {error ? (
+        <div className="border-b border-border px-3 py-2">
+          <ProfileFieldHint>{error}</ProfileFieldHint>
+        </div>
+      ) : null}
+
+      <div className="min-h-0 flex-1 overflow-auto bg-background">
+        {filteredOptions.length === 0 ? (
+          <div className="px-3 py-8 text-center text-[12px] text-muted-foreground">
+            {t(tab === CLAUDE_CONFIG_SETTINGS_TAB ? "No matching Claude settings" : "No matching environment variables")}
+          </div>
+        ) : filteredOptions.map((option) => {
+          const inputId = claudeConfigInputId(tab, option.key);
+          const description = claudeConfigOptionDescription(option, language);
+          const currentValue = tab === CLAUDE_CONFIG_SETTINGS_TAB
+            ? readSettingsPath(settings, claudeConfigOptionPath(option))
+            : env[option.key];
+          const active = currentValue !== undefined;
+          const managedOnly = tab === CLAUDE_CONFIG_SETTINGS_TAB && isManagedOnlyClaudeSetting(option);
+          const rawValue = hasOwnValue(rawInputs, inputId)
+            ? rawInputs[inputId]
+            : formatClaudeConfigInputValue(currentValue);
+          const inputError = inputErrors[inputId];
+
+          return (
+            <div className="grid min-w-0 gap-2 border-b border-border/60 p-3 last:border-b-0" key={`${tab}-${option.key}`}>
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                <code className="min-w-0 truncate rounded border border-border bg-muted/30 px-1.5 py-0.5 font-mono text-[11px] font-semibold">
+                  {option.key}
+                </code>
+                {option.valueKind ? <Badge variant="outline">{option.valueKind}</Badge> : null}
+                {active ? <Badge variant="success">{t("Set")}</Badge> : null}
+              </div>
+              {description ? (
+                <div className="text-[11px] leading-4 text-muted-foreground">
+                  {description}
+                </div>
+              ) : null}
+              <div className="flex min-w-0 items-start gap-2">
+                {tab === CLAUDE_CONFIG_SETTINGS_TAB && option.valueKind === "boolean" ? (
+                  <div className="flex min-h-8 flex-1 items-center">
+                    <Toggle
+                      checked={currentValue === true}
+                      disabled={managedOnly}
+                      onChange={(checked) => updateSetting(option, checked)}
+                      title={option.key}
+                    />
+                  </div>
+                ) : (
+                  <Input
+                    className="min-h-8 flex-1 font-mono text-[12px]"
+                    disabled={managedOnly}
+                    placeholder={managedOnly ? t("Managed settings can only be set by administrators.") : claudeConfigPlaceholder(option, tab)}
+                    value={managedOnly ? "" : rawValue}
+                    onChange={(event) =>
+                      tab === CLAUDE_CONFIG_SETTINGS_TAB
+                        ? updateSettingInput(option, event.target.value)
+                        : updateEnv(option, event.target.value)}
+                  />
+                )}
+                {active ? (
+                  <Button
+                    aria-label={`${t("Remove")} ${option.key}`}
+                    disabled={managedOnly}
+                    onClick={() =>
+                      tab === CLAUDE_CONFIG_SETTINGS_TAB
+                        ? updateSetting(option, undefined)
+                        : updateEnv(option, "")}
+                    size="iconSm"
+                    title={t("Remove")}
+                    type="button"
+                    variant="ghost"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                ) : null}
+              </div>
+              {inputError ? <ProfileFieldHint>{t(inputError)}</ProfileFieldHint> : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function claudeConfigInputId(tab: string, key: string): string {
+  return `${tab}:${key}`;
+}
+
+function claudeConfigOptionPath(option: ClaudeCodeConfigOption): string[] {
+  return option.path?.length ? option.path : option.key.split(".").filter(Boolean);
+}
+
+function claudeConfigOptionDescription(option: ClaudeCodeConfigOption, language: "en" | "zh"): string {
+  return option.description?.[language]?.trim() || option.description?.en?.trim() || "";
+}
+
+function claudeConfigOptionMatches(option: ClaudeCodeConfigOption, query: string, language: "en" | "zh"): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+  return [
+    option.key,
+    option.type ?? "",
+    option.valueKind ?? "",
+    option.default ?? "",
+    claudeConfigOptionDescription(option, language)
+  ].some((value) => value.toLowerCase().includes(normalizedQuery));
+}
+
+function claudeConfigOptionVisible(
+  option: ClaudeCodeConfigOption,
+  filter: {
+    configuredFilter: string;
+    env: Record<string, string>;
+    language: "en" | "zh";
+    query: string;
+    settings: Record<string, unknown>;
+    tab: typeof CLAUDE_CONFIG_SETTINGS_TAB | typeof CLAUDE_CONFIG_ENV_TAB;
+  }
+): boolean {
+  if (!claudeConfigOptionMatches(option, filter.query, filter.language)) {
+    return false;
+  }
+  const active = isClaudeConfigOptionActive(option, filter.tab, filter.settings, filter.env);
+  if (filter.configuredFilter === "configured") {
+    return active;
+  }
+  if (filter.configuredFilter === "unset") {
+    return !active;
+  }
+  return true;
+}
+
+function isClaudeConfigOptionActive(
+  option: ClaudeCodeConfigOption,
+  tab: typeof CLAUDE_CONFIG_SETTINGS_TAB | typeof CLAUDE_CONFIG_ENV_TAB,
+  settings: Record<string, unknown>,
+  env: Record<string, string>
+): boolean {
+  return tab === CLAUDE_CONFIG_SETTINGS_TAB
+    ? readSettingsPath(settings, claudeConfigOptionPath(option)) !== undefined
+    : env[option.key] !== undefined;
+}
+
+function claudeSettingsDraftObject(value: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return isPlainRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function envRowsRecord(rows: KeyValueDraftRow[]): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const row of rows) {
+    const key = row.key.trim();
+    if (key) {
+      result[key] = row.value;
+    }
+  }
+  return result;
+}
+
+function updateEnvRows(rows: KeyValueDraftRow[], key: string, value: string): KeyValueDraftRow[] {
+  const nextRows = rows.filter((row) => row.key.trim() !== key);
+  return value.trim()
+    ? [...nextRows, createKeyValueDraftRow(key, value)]
+    : nextRows;
+}
+
+function cloneSettingsObject(value: Record<string, unknown>): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+}
+
+function readSettingsPath(value: Record<string, unknown>, pathParts: string[]): unknown {
+  let current: unknown = value;
+  for (const key of pathParts) {
+    if (!isPlainRecord(current) || !hasOwnValue(current, key)) {
+      return undefined;
+    }
+    current = current[key];
+  }
+  return current;
+}
+
+function setSettingsPath(target: Record<string, unknown>, pathParts: string[], value: unknown): void {
+  const key = pathParts[0];
+  if (!key) {
+    return;
+  }
+  if (pathParts.length === 1) {
+    target[key] = value;
+    return;
+  }
+  const current = target[key];
+  const child = isPlainRecord(current) ? current : {};
+  target[key] = child;
+  setSettingsPath(child, pathParts.slice(1), value);
+}
+
+function deleteSettingsPath(target: Record<string, unknown>, pathParts: string[]): boolean {
+  const key = pathParts[0];
+  if (!key || !hasOwnValue(target, key)) {
+    return false;
+  }
+  if (pathParts.length === 1) {
+    delete target[key];
+    return true;
+  }
+  const child = target[key];
+  if (!isPlainRecord(child)) {
+    return false;
+  }
+  const changed = deleteSettingsPath(child, pathParts.slice(1));
+  if (changed && Object.keys(child).length === 0) {
+    delete target[key];
+  }
+  return changed;
+}
+
+function hasOwnValue(value: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+type ClaudeConfigInputParseResult =
+  | { ok: true; value: unknown | undefined }
+  | { error: string; ok: false };
+
+function parseClaudeConfigInputValue(option: ClaudeCodeConfigOption, value: string): ClaudeConfigInputParseResult {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return { ok: true, value: undefined };
+  }
+  switch (option.valueKind) {
+    case "boolean": {
+      const normalized = trimmed.toLowerCase();
+      if (normalized === "true" || normalized === "false") {
+        return { ok: true, value: normalized === "true" };
+      }
+      return { error: "Enter true or false.", ok: false };
+    }
+    case "integer": {
+      const parsed = Number(trimmed);
+      return Number.isInteger(parsed)
+        ? { ok: true, value: parsed }
+        : { error: "Enter an integer.", ok: false };
+    }
+    case "number": {
+      const parsed = Number(trimmed);
+      return Number.isFinite(parsed)
+        ? { ok: true, value: parsed }
+        : { error: "Enter a number.", ok: false };
+    }
+    case "array": {
+      try {
+        const parsed = JSON.parse(trimmed) as unknown;
+        return Array.isArray(parsed)
+          ? { ok: true, value: parsed }
+          : { error: "Enter a JSON array.", ok: false };
+      } catch {
+        return { error: "Enter a JSON array.", ok: false };
+      }
+    }
+    case "object": {
+      try {
+        const parsed = JSON.parse(trimmed) as unknown;
+        return isPlainRecord(parsed)
+          ? { ok: true, value: parsed }
+          : { error: "Enter a JSON object.", ok: false };
+      } catch {
+        return { error: "Enter a JSON object.", ok: false };
+      }
+    }
+    default:
+      return { ok: true, value };
+  }
+}
+
+function formatClaudeConfigInputValue(value: unknown): string {
+  if (value === undefined) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return JSON.stringify(value);
+}
+
+function claudeConfigPlaceholder(option: ClaudeCodeConfigOption, tab: string): string {
+  if (tab === CLAUDE_CONFIG_ENV_TAB) {
+    return option.example?.trim() || option.default?.trim() || "";
+  }
+  const exampleValue = claudeConfigExampleValue(option);
+  if (exampleValue !== undefined) {
+    return formatClaudeConfigInputValue(exampleValue);
+  }
+  switch (option.valueKind) {
+    case "array":
+      return "[]";
+    case "boolean":
+      return "true";
+    case "integer":
+    case "number":
+      return "1";
+    case "object":
+      return "{}";
+    default:
+      return option.default?.trim() || "";
+  }
+}
+
+function claudeConfigExampleValue(option: ClaudeCodeConfigOption): unknown {
+  if (!option.example?.trim()) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(option.example) as unknown;
+    return isPlainRecord(parsed) ? readSettingsPath(parsed, claudeConfigOptionPath(option)) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isManagedOnlyClaudeSetting(option: ClaudeCodeConfigOption): boolean {
+  const scope = option.scope?.trim().toLowerCase() ?? "";
+  return scope.startsWith("managed") && !scope.includes("any file");
+}
+
 function createProfileRoutingRuleDraftFromRule(rule: RouterRule): AddRoutingRuleDraft {
   const draft = createRoutingRuleDraftFromRule(rule);
   return draft.type === "condition"
@@ -1280,8 +1832,8 @@ function profileDraftValidation(
   draft: AddProfileDraft,
   botConfigs: BotGatewaySavedConfig[],
   availableModelCount: number
-): Partial<Record<"allowedModels" | "bot" | "defaultModel" | "env" | "handoff" | "kimiModel" | "models" | "name", string>> {
-  const issues: Partial<Record<"allowedModels" | "bot" | "defaultModel" | "env" | "handoff" | "kimiModel" | "models" | "name", string>> = {};
+): Partial<Record<"allowedModels" | "bot" | "claudeSettings" | "defaultModel" | "env" | "handoff" | "kimiModel" | "models" | "name", string>> {
+  const issues: Partial<Record<"allowedModels" | "bot" | "claudeSettings" | "defaultModel" | "env" | "handoff" | "kimiModel" | "models" | "name", string>> = {};
   if (!draft.name.trim()) {
     issues.name = "Profile name is required.";
   }
@@ -1307,6 +1859,9 @@ function profileDraftValidation(
   }
   if (!validateProfileEnvRows(draft.envRows)) {
     issues.env = "Environment variable rows need valid keys.";
+  }
+  if (draft.agent === "claude-code" && !isClaudeSettingsDraftValid(draft.claudeSettingsText)) {
+    issues.claudeSettings = "Claude settings JSON must be an object.";
   }
   return issues;
 }

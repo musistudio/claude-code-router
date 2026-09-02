@@ -12,11 +12,10 @@ The image is intended for a persistent gateway and browser-based administration.
 host:3458 -> container Nginx:8080
                          |-> static management UI
                          |-> management RPC: 127.0.0.1:3459
-                         |-> gateway:       127.0.0.1:3456
-                         `-> gateway core:  127.0.0.1:3457
+                         `-> gateway:       127.0.0.1:3456
 ```
 
-Only Nginx port `8080` should be published. The three internal ports are container implementation details and should not be exposed individually.
+Only Nginx port `8080` should be published. The internal management and gateway ports are container implementation details and should not be exposed individually.
 
 Nginx routes:
 
@@ -32,11 +31,13 @@ Nginx routes:
 From the repository root:
 
 ```sh
-docker compose up -d --build
+npm run docker:compose:up
 docker compose logs -f ccr
 ```
 
 Open <http://127.0.0.1:3458>. On a new volume, the management UI is immediately available. Add a provider and model, create a CCR client key under **API Keys**, and start the gateway from **Server**.
+
+The npm Compose script prepares a local `../../next-ai/gateway` checkout before building so the image uses that plugin-capable ai-gateway runtime. If you run `docker compose up -d --build` directly, run `npm run docker:prepare-gateway` first. `npm run docker:build` performs the same preparation automatically.
 
 The repository Compose file publishes `3458:8080`, stores data in the `ccr-data` named volume, and restarts the service unless explicitly stopped. A mapping without a host IP binds on every host interface. For local-only access, change it to:
 
@@ -59,7 +60,7 @@ Do not add `--volumes` to `docker compose down` unless you intentionally want to
 Build and run without Compose:
 
 ```sh
-docker build -t claude-code-router:local .
+npm run docker:build
 docker run -d \
   --name claude-code-router \
   --restart unless-stopped \
@@ -69,10 +70,9 @@ docker run -d \
   claude-code-router:local
 ```
 
-Equivalent repository scripts are available:
+The temporary run script is also available:
 
 ```sh
-npm run docker:build
 npm run docker:run
 ```
 
@@ -199,7 +199,6 @@ Most deployments should set only `CCR_WEB_AUTH_TOKEN`, `CCR_PUBLIC_BASE_URL`, an
 | `CCR_WEB_PORT` | `3459` | Container-private management server port. |
 | `CCR_GATEWAY_HOST` | `127.0.0.1` | Container-private gateway listener host. |
 | `CCR_GATEWAY_PORT` | `3456` | Container-private gateway listener port used by Nginx. |
-| `CCR_GATEWAY_CORE_PORT` | `3457` | Container-private core gateway runtime port. |
 | `CCR_NO_GATEWAY` | `0` | Set to `1`, `true`, or `yes` to run the management UI without starting the gateway at boot. |
 | `CCR_DOCKER_INIT_CONFIG` | `1` | Set to `0` to disable minimal first-run `config.json` bootstrap. |
 | `CCR_DOCKER_SYNC_PUBLIC_ENDPOINT` | `1` | Set to `0` to stop startup from syncing existing JSON/SQLite listener and public endpoint fields to Docker values. |
@@ -242,7 +241,7 @@ This is expected. Nginx redirects the root URL to the management page and URL-en
 
 ### `/health` returns `502`
 
-`/health` checks the model gateway, not Nginx or the management UI. On a fresh volume it returns `502` until a provider/model exists and the gateway has started. Use `docker compose ps` for container health and open the UI to configure/start the gateway.
+`/health` checks the model gateway, not Nginx or the management UI. On a fresh volume it returns `502` until a provider/model exists and the gateway has started; after startup, the plugin-capable ai-gateway runtime returns `200` with status `ok`. Use `docker compose ps` for container health and open the UI to configure/start the gateway.
 
 ### The UI returns `401` after a token change
 
@@ -268,18 +267,20 @@ Container health only verifies Nginx/UI reachability. Check **Server** status, p
 
 ## 中文说明
 
-Docker 镜像通过 PM2 运行 CCR Core，并由 Nginx 同时提供管理 UI、管理 RPC、模型网关和健康检查。对外只应发布 Nginx 的容器端口 `8080`；`3459`、`3456`、`3457` 都是容器内部实现端口，不应单独暴露。
+Docker 镜像通过 PM2 运行 CCR Core，并由 Nginx 同时提供管理 UI、管理 RPC、模型网关和健康检查。对外只应发布 Nginx 的容器端口 `8080`；`3459` 和 `3456` 是容器内部实现端口，不应单独暴露。
 
 这个镜像面向常驻网关和浏览器管理，不包含 Electron、npm 的 `ccr` 命令、系统托盘、桌面 Agent/App 启动、桌面自动更新和桌面专属浏览器集成。
 
 ### 快速启动
 
 ```sh
-docker compose up -d --build
+npm run docker:compose:up
 docker compose logs -f ccr
 ```
 
 打开 <http://127.0.0.1:3458>。首次启动时管理 UI 可以立即访问；添加供应商和模型、在 **API 密钥** 页面创建 CCR 客户端 Key，然后从 **服务** 页面启动网关。
+
+这个 npm Compose 脚本会在构建前准备本机的 `../../next-ai/gateway` checkout，让镜像使用支持插件的 ai-gateway runtime。如果直接运行 `docker compose up -d --build`，请先执行 `npm run docker:prepare-gateway`。`npm run docker:build` 也会自动打包这份本地 ai-gateway。
 
 仓库默认映射是 `3458:8080`，会监听宿主机所有网卡。如果只允许本机访问，请改为：
 

@@ -22,11 +22,10 @@ Docker 镜像适合常驻模型网关和浏览器管理。它包含 CCR Core、�
 宿主机 3458 -> 容器 Nginx 8080
                            |-> 静态管理 UI
                            |-> 管理 RPC：127.0.0.1:3459
-                           |-> 模型网关：127.0.0.1:3456
-                           `-> Core Runtime：127.0.0.1:3457
+                           `-> 模型网关：127.0.0.1:3456
 ```
 
-只应发布 Nginx 的容器端口 `8080`。`3459`、`3456`、`3457` 都是容器内部实现端口，不要分别映射到宿主机。
+只应发布 Nginx 的容器端口 `8080`。`3459` 和 `3456` 是容器内部实现端口，不要分别映射到宿主机。
 
 Nginx 对外提供：
 
@@ -42,18 +41,20 @@ Nginx 对外提供：
 在仓库根目录执行：
 
 ```sh
-docker compose up -d --build
+npm run docker:compose:up
 docker compose logs -f ccr
 ```
 
 打开 <http://127.0.0.1:3458>。新数据卷上管理 UI 会立即可用；模型网关要在添加供应商和模型后才能正常启动。
+
+这个 npm Compose 脚本会在构建前准备本机的 `../../next-ai/gateway` checkout，让镜像使用支持插件的 ai-gateway runtime。如果直接运行 `docker compose up -d --build`，请先执行 `npm run docker:prepare-gateway`。`npm run docker:build` 也会自动完成这一步。
 
 首次配置顺序：
 
 1. 添加供应商和至少一个模型。
 2. 在 **API 密钥** 页面创建 CCR 客户端 Key。
 3. 在 **服务** 页面启动网关。
-4. 请求 `/health`，确认返回 `200` 和运行状态。
+4. 请求 `/health`，确认返回 `200` 和 `ok` 状态。
 5. 把客户端 Base URL 指向 `http://127.0.0.1:3458`，并使用刚创建的 CCR 客户端 Key。
 
 停止或移除容器不会自动删除命名卷：
@@ -83,7 +84,7 @@ services:
 不使用 Compose 时：
 
 ```sh
-docker build -t claude-code-router:local .
+npm run docker:build
 docker run -d \
   --name claude-code-router \
   --restart unless-stopped \
@@ -93,7 +94,7 @@ docker run -d \
   claude-code-router:local
 ```
 
-仓库也提供 `npm run docker:build` 和 `npm run docker:run`。后者使用 `3458` 和 `ccr-data`，但容器带 `--rm`，没有固定名称和自动重启策略，更适合临时验证。
+仓库也提供 `npm run docker:run`。它使用 `3458` 和 `ccr-data`，但容器带 `--rm`，没有固定名称和自动重启策略，更适合临时验证。
 
 ## 三类凭据不要混用
 
@@ -217,7 +218,6 @@ docker compose logs --tail=200 ccr
 | `CCR_WEB_PORT` | `3459` | 管理服务容器内端口。 |
 | `CCR_GATEWAY_HOST` | `127.0.0.1` | 模型网关容器内监听地址。 |
 | `CCR_GATEWAY_PORT` | `3456` | Nginx 转发到的模型网关容器内端口。 |
-| `CCR_GATEWAY_CORE_PORT` | `3457` | Core Gateway Runtime 容器内端口。 |
 | `CCR_NO_GATEWAY` | `0` | 设为 `1`、`true` 或 `yes` 时，启动阶段只运行管理 UI。 |
 | `CCR_DOCKER_INIT_CONFIG` | `1` | 设为 `0` 时禁用首次最小 `config.json` 引导。 |
 | `CCR_DOCKER_SYNC_PUBLIC_ENDPOINT` | `1` | 设为 `0` 时不再在启动时同步已有 JSON / SQLite 的监听和公开地址字段。 |

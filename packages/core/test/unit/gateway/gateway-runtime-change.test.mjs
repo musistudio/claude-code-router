@@ -116,3 +116,54 @@ test("main-process-only observability changes do not restart the gateway runtime
 
   assert.equal(shouldRestartGatewayForRuntimeConfigChange(previous, next), false);
 });
+
+test("router plugin input changes restart the gateway runtime", () => {
+  const previous = createDefaultAppConfig();
+  const next = createDefaultAppConfig();
+  next.Router.rules = [
+    {
+      enabled: true,
+      id: "force-haiku",
+      name: "Force Haiku",
+      pattern: "haiku:",
+      target: "anthropic,claude-3-5-haiku-latest",
+      type: "model-prefix"
+    }
+  ];
+
+  assert.equal(shouldRestartGatewayForRuntimeConfigChange(previous, next), true);
+});
+
+test("public API key changes restart the gateway runtime", () => {
+  const previous = createDefaultAppConfig();
+  const next = createDefaultAppConfig();
+  next.APIKEYS = [{ createdAt: new Date(0).toISOString(), id: "local", key: "client-key" }];
+
+  assert.equal(shouldRestartGatewayForRuntimeConfigChange(previous, next), true);
+});
+
+test("profile allowlist changes restart the gateway runtime", () => {
+  const previous = createDefaultAppConfig();
+  const next = createDefaultAppConfig();
+  next.profile.profiles = next.profile.profiles.map((profile) => profile.id === "default-claude-code"
+    ? { ...profile, modelAllowlist: { enabled: true, models: ["glm-4.5-air"] } }
+    : profile);
+
+  assert.equal(shouldRestartGatewayForRuntimeConfigChange(previous, next), true);
+});
+
+test("core gateway timeout changes restart the gateway runtime", () => {
+  const previous = createDefaultAppConfig();
+  const next = createDefaultAppConfig();
+  next.API_TIMEOUT_MS = 30000;
+
+  assert.equal(shouldRestartGatewayForRuntimeConfigChange(previous, next), true);
+});
+
+test("context archive mode changes restart the gateway runtime", () => {
+  const previous = createDefaultAppConfig();
+  const next = createDefaultAppConfig();
+  next.contextArchive.enabled = true;
+
+  assert.equal(shouldRestartGatewayForRuntimeConfigChange(previous, next), true);
+});

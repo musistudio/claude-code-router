@@ -459,6 +459,89 @@ function profileRoutingConfigFromDraft(draft: AddProfileDraft): ProfileRoutingCo
   };
 }
 
+export function parseClaudeSettingsDraft(value: string): Record<string, unknown> | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  try {
+    return normalizeClaudeSettingsConfig(JSON.parse(trimmed));
+  } catch {
+    return undefined;
+  }
+}
+
+export function isClaudeSettingsDraftValid(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return true;
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    return isPlainRecord(parsed);
+  } catch {
+    return false;
+  }
+}
+
+export function formatClaudeSettingsDraft(value: unknown): string {
+  const settings = normalizeClaudeSettingsConfig(value);
+  return settings ? JSON.stringify(settings, null, 2) : "{}";
+}
+
+export function normalizeClaudeSettingsConfig(value: unknown): Record<string, unknown> | undefined {
+  if (!isPlainRecord(value)) {
+    return undefined;
+  }
+  const normalized = normalizeClaudeSettingsObject(value);
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+function normalizeClaudeSettingsObject(value: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [rawKey, rawValue] of Object.entries(value)) {
+    const key = rawKey.trim();
+    if (!key || key === "__proto__" || key === "constructor" || key === "prototype") {
+      continue;
+    }
+    const item = normalizeClaudeSettingsValue(rawValue);
+    if (item !== undefined) {
+      result[key] = item;
+    }
+  }
+  return result;
+}
+
+function normalizeClaudeSettingsValue(value: unknown): unknown {
+  if (value === null || typeof value === "string" || typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : undefined;
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map(normalizeClaudeSettingsValue)
+      .filter((item) => item !== undefined);
+  }
+  if (isPlainRecord(value)) {
+    return normalizeClaudeSettingsObject(value);
+  }
+  return undefined;
+}
+
+function claudeSettingsCount(value: unknown): number {
+  const settings = normalizeClaudeSettingsConfig(value);
+  return settings ? countClaudeSettingsLeaves(settings) : 0;
+}
+
+function countClaudeSettingsLeaves(value: unknown): number {
+  if (!isPlainRecord(value) || Object.keys(value).length === 0) {
+    return 1;
+  }
+  return Object.values(value).reduce<number>((count, item) => count + countClaudeSettingsLeaves(item), 0);
+}
+
 export function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code", name?: string): AddProfileDraft {
   const surface = agent === "workbuddy" || agent === "zcode" || agent === "claude-design" ? "app" : "cli";
   return {
@@ -466,6 +549,7 @@ export function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code"
     appPath: "",
     availableModels: [],
     ...createBotGatewayDraft(),
+    claudeSettingsText: "{}",
     configFile: defaultCodexConfigFile(agent),
     envRows: agent === "claude-code" ? keyValueRowsFromRecord(claudeCodeProfileEnv()) : [],
     fableModel: "",
@@ -518,6 +602,7 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
       appPath: profile.appPath ?? "",
       botConfigId,
       botEnabled: surface !== "cli" && Boolean(selectedBot || profile.botGateway?.enabled),
+      claudeSettingsText: formatClaudeSettingsDraft(profile.claudeSettings),
       envRows: keyValueRowsFromRecord(claudeCodeProfileEnv(profile.env ?? {})),
       availableModels: profileDraftAvailableModels(profile),
       fableModel: profile.fableModel ?? "",
@@ -579,6 +664,9 @@ export function isProfileDraftSubmittable(draft: AddProfileDraft): boolean {
     return false;
   }
   if (!validateProfileEnvRows(draft.envRows)) {
+    return false;
+  }
+  if (draft.agent === "claude-code" && !isClaudeSettingsDraftValid(draft.claudeSettingsText)) {
     return false;
   }
   const botAllowed = draft.surface !== "cli";
@@ -648,6 +736,7 @@ export function profileConfigFromDraft(
     appPath: draft.appPath,
     availableModels: profileConfigAvailableModelsFromDraft(draft),
     ...botGateway,
+    claudeSettings: draft.agent === "claude-code" ? parseClaudeSettingsDraft(draft.claudeSettingsText) : undefined,
     configFile: draft.configFile,
     enabled: existingProfile?.enabled ?? true,
     env: draft.agent === "claude-code"
@@ -1202,6 +1291,10 @@ export function profileSummaryItems(
   const envSummaryItems = envCount > 0
     ? [{ label: t("Environment variables"), value: String(envCount) }]
     : [];
+  const claudeSettingsItemCount = profile.agent === "claude-code" ? claudeSettingsCount(profile.claudeSettings) : 0;
+  const claudeSettingsSummaryItems = claudeSettingsItemCount > 0
+    ? [{ label: t("Claude settings"), value: String(claudeSettingsItemCount) }]
+    : [];
   const appPath = profile.appPath?.trim() || "";
   const appPathSummaryItems = appPath && surface !== "cli" && profile.agent !== "zcode"
     ? [{ label: t("APP_PATH"), value: appPath }]
@@ -1265,6 +1358,7 @@ export function profileSummaryItems(
       ...routingSummaryItems,
       ...botSummaryItems,
       ...appPathSummaryItems,
+      ...claudeSettingsSummaryItems,
       ...envSummaryItems
     ];
   }
@@ -1313,11 +1407,13 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
   const routing = normalizeProfileRoutingConfig(profile.routing);
   if (agent === "claude-code") {
     const appPath = profile.appPath?.trim() || "";
+    const claudeSettings = normalizeClaudeSettingsConfig(profile.claudeSettings);
     return {
       agent: "claude-code",
       ...(surface !== "cli" && appPath ? { appPath } : {}),
       ...(botConfigId ? { botConfigId } : {}),
       ...(botGateway ? { botGateway } : {}),
+      ...(claudeSettings ? { claudeSettings } : {}),
       ...(availableModels ? { availableModels } : {}),
       enabled: profile.enabled,
       env: claudeCodeProfileEnv(env),
@@ -1402,6 +1498,7 @@ export function legacyProfileItemsFromProfileConfig(profile: AppConfig["profile"
   return [
     normalizeProfileItem({
       agent: "claude-code",
+      claudeSettings: profile.claudeCode.claudeSettings,
       enabled: profile.claudeCode.enabled,
       env: claudeCodeProfileEnv(),
       fableModel: profile.claudeCode.fableModel,
@@ -1477,6 +1574,7 @@ export function normalizeUnknownProfileItem(value: Record<string, unknown>, inde
           : undefined,
     botConfigId: typeof value.botConfigId === "string" ? value.botConfigId : typeof value.bot_config_id === "string" ? value.bot_config_id : undefined,
     botGateway: normalizeBotGatewayRuntimeConfig(value.botGateway ?? value.bot_gateway ?? value.bot),
+    claudeSettings: normalizeClaudeSettingsConfig(value.claudeSettings ?? value.claude_settings),
     cliMiddleware: typeof value.cliMiddleware === "boolean" ? value.cliMiddleware : undefined,
     codexCliPath: typeof value.codexCliPath === "string" ? value.codexCliPath : undefined,
     codexHome: typeof value.codexHome === "string" ? value.codexHome : undefined,

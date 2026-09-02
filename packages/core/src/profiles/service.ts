@@ -81,6 +81,13 @@ const claudeCodeGatewayEnvKeys = [
   "ANTHROPIC_API_BASE_URL",
   "CLAUDE_AGENT_API_BASE_URL"
 ] as const;
+const claudeCodeNoProxyEnvKeys = [
+  "NO_PROXY",
+  "no_proxy"
+] as const;
+const claudeCodeGatewayCompatibilityEnvKeys = [
+  "CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT"
+] as const;
 const claudeCodeRemovedAuthEnvKeys = [
   "ANTHROPIC_AUTH_TOKEN",
   "ANTHROPIC_API_KEY"
@@ -209,6 +216,7 @@ export async function applyProfileConfig(
                   : applyCodexProfile(config, profile, token, appliedAt)
     );
   }
+  syncClaudeCodeManagedGatewaySettings(config, profiles);
   result.clients.push(...takeoverStatuses);
   cleanupManagedClaudeCodeToolHubArtifacts(profiles, { includeActive: false });
   result.clients.push(...restoreInactiveGlobalProfileConfigs(profiles));
@@ -384,23 +392,41 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token
   const settingsFile = resolveClaudeCodeSettingsFile(profile);
   if (!profile.enabled) {
     cleanupClaudeCodeGeneratedFiles(profile);
-    return restoreDisabledGlobalProfile(profile, settingsFile, "Claude Code profile is disabled.", isManagedClaudeCodeSettingsContent);
+    return restoreDisabledGlobalProfile(profile, settingsFile, "Claude Code profile is disabled.", claudeCodeManagedContentPredicate(profile));
   }
 
   try {
     const endpoint = gatewayEndpoint(config);
-    const settings = readClaudeCodeSettingsObject(settingsFile);
-    const settingsEnv = withoutBotGatewayEnv(Object.fromEntries(stringRecord(settings.env)));
+    const currentSettings = readClaudeCodeSettingsObject(settingsFile);
+    const profileSettingsState = readClaudeCodeProfileSettingsState(profile);
+    const profileSettings = claudeCodeProfileSettings(profile);
+    const profileSettingsEnv = withoutBotGatewayEnv(Object.fromEntries(stringRecord(profileSettings.env)));
+    delete profileSettings.env;
+    const profileEnvValues = profileEnv(profile);
+    const managedProfileEnvKeys = uniqueStrings([
+      ...Object.keys(profileSettingsEnv),
+      ...Object.keys(profileEnvValues)
+    ]);
+    const managedSettingPaths = claudeCodeProfileSettingsPaths(profileSettings);
+    const managedSettingComparePaths = uniquePathStrings([...profileSettingsState.paths, ...managedSettingPaths]);
+    const settings = removeClaudeCodeProfileSettings(currentSettings, profileSettingsState.paths, managedSettingPaths);
+    const settingsEnv = removeClaudeCodeProfileEnv(
+      withoutBotGatewayEnv(Object.fromEntries(stringRecord(settings.env))),
+      profileSettingsState.envKeys,
+      managedProfileEnvKeys
+    );
     delete settingsEnv[CLAUDE_CODE_MCP_CONFIG_ENV];
     delete settingsEnv[CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV];
-    const profileEnvValues = profileEnv(profile);
     const env = {
       ...settingsEnv,
+      ...profileSettingsEnv,
       ...profileEnvValues
     };
     env.ANTHROPIC_BASE_URL = endpoint;
     env.ANTHROPIC_API_BASE_URL = endpoint;
     env.CLAUDE_AGENT_API_BASE_URL = endpoint;
+    applyGatewayNoProxyEnv(env, config);
+    applyClaudeCodeGatewayCompatibilityEnv(env);
     for (const key of claudeCodeFirstPartyProviderEnvKeys) {
       delete env[key];
     }
@@ -426,10 +452,15 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token
       wifIdentityTokenFile: authMode === "wif" ? wifResult.file : undefined
     }, toolHubMcpConfigResult.file);
     const autoCompactResult = writeClaudeCodeAutoCompactWindowsCache(config, settingsFile);
-    const nextSettings = claudeCodeNextSettings(settings, env, authMode, helperResult?.file);
-    const managedEnvKeys = claudeCodeManagedSettingsEnvKeys(profileEnvValues, mcpConfigEnv, timezoneEnv, wifEnv);
-    const writeResult = writeClaudeCodeSettingsIfManagedChanged(settingsFile, settings, nextSettings, managedEnvKeys);
+    const nextSettings = claudeCodeNextSettings(settings, profileSettings, env, authMode, helperResult?.file);
+    const managedEnvKeys = claudeCodeManagedSettingsEnvKeys(profileEnvValues, profileSettingsEnv, mcpConfigEnv, timezoneEnv, wifEnv);
+    for (const key of profileSettingsState.envKeys) {
+      managedEnvKeys.add(key);
+    }
+    const writeResult = writeClaudeCodeSettingsIfManagedChanged(settingsFile, currentSettings, nextSettings, managedEnvKeys, managedSettingComparePaths);
+    const settingsStateResult = writeClaudeCodeProfileSettingsState(profile, managedSettingPaths, managedProfileEnvKeys);
     const changed = writeResult.changed ||
+      settingsStateResult.changed ||
       Boolean(helperResult?.changed) ||
       wifResult.changed ||
       wrapperResult.changed ||
@@ -823,6 +854,48 @@ function claudeCodeToolHubMcpConfigFile(profile: ProfileConfig): string {
   return path.join(ccrManagedProfileDir(profile), "claude", "toolhub-mcp.json");
 }
 
+function claudeCodeProfileSettingsStateFile(profile: ProfileConfig): string {
+  return path.join(ccrManagedProfileDir(profile), "claude", "settings-state.json");
+}
+
+function readClaudeCodeProfileSettingsState(profile: ProfileConfig): { envKeys: string[]; paths: string[] } {
+  const state = readJsonObject(claudeCodeProfileSettingsStateFile(profile));
+  const paths = Array.isArray(state.paths)
+    ? state.paths.filter((item): item is string => typeof item === "string")
+    : [];
+  const envKeys = Array.isArray(state.envKeys)
+    ? state.envKeys.filter((item): item is string => typeof item === "string")
+    : [];
+  return {
+    envKeys: uniqueStrings(envKeys),
+    paths: uniquePathStrings(paths)
+  };
+}
+
+function claudeCodeManagedContentPredicate(profile: ProfileConfig): (content: string) => boolean {
+  const profileSettings = claudeCodeProfileSettings(profile);
+  delete profileSettings.env;
+  const managedSettingPaths = uniquePathStrings([
+    ...readClaudeCodeProfileSettingsState(profile).paths,
+    ...claudeCodeProfileSettingsPaths(profileSettings)
+  ]);
+  return (content) => isManagedClaudeCodeSettingsContent(content, managedSettingPaths);
+}
+
+function writeClaudeCodeProfileSettingsState(
+  profile: ProfileConfig,
+  paths: string[],
+  envKeys: string[]
+): { changed: boolean } {
+  const file = claudeCodeProfileSettingsStateFile(profile);
+  const content = `${JSON.stringify({
+    version: 1,
+    envKeys: uniqueStrings(envKeys),
+    paths: uniquePathStrings(paths)
+  }, null, 2)}\n`;
+  return writeGeneratedFileIfChanged(file, content, { mode: privateFileMode });
+}
+
 function writeClaudeCodeToolHubMcpConfig(config: AppConfig, profile: ProfileConfig, token: string): { changed: boolean; file?: string } {
   const file = claudeCodeToolHubMcpConfigFile(profile);
   const entryPath = path.join(CONFIGDIR, "bin", TOOL_HUB_MCP_RUNTIME_FILE_NAME);
@@ -1117,21 +1190,192 @@ function buildSeparateCodexProfileToml(
 
 function claudeCodeNextSettings(
   settings: Record<string, unknown>,
+  profileSettings: Record<string, unknown>,
   env: Record<string, string>,
   authMode: ClaudeCodeGatewayAuthMode,
   apiKeyHelperFile: string | undefined
 ): Record<string, unknown> {
+  const mergedSettings = mergeClaudeCodeSettings(settings, profileSettings);
   if (authMode === "api-key-helper" && apiKeyHelperFile) {
     return {
-      ...settings,
+      ...mergedSettings,
       apiKeyHelper: process.platform === "win32" ? `"${apiKeyHelperFile}"` : apiKeyHelperFile,
       env
     };
   }
   return {
-    ...withoutManagedClaudeCodeApiKeyHelper(settings),
+    ...withoutManagedClaudeCodeApiKeyHelper(mergedSettings),
     env
   };
+}
+
+function claudeCodeProfileSettings(profile: ProfileConfig): Record<string, unknown> {
+  return sanitizeClaudeCodeJsonObject(profile.claudeSettings);
+}
+
+function sanitizeClaudeCodeJsonObject(value: unknown): Record<string, unknown> {
+  if (!isRecord(value)) {
+    return {};
+  }
+  const result: Record<string, unknown> = {};
+  for (const [rawKey, rawValue] of Object.entries(value)) {
+    const key = rawKey.trim();
+    if (!key || key === "__proto__" || key === "constructor" || key === "prototype") {
+      continue;
+    }
+    const item = sanitizeClaudeCodeJsonValue(rawValue);
+    if (item !== undefined) {
+      result[key] = item;
+    }
+  }
+  return result;
+}
+
+function sanitizeClaudeCodeJsonValue(value: unknown): unknown {
+  if (value === null || typeof value === "string" || typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : undefined;
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map(sanitizeClaudeCodeJsonValue)
+      .filter((item) => item !== undefined);
+  }
+  if (isRecord(value)) {
+    return sanitizeClaudeCodeJsonObject(value);
+  }
+  return undefined;
+}
+
+function mergeClaudeCodeSettings(
+  settings: Record<string, unknown>,
+  profileSettings: Record<string, unknown>
+): Record<string, unknown> {
+  const merged = { ...settings };
+  for (const [key, value] of Object.entries(profileSettings)) {
+    const current = merged[key];
+    merged[key] = isRecord(current) && isRecord(value)
+      ? mergeClaudeCodeSettings(current, value)
+      : value;
+  }
+  return merged;
+}
+
+function removeClaudeCodeProfileSettings(
+  settings: Record<string, unknown>,
+  previousPaths: string[],
+  currentPaths: string[]
+): Record<string, unknown> {
+  const currentPathSet = new Set(currentPaths);
+  const removedPaths = previousPaths.filter((item) => !currentPathSet.has(item));
+  if (removedPaths.length === 0) {
+    return settings;
+  }
+
+  const next = cloneJsonObject(settings);
+  for (const item of removedPaths) {
+    deleteJsonPath(next, parseClaudeCodeSettingsPath(item));
+  }
+  return next;
+}
+
+function removeClaudeCodeProfileEnv(
+  env: Record<string, string>,
+  previousKeys: string[],
+  currentKeys: string[]
+): Record<string, string> {
+  const currentKeySet = new Set(currentKeys);
+  const removedKeys = previousKeys.filter((key) => !currentKeySet.has(key));
+  if (removedKeys.length === 0) {
+    return env;
+  }
+  const next = { ...env };
+  for (const key of removedKeys) {
+    delete next[key];
+  }
+  return next;
+}
+
+function cloneJsonObject(value: Record<string, unknown>): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+}
+
+function claudeCodeProfileSettingsPaths(settings: Record<string, unknown>): string[] {
+  return uniquePathStrings(collectClaudeCodeSettingsPaths(settings));
+}
+
+function collectClaudeCodeSettingsPaths(value: unknown, parent: string[] = []): string[] {
+  if (!isRecord(value) || Object.keys(value).length === 0) {
+    return parent.length ? [formatClaudeCodeSettingsPath(parent)] : [];
+  }
+  return Object.entries(value).flatMap(([key, item]) => {
+    const nextParent = [...parent, key];
+    if (isRecord(item) && Object.keys(item).length > 0) {
+      return collectClaudeCodeSettingsPaths(item, nextParent);
+    }
+    return [formatClaudeCodeSettingsPath(nextParent)];
+  });
+}
+
+function formatClaudeCodeSettingsPath(pathParts: string[]): string {
+  return pathParts.join(".");
+}
+
+function parseClaudeCodeSettingsPath(value: string): string[] {
+  return value.split(".").map((part) => part.trim()).filter(Boolean);
+}
+
+function uniquePathStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const normalized = formatClaudeCodeSettingsPath(parseClaudeCodeSettingsPath(value));
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    result.push(normalized);
+  }
+  return result;
+}
+
+function uniqueStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const normalized = value.trim();
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    result.push(normalized);
+  }
+  return result;
+}
+
+function deleteJsonPath(target: Record<string, unknown>, pathParts: string[]): boolean {
+  if (pathParts.length === 0) {
+    return false;
+  }
+  const [key, ...rest] = pathParts;
+  if (!key || !hasOwn(target, key)) {
+    return false;
+  }
+  if (rest.length === 0) {
+    delete target[key];
+    return true;
+  }
+  const child = target[key];
+  if (!isRecord(child)) {
+    return false;
+  }
+  const changed = deleteJsonPath(child, rest);
+  if (changed && Object.keys(child).length === 0) {
+    delete target[key];
+  }
+  return changed;
 }
 
 function writeClaudeCodeWifIdentityToken(profile: ProfileConfig, token: string): { changed: boolean; file: string } {
@@ -1498,7 +1742,7 @@ function kimiWrapperShellScript(config: AppConfig, profile: ProfileConfig, profi
   const envExports = Object.entries(profileEnv(profile))
     .filter(([key]) => !isKimiManagedEnvKey(key))
     .map(([key, value]) => `export ${key}=${shellQuote(value)}`);
-  const noProxyHosts = grokGatewayNoProxyHosts(config);
+  const noProxyHosts = gatewayNoProxyHosts(config);
   return [
     "#!/bin/sh",
     ...envExports,
@@ -1518,7 +1762,7 @@ function kimiWrapperCmdScript(config: AppConfig, profile: ProfileConfig, profile
   const envExports = Object.entries(profileEnv(profile))
     .filter(([key]) => !isKimiManagedEnvKey(key))
     .map(([key, value]) => cmdSetLine(key, value));
-  const noProxyHosts = grokGatewayNoProxyHosts(config);
+  const noProxyHosts = gatewayNoProxyHosts(config);
   return [
     "@echo off",
     ...envExports,
@@ -1592,7 +1836,7 @@ function piWrapperShellScript(
   const envExports = Object.entries(profileEnv(profile))
     .filter(([key]) => !isPiManagedEnvKey(key))
     .map(([key, value]) => `export ${key}=${shellQuote(value)}`);
-  const noProxyHosts = grokGatewayNoProxyHosts(config);
+  const noProxyHosts = gatewayNoProxyHosts(config);
   return [
     "#!/bin/sh",
     ...envExports,
@@ -1617,7 +1861,7 @@ function piWrapperCmdScript(
   const envExports = Object.entries(profileEnv(profile))
     .filter(([key]) => !isPiManagedEnvKey(key))
     .map(([key, value]) => cmdSetLine(key, value));
-  const noProxyHosts = grokGatewayNoProxyHosts(config);
+  const noProxyHosts = gatewayNoProxyHosts(config);
   return [
     "@echo off",
     ...envExports,
@@ -1934,7 +2178,7 @@ function grokWrapperShellScript(config: AppConfig, profile: ProfileConfig, token
     .filter(([key]) => key !== "CCR_GROK_BIN" && !isGrokManagedEnvKey(key))
     .map(([key, value]) => `export ${key}=${shellQuote(value)}`);
   const gatewayBaseUrl = `${gatewayEndpoint(config).replace(/\/+$/g, "")}/v1`;
-  const noProxyHosts = grokGatewayNoProxyHosts(config);
+  const noProxyHosts = gatewayNoProxyHosts(config);
   return [
     "#!/bin/sh",
     ...envExports,
@@ -1958,7 +2202,7 @@ function grokWrapperCmdScript(config: AppConfig, profile: ProfileConfig, token: 
     .filter(([key]) => key !== "CCR_GROK_BIN" && !isGrokManagedEnvKey(key))
     .map(([key, value]) => cmdSetLine(key, value));
   const gatewayBaseUrl = `${gatewayEndpoint(config).replace(/\/+$/g, "")}/v1`;
-  const noProxyHosts = grokGatewayNoProxyHosts(config);
+  const noProxyHosts = gatewayNoProxyHosts(config);
   return [
     "@echo off",
     ...envExports,
@@ -1976,11 +2220,102 @@ function grokWrapperCmdScript(config: AppConfig, profile: ProfileConfig, token: 
   ].join("\r\n");
 }
 
-function grokGatewayNoProxyHosts(config: AppConfig): string {
+function gatewayNoProxyHosts(config: AppConfig): string {
   const configuredHost = config.gateway.host === "0.0.0.0" || config.gateway.host === "::"
     ? "127.0.0.1"
     : config.gateway.host?.trim().replace(/^\[|\]$/g, "") || "127.0.0.1";
   return [...new Set([configuredHost, "127.0.0.1", "localhost", "::1"])].join(",");
+}
+
+function applyGatewayNoProxyEnv(env: Record<string, string>, config: AppConfig): void {
+  const hosts = gatewayNoProxyHosts(config).split(",");
+  env.NO_PROXY = mergeNoProxyHosts(env.NO_PROXY, hosts);
+  env.no_proxy = mergeNoProxyHosts(env.no_proxy, hosts);
+}
+
+function applyClaudeCodeGatewayCompatibilityEnv(env: Record<string, string>): void {
+  env.CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT = "1";
+}
+
+function syncClaudeCodeManagedGatewaySettings(config: AppConfig, profiles: ProfileConfig[]): void {
+  const claudeProfiles = profiles.filter((profile) => profile.agent === "claude-code");
+  if (claudeProfiles.length === 0) {
+    return;
+  }
+  const files = uniqueResolvedPaths([
+    "~/.claude/settings.json",
+    ...claudeProfiles.map((profile) => profile.settingsFile || ""),
+    ...claudeProfiles.map(resolveClaudeCodeSettingsFile),
+    ...managedClaudeCodeSettingsFiles()
+  ]);
+  for (const file of files) {
+    syncClaudeCodeManagedGatewaySettingsFile(config, file);
+  }
+}
+
+function syncClaudeCodeManagedGatewaySettingsFile(config: AppConfig, file: string): void {
+  if (!existsSync(file)) {
+    return;
+  }
+  let settings: Record<string, unknown>;
+  try {
+    settings = readClaudeCodeSettingsObject(file);
+  } catch {
+    return;
+  }
+  if (!isRecord(settings.env)) {
+    return;
+  }
+  const env = Object.fromEntries(stringRecord(settings.env));
+  if (!isManagedClaudeCodeGatewayEnv(env, config)) {
+    return;
+  }
+  const nextEnv = { ...env };
+  for (const key of claudeCodeGatewayEnvKeys) {
+    nextEnv[key] = gatewayEndpoint(config);
+  }
+  applyGatewayNoProxyEnv(nextEnv, config);
+  applyClaudeCodeGatewayCompatibilityEnv(nextEnv);
+  const nextSettings = {
+    ...settings,
+    env: {
+      ...settings.env,
+      ...nextEnv
+    }
+  };
+  if (!claudeCodeSettingsManagedFieldsChanged(settings, nextSettings, claudeCodeManagedGatewaySyncEnvKeys())) {
+    chmodFileIfRequested(file, privateFileMode);
+    return;
+  }
+  writeFileWithBackup(file, `${JSON.stringify(nextSettings, null, 2)}\n`, { mode: privateFileMode });
+}
+
+function claudeCodeManagedGatewaySyncEnvKeys(): Set<string> {
+  return new Set([
+    ...claudeCodeGatewayEnvKeys,
+    ...claudeCodeNoProxyEnvKeys,
+    ...claudeCodeGatewayCompatibilityEnvKeys
+  ]);
+}
+
+function isManagedClaudeCodeGatewayEnv(env: Record<string, string>, config: AppConfig): boolean {
+  const endpoint = normalizeUrlForMatch(gatewayEndpoint(config));
+  const baseUrl = normalizeUrlForMatch(env.ANTHROPIC_BASE_URL);
+  const apiBaseUrl = normalizeUrlForMatch(env.ANTHROPIC_API_BASE_URL);
+  if (baseUrl === endpoint && apiBaseUrl === endpoint) {
+    return true;
+  }
+  return env.ANTHROPIC_FEDERATION_RULE_ID === claudeCodeWifFederationRuleId &&
+    env.ANTHROPIC_ORGANIZATION_ID === claudeCodeWifOrganizationId &&
+    [baseUrl, apiBaseUrl, normalizeUrlForMatch(env.CLAUDE_AGENT_API_BASE_URL)].includes(endpoint);
+}
+
+function mergeNoProxyHosts(current: string | undefined, hosts: string[]): string {
+  const values = [
+    ...(current ?? "").split(","),
+    ...hosts
+  ].map((value) => value.trim()).filter(Boolean);
+  return [...new Set(values)].join(",");
 }
 
 function isGrokManagedEnvKey(key: string): boolean {
@@ -2139,6 +2474,8 @@ function claudeCodeRuntimeEnv(config: AppConfig, profile: ProfileConfig, setting
     Object.assign(env, claudeCodeWifEnv(wifIdentityTokenFile));
   }
   Object.assign(env, claudeCodeProfileModelEnv(config, profile));
+  applyGatewayNoProxyEnv(env, config);
+  applyClaudeCodeGatewayCompatibilityEnv(env);
   return env;
 }
 
@@ -2685,9 +3022,10 @@ function writeClaudeCodeSettingsIfManagedChanged(
   file: string,
   settings: Record<string, unknown>,
   nextSettings: Record<string, unknown>,
-  managedEnvKeys: Set<string>
+  managedEnvKeys: Set<string>,
+  managedSettingPaths: string[] = []
 ): { backupFile?: string; changed: boolean } {
-  if (!claudeCodeSettingsManagedFieldsChanged(settings, nextSettings, managedEnvKeys)) {
+  if (!claudeCodeSettingsManagedFieldsChanged(settings, nextSettings, managedEnvKeys, managedSettingPaths)) {
     chmodFileIfRequested(file, privateFileMode);
     return { changed: false };
   }
@@ -2697,7 +3035,8 @@ function writeClaudeCodeSettingsIfManagedChanged(
 function claudeCodeSettingsManagedFieldsChanged(
   settings: Record<string, unknown>,
   nextSettings: Record<string, unknown>,
-  managedEnvKeys: Set<string>
+  managedEnvKeys: Set<string>,
+  managedSettingPaths: string[] = []
 ): boolean {
   if (settings.apiKeyHelper !== nextSettings.apiKeyHelper) {
     return true;
@@ -2717,7 +3056,29 @@ function claudeCodeSettingsManagedFieldsChanged(
       return true;
     }
   }
+
+  for (const pathValue of managedSettingPaths) {
+    const pathParts = parseClaudeCodeSettingsPath(pathValue);
+    if (!jsonValuesEqual(readJsonPath(settings, pathParts), readJsonPath(nextSettings, pathParts))) {
+      return true;
+    }
+  }
   return false;
+}
+
+function readJsonPath(value: Record<string, unknown>, pathParts: string[]): unknown {
+  let current: unknown = value;
+  for (const key of pathParts) {
+    if (!isRecord(current) || !hasOwn(current, key)) {
+      return undefined;
+    }
+    current = current[key];
+  }
+  return current;
+}
+
+function jsonValuesEqual(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function withoutManagedClaudeCodeApiKeyHelper(settings: Record<string, unknown>): Record<string, unknown> {
@@ -2734,15 +3095,19 @@ function isManagedClaudeCodeApiKeyHelper(value: unknown): boolean {
 
 function claudeCodeManagedSettingsEnvKeys(
   profileEnvValues: Record<string, string>,
+  profileSettingsEnv: Record<string, string>,
   mcpConfigEnv: Record<string, string>,
   timezoneEnv: Record<string, string>,
   wifEnv: Record<string, string>
 ): Set<string> {
   return new Set([
     ...claudeCodeGatewayEnvKeys,
+    ...claudeCodeNoProxyEnvKeys,
+    ...claudeCodeGatewayCompatibilityEnvKeys,
     ...claudeCodeFirstPartyProviderEnvKeys,
     ...claudeCodeWifEnvKeys,
     ...Object.keys(profileEnvValues),
+    ...Object.keys(profileSettingsEnv),
     ...Object.keys(mcpConfigEnv),
     ...Object.keys(wifEnv),
     ...Object.keys(timezoneEnv),
@@ -2753,6 +3118,8 @@ function claudeCodeManagedSettingsEnvKeys(
 
 function isManagedClaudeCodeSettingsEnvKey(key: string): boolean {
   return (claudeCodeGatewayEnvKeys as readonly string[]).includes(key) ||
+    (claudeCodeNoProxyEnvKeys as readonly string[]).includes(key) ||
+    (claudeCodeGatewayCompatibilityEnvKeys as readonly string[]).includes(key) ||
     isClaudeCodeFirstPartyProviderEnvKey(key) ||
     isClaudeCodeWifEnvKey(key) ||
     key === CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV ||
@@ -2968,7 +3335,7 @@ function restoreDisabledGlobalProfile(
 
 function disabledProfileStatus(profile: ProfileConfig): ProfileClientApplyStatus {
   if (profile.agent === "claude-code") {
-    return restoreDisabledGlobalProfile(profile, resolveClaudeCodeSettingsFile(profile), "Claude Code profile is disabled.", isManagedClaudeCodeSettingsContent);
+    return restoreDisabledGlobalProfile(profile, resolveClaudeCodeSettingsFile(profile), "Claude Code profile is disabled.", claudeCodeManagedContentPredicate(profile));
   }
   if (profile.agent === "zcode") {
     return restoreDisabledZcodeProfile(profile, resolveZcodeConfigFile(profile));
@@ -3517,12 +3884,12 @@ function isGlobalProfile(profile: ProfileConfig): boolean {
   return normalizeProfileScope(profile.scope) === "global";
 }
 
-function isManagedClaudeCodeSettingsContent(content: string): boolean {
+function isManagedClaudeCodeSettingsContent(content: string, managedSettingPaths: string[] = []): boolean {
   const settings = parseJsonContent(content);
   if (!settings) {
     return false;
   }
-  if (!isPureManagedClaudeCodeSettings(settings)) {
+  if (!isPureManagedClaudeCodeSettings(settings, managedSettingPaths)) {
     return false;
   }
   if (isManagedClaudeCodeApiKeyHelper(settings.apiKeyHelper)) {
@@ -3534,9 +3901,10 @@ function isManagedClaudeCodeSettingsContent(content: string): boolean {
     typeof env.CLAUDE_AGENT_API_BASE_URL === "string";
 }
 
-function isPureManagedClaudeCodeSettings(settings: Record<string, unknown>): boolean {
-  const rootKeys = Object.keys(settings);
-  if (rootKeys.some((key) => key !== "apiKeyHelper" && key !== "env")) {
+function isPureManagedClaudeCodeSettings(settings: Record<string, unknown>, managedSettingPaths: string[] = []): boolean {
+  const extraSettings = Object.fromEntries(Object.entries(settings).filter(([key]) => key !== "apiKeyHelper" && key !== "env"));
+  const extraPaths = collectClaudeCodeSettingsPaths(extraSettings);
+  if (extraPaths.some((pathValue) => !isClaudeCodeProfileManagedSettingsPath(pathValue, managedSettingPaths))) {
     return false;
   }
   if ("apiKeyHelper" in settings && typeof settings.apiKeyHelper !== "string") {
@@ -3549,6 +3917,15 @@ function isPureManagedClaudeCodeSettings(settings: Record<string, unknown>): boo
     return false;
   }
   return Object.keys(settings.env).every((key) => isManagedClaudeCodeSettingsEnvKey(key));
+}
+
+function isClaudeCodeProfileManagedSettingsPath(pathValue: string, managedSettingPaths: string[]): boolean {
+  const normalized = formatClaudeCodeSettingsPath(parseClaudeCodeSettingsPath(pathValue));
+  return Boolean(normalized) && uniquePathStrings(managedSettingPaths).some((managedPath) =>
+    normalized === managedPath ||
+    normalized.startsWith(`${managedPath}.`) ||
+    managedPath.startsWith(`${normalized}.`)
+  );
 }
 
 function isManagedCodexConfigContent(content: string, providerId: string): boolean {

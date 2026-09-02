@@ -142,6 +142,7 @@ export type GatewayPluginRegistration = {
   apps?: GatewayPluginAppConfig[];
   coreGateway?: {
     config?: Record<string, unknown>;
+    plugins?: unknown[];
     providerPlugins?: unknown[];
     virtualModelProfiles?: unknown[];
   };
@@ -166,6 +167,7 @@ export type GatewayPluginContext = {
   pluginId: string;
   permissions: GatewayPluginPermission[];
   openSqliteStore: (options?: PluginSqliteStoreOptions) => Promise<PluginSqliteStore>;
+  registerCoreGatewayPlugin: (plugin: unknown) => void;
   registerCoreGatewayProviderPlugin: (providerPlugin: unknown) => void;
   registerCoreGatewayVirtualModelProfile: (profile: unknown) => void;
   registerApp: (app: GatewayPluginAppConfig) => void;
@@ -238,6 +240,7 @@ type PluginPermissionAccess = {
 type PluginServiceStateSnapshot = {
   apps: InstalledBrowserApp[];
   coreGatewayConfig: Record<string, unknown>;
+  coreGatewayPlugins: unknown[];
   coreProviderPlugins: unknown[];
   gatewayRequestTransforms: RegisteredGatewayRequestTransform[];
   gatewayRoutes: RegisteredGatewayRoute[];
@@ -253,6 +256,7 @@ const requireFromHere = createRequire(__filename);
 class GatewayPluginService {
   private config?: AppConfig;
   private coreGatewayConfig: Record<string, unknown> = {};
+  private coreGatewayPlugins: unknown[] = [];
   private coreProviderPlugins: unknown[] = [];
   private apps: InstalledBrowserApp[] = [];
   private gatewayRequestTransforms: RegisteredGatewayRequestTransform[] = [];
@@ -308,6 +312,7 @@ class GatewayPluginService {
     this.config = undefined;
     this.apps = [];
     this.coreGatewayConfig = {};
+    this.coreGatewayPlugins = [];
     this.coreProviderPlugins = [];
     this.gatewayRequestTransforms = [];
     this.gatewayRoutes = [];
@@ -316,8 +321,18 @@ class GatewayPluginService {
     this.virtualModelProfiles = [];
   }
 
-  hasGatewayRoutes(): boolean {
-    return this.gatewayRoutes.length > 0;
+  hasGatewayRoutes(options: { includePluginAdminRoutes?: boolean } = {}): boolean {
+    const includePluginAdminRoutes = options.includePluginAdminRoutes !== false;
+    return this.gatewayRoutes.some((route) =>
+      includePluginAdminRoutes || !isPluginAdminGatewayRoute(route)
+    );
+  }
+
+  hasGatewayRequestTransforms(options: { includeBuiltIns?: boolean } = {}): boolean {
+    const includeBuiltIns = options.includeBuiltIns !== false;
+    return this.gatewayRequestTransforms.some((transform) =>
+      includeBuiltIns || transform.pluginId !== "openrouter"
+    );
   }
 
   async applyGatewayRequestTransforms(input: GatewayPluginRequestTransformInput): Promise<GatewayPluginRequestTransformOutput> {
@@ -396,7 +411,15 @@ class GatewayPluginService {
   }
 
   getCoreGatewayConfig(): Record<string, unknown> {
-    return { ...this.coreGatewayConfig };
+    const configuredPlugins = Array.isArray(this.coreGatewayConfig.plugins)
+      ? this.coreGatewayConfig.plugins
+      : [];
+    return {
+      ...this.coreGatewayConfig,
+      ...(configuredPlugins.length + this.coreGatewayPlugins.length > 0
+        ? { plugins: [...configuredPlugins, ...this.coreGatewayPlugins] }
+        : {})
+    };
   }
 
   getCoreProviderPlugins(): unknown[] {
@@ -582,13 +605,17 @@ class GatewayPluginService {
     ]) {
       this.virtualModelProfiles.push(profile);
     }
+    if ((registration.coreGateway?.plugins ?? []).length > 0) {
+      this.requirePluginSurface(pluginConfig, "gateway", "register core gateway plugins");
+      this.requirePluginPermission(permissions, "core-gateway-plugins", "register core gateway plugins");
+    }
+    for (const plugin of registration.coreGateway?.plugins ?? []) {
+      this.coreGatewayPlugins.push(plugin);
+    }
     if (registration.coreGateway?.config) {
       this.requirePluginSurface(pluginConfig, "gateway", "register core gateway config");
       this.requirePluginPermission(permissions, "core-gateway-config", "register core gateway config");
-      this.coreGatewayConfig = {
-        ...this.coreGatewayConfig,
-        ...registration.coreGateway.config
-      };
+      this.coreGatewayConfig = mergeCoreGatewayConfig(this.coreGatewayConfig, registration.coreGateway.config);
     }
     if (registration.stop) {
       this.stopHooks.push({ pluginId, stop: registration.stop });
@@ -632,12 +659,15 @@ class GatewayPluginService {
     for (const profile of pluginConfig.coreGateway?.virtualModelProfiles ?? []) {
       this.virtualModelProfiles.push(profile);
     }
+    if ((pluginConfig.coreGateway?.plugins ?? []).length > 0) {
+      this.requirePluginPermission(permissions, "core-gateway-plugins", "register configured core gateway plugins");
+    }
+    for (const plugin of pluginConfig.coreGateway?.plugins ?? []) {
+      this.coreGatewayPlugins.push(plugin);
+    }
     if (pluginConfig.coreGateway?.config) {
       this.requirePluginPermission(permissions, "core-gateway-config", "register configured core gateway config");
-      this.coreGatewayConfig = {
-        ...this.coreGatewayConfig,
-        ...pluginConfig.coreGateway.config
-      };
+      this.coreGatewayConfig = mergeCoreGatewayConfig(this.coreGatewayConfig, pluginConfig.coreGateway.config);
     }
   }
 
@@ -711,6 +741,11 @@ class GatewayPluginService {
       openSqliteStore: (options) => {
         this.requirePluginPermission(permissions, "sqlite-store", "open a SQLite store");
         return this.openSqliteStore(pluginConfig.id, pluginDataDir, options);
+      },
+      registerCoreGatewayPlugin: (plugin) => {
+        this.requirePluginSurface(pluginConfig, "gateway", "register core gateway plugins");
+        this.requirePluginPermission(permissions, "core-gateway-plugins", "register core gateway plugins");
+        this.coreGatewayPlugins.push(plugin);
       },
       registerCoreGatewayProviderPlugin: (providerPlugin) => {
         this.requirePluginSurface(pluginConfig, "provider", "register core provider plugins");
@@ -885,6 +920,7 @@ class GatewayPluginService {
     return {
       apps: [...this.apps],
       coreGatewayConfig: { ...this.coreGatewayConfig },
+      coreGatewayPlugins: [...this.coreGatewayPlugins],
       coreProviderPlugins: [...this.coreProviderPlugins],
       gatewayRequestTransforms: [...this.gatewayRequestTransforms],
       gatewayRoutes: [...this.gatewayRoutes],
@@ -900,6 +936,7 @@ class GatewayPluginService {
     const newStopHooks = this.stopHooks.slice(snapshot.stopHooks.length).reverse();
     this.apps = snapshot.apps;
     this.coreGatewayConfig = snapshot.coreGatewayConfig;
+    this.coreGatewayPlugins = snapshot.coreGatewayPlugins;
     this.coreProviderPlugins = snapshot.coreProviderPlugins;
     this.gatewayRequestTransforms = snapshot.gatewayRequestTransforms;
     this.gatewayRoutes = snapshot.gatewayRoutes;
@@ -1134,6 +1171,11 @@ function matchesPathPrefix(prefix: string, requestPath: string): boolean {
   return normalizedPath === normalizedPrefix || normalizedPath.startsWith(`${normalizedPrefix.replace(/\/+$/, "")}/`);
 }
 
+function isPluginAdminGatewayRoute(route: RegisteredGatewayRoute): boolean {
+  const routePath = normalizeRoutePath(route.pathPrefix ?? route.path) ?? "/";
+  return routePath === "/plugins" || routePath.startsWith("/plugins/");
+}
+
 function joinUrlPaths(prefix: string, suffix: string): string {
   const normalizedPrefix = prefix === "/" ? "" : prefix.replace(/\/+$/, "");
   const normalizedSuffix = suffix.startsWith("/") ? suffix : `/${suffix}`;
@@ -1288,6 +1330,37 @@ function stopReasonForPlugin(pluginId: string, nextEnabledPluginIds: Set<string>
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function mergeCoreGatewayConfig(
+  current: Record<string, unknown>,
+  patch: Record<string, unknown>,
+  path: string[] = []
+): Record<string, unknown> {
+  const next = { ...current };
+  for (const [key, value] of Object.entries(patch)) {
+    const previous = next[key];
+    const childPath = [...path, key];
+    if (isRecord(previous) && isRecord(value)) {
+      next[key] = mergeCoreGatewayConfig(previous, value, childPath);
+      continue;
+    }
+    if (
+      Array.isArray(previous) &&
+      Array.isArray(value) &&
+      shouldAppendCoreGatewayConfigArray(childPath)
+    ) {
+      next[key] = [...previous, ...value];
+      continue;
+    }
+    next[key] = value;
+  }
+  return next;
+}
+
+function shouldAppendCoreGatewayConfigArray(path: string[]): boolean {
+  const key = path.join(".");
+  return key === "plugins" || key === "agent.mcpServers";
 }
 
 function formatError(error: unknown): string {

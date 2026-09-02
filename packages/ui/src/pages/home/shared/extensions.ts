@@ -214,6 +214,11 @@ function pluginPermissionAlias(value: string): string {
       return "provider-account-connectors";
     case "core-gateway":
       return "core-gateway-config";
+    case "core-gateway-plugin":
+    case "core-gateway-plugins":
+    case "gateway-plugin":
+    case "gateway-plugins":
+      return "core-gateway-plugins";
     case "provider-plugin":
     case "provider-plugins":
     case "core-provider-plugin":
@@ -570,6 +575,9 @@ export function wrapperPluginCapability(item: Record<string, unknown>): string {
   const coreGateway = isPlainRecord(item.coreGateway) ? item.coreGateway : undefined;
   const providerPlugins = isPlainRecord(coreGateway) && Array.isArray(coreGateway.providerPlugins) ? coreGateway.providerPlugins.length : 0;
   if (providerPlugins > 0) capabilities.push(`${providerPlugins} provider ${providerPlugins === 1 ? "plugin" : "plugins"}`);
+
+  const coreGatewayPlugins = isPlainRecord(coreGateway) && Array.isArray(coreGateway.plugins) ? coreGateway.plugins.length : 0;
+  if (coreGatewayPlugins > 0) capabilities.push(`${coreGatewayPlugins} core gateway ${coreGatewayPlugins === 1 ? "plugin" : "plugins"}`);
 
   const virtualModels = isPlainRecord(coreGateway) && Array.isArray(coreGateway.virtualModelProfiles) ? coreGateway.virtualModelProfiles.length : 0;
   if (virtualModels > 0) capabilities.push(`${virtualModels} Fusion ${virtualModels === 1 ? "profile" : "profiles"}`);

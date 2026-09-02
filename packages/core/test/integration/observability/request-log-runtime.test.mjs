@@ -62,6 +62,50 @@ test("RequestLogRuntime merges a raw trace update that arrives before its reques
   }
 });
 
+test("RequestLogRuntime creates a standalone record from single-service raw trace", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-runtime-standalone-test-"));
+  const runtime = createRuntime(dir);
+  const startedAt = "2026-08-26T01:02:03.004Z";
+  const completedAt = "2026-08-26T01:02:04.238Z";
+  try {
+    const result = runtime.enqueueRawTrace({
+      allowStandaloneRecord: true,
+      bodyCapturePolicy: "all",
+      completedAt,
+      deferOutcomeUntilRecord: true,
+      durationMs: 1234,
+      method: "POST",
+      model: "standalone-model",
+      path: "/v1/messages",
+      provider: "standalone-provider",
+      requestBodyText: JSON.stringify({ model: "standalone-model" }),
+      requestHeaders: { "content-type": "application/json", "user-agent": "openai-codex test" },
+      requestId: "standalone-raw-trace",
+      responseBodyText: JSON.stringify({ usage: { input_tokens: 3, output_tokens: 4 } }),
+      responseHeaders: { "content-type": "application/json" },
+      startedAt,
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/messages"
+    });
+    assert.deepEqual(result, { accepted: true, degraded: false });
+    await runtime.flush({ timeoutMs: 10_000 });
+
+    const page = await runtime.list({ pageSize: 25 });
+    assert.equal(page.items.length, 1);
+    assert.equal(page.items[0].requestId, "standalone-raw-trace");
+    assert.equal(page.items[0].model, "standalone-model");
+    assert.equal(page.items[0].provider, "standalone-provider");
+    assert.equal(page.items[0].client, "Codex");
+    assert.equal(page.items[0].createdAt, startedAt);
+    assert.equal(page.items[0].completedAt, completedAt);
+    assert.equal(page.items[0].durationMs, 1234);
+    assert.equal(page.items[0].totalTokens, 7);
+  } finally {
+    await runtime.close({ timeoutMs: 5_000 });
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("RequestLogStore resolves unknown raw trace body capture from the final request status", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-raw-policy-test-"));
   const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
@@ -272,6 +316,50 @@ test("RequestLogStore applies same-batch raw trace updates in sequence order", a
     assert.equal(detail.model, "raw-new-model");
     assert.equal(detail.requestBody.text, "raw-new-body");
     assert.equal(detail.statusCode, 503);
+  } finally {
+    await store.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore preserves aggregate response bodies when raw trace streams arrive later", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-aggregate-response-test-"));
+  const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+  try {
+    await store.writeBatch([
+      {
+        eventId: "aggregate-response-event",
+        input: {
+          ...createRecord("aggregate-response"),
+          responseBodyText: JSON.stringify({
+            content: [{ text: "aggregated assistant answer", type: "text" }],
+            model: "worker-model"
+          }),
+          responseHeaders: { "content-type": "application/json" }
+        },
+        kind: "record",
+        sequence: 1
+      },
+      {
+        input: {
+          isStream: true,
+          requestId: "aggregate-response",
+          responseBodyContentType: "text/event-stream",
+          responseBodyText: "event: message_start\ndata: {\"type\":\"message_start\"}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"stream wire data\"}}\n\n",
+          responseHeaders: { "content-type": "text/event-stream" },
+          statusCode: 200
+        },
+        kind: "raw-trace-update",
+        sequence: 2
+      }
+    ]);
+
+    const page = await store.list({ pageSize: 25 });
+    const detail = await store.getDetail({ id: page.items[0].id });
+    assert.match(detail.responseBody.text, /aggregated assistant answer/);
+    assert.doesNotMatch(detail.responseBody.text, /stream wire data/);
+    assert.equal(detail.statusCode, 200);
+    assert.equal(detail.isStream, true);
   } finally {
     await store.close();
     rmSync(dir, { force: true, recursive: true });

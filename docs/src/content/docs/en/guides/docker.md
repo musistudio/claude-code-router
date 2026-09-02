@@ -22,11 +22,10 @@ If the main need is local Agent multi-instance, tray, or desktop app launching, 
 host 3458 -> container Nginx 8080
                          |-> static management UI
                          |-> management RPC: 127.0.0.1:3459
-                         |-> model gateway:  127.0.0.1:3456
-                         `-> core runtime:   127.0.0.1:3457
+                         `-> model gateway:  127.0.0.1:3456
 ```
 
-Only the Nginx container port `8080` should be published. `3459`, `3456`, and `3457` are container-internal implementation ports; do not map them to the host individually.
+Only the Nginx container port `8080` should be published. `3459` and `3456` are container-internal implementation ports; do not map them to the host individually.
 
 Nginx exposes:
 
@@ -42,18 +41,20 @@ Nginx exposes:
 From the repository root:
 
 ```sh
-docker compose up -d --build
+npm run docker:compose:up
 docker compose logs -f ccr
 ```
 
 Open <http://127.0.0.1:3458>. On a fresh volume the management UI is available immediately; the model gateway only starts working after a provider and a model have been added.
+
+The npm Compose script prepares a local `../../next-ai/gateway` checkout before building so the image uses that plugin-capable ai-gateway runtime. If you run `docker compose up -d --build` directly, run `npm run docker:prepare-gateway` first. `npm run docker:build` performs the same preparation automatically.
 
 Complete the first-time configuration in this order:
 
 1. Add a provider and at least one model.
 2. Create a CCR client key on the **API Keys** page.
 3. Start the gateway on the **Server** page.
-4. Request `/health` and confirm it returns `200` with a running status.
+4. Request `/health` and confirm it returns `200` with status `ok`.
 5. Point the client Base URL at `http://127.0.0.1:3458` and use the CCR client key you just created.
 
 Stopping or removing the container does not delete the named volume:
@@ -83,7 +84,7 @@ The left side of the port mapping is the host address and port; the right side i
 Without Compose:
 
 ```sh
-docker build -t claude-code-router:local .
+npm run docker:build
 docker run -d \
   --name claude-code-router \
   --restart unless-stopped \
@@ -93,7 +94,7 @@ docker run -d \
   claude-code-router:local
 ```
 
-The repository also provides `npm run docker:build` and `npm run docker:run`. The latter uses `3458` and `ccr-data`, but the container runs with `--rm` and has no fixed name or restart policy, so it is better suited to temporary verification.
+The repository also provides `npm run docker:run`. It uses `3458` and `ccr-data`, but the container runs with `--rm` and has no fixed name or restart policy, so it is better suited to temporary verification.
 
 ## Do not mix up the three credentials
 
@@ -217,7 +218,6 @@ A typical deployment only needs `CCR_WEB_AUTH_TOKEN`, `CCR_PUBLIC_BASE_URL`, and
 | `CCR_WEB_PORT` | `3459` | Management service port inside the container. |
 | `CCR_GATEWAY_HOST` | `127.0.0.1` | Model gateway listen address inside the container. |
 | `CCR_GATEWAY_PORT` | `3456` | Model gateway port inside the container that Nginx proxies to. |
-| `CCR_GATEWAY_CORE_PORT` | `3457` | Core Gateway Runtime port inside the container. |
 | `CCR_NO_GATEWAY` | `0` | When set to `1`, `true`, or `yes`, only the management UI runs during startup. |
 | `CCR_DOCKER_INIT_CONFIG` | `1` | Set to `0` to disable the first-boot minimal `config.json` bootstrap. |
 | `CCR_DOCKER_SYNC_PUBLIC_ENDPOINT` | `1` | Set to `0` to stop synchronizing existing JSON / SQLite listener and public address fields at startup. |

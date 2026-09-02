@@ -9,6 +9,7 @@ import type { AppConfig } from "@ccr/core/contracts/app";
 import { RAW_TRACE_SPOOL_DIR } from "@ccr/core/config/constants";
 import {
   enqueueGatewayRequestLogFromRawTrace,
+  type RequestLogRawTraceFile,
   type RequestLogRawTraceFiles,
   type RequestLogRawTraceUpdateInput
 } from "@ccr/core/observability/request-log-store";
@@ -18,10 +19,12 @@ import {
 } from "@ccr/core/observability/request-log-runtime";
 import { rawTraceMaxPartBytes, resolveRawTraceBodyLimit } from "@ccr/core/observability/request-log-limits";
 import { isRecord, numberValue, stringValue } from "@ccr/core/gateway/internal/value";
-import { formatError, parseJsonObject, readHeader, readRequestBody, sendJson } from "@ccr/core/gateway/http/io";
+import { formatError, inferGatewayClient, parseJsonObject, readHeader, readRequestBody, sendJson, shouldCaptureGatewayUsage } from "@ccr/core/gateway/http/io";
 import { endpoint } from "@ccr/core/gateway/core-runtime/supervisor";
 import { maxUsageCaptureBytes, rawTraceSyncHeader, rawTraceSyncPath } from "@ccr/core/gateway/internal/shared";
 import type { RawTracePartText } from "@ccr/core/gateway/internal/shared";
+import { resolveResponseProviderProtocol } from "@ccr/core/providers/runtime-topology";
+import { recordGatewayUsageCaptureIfMissing } from "@ccr/core/usage/store";
 
 type RawTraceSynchronizerDependencies = {
   enqueueUpdate?: (
@@ -34,6 +37,7 @@ type RawTraceSynchronizerDependencies = {
   deadLetterMaxBytes?: number;
   deadLetterRetentionMs?: number;
   getConfig: () => AppConfig | undefined;
+  allowStandaloneRequestLogs?: () => boolean;
   inboxMaxBundles?: number;
   inboxMaxBytes?: number;
   measureDirectorySize?: (directory: string) => Promise<number>;
@@ -372,7 +376,7 @@ export class RawTraceSynchronizer {
 
     try {
       const config = this.dependencies.getConfig();
-      if (!config || !shouldRecordRequestLogs(config)) {
+      if (!config) {
         await this.cleanupStoredBundle(stored);
         this.retryStates.delete(stored.bundleId);
         return true;
@@ -386,7 +390,17 @@ export class RawTraceSynchronizer {
         this.retryStates.delete(stored.bundleId);
         return true;
       }
-      const policy = applyRawTraceRequestLogPolicy(config, bundle.update);
+      await recordUsageCaptureFromRawTrace(config, bundle.update, bundle.files);
+      if (!shouldRecordRequestLogs(config)) {
+        await this.cleanupStoredBundle(stored);
+        this.retryStates.delete(stored.bundleId);
+        return true;
+      }
+      const standaloneRequestLog = this.dependencies.allowStandaloneRequestLogs?.() === true;
+      const policy = applyRawTraceRequestLogPolicy(config, {
+        ...bundle.update,
+        ...(standaloneRequestLog ? { allowStandaloneRecord: true } : {})
+      });
       const maxBodyBytes = resolveRawTraceBodyLimit(config.observability.requestLogMaxBodyBytes);
       const files = policy.bodyDisposition === "suppress"
         ? { cleanupDirectory: bundle.files.cleanupDirectory, maxBodyBytes }
@@ -1407,16 +1421,26 @@ function pendingRetryDelayMs(baseMs: number, maxMs: number, pendingAttempts: num
 }
 
 
-export function buildRawTraceConfig(config: AppConfig, rawTraceSyncToken: string): Record<string, unknown> {
+export function buildRawTraceConfig(
+  config: AppConfig,
+  rawTraceSyncToken: string,
+  options: { standaloneUsageCapture?: boolean } = {}
+): Record<string, unknown> {
   const bodyCapture = config.observability.requestLogBodyCapture ?? "all";
   const maxBodyBytes = resolveRawTraceBodyLimit(config.observability.requestLogMaxBodyBytes);
   const bodyCaptureEnabled = bodyCapture !== "none" && maxBodyBytes >= 1024;
-  const enabled = rawTraceEnabledFromEnv() && shouldRecordRequestLogs(config) && bodyCaptureEnabled;
+  const requestLogsEnabled = shouldRecordRequestLogs(config);
+  const standaloneUsageCapture = options.standaloneUsageCapture === true;
+  const enabled = !rawTraceDisabledFromEnv() && (
+    standaloneUsageCapture ||
+    (requestLogsEnabled && bodyCaptureEnabled)
+  );
+  const mode = requestLogsEnabled && bodyCaptureEnabled ? "wire_raw" : "body_redacted";
   return {
     deleteLocalAfterUpload: false,
     enabled,
     maxPartBytes: rawTraceMaxPartBytes,
-    mode: "wire_raw",
+    mode,
     spoolDir: RAW_TRACE_SPOOL_DIR,
     sync: {
       enabled,
@@ -1483,6 +1507,78 @@ export function rawTraceRequestOutcome(
   return "unknown";
 }
 
+async function recordUsageCaptureFromRawTrace(
+  config: AppConfig,
+  input: RequestLogRawTraceUpdateInput,
+  files: RequestLogRawTraceFiles
+): Promise<void> {
+  const method = input.method ?? "POST";
+  const path = input.path ?? pathFromUrl(input.url) ?? "/";
+  if (!shouldCaptureGatewayUsage(method, path)) {
+    return;
+  }
+
+  const responseHeaders = headersFromRawTrace(input.responseHeaders);
+  await recordGatewayUsageCaptureIfMissing({
+    bodyText: await rawTraceUsageBodyText(input, files.responseBody),
+    config,
+    durationMs: numberValue(input.durationMs) ?? 0,
+    fallbackModel: input.model,
+    method,
+    path,
+    providerName: input.provider,
+    providerProtocol: resolveResponseProviderProtocol(responseHeaders, config),
+    requestId: input.requestId,
+    responseHeaders,
+    statusCode: numberValue(input.statusCode) ?? 0
+  });
+}
+
+async function rawTraceUsageBodyText(
+  input: RequestLogRawTraceUpdateInput,
+  file: RequestLogRawTraceFile | undefined
+): Promise<string> {
+  if (input.responseBodyText !== undefined) {
+    return boundedText(input.responseBodyText, maxUsageCaptureBytes);
+  }
+  if (!file || !isUsageTextContentType(file.contentType)) {
+    return "";
+  }
+  try {
+    return boundedText(await readFile(file.filePath, "utf8"), maxUsageCaptureBytes);
+  } catch {
+    return "";
+  }
+}
+
+function boundedText(value: string, maxBytes: number): string {
+  const buffer = Buffer.from(value);
+  return buffer.byteLength > maxBytes
+    ? buffer.subarray(0, maxBytes).toString("utf8")
+    : value;
+}
+
+function headersFromRawTrace(headers: RequestLogRawTraceUpdateInput["responseHeaders"]): Headers {
+  const result = new Headers();
+  for (const [key, value] of Object.entries(headers ?? {})) {
+    if (Array.isArray(value)) {
+      for (const item of value) result.append(key, item);
+    } else if (value !== undefined) {
+      result.set(key, value);
+    }
+  }
+  return result;
+}
+
+function isUsageTextContentType(contentType: string | undefined): boolean {
+  if (!contentType) return true;
+  const normalized = contentType.toLowerCase();
+  return normalized.includes("json") ||
+    normalized.includes("text") ||
+    normalized.includes("xml") ||
+    normalized.includes("event-stream");
+}
+
 
 export function requestLogSampled(requestId: string, rate: number): boolean {
   if (rate >= 1) return true;
@@ -1496,9 +1592,9 @@ export function requestLogSampled(requestId: string, rate: number): boolean {
 }
 
 
-function rawTraceEnabledFromEnv(): boolean {
+function rawTraceDisabledFromEnv(): boolean {
   const value = (process.env.CCR_RAW_TRACE_ENABLED ?? process.env.CCR_RAW_TRACE ?? "").trim().toLowerCase();
-  return value === "1" || value === "true" || value === "yes" || value === "on";
+  return value === "0" || value === "false" || value === "no" || value === "off";
 }
 
 
@@ -1534,8 +1630,11 @@ export async function readRawTraceRequestLogBundle(
   const target = isRecord(manifest.target) ? manifest.target : {};
   const rawUrl = stringValue(upstreamRequestMetadata?.url);
   const url = sanitizeUrlForLog(rawUrl);
+  const clientRequestHeaders = headerRecordFromUnknown(clientRequestMetadata?.headers);
+  const upstreamRequestHeaders = headerRecordFromUnknown(upstreamRequestMetadata?.headers);
+  const client = inferGatewayClient(undefined, clientRequestHeaders ?? {});
   const attempt = positiveAttemptNumber(readUnknownHeader(
-    clientRequestMetadata?.headers,
+    clientRequestHeaders,
     "x-ccr-route-attempt"
   ));
 
@@ -1549,6 +1648,9 @@ export async function readRawTraceRequestLogBundle(
       ...(attempt === undefined ? {} : { attempt }),
       ...(stringValue(manifest.uploadedAt) ? { bundleCapturedAt: stringValue(manifest.uploadedAt) } : {}),
       ...(bundleId ? { bundleId } : {}),
+      ...(client ? { client } : {}),
+      ...(stringValue(manifest.completedAt) ? { completedAt: stringValue(manifest.completedAt) } : {}),
+      ...(numberValue(manifest.durationMs) !== undefined ? { durationMs: numberValue(manifest.durationMs) } : {}),
       method: stringValue(upstreamRequestMetadata?.method) || "POST",
       model: stringValue(target.model),
       path: pathFromUrl(url),
@@ -1556,13 +1658,14 @@ export async function readRawTraceRequestLogBundle(
       requestBodyContentType: upstreamRequestBody?.contentType,
       requestBodySizeBytes: upstreamRequestBody?.sizeBytes,
       requestBodyTruncated: upstreamRequestBody?.truncated,
-      requestHeaders: headerRecordFromUnknown(upstreamRequestMetadata?.headers),
+      requestHeaders: upstreamRequestHeaders,
       requestId,
       isStream: upstreamResponseStream !== undefined,
       responseBodyContentType: upstreamResponseBody?.contentType,
       responseBodySizeBytes: upstreamResponseBody?.sizeBytes,
       responseBodyTruncated: upstreamResponseBody?.truncated,
       responseHeaders: headerRecordFromUnknown(upstreamResponseMetadata?.headers),
+      ...(stringValue(manifest.startedAt) ? { startedAt: stringValue(manifest.startedAt) } : {}),
       statusCode: numberValue(upstreamResponseMetadata?.statusCode),
       url
     }

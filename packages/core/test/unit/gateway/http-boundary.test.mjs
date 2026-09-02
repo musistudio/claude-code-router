@@ -41,6 +41,10 @@ test("gateway client inference honors explicit, proxy, API-key, and user-agent i
 test("gateway authentication accepts supported headers and scopes query tokens to remote control", () => {
   assert.equal(readAuthToken({ authorization: " Bearer secret-token " }), "secret-token");
   assert.equal(readAuthToken({ "x-api-key": " api-key-token " }), "api-key-token");
+  assert.equal(readAuthToken({ "api-key": " legacy-token " }), "legacy-token");
+  assert.equal(readAuthToken({ "x-goog-api-key": " google-token " }), "google-token");
+  assert.equal(readAuthToken({ "x-mcp-key": " mcp-token " }), "mcp-token");
+  assert.equal(readAuthToken({ "x-codex-access-token": " codex-token " }), "codex-token");
   assert.equal(readAuthToken({}), undefined);
   assert.equal(readHeader([" first ", "second"]), "first");
 
@@ -72,6 +76,9 @@ test("gateway header forwarding strips hop-by-hop, local auth, and observability
   const authHeaders = {
     "api-key": "legacy",
     authorization: "Bearer local",
+    "x-codex-access-token": "codex",
+    "x-goog-api-key": "google",
+    "x-mcp-key": "mcp",
     "x-api-key": "local",
     "x-keep": "yes"
   };

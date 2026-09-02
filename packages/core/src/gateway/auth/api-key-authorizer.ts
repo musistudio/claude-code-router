@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import type { IncomingMessage, ServerResponse } from "node:http";
+import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from "node:http";
 import type { ApiKeyConfig, AppConfig } from "@ccr/core/contracts/app";
 import { loadPersistedApiKeys } from "@ccr/core/config/config-repository";
 import { formatError, readAuthToken, readRemoteControlQueryAuthToken, readRequestBody, sendJson } from "@ccr/core/gateway/http/io";
@@ -11,6 +11,11 @@ const claudeCodeWifGrantType = "urn:ietf:params:oauth:grant-type:jwt-bearer";
 const claudeCodeWifTokenExpiresInSeconds = 3600;
 const persistedApiKeyCacheTtlMs = 1000;
 let persistedApiKeyCache: { loadedAt: number; values: ApiKeyConfig[] } | undefined;
+
+type ConfiguredApiKeyOptions = {
+  includePersisted?: boolean;
+  refresh?: boolean;
+};
 
 export async function authorize(
   request: IncomingMessage,
@@ -45,6 +50,25 @@ export async function authorize(
   return { ok: false };
 }
 
+export async function resolveApiKeyFromHeaders(
+  headers: IncomingHttpHeaders,
+  config: AppConfig,
+  options: ConfiguredApiKeyOptions = {}
+): Promise<ApiKeyConfig | undefined> {
+  const token = readAuthToken(headers);
+  if (!token) {
+    return undefined;
+  }
+
+  let apiKeys = await configuredApiKeys(config, options);
+  let apiKey = findApiKeyByToken(apiKeys, token);
+  if (!apiKey && !options.refresh) {
+    apiKeys = await configuredApiKeys(config, { ...options, refresh: true });
+    apiKey = findApiKeyByToken(apiKeys, token);
+  }
+  return apiKey && !isApiKeyExpired(apiKey) ? apiKey : undefined;
+}
+
 export async function handleClaudeCodeWifTokenRequest(
   request: IncomingMessage,
   response: ServerResponse,
@@ -56,7 +80,8 @@ export async function handleClaudeCodeWifTokenRequest(
 
 export async function exchangeClaudeCodeWifToken(
   config: AppConfig,
-  requestBody: Buffer
+  requestBody: Buffer,
+  options: ConfiguredApiKeyOptions = {}
 ): Promise<{ payload: Record<string, unknown>; statusCode: number }> {
   const body = parseClaudeCodeWifTokenRequestBody(requestBody);
   const grantType = stringField(body.grant_type);
@@ -69,10 +94,10 @@ export async function exchangeClaudeCodeWifToken(
     return oauthTokenError(400, "invalid_request", "Claude Code WIF assertion is missing.");
   }
 
-  let apiKeys = await configuredApiKeys(config);
+  let apiKeys = await configuredApiKeys(config, options);
   let apiKey = findApiKeyByToken(apiKeys, assertion);
   if (!apiKey) {
-    apiKeys = await configuredApiKeys(config, { refresh: true });
+    apiKeys = await configuredApiKeys(config, { ...options, refresh: true });
     apiKey = findApiKeyByToken(apiKeys, assertion);
   }
   if (!apiKey || isApiKeyExpired(apiKey)) {
@@ -136,8 +161,10 @@ export function reserveApiKeyLimits(
   return true;
 }
 
-async function configuredApiKeys(config: AppConfig, options: { refresh?: boolean } = {}): Promise<ApiKeyConfig[]> {
-  const persistedApiKeys = await loadPersistedApiKeysCached(options);
+export async function configuredApiKeys(config: AppConfig, options: ConfiguredApiKeyOptions = {}): Promise<ApiKeyConfig[]> {
+  const persistedApiKeys = options.includePersisted === false
+    ? []
+    : await loadPersistedApiKeysCached(options);
   const values = [
     ...persistedApiKeys,
     ...(Array.isArray(config.APIKEYS) ? config.APIKEYS : []),

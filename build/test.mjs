@@ -30,6 +30,7 @@ const testProjects = {
       "runtime/local-agent-auth-provider-hook": path.join(packageRoots.core, "gateway", "core-runtime", "local-agent-auth-provider-hook.ts"),
       "runtime/media-tools-proxy-mcp": path.join(packageRoots.core, "mcp", "media-tools-proxy-mcp.ts"),
       "runtime/request-log-worker": path.join(packageRoots.core, "observability", "request-log-worker.ts"),
+      "runtime/router-plugin": path.join(packageRoots.core, "gateway", "core-runtime", "router-plugin.ts"),
       "runtime/route-script-worker": path.join(packageRoots.core, "routing", "route-script-worker.ts"),
       "runtime/upstream-header-sanitizer": path.join(packageRoots.core, "gateway", "core-runtime", "upstream-header-sanitizer.ts"),
       "runtime/toolhub-mcp": path.join(packageRoots.core, "mcp", "toolhub-mcp.ts")

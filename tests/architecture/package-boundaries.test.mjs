@@ -37,6 +37,18 @@ test("package code and tests do not reach into another package through relative 
   assert.deepEqual(violations, []);
 });
 
+test("npm and Docker builds carry the plugin-capable gateway runtime", () => {
+  const buildConfig = readFileSync(path.join(projectRoot, "build", "esbuild.config.mjs"), "utf8");
+  const manifest = JSON.parse(readFileSync(path.join(projectRoot, "package.json"), "utf8"));
+
+  assert.match(buildConfig, /export function createCliBuildOptions[\s\S]*?entryPoints:\s*\[[\s\S]*?gatewayRuntimeInput/);
+  assert.match(buildConfig, /export function createCoreServerBuildOptions[\s\S]*?entryPoints:\s*\[[\s\S]*?gatewayRuntimeInput/);
+  assert.equal(manifest.scripts["docker:prepare-gateway"], "node build/docker-local-gateway.mjs prepare");
+  assert.equal(manifest.scripts["docker:build"], "node build/docker-image.mjs");
+  assert.equal(manifest.scripts["docker:compose:build"], "node build/docker-compose.mjs build");
+  assert.equal(manifest.scripts["docker:compose:up"], "node build/docker-compose.mjs up -d --build");
+});
+
 function sourceFiles(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const file = path.join(directory, entry.name);

@@ -499,6 +499,10 @@ function pluginSurfaceAlias(value: string): string {
     case "backends":
     case "core-gateway":
     case "core-gateway-config":
+    case "core-gateway-plugin":
+    case "core-gateway-plugins":
+    case "gateway-plugin":
+    case "gateway-plugins":
     case "fusion-profile":
     case "fusion-profiles":
     case "virtual-model":
@@ -553,6 +557,11 @@ function pluginPermissionAlias(value: string): string {
       return "provider-account-connectors";
     case "core-gateway":
       return "core-gateway-config";
+    case "core-gateway-plugin":
+    case "core-gateway-plugins":
+    case "gateway-plugin":
+    case "gateway-plugins":
+      return "core-gateway-plugins";
     case "provider-plugin":
     case "provider-plugins":
     case "core-provider-plugin":

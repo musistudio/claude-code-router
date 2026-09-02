@@ -6,7 +6,7 @@ import { randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { networkInterfaces } from "node:os";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { delimiter as pathDelimiter, join as pathJoin, resolve as pathResolve } from "node:path";
+import { delimiter as pathDelimiter, dirname as pathDirname, join as pathJoin, resolve as pathResolve } from "node:path";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import {
   deletePersistedRuntimeState,
@@ -15,6 +15,7 @@ import {
 } from "@ccr/core/config/config-repository";
 import type { AppConfig, GatewayNetworkEndpoint } from "@ccr/core/contracts/app";
 import { fetchWithSystemProxy } from "@ccr/core/proxy/system-proxy-fetch";
+import { uniqueStrings } from "@ccr/core/gateway/internal/collections";
 import { isRecord, numberValue, stringValue } from "@ccr/core/gateway/internal/value";
 import { formatError, readHeader } from "@ccr/core/gateway/http/io";
 import { coreGatewayAuthHeader, coreGatewayAuthTokenEnv, gatewayEntryOverrideEnv, gatewayPackageCandidates, gatewayRuntimeMarkerFile, requireFromHere } from "@ccr/core/gateway/internal/shared";
@@ -27,6 +28,11 @@ const gatewayStartupTimeoutMs = 15_000;
 const gatewayChildOutputLimit = 4000;
 const privateDirMode = 0o700;
 const privateFileMode = 0o600;
+const routerPluginSupportMarkers = [
+  "requestTransforms",
+  "routeResolvers",
+  "httpRoutes"
+];
 
 const gatewayChildOutput = new WeakMap<ChildProcess, { stderr: string; stdout: string }>();
 
@@ -48,11 +54,10 @@ export function spawnGatewayProcess(
   coreAuthToken: string
 ): SpawnedGatewayProcess {
   const gatewayEntry = resolveGatewayEntry();
-  const fetchPreloadFile = writeGatewayFetchPreloadFile();
   const nodeRuntime = resolveGatewayNodeRuntime();
   const env = createGatewayProcessEnv(config, upstreamProxyUrl, runtimeId, coreAuthToken, nodeRuntime.electronRunAsNode);
   const gatewayBootstrapEntry = resolveGatewayBootstrapEntry();
-  const args = ["--require", fetchPreloadFile, gatewayBootstrapEntry];
+  const args = [gatewayBootstrapEntry];
   const child = spawn(nodeRuntime.command, args, {
     cwd: CONFIGDIR,
     env,
@@ -200,6 +205,78 @@ export function resolveLocalAgentAuthProviderHookEntry(): string {
   ].find((candidate) => existsSync(candidate)) ?? pathJoin(__dirname, "local-agent-auth-provider-hook.js");
 }
 
+export function resolveRouterPluginEntry(): string {
+  const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+  return [
+    pathJoin(__dirname, "router-plugin.js"),
+    pathJoin(process.cwd(), ".test-dist", "core", "runtime", "router-plugin.js"),
+    ...(resourcesPath
+      ? [
+          pathJoin(resourcesPath, "app.asar", "dist", "main", "router-plugin.js"),
+          pathJoin(resourcesPath, "app", "dist", "main", "router-plugin.js")
+        ]
+      : [])
+  ].find((candidate) => existsSync(candidate)) ?? pathJoin(__dirname, "router-plugin.js");
+}
+
+export function gatewayRuntimeSupportsRouterPlugin(): boolean {
+  const override = process.env[gatewayEntryOverrideEnv]?.trim();
+  if (override) {
+    return gatewayEntrySupportsRouterPlugin(pathResolve(override));
+  }
+
+  const bundledEntry = resolveBundledGatewayEntry();
+  if (bundledEntry) {
+    return gatewayEntrySupportsRouterPlugin(bundledEntry);
+  }
+
+  for (const packageName of gatewayPackageCandidates) {
+    try {
+      if (gatewayEntrySupportsRouterPlugin(requireFromHere.resolve(packageName))) {
+        return true;
+      }
+    } catch {
+      // Try the next known package name.
+    }
+  }
+  return false;
+}
+
+function gatewayEntrySupportsRouterPlugin(entry: string): boolean {
+  return gatewayFileSupportsRouterPlugin(entry) || gatewayPackageSupportsRouterPlugin(packageRootForEntry(entry));
+}
+
+function gatewayPackageSupportsRouterPlugin(packageRoot: string | undefined): boolean {
+  if (!packageRoot) {
+    return false;
+  }
+  return gatewayFileSupportsRouterPlugin(pathJoin(packageRoot, "dist", "index.js"));
+}
+
+function gatewayFileSupportsRouterPlugin(file: string): boolean {
+  try {
+    const source = readFileSync(file, "utf8");
+    return routerPluginSupportMarkers.every((marker) => source.includes(marker));
+  } catch {
+    return false;
+  }
+}
+
+function packageRootForEntry(entry: string): string | undefined {
+  let current = pathDirname(entry);
+  for (let depth = 0; depth < 8; depth += 1) {
+    if (existsSync(pathJoin(current, "package.json"))) {
+      return current;
+    }
+    const parent = pathDirname(current);
+    if (parent === current) {
+      return undefined;
+    }
+    current = parent;
+  }
+  return undefined;
+}
+
 function resolveGatewayEntry(): string {
   const override = process.env[gatewayEntryOverrideEnv]?.trim();
   if (override) {
@@ -271,6 +348,11 @@ function createGatewayProcessEnv(
   coreAuthToken: string,
   electronRunAsNode: boolean
 ): NodeJS.ProcessEnv {
+  const publicGatewayMode = config.gateway.coreHost === config.gateway.host &&
+    config.gateway.corePort === config.gateway.port;
+  const authTokens = publicGatewayMode
+    ? publicGatewayAuthTokens(config, coreAuthToken)
+    : [coreAuthToken];
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     AUTH_ENABLED: "true",
@@ -278,11 +360,9 @@ function createGatewayProcessEnv(
     AUTH_REQUIRED: "true",
     AUTH_STATIC_API_KEY_BEARER_ONLY: "false",
     AUTH_STATIC_API_KEY_ENV: coreGatewayAuthTokenEnv,
-    AUTH_STATIC_API_KEY_HEADER: coreGatewayAuthHeader,
+    AUTH_STATIC_API_KEY_HEADER: publicGatewayMode ? "authorization" : coreGatewayAuthHeader,
     CCR_GATEWAY_RUNTIME_ID: runtimeId,
-    CCR_UNDICI_MODULE: resolveUndiciProxyAgentModule(),
-    CCR_UPSTREAM_TIMEOUT_MS: String(gatewayUpstreamTimeoutMs(config)),
-    [coreGatewayAuthTokenEnv]: coreAuthToken,
+    [coreGatewayAuthTokenEnv]: authTokens.join(","),
     HOST: config.gateway.coreHost,
     PORT: String(config.gateway.corePort)
   };
@@ -323,9 +403,12 @@ function createGatewayProcessEnv(
   return env;
 }
 
-function gatewayUpstreamTimeoutMs(config: AppConfig): number {
-  const value = Number(config.API_TIMEOUT_MS);
-  return Number.isFinite(value) && value >= 0 ? Math.trunc(value) : 0;
+export function publicGatewayAuthTokens(config: AppConfig, coreAuthToken: string): string[] {
+  return uniqueStrings([
+    coreAuthToken,
+    ...(Array.isArray(config.APIKEYS) ? config.APIKEYS.map((apiKey) => apiKey.key) : []),
+    config.APIKEY
+  ]);
 }
 
 function resolveGatewayNodeRuntime(): GatewayNodeRuntime {

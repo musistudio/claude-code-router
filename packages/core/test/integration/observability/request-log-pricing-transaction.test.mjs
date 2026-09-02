@@ -13,6 +13,8 @@ test("RequestLogStore commits while a background pricing refresh is stalled", as
   const first = new RequestLogStore(dbFile);
   const second = new RequestLogStore(dbFile);
   const previousFetch = globalThis.fetch;
+  const previousNoProxy = process.env.NO_PROXY;
+  const previousLowerNoProxy = process.env.no_proxy;
   let releaseFetch;
   let signalFetchStarted;
   const fetchGate = new Promise((resolve) => {
@@ -39,7 +41,9 @@ test("RequestLogStore commits while a background pricing refresh is stalled", as
   let pricingRefresh;
   let fetchStartTimeout;
   try {
-    pricingRefresh = preloadUsagePriceCatalog();
+    process.env.NO_PROXY = "*";
+    process.env.no_proxy = "*";
+    pricingRefresh = preloadUsagePriceCatalog({ forceRefresh: true });
     await Promise.race([
       fetchStarted,
       new Promise((_, reject) => {
@@ -109,6 +113,10 @@ test("RequestLogStore commits while a background pricing refresh is stalled", as
     clearTimeout(fetchStartTimeout);
     releaseFetch?.();
     await pricingRefresh?.catch(() => undefined);
+    if (previousNoProxy === undefined) delete process.env.NO_PROXY;
+    else process.env.NO_PROXY = previousNoProxy;
+    if (previousLowerNoProxy === undefined) delete process.env.no_proxy;
+    else process.env.no_proxy = previousLowerNoProxy;
     globalThis.fetch = previousFetch;
     await Promise.all([first.close(), second.close()]);
     rmSync(dir, { force: true, recursive: true });

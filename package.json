@@ -52,7 +52,11 @@
     "bench:context-archive-agent": "node benchmarks/run-context-archive-real-agent-benchmark.mjs",
     "bench:context-archive-real": "node benchmarks/run-context-archive-real-agent-benchmark.mjs",
     "bench:claude-compact-real": "node benchmarks/claude-code-real-compact.mjs",
-    "docker:build": "docker build -t claude-code-router:local .",
+    "docker:prepare-gateway": "node build/docker-local-gateway.mjs prepare",
+    "docker:clean-gateway": "node build/docker-local-gateway.mjs clean",
+    "docker:build": "node build/docker-image.mjs",
+    "docker:compose:build": "node build/docker-compose.mjs build",
+    "docker:compose:up": "node build/docker-compose.mjs up -d --build",
     "docker:run": "docker run --rm -p 3458:8080 -v ccr-data:/data claude-code-router:local",
     "test": "npm run test:packages && npm run test:architecture",
     "test:packages": "npm run test --workspaces --if-present",
@@ -72,7 +76,7 @@
     "rebuild:sqlite3": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
-    "@the-next-ai/ai-gateway": "^1.0.18",
+    "@the-next-ai/ai-gateway": "^1.0.19",
     "@the-next-ai/bot-gateway-sdk": "^0.1.0",
     "better-sqlite3": "^12.11.1",
     "electron-updater": "^6.8.9",

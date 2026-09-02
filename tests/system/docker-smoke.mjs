@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { prepareLocalGatewayPackage } from "../../build/docker-local-gateway.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..", "..");
@@ -19,6 +20,7 @@ let volumeCreated = false;
 
 try {
   if (process.env.CCR_DOCKER_TEST_SKIP_BUILD !== "1") {
+    prepareLocalGatewayPackage();
     run("docker", ["build", "-t", imageName, "."], { cwd: projectRoot });
   }
 
@@ -152,16 +154,23 @@ try {
   const restartedGatewayStatusPayload = await restartedGatewayStatus.json();
   assert.equal(restartedGatewayStatusPayload.ok, true);
   assert.equal(restartedGatewayStatusPayload.value.state, "running");
+  assert.equal(restartedGatewayStatusPayload.value.coreEndpoint, restartedGatewayStatusPayload.value.endpoint);
 
   const runningGatewayHealth = await fetch(`${baseUrl}/health`);
   assert.equal(runningGatewayHealth.status, 200);
-  assert.equal((await runningGatewayHealth.json()).status, "running");
+  const runningGatewayHealthPayload = await runningGatewayHealth.json();
+  assert.equal(runningGatewayHealthPayload.status, "ok");
+  assert.equal(typeof runningGatewayHealthPayload.runtimeId, "string");
+  assert.ok(runningGatewayHealthPayload.runtimeId.length > 0);
 
   const configStorage = dockerConfigStorage(containerId);
   assert.equal(configStorage.configDatabase, true);
   assert.equal(configStorage.legacyConfigJson, false);
   assert.equal(configStorage.gatewayConfigJson, false);
   assert.equal(configStorage.gatewayRuntimeJson, false);
+  assert.equal(Object.hasOwn(configStorage.persistedGateway ?? {}, "coreHost"), false);
+  assert.equal(Object.hasOwn(configStorage.persistedGateway ?? {}, "corePort"), false);
+  assert.doesNotMatch(run("docker", ["logs", containerId]), /Using compatibility gateway server/);
 
   console.log(`Docker smoke test passed for ${imageName} on ${baseUrl}`);
 } finally {
@@ -219,11 +228,27 @@ function dockerConfigStorage(containerId) {
 const fs = require("node:fs");
 const path = require("node:path");
 const configDir = "/data/.claude-code-router";
+const appConfigDbFile = path.join(configDir, "config.sqlite");
+let persistedGateway = null;
+if (fs.existsSync(appConfigDbFile)) {
+  const Database = require("better-sqlite3");
+  const db = new Database(appConfigDbFile, { readonly: true });
+  try {
+    const row = db.prepare("select value_json from app_config where key = ?").get("default");
+    if (row && row.value_json) {
+      const config = JSON.parse(row.value_json);
+      persistedGateway = config && typeof config === "object" ? config.gateway || null : null;
+    }
+  } finally {
+    db.close();
+  }
+}
 process.stdout.write(JSON.stringify({
   configDatabase: fs.existsSync(path.join(configDir, "config.sqlite")),
   gatewayConfigJson: fs.existsSync(path.join(configDir, "gateway.config.json")),
   gatewayRuntimeJson: fs.existsSync(path.join(configDir, "gateway-runtime.json")),
-  legacyConfigJson: fs.existsSync(path.join(configDir, "config.json"))
+  legacyConfigJson: fs.existsSync(path.join(configDir, "config.json")),
+  persistedGateway
 }));
 `;
   return JSON.parse(run("docker", ["exec", containerId, "node", "-e", script]));

@@ -224,10 +224,10 @@ ccr ui
 ### Docker
 
 ```sh
-docker compose up -d --build
+npm run docker:compose:up
 ```
 
-Docker 默认通过 `http://127.0.0.1:3458` 提供管理界面与网关路由。远程暴露 CCR 前，请先阅读 [Docker 部署指南](https://ccrdesk.top/guides/docker/)。
+Docker 默认通过 `http://127.0.0.1:3458` 提供管理界面与网关路由。这个 npm 脚本会在存在 `../../next-ai/gateway` 时先准备本地支持插件的 ai-gateway runtime，再构建镜像。远程暴露 CCR 前，请先阅读 [Docker 部署指南](https://ccrdesk.top/guides/docker/)。
 
 ## 构建桌面应用
 

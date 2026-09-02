@@ -20,6 +20,7 @@ import { maxRequestLogBodyBytes, rawTraceHardMaxBodyBytes } from "@ccr/core/obse
 import { compactBase64ImagePayloads } from "@ccr/core/observability/request-log-body";
 import { requestLogRequestedModel, requestLogResponseModel } from "@ccr/core/observability/request-log-model";
 import { isSensitiveRequestLogHeaderName } from "@ccr/core/observability/sensitive-headers";
+import { inferGatewayClient } from "@ccr/core/gateway/http/io";
 import type {
   AgentAnalysisAgentRow,
   AgentAnalysisConversationItem,
@@ -101,6 +102,8 @@ type RequestLogStoredOutcome = {
   hasRequestBody: boolean;
   hasResponseBody: boolean;
   ok: boolean;
+  responseBodyContentType: string;
+  responseBodyText: string;
   statusCode: number;
 };
 
@@ -144,12 +147,16 @@ export type RequestLogRecordInput = {
 };
 
 export type RequestLogRawTraceUpdateInput = {
+  allowStandaloneRecord?: boolean;
   attempt?: number;
   bodyCapturePolicy?: "all" | "errors" | "none";
   bundleCapturedAt?: string;
   bundleId?: string;
+  client?: string;
+  completedAt?: string;
   deferBodyCaptureUntilRecord?: boolean;
   deferOutcomeUntilRecord?: boolean;
+  durationMs?: number;
   method?: string;
   model?: string;
   path?: string;
@@ -168,6 +175,7 @@ export type RequestLogRawTraceUpdateInput = {
   responseBodyText?: string;
   responseBodyTruncated?: boolean;
   responseHeaders?: HeaderRecord;
+  startedAt?: string;
   statusCode?: number;
   url?: string;
 };
@@ -458,6 +466,13 @@ export class RequestLogStore {
         }
         const bundleId = command.input.bundleId?.trim();
         if (bundleId && hasProcessedRawTraceBundle(database, bundleId)) {
+          continue;
+        }
+        if (command.input.allowStandaloneRecord && !hasRequestLogWithRequestId(database, command.input.requestId.trim())) {
+          await this.record(standaloneRecordInputFromRawTrace(command.input, command.rawTraceFiles));
+          if (bundleId) {
+            rememberProcessedRawTraceBundle(database, bundleId, command.input.requestId.trim());
+          }
           continue;
         }
         const rawTraceInput = this.prepareRawTraceInput(command.input, command.rawTraceFiles);
@@ -993,8 +1008,17 @@ export class RequestLogStore {
       );
       pushBodyValues(sets, params, "request", requestBody);
     }
-    const shouldApplyResponseBody = input.responseBodyText !== undefined ||
-      Boolean(input.responseBodyRef && (!input.responseBodyTruncated || !existingOutcome.hasResponseBody));
+    const preserveExistingResponseBody = shouldPreserveExistingResponseBodyForRawTrace(
+      existingOutcome,
+      input,
+      responseHeaders,
+      responseBodyContentType,
+      sseError
+    );
+    const shouldApplyResponseBody = !preserveExistingResponseBody && (
+      input.responseBodyText !== undefined ||
+      Boolean(input.responseBodyRef && (!input.responseBodyTruncated || !existingOutcome.hasResponseBody))
+    );
     if (shouldApplyResponseBody && (
       captureResolution.bodiesSuppressed || Boolean(input.responseBodyRef) || (input.responseBodyText?.length ?? 0) > 0 || !existingOutcome.hasResponseBody
     )) {
@@ -1007,6 +1031,8 @@ export class RequestLogStore {
         { bodyDir: this.bodyDir, bodyRef: input.responseBodyRef, side: "response" }
       );
       pushBodyValues(sets, params, "response", responseBody);
+    } else if (preserveExistingResponseBody && input.responseBodyRef) {
+      deleteRequestLogBodyRefs(this.bodyDir, [input.responseBodyRef]);
     }
 
     const update = () => {
@@ -1590,6 +1616,159 @@ export class RequestLogStore {
     }
     return next;
   }
+}
+
+function standaloneRecordInputFromRawTrace(
+  input: RequestLogRawTraceUpdateInput,
+  rawTraceFiles?: RequestLogRawTraceFiles
+): RequestLogRecordInput {
+  const now = new Date().toISOString();
+  const bodyCapturePolicy = input.bodyCapturePolicy === "errors" || input.bodyCapturePolicy === "none"
+    ? input.bodyCapturePolicy
+    : "all";
+  const maxBodyBytes = resolveStandaloneRawTraceBodyLimit(rawTraceFiles?.maxBodyBytes);
+  const requestHeaders = headersToRecord(input.requestHeaders);
+  const responseHeaders = headersToRecord(input.responseHeaders) as Record<string, string | string[]>;
+  const responseContentType = input.responseBodyContentType ?? headerValue(responseHeaders, "content-type");
+  const responseBodyForOutcome = rawTraceBodyText(input.responseBodyText, rawTraceFiles?.responseBody, maxRequestLogBodyBytes);
+  const statusCode = normalizeCount(input.statusCode);
+  const rawFailure = (statusCode > 0 && (statusCode < 200 || statusCode >= 400)) ||
+    Boolean(detectSseError(responseBodyForOutcome, responseContentType));
+  const captureBody = bodyCapturePolicy === "all" || (bodyCapturePolicy === "errors" && rawFailure);
+  const requestBody = captureBody
+    ? rawTraceBodyBuffer(input.requestBodyText, rawTraceFiles?.requestBody, maxBodyBytes)
+    : suppressedRawTraceBody(input.requestBodySizeBytes, input.requestBodyTruncated);
+  const responseBody = captureBody
+    ? rawTraceBodyTextCapture(input.responseBodyText, rawTraceFiles?.responseBody, maxBodyBytes)
+    : suppressedRawTraceBody(input.responseBodySizeBytes, input.responseBodyTruncated);
+  const completedAt = normalizeFilterValue(input.completedAt) ??
+    normalizeFilterValue(input.bundleCapturedAt) ??
+    now;
+  const durationMs = normalizeCount(input.durationMs);
+  const startedAt = normalizeFilterValue(input.startedAt) ??
+    startedAtFromCompletedAt(completedAt, durationMs);
+  const client = normalizeFilterValue(input.client) ?? inferGatewayClient(undefined, requestHeaders);
+
+  return {
+    bodyCapturePolicy,
+    captureBody,
+    ...(client ? { client } : {}),
+    completedAt,
+    durationMs,
+    ...(input.bundleId ? { eventId: `raw-trace:${input.bundleId}` } : {}),
+    fallbackModel: input.model,
+    maxBodyBytes,
+    method: input.method ?? "POST",
+    model: input.model,
+    path: input.path ?? pathFromUrl(input.url) ?? "/",
+    providerName: input.provider,
+    requestBody: requestBody.buffer,
+    requestBodySizeBytes: requestBody.sizeBytes,
+    requestBodyTruncated: requestBody.truncated,
+    requestHeaders,
+    requestId: input.requestId,
+    responseBodySizeBytes: responseBody.sizeBytes,
+    responseBodyText: responseBody.text,
+    responseBodyTruncated: responseBody.truncated,
+    responseHeaders,
+    startedAt,
+    statusCode,
+    url: input.url ?? input.path ?? "/"
+  };
+}
+
+function startedAtFromCompletedAt(completedAt: string, durationMs: number): string {
+  const completedAtMs = Date.parse(completedAt);
+  if (!Number.isFinite(completedAtMs)) {
+    return completedAt;
+  }
+  return new Date(Math.max(0, completedAtMs - Math.max(0, durationMs))).toISOString();
+}
+
+function resolveStandaloneRawTraceBodyLimit(value: number | undefined): number {
+  if (value === undefined) {
+    return maxRequestLogBodyBytes;
+  }
+  const normalized = normalizeCount(value);
+  return normalized > 0 ? Math.min(normalized, maxRequestLogBodyBytes) : 0;
+}
+
+function rawTraceBodyBuffer(
+  text: string | undefined,
+  file: RequestLogRawTraceFile | undefined,
+  maxBytes: number
+): { buffer: Buffer; sizeBytes?: number; truncated?: boolean } {
+  if (maxBytes <= 0) {
+    return suppressedRawTraceBody(file?.sizeBytes, file?.truncated);
+  }
+  if (text !== undefined) {
+    const buffer = Buffer.from(text);
+    const data = buffer.byteLength > maxBytes ? buffer.subarray(0, maxBytes) : buffer;
+    return {
+      buffer: data,
+      sizeBytes: Math.max(buffer.byteLength, normalizeCount(file?.sizeBytes)),
+      truncated: Boolean(file?.truncated) || data.byteLength < buffer.byteLength
+    };
+  }
+  if (!file) {
+    return { buffer: Buffer.alloc(0), sizeBytes: 0, truncated: false };
+  }
+  try {
+    const buffer = readFileSync(file.filePath);
+    return {
+      buffer: buffer.byteLength > maxBytes ? buffer.subarray(0, maxBytes) : buffer,
+      sizeBytes: Math.max(buffer.byteLength, normalizeCount(file.sizeBytes)),
+      truncated: Boolean(file.truncated) || buffer.byteLength > maxBytes
+    };
+  } catch {
+    return suppressedRawTraceBody(file.sizeBytes, true);
+  }
+}
+
+function rawTraceBodyTextCapture(
+  text: string | undefined,
+  file: RequestLogRawTraceFile | undefined,
+  maxBytes: number
+): { text: string; sizeBytes?: number; truncated?: boolean } {
+  const buffer = rawTraceBodyBuffer(text, file, maxBytes);
+  return {
+    sizeBytes: buffer.sizeBytes,
+    text: new StringDecoder("utf8").write(buffer.buffer),
+    truncated: buffer.truncated
+  };
+}
+
+function rawTraceBodyText(
+  text: string | undefined,
+  file: RequestLogRawTraceFile | undefined,
+  maxBytes: number
+): string {
+  if (text !== undefined) {
+    const buffer = Buffer.from(text);
+    return new StringDecoder("utf8").write(buffer.byteLength > maxBytes ? buffer.subarray(0, maxBytes) : buffer);
+  }
+  if (!file || maxBytes <= 0 || !isTextLikeContentType(file.contentType)) {
+    return "";
+  }
+  try {
+    const buffer = readFileSync(file.filePath);
+    return new StringDecoder("utf8").write(buffer.byteLength > maxBytes ? buffer.subarray(0, maxBytes) : buffer);
+  } catch {
+    return "";
+  }
+}
+
+function suppressedRawTraceBody(
+  sizeBytes: number | undefined,
+  truncated: boolean | undefined
+): { buffer: Buffer; sizeBytes?: number; text: string; truncated?: boolean } {
+  const size = normalizeCount(sizeBytes);
+  return {
+    buffer: Buffer.alloc(0),
+    sizeBytes: size,
+    text: "",
+    truncated: Boolean(truncated) || size > 0
+  };
 }
 
 export const requestLogStore = new RequestLogStore(REQUEST_LOGS_DB_FILE);
@@ -5409,6 +5588,8 @@ function readRequestLogStoredOutcome(database: SqlDatabase, requestId: string): 
         length(request_body_text) AS request_body_chars,
         length(response_body_text) AS response_body_chars,
         request_body_ref,
+        response_body_content_type,
+        response_body_text,
         response_body_ref,
         ok,
         status_code
@@ -5427,6 +5608,8 @@ function readRequestLogStoredOutcome(database: SqlDatabase, requestId: string): 
     hasRequestBody: normalizeCount(row?.request_body_chars) > 0 || Boolean(normalizeFilterValue(String(row?.request_body_ref ?? ""))),
     hasResponseBody: normalizeCount(row?.response_body_chars) > 0 || Boolean(normalizeFilterValue(String(row?.response_body_ref ?? ""))),
     ok: normalizeCount(row?.ok) === 1,
+    responseBodyContentType: String(row?.response_body_content_type ?? ""),
+    responseBodyText: String(row?.response_body_text ?? ""),
     statusCode: normalizeCount(row?.status_code)
   };
 }
@@ -5441,6 +5624,32 @@ function applyRawTraceBodyCapturePolicy(
     bodiesSuppressed,
     input: bodiesSuppressed ? suppressRequestLogRawTraceBodies(input) : input
   };
+}
+
+function shouldPreserveExistingResponseBodyForRawTrace(
+  existingOutcome: RequestLogStoredOutcome,
+  input: RequestLogRawTraceUpdateInput,
+  responseHeaders: Record<string, string | string[]> | undefined,
+  responseBodyContentType: string | undefined,
+  sseError: string | undefined
+): boolean {
+  if (!existingOutcome.hasResponseBody) {
+    return false;
+  }
+  if (sseError) {
+    return false;
+  }
+  if (!hasMeaningfulExistingResponseBodyText(existingOutcome.responseBodyText)) {
+    return false;
+  }
+  return input.isStream === true ||
+    contentTypeLooksStreaming(responseBodyContentType) ||
+    contentTypeLooksStreaming(headerValue(responseHeaders ?? {}, "content-type"));
+}
+
+function hasMeaningfulExistingResponseBodyText(value: string): boolean {
+  const trimmed = value.trim();
+  return Boolean(trimmed && trimmed !== "{}" && trimmed !== "[]" && trimmed !== "null");
 }
 
 function serializePendingRawTraceUpdate(

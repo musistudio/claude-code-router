@@ -13,18 +13,31 @@ import { mediaToolsMcpServer } from "@ccr/core/mcp/grok-media-config";
 import { resolveGatewayPublicModelId } from "@ccr/core/gateway/features/model-discovery";
 import { activeProviderCredentials, inferProtocol, normalizedProviderCapabilities, normalizeProviderProtocol, providerCapabilityForClientProtocol, providerCapabilityInternalName, providerCapabilityNameMatches, providerCredentialInternalName, providerProtocolForClientProtocol, sortProviderCredentialsForConfig, toCoreGatewayProviders } from "@ccr/core/providers/runtime-topology";
 import { buildRawTraceConfig } from "@ccr/core/observability/raw-trace-sync";
-import { endpoint, resolveLocalAgentAuthProviderHookEntry, resolveUndiciProxyAgentModule, resolveUpstreamHeaderSanitizerEntry, writeGatewayProxyPreloadFile } from "@ccr/core/gateway/core-runtime/supervisor";
+import { endpoint, gatewayRuntimeSupportsRouterPlugin, resolveLocalAgentAuthProviderHookEntry, resolveRouterPluginEntry, resolveUndiciProxyAgentModule, resolveUpstreamHeaderSanitizerEntry, writeGatewayProxyPreloadFile } from "@ccr/core/gateway/core-runtime/supervisor";
 import { billingUsageSyncHeader, billingUsageSyncPath, claudeCodeOauthBetaHeader, claudeCodeOauthRequiredBeta, coreGatewayAuthHeader, coreGatewayAuthTokenEnv } from "@ccr/core/gateway/internal/shared";
 import type { BrowserWebSearchMcpIntegration, CoreGatewayProvider } from "@ccr/core/gateway/internal/shared";
 import { uniqueStrings } from "@ccr/core/gateway/internal/collections";
 import { isLocalClaudeCodeOauthProviderPlugin, mergeAnthropicBetaValues } from "@ccr/core/providers/oauth-plugin";
 import { isLocalAgentOauthProviderPlugin } from "@ccr/core/gateway/core-runtime/local-agent-auth-provider-hook";
+import { ccrRouterPluginKey } from "@ccr/core/gateway/core-runtime/router-plugin-contract";
 import { resolveConfiguredProviderModelSelector, resolveUniqueConfiguredProviderModelSelector } from "@ccr/core/routing/model-resolution";
 
 const upstreamHeaderSanitizerPluginKey = "ccr-upstream-header-sanitizer";
 const localAgentAuthProviderHookPluginKey = "ccr-local-agent-auth-provider-hooks";
+const internalGatewayPluginKeys = [
+  ccrRouterPluginKey,
+  localAgentAuthProviderHookPluginKey,
+  upstreamHeaderSanitizerPluginKey
+];
 export const unlimitedVirtualModelToolCalls = Number.MAX_SAFE_INTEGER;
 export const unlimitedVirtualModelToolTurns = Number.MAX_SAFE_INTEGER;
+
+export type CoreGatewayCompileOptions = {
+  publicAuthKeys?: string[];
+  publicGatewayMode?: boolean;
+  runtimeHost?: string;
+  runtimePort?: number;
+};
 
 
 export async function compileCoreGatewayConfig(
@@ -33,13 +46,14 @@ export async function compileCoreGatewayConfig(
   billingUsageSyncToken: string,
   coreAuthToken: string,
   browserWebSearchMcpIntegration?: BrowserWebSearchMcpIntegration,
-  upstreamProxyUrl?: string
+  upstreamProxyUrl?: string,
+  options: CoreGatewayCompileOptions = {}
 ): Promise<Record<string, unknown>> {
   const pluginCoreGatewayConfig = pluginService.getCoreGatewayConfig();
   const configuredGatewayPlugins = Array.isArray(pluginCoreGatewayConfig.plugins)
     ? pluginCoreGatewayConfig.plugins.filter((plugin) =>
         !isRecord(plugin) ||
-        ![localAgentAuthProviderHookPluginKey, upstreamHeaderSanitizerPluginKey].includes(stringValue(plugin.key) ?? "")
+        !internalGatewayPluginKeys.includes(stringValue(plugin.key) ?? "")
       )
     : [];
   const pluginBillingConfig = isRecord(pluginCoreGatewayConfig.billing) ? pluginCoreGatewayConfig.billing : {};
@@ -61,7 +75,9 @@ export async function compileCoreGatewayConfig(
   const providerPlugins = normalizeCoreProviderPluginNames(providerPluginsWithRuntimeDefaults, enabledProviders);
   const providerPluginsWithCapabilityAliases = withProviderCapabilityPluginAliases(providerPlugins, enabledProviders);
   const virtualModelProfiles = coreGatewayVirtualModelProfiles(config);
-  const coreEndpoint = endpoint(config.gateway.coreHost, config.gateway.corePort);
+  const runtimeHost = options.runtimeHost ?? config.gateway.coreHost;
+  const runtimePort = options.runtimePort ?? config.gateway.corePort;
+  const coreEndpoint = endpoint(runtimeHost, runtimePort);
   const proxyPreloadFile = upstreamProxyUrl ? writeGatewayProxyPreloadFile() : undefined;
   const proxyEnv = upstreamProxyUrl
     ? { CCR_UPSTREAM_PROXY_URL: upstreamProxyUrl, CCR_UNDICI_MODULE: resolveUndiciProxyAgentModule() }
@@ -85,6 +101,7 @@ export async function compileCoreGatewayConfig(
       .filter((provider): provider is CoreGatewayProvider => Boolean(provider)),
     ...builtinToolArtifacts.providers
   ];
+  const routerPlugin = routerPluginConfig(config, options, coreAuthToken);
   const localAgentAuthProviderHookPlugin = localAgentAuthProviderHookPluginConfig(providerPluginsWithCapabilityAliases);
   const pluginAgentConfig = isRecord(pluginCoreGatewayConfig.agent) ? pluginCoreGatewayConfig.agent : {};
   const pluginMcpServers = Array.isArray(pluginAgentConfig.mcpServers) ? pluginAgentConfig.mcpServers : [];
@@ -117,8 +134,8 @@ export async function compileCoreGatewayConfig(
       staticApiKeys: {
         keyBearerOnly: false,
         keyEnv: coreGatewayAuthTokenEnv,
-        keyHeader: coreGatewayAuthHeader,
-        keys: [coreAuthToken]
+        keyHeader: options.publicGatewayMode ? "authorization" : coreGatewayAuthHeader,
+        keys: coreGatewayStaticAuthKeys(config, coreAuthToken, options)
       }
     },
     billing: {
@@ -135,12 +152,13 @@ export async function compileCoreGatewayConfig(
     // JSON data URLs, so the internal gateway must accept the complete media
     // request even though normal chat payloads are much smaller.
     bodyLimitBytes: 256 * 1024 * 1024,
-    host: config.gateway.coreHost,
+    host: runtimeHost,
     mcpGateway: {
       enabled: false
     },
-    port: config.gateway.corePort,
+    port: runtimePort,
     plugins: [
+      ...(routerPlugin ? [routerPlugin] : []),
       ...configuredGatewayPlugins,
       ...(localAgentAuthProviderHookPlugin ? [localAgentAuthProviderHookPlugin] : []),
       {
@@ -154,11 +172,50 @@ export async function compileCoreGatewayConfig(
       ...pluginAgentConfig,
       mcpServers
     },
-    rawTrace: buildRawTraceConfig(config, rawTraceSyncToken),
+    rawTrace: buildRawTraceConfig(config, rawTraceSyncToken, {
+      standaloneUsageCapture: options.publicGatewayMode === true
+    }),
     providerPlugins: providerPluginsWithCapabilityAliases,
     providers,
     virtualModelProfiles
   };
+}
+
+function routerPluginConfig(
+  config: AppConfig,
+  options: CoreGatewayCompileOptions = {},
+  coreAuthToken: string
+): Record<string, unknown> | undefined {
+  if (!gatewayRuntimeSupportsRouterPlugin()) {
+    return undefined;
+  }
+  return {
+    config: {
+      appConfig: config,
+      coreAuthToken,
+      publicAuthKeys: options.publicAuthKeys,
+      publicGatewayMode: options.publicGatewayMode === true
+    },
+    enabled: true,
+    key: ccrRouterPluginKey,
+    modulePath: resolveRouterPluginEntry()
+  };
+}
+
+function coreGatewayStaticAuthKeys(
+  config: AppConfig,
+  coreAuthToken: string,
+  options: CoreGatewayCompileOptions
+): string[] {
+  if (!options.publicGatewayMode) {
+    return [coreAuthToken];
+  }
+  return uniqueStrings([
+    coreAuthToken,
+    ...(options.publicAuthKeys ?? []),
+    ...(config.APIKEYS ?? []).map((apiKey) => apiKey.key),
+    config.APIKEY
+  ].map((key) => key?.trim()).filter((key): key is string => Boolean(key)));
 }
 
 function localAgentAuthProviderHookPluginConfig(providerPlugins: unknown[]): Record<string, unknown> | undefined {

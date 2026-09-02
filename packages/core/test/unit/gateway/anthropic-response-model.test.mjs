@@ -92,7 +92,19 @@ test("gateway pipeline preserves Claude Code hex model id in Anthropic SSE respo
   assert.doesNotMatch(result.output, /"model":"k3"/);
 });
 
-async function runAnthropicPipelineModelRewrite(requestModel) {
+test("gateway pipeline strips client supplied CCR route headers", async () => {
+  const result = await runAnthropicPipelineModelRewrite("kimi-test/k3", {
+    "x-ccr-route-fallback": "forged-fallback",
+    "x-ccr-route-stage": "forged-stage",
+    "x-ccr-routed-model": "Other/forged"
+  });
+
+  assert.equal(result.upstreamHeaders?.["x-ccr-route-fallback"], undefined);
+  assert.equal(result.upstreamHeaders?.["x-ccr-route-stage"], undefined);
+  assert.equal(result.upstreamHeaders?.["x-ccr-routed-model"], "kimi-test/k3");
+});
+
+async function runAnthropicPipelineModelRewrite(requestModel, requestHeaders = {}) {
   const config = createPipelineConfigForAnthropicModelRewrite();
   const plugin = new ClaudeCodeRouterPlugin(config);
   const pipeline = new GatewayRequestPipeline({
@@ -108,6 +120,7 @@ async function runAnthropicPipelineModelRewrite(requestModel) {
   const originalFetch = globalThis.fetch;
   const originalWarn = console.warn;
   let upstreamBody;
+  let upstreamHeaders;
   console.warn = (message, ...args) => {
     if (String(message).startsWith("[usage] Failed to record usage:")) {
       return;
@@ -116,6 +129,7 @@ async function runAnthropicPipelineModelRewrite(requestModel) {
   };
   globalThis.fetch = async (_input, init) => {
     upstreamBody = JSON.parse(String(init?.body));
+    upstreamHeaders = Object.fromEntries(new Headers(init?.headers).entries());
     return new Response(
       [
         "event: message_start\n",
@@ -143,7 +157,8 @@ async function runAnthropicPipelineModelRewrite(requestModel) {
     })]);
     request.headers = {
       "content-type": "application/json",
-      "user-agent": "claude-code/1.0"
+      "user-agent": "claude-code/1.0",
+      ...requestHeaders
     };
     request.method = "POST";
     request.url = "/v1/messages";
@@ -159,7 +174,8 @@ async function runAnthropicPipelineModelRewrite(requestModel) {
     return {
       output: response.bodyText(),
       response,
-      upstreamBody
+      upstreamBody,
+      upstreamHeaders
     };
   } finally {
     await new Promise((resolve) => setImmediate(resolve));

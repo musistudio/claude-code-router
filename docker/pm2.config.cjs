@@ -14,7 +14,7 @@ if (noGateway) {
 module.exports = {
   apps: [
     {
-      name: "ccr-core-server",
+      name: "ccr-server",
       script: "/app/packages/core/dist/main/server.js",
       args: serverArgs,
       cwd: "/app",

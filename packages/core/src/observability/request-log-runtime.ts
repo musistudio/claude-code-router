@@ -247,19 +247,22 @@ export class RequestLogRuntime {
     input: RequestLogRawTraceUpdateInput,
     rawTraceFiles?: RequestLogRawTraceFiles
   ): RequestLogEnqueueResult {
-    const recordAdmission = input.deferOutcomeUntilRecord
+    const allowStandaloneRecord = input.allowStandaloneRecord === true;
+    const recordAdmission = input.deferOutcomeUntilRecord && !allowStandaloneRecord
       ? this.resolveRecordAdmission(input.requestId)
       : this.readRecordAdmission(input.requestId);
-    if (recordAdmission === "pending" ||
-      (input.deferOutcomeUntilRecord && recordAdmission?.state === "pending") ||
-      (recordAdmission === undefined && input.deferOutcomeUntilRecord)) {
+    const pendingAdmission = recordAdmission === "pending";
+    const resolvedAdmission = pendingAdmission ? undefined : recordAdmission;
+    if ((!allowStandaloneRecord && pendingAdmission) ||
+      (!allowStandaloneRecord && input.deferOutcomeUntilRecord && resolvedAdmission?.state === "pending") ||
+      (!allowStandaloneRecord && recordAdmission === undefined && input.deferOutcomeUntilRecord)) {
       return {
         accepted: false,
         degraded: false,
         reason: "record_pending"
       };
     }
-    if (recordAdmission && !recordAdmission.accepted) {
+    if (resolvedAdmission && !resolvedAdmission.accepted) {
       this.dropped += 1;
       return {
         accepted: false,
@@ -276,11 +279,11 @@ export class RequestLogRuntime {
     const configuredMaxBodyBytes = resolveRawTraceBodyLimit(rawTraceFiles?.maxBodyBytes);
     const maxBodyBytes = Math.min(
       configuredMaxBodyBytes,
-      recordAdmission?.bodyCaptureMaxBytes ?? configuredMaxBodyBytes
+      resolvedAdmission?.bodyCaptureMaxBytes ?? configuredMaxBodyBytes
     );
     const bodyPolicyDegraded = maxBodyBytes < configuredMaxBodyBytes;
-    const admittedInput = recordAdmission
-      ? { ...input, bodyCapturePolicy: recordAdmission.bodyCapturePolicy }
+    const admittedInput = resolvedAdmission
+      ? { ...input, bodyCapturePolicy: resolvedAdmission.bodyCapturePolicy }
       : input;
     const policyInput = maxBodyBytes === 0
       ? suppressRequestLogRawTraceBodies(admittedInput)

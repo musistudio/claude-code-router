@@ -522,6 +522,18 @@ export async function recordGatewayUsageCapture(input: UsageCaptureInput): Promi
   }
 }
 
+export async function recordGatewayUsageCaptureIfMissing(input: UsageCaptureInput): Promise<void> {
+  try {
+    const requestId = input.requestId?.trim();
+    if (requestId && await usageStore.hasRequestId(requestId)) {
+      return;
+    }
+    await usageStore.recordCapture(input);
+  } catch (error) {
+    console.warn(`[usage] Failed to record usage: ${formatError(error)}`);
+  }
+}
+
 function resolveUsageResponseModelAttribution(
   config: Pick<AppConfig, "Providers" | "virtualModelProfiles"> | undefined,
   model: string | undefined

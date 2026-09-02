@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
 import { compileCoreGatewayConfig, coreGatewayUsageAttributionConfig } from "@ccr/core/gateway/core-runtime/config-compiler.ts";
+import { gatewayRuntimeSupportsRouterPlugin } from "@ccr/core/gateway/core-runtime/supervisor.ts";
 import { pluginService } from "@ccr/core/plugins/service.ts";
 import { resolveUsageModelAttribution } from "@ccr/core/usage/model-attribution.ts";
 
@@ -22,6 +23,7 @@ module.exports = async function brokenPlugin(context) {
   context.registerApp({ id: "broken-context-app", name: "Broken context", url: "http://broken-context.local" });
   context.registerGatewayRoute({ id: "broken-context-route", path: "/broken-context", handler(_request, response) { response.end("broken"); } });
   context.registerGatewayRequestTransform({ id: "broken-transform", transform(input) { return { headers: { "x-broken-transform": input.requestId } }; } });
+  context.registerCoreGatewayPlugin({ key: "broken-context-core-plugin", modulePath: "/broken-context-core-plugin.cjs" });
   context.registerCoreGatewayProviderPlugin({ key: "broken-context-provider" });
   context.registerCoreGatewayVirtualModelProfile({ id: "broken-context-vm" });
   context.registerProviderAccountConnector({ id: "broken-account", resolve() { return []; } });
@@ -31,6 +33,7 @@ module.exports = async function brokenPlugin(context) {
     writeFileSync(goodPlugin, `
 module.exports = {
   setup(context) {
+    context.registerCoreGatewayPlugin({ key: "good-context-core-plugin", modulePath: "/good-context-core-plugin.cjs" });
     context.registerCoreGatewayProviderPlugin({ key: "good-context-provider" });
     context.registerCoreGatewayVirtualModelProfile({ id: "good-context-vm" });
     return {
@@ -44,6 +47,7 @@ module.exports = {
             }
           }
         },
+        plugins: [{ key: "good-core-plugin", modulePath: "/good-core-plugin.cjs" }],
         providerPlugins: [{ key: "good-provider" }],
         virtualModelProfiles: [{
           baseModel: { fixedModel: "Good Provider/good-model", mode: "fixed" },
@@ -155,7 +159,11 @@ module.exports = {
         rates: {
           openai: { inputPerMillionUsd: 1, outputPerMillionUsd: 2 }
         }
-      }
+      },
+      plugins: [
+        { key: "good-context-core-plugin", modulePath: "/good-context-core-plugin.cjs" },
+        { key: "good-core-plugin", modulePath: "/good-core-plugin.cjs" }
+      ]
     });
     const compiled = await compileCoreGatewayConfig(
       config,
@@ -169,6 +177,12 @@ module.exports = {
         openai: { inputPerMillionUsd: 1, outputPerMillionUsd: 2 }
       }
     });
+    assert.equal(
+      compiled.plugins.some((plugin) => plugin.key === "ccr-router"),
+      gatewayRuntimeSupportsRouterPlugin()
+    );
+    assert.ok(compiled.plugins.some((plugin) => plugin.key === "good-context-core-plugin"));
+    assert.ok(compiled.plugins.some((plugin) => plugin.key === "good-core-plugin"));
     assert.deepEqual(
       resolveUsageModelAttribution(coreGatewayUsageAttributionConfig(config), "Fusion/plugin-usage"),
       {

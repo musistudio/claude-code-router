@@ -4,7 +4,7 @@
 import type { IncomingHttpHeaders, IncomingMessage, Server, ServerResponse } from "node:http";
 import type { ApiKeyConfig } from "@ccr/core/contracts/app";
 import { ccrRemoteControlPathPrefix } from "@ccr/core/gateway/remote-control-service";
-import { coreGatewayAuthHeader, localObservabilityHeaderNames, proxyHeaderDenyList, responseHeaderDenyList } from "@ccr/core/gateway/internal/shared";
+import { coreGatewayAuthHeader, localObservabilityHeaderNames, proxyHeaderDenyList, responseHeaderDenyList, sdkCompatibleTokenHeaderNames } from "@ccr/core/gateway/internal/shared";
 
 
 export function inferGatewayClient(apiKey: ApiKeyConfig | undefined, headers: IncomingHttpHeaders): string | undefined {
@@ -61,11 +61,13 @@ function inferClientFromUserAgent(headers: IncomingHttpHeaders): string | undefi
 
 
 export function readAuthToken(headers: IncomingHttpHeaders): string | undefined {
-  const raw = readHeader(headers.authorization) || readHeader(headers["x-api-key"]);
-  if (!raw) {
-    return undefined;
+  for (const headerName of sdkCompatibleTokenHeaderNames) {
+    const raw = readHeader(headers[headerName]);
+    if (raw) {
+      return raw.toLowerCase().startsWith("bearer ") ? raw.slice(7).trim() : raw.trim();
+    }
   }
-  return raw.toLowerCase().startsWith("bearer ") ? raw.slice(7).trim() : raw;
+  return undefined;
 }
 
 
@@ -92,9 +94,9 @@ export function forwardHeaders(headers: IncomingHttpHeaders): Record<string, str
 
 
 export function stripLocalGatewayAuthHeaders(headers: Record<string, string>): void {
-  delete headers.authorization;
-  delete headers["x-api-key"];
-  delete headers["api-key"];
+  for (const headerName of sdkCompatibleTokenHeaderNames) {
+    delete headers[headerName];
+  }
 }
 
 

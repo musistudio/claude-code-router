@@ -72,7 +72,11 @@ export async function estimateUsageCostUsd(input: UsageCostInput): Promise<Usage
  * Loads the remote catalog without holding a caller's database transaction.
  * Callers that own a write transaction can then use the cache-only estimator.
  */
-export async function preloadUsagePriceCatalog(): Promise<void> {
+export async function preloadUsagePriceCatalog(options: { forceRefresh?: boolean } = {}): Promise<void> {
+  if (options.forceRefresh) {
+    catalog = undefined;
+    catalogPromise = undefined;
+  }
   await getPriceCatalog();
 }
 

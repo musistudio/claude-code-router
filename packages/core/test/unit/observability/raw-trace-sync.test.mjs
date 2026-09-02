@@ -119,33 +119,72 @@ test("raw trace defers body persistence when the upstream status is unknown", ()
 
 test("raw trace source keeps raw body parts unbounded for sidecar storage", () => {
   const config = createConfig();
-  const previous = process.env.CCR_RAW_TRACE_ENABLED;
-  process.env.CCR_RAW_TRACE_ENABLED = "1";
+  const rawTrace = buildRawTraceConfig(config, "sync-token");
+  assert.equal(rawTrace.enabled, true);
+  assert.equal(rawTrace.mode, "wire_raw");
+  assert.equal(rawTrace.maxPartBytes, rawTraceMaxPartBytes);
+  assert.ok(rawTrace.maxPartBytes > rawTraceHardMaxBodyBytes);
+  config.observability.requestLogMaxBodyBytes = Number.MAX_SAFE_INTEGER;
+  assert.equal(buildRawTraceConfig(config, "sync-token").maxPartBytes, rawTraceMaxPartBytes);
+});
+
+test("raw trace capture is metadata-only for standalone usage when body logging is disabled", () => {
+  const config = createConfig();
+  config.observability.requestLogBodyCapture = "none";
+  assert.equal(buildRawTraceConfig(config, "sync-token").enabled, false);
+  const standalone = buildRawTraceConfig(config, "sync-token", { standaloneUsageCapture: true });
+  assert.equal(standalone.enabled, true);
+  assert.equal(standalone.mode, "body_redacted");
+
+  const previous = process.env.CCR_RAW_TRACE;
+  process.env.CCR_RAW_TRACE = "false";
   try {
-    const rawTrace = buildRawTraceConfig(config, "sync-token");
-    assert.equal(rawTrace.maxPartBytes, rawTraceMaxPartBytes);
-    assert.ok(rawTrace.maxPartBytes > rawTraceHardMaxBodyBytes);
-    config.observability.requestLogMaxBodyBytes = Number.MAX_SAFE_INTEGER;
-    assert.equal(buildRawTraceConfig(config, "sync-token").maxPartBytes, rawTraceMaxPartBytes);
+    assert.equal(buildRawTraceConfig(config, "sync-token", { standaloneUsageCapture: true }).enabled, false);
   } finally {
-    if (previous === undefined) delete process.env.CCR_RAW_TRACE_ENABLED;
-    else process.env.CCR_RAW_TRACE_ENABLED = previous;
+    if (previous === undefined) delete process.env.CCR_RAW_TRACE;
+    else process.env.CCR_RAW_TRACE = previous;
   }
 });
 
-test("raw trace capture is disabled at the source for metadata-only logging", () => {
-  const config = createConfig();
-  config.observability.requestLogBodyCapture = "none";
-  const previous = process.env.CCR_RAW_TRACE_ENABLED;
-  process.env.CCR_RAW_TRACE_ENABLED = "1";
+test("raw trace bundle preserves manifest lifecycle metadata", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-raw-trace-lifecycle-test-"));
+  const spoolDirectory = path.join(dir, "spool");
+  const bundleDirectory = path.join(spoolDirectory, "producer-bundle");
+  const clientMetadataFile = path.join(bundleDirectory, "client_request_metadata.json");
+  const bodyFile = path.join(bundleDirectory, "upstream_request.json");
+  const startedAt = "2026-08-26T01:02:03.004Z";
+  const completedAt = "2026-08-26T01:02:04.238Z";
+  mkdirSync(bundleDirectory, { recursive: true });
+  writeFileSync(clientMetadataFile, JSON.stringify({ headers: { "x-ccr-client": "opencode" } }));
+  writeFileSync(bodyFile, "{}");
   try {
-    assert.equal(buildRawTraceConfig(config, "sync-token").enabled, false);
-    config.observability.requestLogBodyCapture = "all";
-    config.observability.requestLogMaxBodyBytes = 0;
-    assert.equal(buildRawTraceConfig(config, "sync-token").enabled, false);
+    const bundle = await readRawTraceRequestLogBundle({
+      completedAt,
+      durationMs: 1234,
+      parts: [{
+        filePath: clientMetadataFile,
+        partType: "client_request_metadata"
+      }, {
+        contentType: "application/json",
+        filePath: bodyFile,
+        originalBytes: 2,
+        partType: "upstream_request"
+      }],
+      requestId: "core-bundle-lifecycle",
+      startedAt,
+      turnKey: "logical-lifecycle-request",
+      uploadedAt: completedAt
+    }, spoolDirectory);
+
+    assert.ok(bundle);
+    assert.equal(bundle.update.requestId, "logical-lifecycle-request");
+    assert.equal(bundle.update.client, "opencode");
+    assert.equal(bundle.update.startedAt, startedAt);
+    assert.equal(bundle.update.completedAt, completedAt);
+    assert.equal(bundle.update.durationMs, 1234);
+    assert.equal(bundle.update.bundleCapturedAt, completedAt);
   } finally {
-    if (previous === undefined) delete process.env.CCR_RAW_TRACE_ENABLED;
-    else process.env.CCR_RAW_TRACE_ENABLED = previous;
+    rmSync(dir, { force: true, recursive: true });
   }
 });
 

@@ -423,6 +423,94 @@ test("profile service does not rewrite Claude settings when only user-managed fi
   }
 });
 
+test("profile service applies and removes profile Claude settings", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "ccr-claude-profile-settings-"));
+  const takeoverFile = path.join(CONFIGDIR, "global-profile-takeover.json");
+  const profileId = "custom-claude-settings";
+  try {
+    rmSync(takeoverFile, { force: true });
+    const settingsFile = path.join(root, ".claude", "settings.json");
+    mkdirSync(path.dirname(settingsFile), { recursive: true });
+    writeFileSync(settingsFile, `${JSON.stringify({
+      env: {
+        USER_VALUE: "kept"
+      },
+      permissions: {
+        allow: ["Bash(echo:*)"],
+        defaultMode: "ask"
+      },
+      theme: "dark"
+    }, null, 2)}\n`);
+
+    const profile = {
+      agent: "claude-code",
+      claudeSettings: {
+        includeCoAuthoredBy: false,
+        permissions: {
+          defaultMode: "acceptEdits"
+        }
+      },
+      enabled: true,
+      env: {
+        CCR_CLAUDE_CODE_AUTH_MODE: "wif",
+        CLAUDE_CODE_MAX_RETRIES: "3"
+      },
+      id: profileId,
+      model: "Provider/model",
+      name: "Custom Claude Settings",
+      scope: "global",
+      settingsFile,
+      smallFastModel: "",
+      surface: "auto"
+    };
+    const config = createDefaultAppConfig();
+    config.APIKEY = "ccr-profile-claude-settings-test";
+    config.APIKEYS = [{
+      createdAt: "2026-01-01T00:00:00.000Z",
+      id: `profile:${profile.id}`,
+      key: "ccr-profile-claude-settings-test",
+      name: "Profile: Custom Claude Settings"
+    }];
+    config.Providers = [{
+      api_base_url: "https://example.test/v1",
+      api_key: "provider-key",
+      models: ["model"],
+      name: "Provider"
+    }];
+    config.profile.profiles = [profile];
+
+    const firstResult = await applyProfileConfig(config);
+    assert.equal(firstResult.clients.some((client) => client.client === "claude-code" && client.ok), true);
+    const firstSettings = JSON.parse(readFileSync(settingsFile, "utf8"));
+    assert.equal(firstSettings.includeCoAuthoredBy, false);
+    assert.equal(firstSettings.permissions.defaultMode, "acceptEdits");
+    assert.deepEqual(firstSettings.permissions.allow, ["Bash(echo:*)"]);
+    assert.equal(firstSettings.theme, "dark");
+    assert.equal(firstSettings.env.USER_VALUE, "kept");
+    assert.equal(firstSettings.env.CLAUDE_CODE_MAX_RETRIES, "3");
+
+    config.profile.profiles = [{
+      ...profile,
+      claudeSettings: {},
+      env: {
+        CCR_CLAUDE_CODE_AUTH_MODE: "wif"
+      }
+    }];
+    const secondResult = await applyProfileConfig(config);
+    assert.equal(secondResult.clients.some((client) => client.client === "claude-code" && client.ok), true);
+    const secondSettings = JSON.parse(readFileSync(settingsFile, "utf8"));
+    assert.equal(secondSettings.includeCoAuthoredBy, undefined);
+    assert.equal(secondSettings.permissions.defaultMode, undefined);
+    assert.deepEqual(secondSettings.permissions.allow, ["Bash(echo:*)"]);
+    assert.equal(secondSettings.env.CLAUDE_CODE_MAX_RETRIES, undefined);
+    assert.equal(secondSettings.env.USER_VALUE, "kept");
+  } finally {
+    restoreGlobalProfileConfigsOnExit([], { manageMarker: true });
+    rmSync(takeoverFile, { force: true });
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
 test("profile service can exclude ZCode from automatic synchronization", async () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "ccr-zcode-auto-sync-"));
   try {
@@ -610,6 +698,9 @@ test("profile service overwrites generated bin files without creating backups", 
   assert.equal(settings.env.ANTHROPIC_FEDERATION_RULE_ID, "ccr-local");
   assert.equal(settings.env.ANTHROPIC_ORGANIZATION_ID, "ccr-local");
   assert.equal(settings.env.ANTHROPIC_IDENTITY_TOKEN_FILE, wifTokenFile);
+  assert.equal(settings.env.NO_PROXY, "127.0.0.1,localhost,::1");
+  assert.equal(settings.env.no_proxy, "127.0.0.1,localhost,::1");
+  assert.equal(settings.env.CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT, "1");
   assert.equal(settings.env.ANTHROPIC_MODEL, "Provider/long[1m]");
   assert.equal(settings.env.CCR_CLAUDE_CODE_MODEL, "Provider/long[1m]");
   assert.equal(settings.env.CODEXL_CLAUDE_CODE_MODEL, "Provider/long[1m]");
@@ -621,6 +712,8 @@ test("profile service overwrites generated bin files without creating backups", 
   assert.equal(settings.env.CLAUDE_CODE_USE_GATEWAY, undefined);
   assert.equal(settings.env.ANTHROPIC_AUTH_TOKEN, undefined);
   assert.equal(settings.env.ANTHROPIC_API_KEY, undefined);
+  assert.match(wrapperContent, /NO_PROXY.*127\.0\.0\.1,localhost,::1/);
+  assert.match(wrapperContent, /CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT.*1/);
   assert.equal(settings.modelOverrides, undefined);
   const claudeGlobalConfig = JSON.parse(readFileSync(path.join(claudeProfileDir, ".claude.json"), "utf8"));
   assert.equal(claudeGlobalConfig.firstStartTime, "2026-01-01T00:00:00.000Z");
@@ -639,6 +732,79 @@ test("profile service overwrites generated bin files without creating backups", 
     ) && entry.includes(".ccr-")
   );
   assert.deepEqual(backupEntries, []);
+});
+
+test("profile service refreshes CCR-managed global Claude gateway env for generated profiles", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "ccr-generated-claude-global-env-"));
+  const previousHome = process.env.HOME;
+  const takeoverFile = path.join(CONFIGDIR, "global-profile-takeover.json");
+  try {
+    process.env.HOME = home;
+    rmSync(takeoverFile, { force: true });
+    const settingsFile = path.join(home, ".claude", "settings.json");
+    mkdirSync(path.dirname(settingsFile), { recursive: true });
+    writeFileSync(settingsFile, `${JSON.stringify({
+      alwaysThinkingEnabled: true,
+      env: {
+        ANTHROPIC_API_BASE_URL: "http://127.0.0.1:3456",
+        ANTHROPIC_BASE_URL: "http://127.0.0.1:3456",
+        ANTHROPIC_FEDERATION_RULE_ID: "ccr-local",
+        ANTHROPIC_ORGANIZATION_ID: "ccr-local",
+        CLAUDE_AGENT_API_BASE_URL: "http://127.0.0.1:3456",
+        USER_VALUE: "kept"
+      }
+    }, null, 2)}\n`);
+
+    const config = createDefaultAppConfig();
+    config.APIKEY = "ccr-generated-global-env-test";
+    config.APIKEYS = [{
+      createdAt: "2026-01-01T00:00:00.000Z",
+      id: "profile:generated-global-env-test",
+      key: "ccr-generated-global-env-test",
+      name: "Profile: Generated Global Env Test"
+    }];
+    config.Providers = [{
+      api_base_url: "https://example.test/v1",
+      api_key: "provider-key",
+      models: ["model"],
+      name: "Provider"
+    }];
+    config.profile.profiles = [{
+      agent: "claude-code",
+      enabled: true,
+      env: {
+        CCR_CLAUDE_CODE_AUTH_MODE: "wif"
+      },
+      id: "generated-global-env-test",
+      model: "Provider/model",
+      name: "Generated Global Env Test",
+      scope: "ccr",
+      settingsFile: "~/.claude/settings.json",
+      smallFastModel: "",
+      surface: "auto"
+    }];
+
+    const result = await applyProfileConfig(config);
+    assert.equal(result.clients.some((client) => client.client === "claude-code" && client.ok), true);
+    const settings = JSON.parse(readFileSync(settingsFile, "utf8"));
+    assert.equal(settings.alwaysThinkingEnabled, true);
+    assert.equal(settings.env.USER_VALUE, "kept");
+    assert.equal(settings.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:3456");
+    assert.equal(settings.env.ANTHROPIC_API_BASE_URL, "http://127.0.0.1:3456");
+    assert.equal(settings.env.CLAUDE_AGENT_API_BASE_URL, "http://127.0.0.1:3456");
+    assert.equal(settings.env.NO_PROXY, "127.0.0.1,localhost,::1");
+    assert.equal(settings.env.no_proxy, "127.0.0.1,localhost,::1");
+    assert.equal(settings.env.CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT, "1");
+  } finally {
+    restoreGlobalProfileConfigsOnExit([], { manageMarker: true });
+    rmSync(takeoverFile, { force: true });
+    rmSync(home, { force: true, recursive: true });
+    if (previousHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = previousHome;
+    }
+  }
 });
 
 test("profile service falls back to apiKeyHelper when Claude Code WIF support is not detected", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {

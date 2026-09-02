@@ -874,6 +874,7 @@ export const GATEWAY_PLUGIN_PERMISSION_IDS = [
   "provider-account-connectors",
   "gateway-request-transforms",
   "core-gateway-config",
+  "core-gateway-plugins",
   "core-provider-plugins",
   "virtual-model-profiles",
   "sqlite-store",
@@ -1205,6 +1206,7 @@ export type GatewayPluginConfig = {
   config?: unknown;
   coreGateway?: {
     config?: Record<string, unknown>;
+    plugins?: unknown[];
     providerPlugins?: unknown[];
     virtualModelProfiles?: VirtualModelProfileConfig[];
   };
@@ -1455,6 +1457,7 @@ export type ProfileSurface = "auto" | "cli" | "app";
 export type ProfileOpenSurface = "cli" | "app";
 
 export type ClaudeCodeProfileConfig = {
+  claudeSettings?: Record<string, unknown>;
   enabled: boolean;
   fableModel: string;
   haikuModel: string;
@@ -1489,6 +1492,7 @@ export type ProfileConfig = {
   botGateway?: BotGatewayRuntimeConfig;
   configFile?: string;
   cliMiddleware?: boolean;
+  claudeSettings?: Record<string, unknown>;
   codexCliPath?: string;
   codexHome?: string;
   configFormat?: CodexProfileConfigFormat;
