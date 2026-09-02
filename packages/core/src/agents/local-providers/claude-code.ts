@@ -60,6 +60,17 @@ const claudeCodeAccountMapping: ProviderAccountMappingConfig = {
     percentLimitMapping("claude_opus_quota", "Opus quota", "$.seven_day_opus", "weekly"),
     percentLimitMapping("claude_sonnet_quota", "Sonnet quota", "$.seven_day_sonnet", "weekly"),
     {
+      id: "claude_fable_quota",
+      kind: "quota",
+      label: "Fable quota",
+      limit: 100,
+      remaining: "100 - $.limits[?(@.kind == \"weekly_scoped\" && @.scope.model.display_name == \"Fable\")].percent",
+      resetAt: "$.limits[?(@.kind == \"weekly_scoped\" && @.scope.model.display_name == \"Fable\")].resets_at",
+      unit: "%",
+      used: "$.limits[?(@.kind == \"weekly_scoped\" && @.scope.model.display_name == \"Fable\")].percent",
+      window: "weekly"
+    },
+    {
       id: "claude_extra_usage",
       kind: "quota",
       label: "Extra usage",
@@ -165,7 +176,7 @@ export function importClaudeCodeProvider(candidate: LocalAgentProviderCandidate,
   };
 }
 
-function claudeCodeProviderAccountConfig(): ProviderAccountConfig {
+export function claudeCodeProviderAccountConfig(): ProviderAccountConfig {
   return {
     connectors: [
       {
