@@ -138,9 +138,65 @@ export function rewriteUpstreamProviderUrl(
   return rewriteUrlBase(upstreamUrl, config?.anthropicBaseUrl, targetProviderConfig?.baseurl);
 }
 
+/**
+ * Keeps Responses tool outputs in the tool turn that produced them.
+ *
+ * The core protocol adapter can emit text from an Anthropic user message before
+ * the tool_result blocks in that same message. Responses-compatible providers
+ * may treat that text message as the start of a new turn and reject the later
+ * function_call_output as missing from the preceding tool turn.
+ */
+export function normalizeOpenAIResponsesToolOutputOrder(
+  body: unknown,
+  targetProviderConfig: ProviderPluginRequestInput["targetProviderConfig"]
+): unknown {
+  if (
+    targetProviderConfig?.type?.trim().toLowerCase() !== "openai_responses" ||
+    !isRecord(body) ||
+    !Array.isArray(body.input)
+  ) {
+    return body;
+  }
+
+  const input = [...body.input];
+  let changed = false;
+  for (let outputIndex = 0; outputIndex < input.length; outputIndex += 1) {
+    const output = input[outputIndex];
+    if (!isRecord(output) || output.type !== "function_call_output") continue;
+    const callId = typeof output.call_id === "string" ? output.call_id : undefined;
+    if (!callId) continue;
+
+    const callIndex = input.findIndex((item, index) =>
+      index < outputIndex &&
+      isRecord(item) &&
+      item.type === "function_call" &&
+      item.call_id === callId
+    );
+    if (callIndex < 0) continue;
+
+    const interveningMessageIndex = input.findIndex((item, index) =>
+      index > callIndex &&
+      index < outputIndex &&
+      isRecord(item) &&
+      item.type === "message"
+    );
+    if (interveningMessageIndex < 0) continue;
+
+    input.splice(outputIndex, 1);
+    input.splice(interveningMessageIndex, 0, output);
+    changed = true;
+  }
+
+  return changed ? { ...body, input } : body;
+}
+
 function headerValues(value: string | string[] | undefined): string[] {
   if (value === undefined) return [];
   return Array.isArray(value) ? value : [value];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function rewriteUrlBase(upstreamUrl: string, fromBaseUrl: string | undefined, toBaseUrl: string | undefined): string {
@@ -196,6 +252,10 @@ export function createGatewayPlugin() {
           ok: true as const,
           value: {
             ...input.upstreamRequest,
+            body: normalizeOpenAIResponsesToolOutputOrder(
+              input.upstreamRequest.body,
+              input.targetProviderConfig
+            ),
             headers: mergeUpstreamProviderHeaders(input.request?.headers, input.upstreamRequest.headers),
             url: rewriteUpstreamProviderUrl(input.upstreamRequest.url, input.targetProviderConfig, input.config)
           }
