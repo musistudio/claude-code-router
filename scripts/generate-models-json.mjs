@@ -31,7 +31,7 @@ const support1MContextThreshold = 1_000_000;
 const schemaVersion = 2;
 const canonicalModelOverrides = new Map([
   ["minimax/minimax-m3", {
-    capabilities: { attachments: true, imageInput: true, pdfInput: false, reasoning: true, supports1MContext: true, videoInput: true },
+    capabilities: { adaptiveThinking: true, attachments: true, imageInput: true, noneReasoningEffort: true, pdfInput: false, reasoning: true, supports1MContext: true, videoInput: true },
     contextTokens: 1_000_000,
     displayName: "MiniMax-M3",
     inputModalities: ["image", "text", "video"],
@@ -39,7 +39,7 @@ const canonicalModelOverrides = new Map([
     pricing: { cacheRead: 0.12, input: 0.6, output: 2.4 }
   }],
   ["minimax/minimax-m2.7", {
-    capabilities: { attachments: false, imageInput: false, pdfInput: false, reasoning: true, supports1MContext: false, videoInput: false },
+    capabilities: { adaptiveThinking: false, attachments: false, imageInput: false, noneReasoningEffort: false, pdfInput: false, reasoning: true, supports1MContext: false, videoInput: false },
     contextTokens: 204_800,
     displayName: "MiniMax-M2.7",
     inputModalities: ["text"],
