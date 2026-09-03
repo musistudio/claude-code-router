@@ -1353,7 +1353,8 @@ function App() {
     const shouldDiscoverModels = Boolean(draftProbeApiKey);
     const probeMode = shouldDiscoverModels ? "models" : "protocols";
     const probeApiKey = shouldDiscoverModels ? draftProbeApiKey : "";
-    const inputKey = providerProbeInputKey(candidates, probeApiKey, []);
+    const probeModels = mergeProviderModelLists(providerDraft.selectedModels, splitLines(providerDraft.modelsText));
+    const inputKey = providerProbeInputKey(candidates, probeApiKey, probeModels);
 
     setProviderProbeError("");
     if (candidates.length === 0) {
@@ -1363,7 +1364,7 @@ function App() {
     setProviderProbeLoading(true);
 
     const timer = window.setTimeout(() => {
-      void probeProviderCandidates(candidates, probeApiKey, [], { mode: probeMode })
+      void probeProviderCandidates(candidates, probeApiKey, probeModels, { mode: probeMode })
         .then((result) => {
           if (providerProbeRequestId.current !== requestId) {
             return;
@@ -1416,7 +1417,7 @@ function App() {
         setProviderProbeLoading(false);
       }
     };
-  }, [activeView, onboardingStep, providerAddOpen, providerDraft.apiKey, providerDraft.baseUrl, providerDraft.credentialMode, providerDraft.credentials, providerDraft.presetId, providerDraft.protocol, providerDraft.protocolDetectionMode, providerDraft.providerPlugins]);
+  }, [activeView, onboardingStep, providerAddOpen, providerDraft.apiKey, providerDraft.baseUrl, providerDraft.credentialMode, providerDraft.credentials, providerDraft.presetId, providerDraft.protocol, providerDraft.protocolDetectionMode, providerDraft.providerPlugins, providerDraft.modelsText, providerDraft.selectedModels]);
 
   async function refreshProviderModels(): Promise<void> {
     if (providerProbeLoading) {

@@ -640,6 +640,62 @@ test("RequestLogStore redacts secrets and records CCR metadata", async () => {
   }
 });
 
+test("RequestLogStore parses DeepSeek cache tokens despite present-but-zero Anthropic fields", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-deepseek-cache-test-"));
+  let store;
+  try {
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const startedAt = new Date().toISOString();
+    const responseBodyText = JSON.stringify({
+      choices: [{ index: 0, message: { content: "ok", role: "assistant" } }],
+      id: "deepseek-cache-test",
+      model: "deepseek-v4-flash-ioa",
+      object: "chat.completion",
+      usage: {
+        cache_read_input_tokens: 0,
+        cached_tokens: 0,
+        completion_tokens: 71,
+        completion_tokens_details: { cached_tokens: 0, reasoning_tokens: 0 },
+        prompt_cache_hit_tokens: 8960,
+        prompt_cache_miss_tokens: 272,
+        prompt_tokens: 9232,
+        prompt_tokens_details: { cached_tokens: 8960 },
+        total_tokens: 9303
+      }
+    });
+
+    await store.record({
+      completedAt: startedAt,
+      durationMs: 150,
+      method: "POST",
+      path: "/v1/chat/completions",
+      providerName: "deepseek",
+      providerProtocol: "openai_chat_completions",
+      requestBody: Buffer.from(JSON.stringify({ model: "deepseek-v4-flash-ioa", stream: true }), "utf8"),
+      requestHeaders: { "content-type": "application/json" },
+      requestId: "deepseek-cache-request",
+      responseBodyText,
+      responseHeaders: { "content-type": "application/json" },
+      startedAt,
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/chat/completions"
+    });
+
+    const page = await store.list({ pageSize: 25 });
+    const detail = await store.getDetail({ id: page.items[0].id });
+    assert.ok(detail);
+    // prompt_cache_hit_tokens (8960) wins over present-but-zero cache_read_input_tokens
+    // style fields, and the prompt-side input is normalized to exclude cached tokens.
+    assert.equal(detail.inputTokens, 272);
+    assert.equal(detail.cacheReadTokens, 8960);
+    assert.equal(detail.outputTokens, 71);
+    assert.equal(detail.totalTokens, 9303);
+  } finally {
+    await store?.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("RequestLogStore marks interrupted successful-status streams as errors", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-interrupted-stream-test-"));
   let store;

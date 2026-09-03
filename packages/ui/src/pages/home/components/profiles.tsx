@@ -930,7 +930,7 @@ export function AddProfileForm({
           </>
         ) : draft.agent === "claude-design" ? null : (
           <>
-            <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : draft.agent === "opencode" ? "OpenCode model" : draft.agent === "kilo" ? "Kilo model" : draft.agent === "workbuddy" ? "Workbuddy model" : "Codex model")} requirement="optional" requirementLabel={optionalFieldLabel}>
+            <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : draft.agent === "opencode" ? "OpenCode model" : draft.agent === "kilo" ? "Kilo model" : draft.agent === "codebuddy" ? "CodeBuddy model" : draft.agent === "workbuddy" ? "Workbuddy model" : "Codex model")} requirement="optional" requirementLabel={optionalFieldLabel}>
               <ModelSelector
                 placeholder={modelPlaceholder}
                 providers={providers}
@@ -1317,7 +1317,7 @@ function profileNumberDraftValid(value: string, min: number, max: number): boole
 }
 
 function profileAppPathLabel(agent: ProfileConfig["agent"]): "APP_PATH" | undefined {
-  if (agent === "claude-code" || agent === "codex" || agent === "opencode" || agent === "workbuddy") {
+  if (agent === "claude-code" || agent === "codex" || agent === "opencode" || agent === "workbuddy" || agent === "codebuddy") {
     return "APP_PATH";
   }
   return undefined;

@@ -3799,6 +3799,9 @@ function parseProfileAgent(value: unknown): ProfileConfig["agent"] | undefined {
   if (normalized === "zcode" || normalized === "z-code" || normalized === "z code") {
     return "zcode";
   }
+  if (normalized === "codebuddy" || normalized === "codebuddy-cli" || normalized === "codebuddy cli" || normalized === "codebuddy-ide" || normalized === "codebuddy ide") {
+    return "codebuddy";
+  }
   if (normalized === "claude-design" || normalized === "claude design" || normalized === "design") {
     return CLAUDE_DESIGN_PLUGIN_ID;
   }
@@ -3857,9 +3860,11 @@ function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
           ? "~/.workbuddy/config.toml"
         : agent === "pi"
           ? "~/.pi/agent"
-          : agent === CLAUDE_DESIGN_PLUGIN_ID
-            ? "~/.claude-code-router/claude-design"
-            : "~/.codex/config.toml";
+          : agent === "codebuddy"
+            ? "~/.codebuddy"
+            : agent === CLAUDE_DESIGN_PLUGIN_ID
+              ? "~/.claude-code-router/claude-design"
+              : "~/.codex/config.toml";
 }
 
 function normalizeCodexConfigFileForAgent(agent: ProfileConfig["agent"], value: string | undefined): string {
