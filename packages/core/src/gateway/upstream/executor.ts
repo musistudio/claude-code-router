@@ -817,15 +817,56 @@ function usageAwareOpenAiChatAttemptBody(input: {
 }
 
 
-function stripUnsupportedOpenAiRequestParameters(body: Buffer | undefined): Buffer | undefined {
+export function stripUnsupportedOpenAiRequestParameters(body: Buffer | undefined): Buffer | undefined {
   const parsedBody = parseJsonObjectSafe(body);
-  if (!parsedBody || (!("thinking" in parsedBody) && !("reasoning_split" in parsedBody))) {
+  if (!parsedBody) {
     return body;
   }
   const next = { ...parsedBody };
-  delete next.thinking;
-  delete next.reasoning_split;
-  return serializeJsonBody(next);
+  let changed = false;
+  if ("thinking" in next || "reasoning_split" in next) {
+    delete next.thinking;
+    delete next.reasoning_split;
+    changed = true;
+  }
+  if (stripThinkingContentBlocks(next.messages)) {
+    changed = true;
+  }
+  return changed ? serializeJsonBody(next) : body;
+}
+
+/**
+ * OpenAI chat/responses upstreams reject Anthropic `thinking` content blocks in message
+ * history (HTTP 400). Remove them in place from each message's content array. Returns true
+ * when any block was removed. Non-array content (string content, already-OpenAI bodies) is
+ * left untouched.
+ */
+function stripThinkingContentBlocks(messages: unknown): boolean {
+  if (!Array.isArray(messages)) {
+    return false;
+  }
+  let changed = false;
+  for (const message of messages) {
+    if (!isRecord(message)) {
+      continue;
+    }
+    const content = message.content;
+    if (!Array.isArray(content)) {
+      continue;
+    }
+    const filtered = content.filter((block) => {
+      if (!isRecord(block)) {
+        return true;
+      }
+      const type = stringValue(block.type);
+      return type !== "thinking" && type !== "redacted_thinking";
+    });
+    if (filtered.length !== content.length) {
+      message.content = filtered;
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 
