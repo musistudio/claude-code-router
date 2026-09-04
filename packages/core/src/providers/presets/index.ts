@@ -1,4 +1,5 @@
 import { anthropicProviderPreset } from "@ccr/core/providers/presets/anthropic/index";
+import { atlasCloudProviderPreset } from "@ccr/core/providers/presets/atlascloud/index";
 import { bailianProviderPreset } from "@ccr/core/providers/presets/bailian/index";
 import { claudeApiProviderPreset } from "@ccr/core/providers/presets/claudeapi/index";
 import { code0ProviderPreset } from "@ccr/core/providers/presets/code0/index";
@@ -42,6 +43,7 @@ import type { ProviderIdentitySafetyIssue, ProviderPreset } from "@ccr/core/prov
 export const providerPresets: ProviderPreset[] = [
   openaiProviderPreset,
   anthropicProviderPreset,
+  atlasCloudProviderPreset,
   geminiProviderPreset,
   openRouterProviderPreset,
   nvidiaProviderPreset,
