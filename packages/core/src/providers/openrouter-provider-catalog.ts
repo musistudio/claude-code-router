@@ -7,6 +7,18 @@ import type {
 const providerCache = new Map<string, { fetchedAt: number; providers: OpenRouterProviderCatalogItem[] }>();
 const providerCacheTtlMs = 10 * 60_000;
 const activityCache = new Map<string, { fetchedAt: number; totals: Map<string, number> }>();
+const defaultProviderCatalogTimeoutMs = 8_000;
+
+function providerCatalogTimeoutMs(): number {
+  const raw = process.env.CCR_OPENROUTER_CATALOG_TIMEOUT_MS;
+  if (raw) {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return defaultProviderCatalogTimeoutMs;
+}
 
 export async function getOpenRouterProviderCatalog(
   request: OpenRouterProviderCatalogRequest
@@ -27,7 +39,9 @@ export async function getOpenRouterProviderCatalog(
   const endpointPath = model
     ? modelEndpointsPath(model)
     : "/api/v1/providers";
-  const response = await fetch(`${trimRight(apiRoot, "/")}${endpointPath}`);
+  const response = await fetch(`${trimRight(apiRoot, "/")}${endpointPath}`, {
+    signal: AbortSignal.timeout(providerCatalogTimeoutMs())
+  });
   if (!response.ok) {
     const text = await response.text().catch(() => "");
     throw new Error(`OpenRouter providers request failed (${response.status}): ${text.slice(0, 200)}`);
@@ -131,7 +145,8 @@ async function loadYesterdayProviderTokenTotals(
     const response = await fetch(url, {
       headers: {
         authorization: `Bearer ${apiKey}`
-      }
+      },
+      signal: AbortSignal.timeout(providerCatalogTimeoutMs())
     });
     if (!response.ok) {
       return undefined;
