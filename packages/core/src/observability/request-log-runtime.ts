@@ -10,6 +10,8 @@ import type {
   AgentAnalysisTracePayloadFullResult,
   AgentAnalysisTracePayloadRequest,
   RequestLogDetailRequest,
+  RequestLogBodyChunk,
+  RequestLogBodyChunkRequest,
   RequestLogEntry,
   RequestLogListFilter,
   RequestLogPage
@@ -307,6 +309,10 @@ export class RequestLogRuntime {
 
   async getDetail(request: RequestLogDetailRequest): Promise<RequestLogEntry | undefined> {
     return await this.query<RequestLogEntry | undefined>("getDetail", [request]);
+  }
+
+  async getBodyChunk(request: RequestLogBodyChunkRequest): Promise<RequestLogBodyChunk | undefined> {
+    return await this.query<RequestLogBodyChunk | undefined>("getBodyChunk", [request]);
   }
 
   async analyze(filter?: AgentAnalysisFilter): Promise<AgentAnalysisSnapshot> {
@@ -1027,12 +1033,17 @@ function constrainRawTraceFiles(
 export function suppressRequestLogRawTraceBodies(
   input: RequestLogRawTraceUpdateInput
 ): RequestLogRawTraceUpdateInput {
+  const {
+    requestBodyRef: _requestBodyRef,
+    responseBodyRef: _responseBodyRef,
+    ...metadata
+  } = input;
   const requestSize = input.requestBodySizeBytes ??
     (input.requestBodyText === undefined ? undefined : Buffer.byteLength(input.requestBodyText));
   const responseSize = input.responseBodySizeBytes ??
     (input.responseBodyText === undefined ? undefined : Buffer.byteLength(input.responseBodyText));
   return {
-    ...input,
+    ...metadata,
     ...(requestSize === undefined ? {} : {
       requestBodySizeBytes: requestSize,
       requestBodyText: "",

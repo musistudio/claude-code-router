@@ -164,7 +164,7 @@ export async function probeGatewayProviderCandidates(
 
     try {
       const probe = await probeGatewayProvider({
-        apiKey: mode === "connectivity" || mode === "models" ? request.apiKey : undefined,
+        apiKey: request.apiKey,
         baseUrl: candidate.baseUrl,
         forceRefresh: request.forceRefresh,
         mode,
@@ -337,7 +337,7 @@ function providerProbeCandidateName(candidate: GatewayProviderProbeCandidate | u
 async function resolveGatewayProviderProbe(request: GatewayProviderProbeRequest): Promise<GatewayProviderProbeResult> {
   const mode = request.mode ?? "protocols";
   const safetyIssue = providerApiKeySafetyIssue({
-    apiKey: mode === "connectivity" || mode === "models" ? request.apiKey : undefined,
+    apiKey: request.apiKey,
     baseUrl: request.baseUrl
   });
   if (safetyIssue) {
@@ -349,7 +349,7 @@ async function resolveGatewayProviderProbe(request: GatewayProviderProbeRequest)
   const typedModels = uniqueStrings(request.models ?? []);
   const modelProbe = mode !== "models" || request.skipModelDiscovery
     ? { models: [] }
-    : await probeModels(parsed, request.apiKey, protocols);
+    : await probeModels(parsed, request.apiKey, protocols, request.providerPlugins ?? []);
   const models = (mode === "connectivity" || mode === "models") && modelProbe.models.length > 0
     ? modelProbe.models
     : typedModels;
@@ -548,13 +548,15 @@ function capabilitiesFromProtocolResults(results: GatewayProviderProbeProtocolRe
 async function probeModels(
   parsed: ParsedProviderUrl,
   apiKey: string | undefined,
-  allowedProtocols: GatewayProviderCapabilityProtocol[] = []
+  allowedProtocols: GatewayProviderCapabilityProtocol[] = [],
+  providerPlugins: unknown[] = []
 ): Promise<ModelProbeResult> {
   for (const source of orderedModelSources(parsed, allowedProtocols)) {
-    const result = await fetchModelsForSource(parsed, source, apiKey);
+    const result = await fetchModelsForSource(parsed, source, apiKey, providerPlugins);
     if (result.models.length > 0) {
       return {
         baseUrl: result.baseUrl,
+        modelDisplayNames: result.modelDisplayNames,
         models: result.models,
         source
       };
@@ -566,15 +568,27 @@ async function probeModels(
   };
 }
 
-async function fetchModelsForSource(parsed: ParsedProviderUrl, source: ModelSource, apiKey: string | undefined): Promise<ModelFetchResult> {
+async function fetchModelsForSource(
+  parsed: ParsedProviderUrl,
+  source: ModelSource,
+  apiKey: string | undefined,
+  providerPlugins: unknown[] = []
+): Promise<ModelFetchResult> {
   if (source === "openai") {
     for (const baseUrl of parsed.openaiBaseUrlCandidates) {
-      const result = await requestJson(`${baseUrl}/models`, {
-        headers: {
-          ...openAiHeaders(apiKey)
+      const request = await providerProbeAuthRequest(
+        `${baseUrl}/models`,
+        {
+          headers: {
+            ...openAiHeaders(apiKey)
+          },
+          method: "GET"
         },
-        method: "GET"
-      });
+        providerPlugins,
+        apiKey,
+        { model: "" }
+      );
+      const result = await requestJson(request.url, request.init);
       const modelList = parseModelList(result.payload, "openai");
       if (modelList.models.length > 0) {
         return {
@@ -591,12 +605,19 @@ async function fetchModelsForSource(parsed: ParsedProviderUrl, source: ModelSour
 
   if (source === "anthropic") {
     for (const baseUrl of parsed.anthropicBaseUrlCandidates) {
-      const result = await requestJson(`${baseUrl}/v1/models`, {
-        headers: {
-          ...anthropicHeaders(apiKey)
+      const request = await providerProbeAuthRequest(
+        `${baseUrl}/v1/models`,
+        {
+          headers: {
+            ...anthropicHeaders(apiKey)
+          },
+          method: "GET"
         },
-        method: "GET"
-      });
+        providerPlugins,
+        apiKey,
+        { model: "" }
+      );
+      const result = await requestJson(request.url, request.init);
       const modelList = parseModelList(result.payload, "anthropic");
       if (modelList.models.length > 0) {
         return {
@@ -611,12 +632,19 @@ async function fetchModelsForSource(parsed: ParsedProviderUrl, source: ModelSour
     };
   }
 
-  const result = await requestJson(withGeminiKey(geminiApiEndpoint(parsed.geminiBaseUrl, "models"), apiKey), {
-    headers: {
-      ...geminiHeaders(apiKey)
+  const request = await providerProbeAuthRequest(
+    withGeminiKey(geminiApiEndpoint(parsed.geminiBaseUrl, "models"), apiKey),
+    {
+      headers: {
+        ...geminiHeaders(apiKey)
+      },
+      method: "GET"
     },
-    method: "GET"
-  });
+    providerPlugins,
+    apiKey,
+    { model: "" }
+  );
+  const result = await requestJson(request.url, request.init);
   return {
     baseUrl: parsed.geminiBaseUrl,
     ...parseModelList(result.payload, "gemini")
@@ -1458,36 +1486,53 @@ function geminiApiEndpoint(baseUrl: string, path: string, defaultVersion: "v1" |
 }
 
 function withGeminiKey(url: string, apiKey: string | undefined): string {
-  if (!apiKey) {
+  const key = apiKeyCredentialValue(apiKey);
+  if (!key) {
     return url;
   }
 
   const parsed = new URL(url);
-  parsed.searchParams.set("key", apiKey);
+  parsed.searchParams.set("key", key);
   return compactProviderUrl(parsed);
 }
 
 function openAiHeaders(apiKey: string | undefined): Record<string, string> {
-  return apiKey
-    ? {
-        authorization: `Bearer ${apiKey}`
-      }
-    : {};
+  return authorizationHeaders(apiKey);
 }
 
 function anthropicHeaders(apiKey: string | undefined): Record<string, string> {
+  const key = apiKeyCredentialValue(apiKey);
   return {
     "anthropic-version": "2023-06-01",
-    ...(apiKey ? { "x-api-key": apiKey } : {})
+    ...authorizationHeaders(apiKey),
+    ...(key ? { "x-api-key": key } : {})
   };
 }
 
 function geminiHeaders(apiKey: string | undefined): Record<string, string> {
-  return apiKey
-    ? {
-        "x-goog-api-key": apiKey
-      }
-    : {};
+  const key = apiKeyCredentialValue(apiKey);
+  return {
+    ...authorizationHeaders(apiKey),
+    ...(key ? { "x-goog-api-key": key } : {})
+  };
+}
+
+function authorizationHeaders(apiKey: string | undefined): Record<string, string> {
+  const trimmed = apiKey?.trim();
+  if (!trimmed) {
+    return {};
+  }
+  return {
+    authorization: /^Bearer\s+/i.test(trimmed) ? trimmed : `Bearer ${trimmed}`
+  };
+}
+
+function apiKeyCredentialValue(apiKey: string | undefined): string | undefined {
+  const trimmed = apiKey?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  return trimmed.replace(/^Bearer\s+/i, "");
 }
 
 function headersForProtocol(protocol: GatewayProviderCapabilityProtocol, apiKey: string | undefined): Record<string, string> {

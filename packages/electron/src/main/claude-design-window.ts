@@ -16,8 +16,13 @@ export type ClaudeDesignWindowCdpOptions = {
 
 type ClaudeDesignPluginStatus = {
   backend?: unknown;
+  frontendAssetsHost?: unknown;
+  frontendAssetsOrigin?: unknown;
+  frontendUrl?: unknown;
   proxy?: {
     fallbackHosts?: unknown;
+    frontendAssetsHost?: unknown;
+    frontendAssetsOrigin?: unknown;
     host?: unknown;
     paths?: unknown;
   };
@@ -89,6 +94,11 @@ export function claudeDesignCdpOptionsFromStatus(status: ClaudeDesignPluginStatu
 
   const hosts = normalizeHostList([
     status.proxy?.host,
+    status.frontendUrl,
+    status.frontendAssetsHost,
+    status.frontendAssetsOrigin,
+    status.proxy?.frontendAssetsHost,
+    status.proxy?.frontendAssetsOrigin,
     ...(Array.isArray(status.proxy?.fallbackHosts) ? status.proxy.fallbackHosts : [])
   ]);
   if (!hosts.length) {

@@ -48,6 +48,87 @@ test("media tools bind profile-specific runtime names to gateway media models", 
   assert.equal(target.providerBaseUrl, "https://media.example/v1");
 });
 
+test("media tools bind fallback and retry settings to generation tools", async (t) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "ccr-media-fallback-bindings-"));
+  const config = mediaConfig("https://media.example");
+  config.Providers[0].models.push("grok-imagine-image-backup", "grok-imagine-video-backup");
+  config.virtualModelProfiles[0].metadata.fusionMedia.imageFallbackModelSelectors = ["Media Provider/grok-imagine-image-backup"];
+  config.virtualModelProfiles[0].metadata.fusionMedia.imageRetryCount = 2;
+  config.virtualModelProfiles[0].metadata.fusionMedia.videoFallbackModelSelectors = ["Media Provider/grok-imagine-video-backup"];
+  config.virtualModelProfiles[0].metadata.fusionMedia.videoRetryCount = 1;
+  const service = new MediaService(root);
+  service.start(config, "http://127.0.0.1:3456");
+  t.after(async () => {
+    await service.stop();
+    rmSync(root, { force: true, recursive: true });
+  });
+
+  assert.deepEqual(service.toolBindings(), [
+    {
+      fallbackModelSelectors: ["Media Provider/grok-imagine-image-backup"],
+      modelSelector: "Media Provider/grok-imagine-image-quality",
+      name: "image_generate_test",
+      operation: "image-generate",
+      retryCount: 2
+    },
+    {
+      fallbackModelSelectors: ["Media Provider/grok-imagine-image-backup"],
+      modelSelector: "Media Provider/grok-imagine-image-quality",
+      name: "image_edit_test",
+      operation: "image-edit",
+      retryCount: 2
+    },
+    {
+      fallbackModelSelectors: ["Media Provider/grok-imagine-video-backup"],
+      modelSelector: "Media Provider/grok-imagine-video",
+      name: "video_generate_test",
+      operation: "video-generate",
+      protocol: "xai_video_generations",
+      retryCount: 1
+    },
+    { modelSelector: "Media Provider/grok-imagine-video", name: "media_job_get_test", operation: "job-get" },
+    { modelSelector: "Media Provider/grok-imagine-video", name: "media_job_cancel_test", operation: "job-cancel" }
+  ]);
+});
+
+test("video fallback models must use the same media protocol as the primary model", async (t) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "ccr-media-video-protocol-fallback-"));
+  const config = mediaConfig("https://media.example");
+  config.Providers.push({
+    apikey: "openai-video-key",
+    baseUrl: "https://openai-video.example/v1",
+    capabilities: [
+      { baseUrl: "https://openai-video.example/v1", source: "detected", type: "openai_video_generations" }
+    ],
+    models: ["sora-video"],
+    name: "OpenAI Video Provider"
+  });
+  config.virtualModelProfiles[0].metadata.fusionMedia.videoFallbackModelSelectors = ["OpenAI Video Provider/sora-video"];
+  config.virtualModelProfiles[0].metadata.fusionMedia.videoRetryCount = 1;
+  const service = new MediaService(root);
+  service.start(config, "http://127.0.0.1:3456");
+  t.after(async () => {
+    await service.stop();
+    rmSync(root, { force: true, recursive: true });
+  });
+
+  const videoBinding = service.toolBindings().find((binding) => binding.name === "video_generate_test");
+  assert.equal(videoBinding?.protocol, "xai_video_generations");
+  assert.equal(videoBinding?.retryCount, 1);
+  assert.equal(videoBinding?.fallbackModelSelectors, undefined);
+  assert.throws(
+    () => service.videoStart(
+      { duration: 6, prompt: "Animate the product", resolution: "480p" },
+      {
+        fallbackModelSelectors: ["OpenAI Video Provider/sora-video"],
+        modelSelector: "Media Provider/grok-imagine-video",
+        retryCount: 1
+      }
+    ),
+    /Configure video fallback models with the same media protocol/
+  );
+});
+
 test("media artifact downloads reject private-network URLs from public providers", async () => {
   const executor = new GatewayMediaExecutor({
     model: "image-model",
@@ -116,6 +197,41 @@ test("media gateway errors expose the concrete failed provider attempt", async (
       return true;
     }
   );
+});
+
+test("media gateway sanitizes target model header while preserving unicode body model", async (t) => {
+  const rawModel = "「中文模型」image-model";
+  let requestBody;
+  let targetModelHeader;
+  const server = createServer(async (request, response) => {
+    if (request.method === "POST" && request.url === "/v1/images/generations") {
+      targetModelHeader = request.headers["x-target-model"];
+      requestBody = JSON.parse((await consume(request)).toString("utf8"));
+      json(response, { data: [{ url: "https://media.example/artifact.png" }] });
+      return;
+    }
+    response.writeHead(404).end();
+  });
+  if (!await listenOrSkip(t, server)) return;
+  await waitForTcpListener(server);
+  t.after(() => server.close());
+
+  const executor = new GatewayMediaExecutor({
+    model: rawModel,
+    protocol: "openai_image_generations",
+    providerBaseUrl: "https://media.example/v1",
+    providerName: "Unicode Media Provider",
+    providerSelector: "unicode-media::openai_image_generations"
+  }, { baseUrl: baseUrl(server) });
+
+  await executor.imageGenerate({ prompt: "A blue cup" }, {
+    job: { id: "unicode-model-header-test" },
+    onRemoteRequestId() {},
+    signal: new AbortController().signal
+  });
+
+  assert.equal(targetModelHeader, "image-model");
+  assert.equal(requestBody.model, rawModel);
 });
 
 test("implicit media input roots reject the filesystem root and home directory", () => {
@@ -309,6 +425,116 @@ test("provider image jobs use the internal media gateway, persist artifacts, and
 
   const reloaded = new MediaService(root);
   assert.equal(reloaded.getJob(first.id).status, "succeeded");
+});
+
+test("provider media jobs retry and fall back between configured generation models", async (t) => {
+  const imageModels = [];
+  const videoModels = [];
+  let service;
+  const server = createServer(async (request, response) => {
+    if (request.method === "POST" && request.url === "/v1/images/generations") {
+      const body = JSON.parse((await consume(request)).toString("utf8"));
+      imageModels.push(body.model);
+      if (body.model === "grok-imagine-image-quality") {
+        response.writeHead(503, { "content-type": "application/json" });
+        response.end(JSON.stringify({ error: { message: "primary image unavailable" } }));
+        return;
+      }
+      json(response, { data: [{ url: `${baseUrl(server)}/artifact.png` }], usage: { cost_in_usd_ticks: 210000000 } });
+      return;
+    }
+    if (request.method === "POST" && request.url === "/v1/videos/generations") {
+      const body = JSON.parse((await consume(request)).toString("utf8"));
+      videoModels.push(body.model);
+      if (body.model === "grok-imagine-video") {
+        response.writeHead(503, { "content-type": "application/json" });
+        response.end(JSON.stringify({ error: { message: "primary video unavailable" } }));
+        return;
+      }
+      json(response, { request_id: "video-backup-request" });
+      return;
+    }
+    if (request.method === "GET" && request.url === "/v1/videos/video-backup-request") {
+      json(response, { status: "done", usage: { cost_in_usd_ticks: 510000000 }, video: { url: `${baseUrl(server)}/artifact.mp4` } });
+      return;
+    }
+    if (request.method === "GET" && request.url === "/artifact.png") {
+      response.writeHead(200, { "content-length": png.length, "content-type": "image/png" });
+      response.end(png);
+      return;
+    }
+    if (request.method === "GET" && request.url === "/artifact.mp4") {
+      response.writeHead(200, { "content-length": mp4.length, "content-type": "video/mp4" });
+      response.end(mp4);
+      return;
+    }
+    if (request.url === "/mcp") {
+      await handleMediaToolsMcpRequest(request, response, service);
+      return;
+    }
+    response.writeHead(404).end();
+  });
+  if (!await listenOrSkip(t, server)) return;
+  await waitForTcpListener(server);
+  t.after(() => server.close());
+
+  const root = mkdtempSync(path.join(os.tmpdir(), "ccr-grok-media-fallback-"));
+  service = new MediaService(root);
+  t.after(async () => {
+    await service.stop();
+    rmSync(root, { force: true, recursive: true });
+  });
+  const config = mediaConfig(baseUrl(server));
+  config.Providers[0].models.push("grok-imagine-image-backup", "grok-imagine-video-backup");
+  config.virtualModelProfiles[0].metadata.fusionMedia.imageFallbackModelSelectors = ["Media Provider/grok-imagine-image-backup"];
+  config.virtualModelProfiles[0].metadata.fusionMedia.imageRetryCount = 1;
+  config.virtualModelProfiles[0].metadata.fusionMedia.videoFallbackModelSelectors = ["Media Provider/grok-imagine-video-backup"];
+  config.virtualModelProfiles[0].metadata.fusionMedia.videoRetryCount = 1;
+  service.start(config, baseUrl(server), { baseUrl: baseUrl(server) });
+
+  const imageResponse = await fetch(`${baseUrl(server)}/mcp`, {
+    body: JSON.stringify({
+      id: 1,
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: { arguments: { prompt: "A fallback cup" }, name: "image_generate_test" }
+    }),
+    headers: { "content-type": "application/json" },
+    method: "POST"
+  });
+  const imagePayload = await imageResponse.json();
+  const imageJob = JSON.parse(imagePayload.result.content[0].text);
+  assert.equal(imageJob.status, "succeeded");
+  assert.equal(imageJob.modelSelector, "Media Provider/grok-imagine-image-backup");
+  assert.equal(imageJob.usage.costUsdTicks, 210000000);
+
+  const videoResponse = await fetch(`${baseUrl(server)}/mcp`, {
+    body: JSON.stringify({
+      id: 2,
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: { arguments: { duration: 6, prompt: "Animate the fallback product", resolution: "480p" }, name: "video_generate_test" }
+    }),
+    headers: { "content-type": "application/json" },
+    method: "POST"
+  });
+  const videoPayload = await videoResponse.json();
+  const startedVideoJob = JSON.parse(videoPayload.result.content[0].text);
+  const completedVideoJob = await waitForJob(service, startedVideoJob.id);
+  assert.equal(completedVideoJob.status, "succeeded");
+  assert.equal(completedVideoJob.modelSelector, "Media Provider/grok-imagine-video-backup");
+  assert.equal(completedVideoJob.remoteRequestId, "video-backup-request");
+  assert.equal(completedVideoJob.usage.costUsdTicks, 510000000);
+  assert.deepEqual(imageModels, [
+    "grok-imagine-image-quality",
+    "grok-imagine-image-quality",
+    "grok-imagine-image-backup"
+  ]);
+  assert.deepEqual(videoModels, [
+    "grok-imagine-video",
+    "grok-imagine-video",
+    "grok-imagine-video-backup"
+  ]);
 });
 
 test("provider video jobs return immediately and finish through asynchronous polling", async (t) => {

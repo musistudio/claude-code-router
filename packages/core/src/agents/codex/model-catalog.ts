@@ -1,4 +1,4 @@
-import { BUILTIN_FUSION_VISION_TOOL_NAME, BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME, isGatewayProviderEnabled } from "@ccr/core/contracts/app";
+import { BUILTIN_FUSION_VISION_TOOL_NAME, BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME, effectiveContextWindowPercentFor, isGatewayProviderEnabled } from "@ccr/core/contracts/app";
 import type { AppConfig, GatewayProviderConfig, GatewayProviderProtocol, ProviderModelMetadata, ProviderReasoningLevel, VirtualModelProfileConfig } from "@ccr/core/contracts/app";
 import {
   findModelCatalogEntry,
@@ -6,17 +6,24 @@ import {
   readCatalogCapability,
   type ModelCatalogEntry
 } from "@ccr/core/gateway/model-catalog";
-import { codexDefaultBaseUrl, codexImportedModelContextWindow, readCodexLocalModelCatalog } from "@ccr/core/agents/local-providers/codex";
+import { codexDefaultBaseUrl, readCodexLocalModelCatalog } from "@ccr/core/agents/local-providers/codex";
 import { localAgentProviderApiKey } from "@ccr/core/agents/local-providers/shared";
 import { normalizeProviderBaseUrl } from "@ccr/core/providers/url";
 import { resolveUsageModelAttribution } from "@ccr/core/usage/model-attribution";
+import { filterModelIdsByAllowedModels } from "@ccr/core/profiles/model-allowlist";
 
 const fusionModelProviderName = "Fusion";
 const codexDefaultContextWindow = 128_000;
 const codexEffectiveContextWindowPercent = 95;
+const codexFastModeAdditionalSpeedTiers = ["fast"];
+const codexFastModeServiceTiers = [{ id: "priority", name: "Fast", description: "1.5x speed, increased usage" }];
 
 export type CodexModelCatalog = {
   models: CodexModelCatalogItem[];
+};
+
+export type CodexModelCatalogOptions = {
+  allowedModels?: string[];
 };
 
 export type CodexModelCatalogItem = {
@@ -57,13 +64,21 @@ export type CodexModelCatalogItem = {
   web_search_tool_type: string;
 };
 
-export function buildCodexModelCatalog(config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>, selectedModel?: string): CodexModelCatalog {
+export function buildCodexModelCatalog(
+  config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>,
+  selectedModel?: string,
+  options: CodexModelCatalogOptions = {}
+): CodexModelCatalog {
   return {
-    models: buildCodexModelCatalogIds(config, selectedModel).map((model, index) => codexModelCatalogItem(model, index, config))
+    models: buildCodexModelCatalogIds(config, selectedModel, options).map((model, index) => codexModelCatalogItem(model, index, config))
   };
 }
 
-export function buildCodexModelCatalogIds(config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>, selectedModel?: string): string[] {
+export function buildCodexModelCatalogIds(
+  config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>,
+  selectedModel?: string,
+  options: CodexModelCatalogOptions = {}
+): string[] {
   const ids: string[] = [];
   pushUniqueModel(ids, normalizeModelSelector(selectedModel));
 
@@ -106,15 +121,30 @@ export function buildCodexModelCatalogIds(config?: Partial<Pick<AppConfig, "Prov
     }
   }
 
-  return ids;
+  return filterModelIdsByAllowedModels(
+    config ? {
+      Providers: config.Providers ?? [],
+      virtualModelProfiles: config.virtualModelProfiles ?? []
+    } : undefined,
+    ids,
+    options.allowedModels
+  );
 }
 
-export function codexModelCatalogJson(config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>, selectedModel?: string): string {
-  return `${JSON.stringify(buildCodexModelCatalog(config, selectedModel), null, 2)}\n`;
+export function codexModelCatalogJson(
+  config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>,
+  selectedModel?: string,
+  options: CodexModelCatalogOptions = {}
+): string {
+  return `${JSON.stringify(buildCodexModelCatalog(config, selectedModel, options), null, 2)}\n`;
 }
 
-export function codexModelCatalogBase64(config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>, selectedModel?: string): string {
-  const catalog = buildCodexModelCatalog(config, selectedModel);
+export function codexModelCatalogBase64(
+  config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>,
+  selectedModel?: string,
+  options: CodexModelCatalogOptions = {}
+): string {
+  const catalog = buildCodexModelCatalog(config, selectedModel, options);
   return Buffer.from(JSON.stringify(catalog), "utf8").toString("base64");
 }
 
@@ -126,7 +156,10 @@ function codexModelCatalogItem(
   const profile = codexModelCapabilityProfile(model, config);
   const contextWindow = positiveInteger(profile.contextWindow) ?? positiveInteger(profile.maxContextWindow) ?? codexModelContextWindow(model, profile.catalogEntry);
   const maxContextWindow = Math.max(contextWindow, positiveInteger(profile.maxContextWindow) ?? contextWindow);
-  const effectiveContextWindowPercent = percentage(profile.effectiveContextWindowPercent) ?? codexEffectiveContextWindowPercent;
+  const effectiveContextWindowPercent = effectiveContextWindowPercentFor({
+    contextWindowPinned: profile.contextWindowPinned,
+    effectiveContextWindowPercent: profile.effectiveContextWindowPercent
+  }) ?? codexEffectiveContextWindowPercent;
   return {
     additional_speed_tiers: profile.additionalSpeedTiers,
     apply_patch_tool_type: profile.applyPatchToolType,
@@ -137,7 +170,7 @@ function codexModelCatalogItem(
     default_reasoning_level: profile.defaultReasoningLevel,
     default_reasoning_effort: profile.defaultReasoningLevel,
     default_reasoning_summary: profile.defaultReasoningSummary,
-    description: `CCR gateway model ${model}`,
+    description: profile.description ?? `CCR gateway model ${model}`,
     displayName: model,
     display_name: model,
     effective_context_window_percent: effectiveContextWindowPercent,
@@ -179,6 +212,8 @@ type CodexCapabilityProfile = {
   applyPatchToolType: string | null;
   catalogEntry?: ModelCatalogEntry;
   contextWindow?: number;
+  contextWindowPinned?: boolean;
+  description?: string;
   defaultReasoningLevel: string | null;
   defaultReasoningSummary: string;
   effectiveContextWindowPercent?: number;
@@ -246,10 +281,14 @@ function codexModelCapabilityProfile(
     );
 
   return {
-    additionalSpeedTiers: providerModelMetadata?.additionalSpeedTiers ?? [],
+    additionalSpeedTiers: codexAdditionalSpeedTiers(providerModelMetadata),
     applyPatchToolType,
     catalogEntry,
     contextWindow: providerModelMetadata?.contextWindow,
+    contextWindowPinned: providerModelMetadata?.contextWindowPinned,
+    description: provider
+      ? providerModelDescriptionFor(provider, providerModel)
+      : undefined,
     defaultReasoningLevel: resolveDefaultReasoningLevel(
       providerModelMetadata?.defaultReasoningLevel !== undefined
         ? providerModelMetadata.defaultReasoningLevel
@@ -260,7 +299,7 @@ function codexModelCapabilityProfile(
     defaultReasoningSummary: providerModelMetadata?.defaultReasoningSummary ?? "none",
     effectiveContextWindowPercent: providerModelMetadata?.effectiveContextWindowPercent,
     inputModalities: supportsImageInput ? ["text", "image"] : ["text"],
-    serviceTiers: providerModelMetadata?.serviceTiers ?? [],
+    serviceTiers: codexServiceTiers(providerModelMetadata),
     maxContextWindow: providerModelMetadata?.maxContextWindow,
     supportedReasoningLevels: resolvedReasoningLevels,
     supportsImageInput,
@@ -268,6 +307,20 @@ function codexModelCapabilityProfile(
     supportsReasoning,
     supportsSearchTool
   };
+}
+
+function codexAdditionalSpeedTiers(metadata?: ProviderModelMetadata): unknown[] {
+  if (Array.isArray(metadata?.additionalSpeedTiers)) {
+    return metadata.additionalSpeedTiers;
+  }
+  return metadata?.supportsFastMode ? codexFastModeAdditionalSpeedTiers : [];
+}
+
+function codexServiceTiers(metadata?: ProviderModelMetadata): unknown[] {
+  if (Array.isArray(metadata?.serviceTiers)) {
+    return metadata.serviceTiers;
+  }
+  return metadata?.supportsFastMode ? codexFastModeServiceTiers : [];
 }
 
 function providerModelMetadataFor(provider: GatewayProviderConfig, model: string): ProviderModelMetadata | undefined {
@@ -281,20 +334,19 @@ function providerModelMetadataFor(provider: GatewayProviderConfig, model: string
   return match?.[1];
 }
 
+function providerModelDescriptionFor(provider: GatewayProviderConfig, model: string): string | undefined {
+  const descriptions = provider.modelDescriptions ?? {};
+  const direct = descriptions[model]?.trim();
+  if (direct) {
+    return direct;
+  }
+  const normalized = model.trim().toLowerCase();
+  const match = Object.entries(descriptions).find(([candidate]) => candidate.trim().toLowerCase() === normalized);
+  return match?.[1]?.trim() || undefined;
+}
+
 function codexProviderModelMetadataFor(provider: GatewayProviderConfig, model: string): ProviderModelMetadata | undefined {
-  const metadata = providerModelMetadataFor(provider, model) ?? localCodexModelMetadataFor(provider, model);
-  if (!isLocalCodexProvider(provider)) {
-    return metadata;
-  }
-  const contextWindow = codexImportedModelContextWindow(model);
-  if (!contextWindow) {
-    return metadata;
-  }
-  return {
-    ...(metadata ?? {}),
-    contextWindow,
-    maxContextWindow: contextWindow
-  };
+  return providerModelMetadataFor(provider, model) ?? localCodexModelMetadataFor(provider, model);
 }
 
 function localCodexModelMetadataFor(provider: GatewayProviderConfig, model: string): ProviderModelMetadata | undefined {
@@ -387,12 +439,6 @@ function effortDescription(effort: string): string {
 
 function codexModelContextWindow(model: string, entry = findModelCatalogEntry(model)): number {
   return modelCatalogMaxInputTokens(entry) || codexDefaultContextWindow;
-}
-
-function percentage(value: number | undefined): number | undefined {
-  return value !== undefined && Number.isFinite(value) && value > 0 && value <= 100
-    ? value
-    : undefined;
 }
 
 function positiveInteger(value: number | undefined): number | undefined {

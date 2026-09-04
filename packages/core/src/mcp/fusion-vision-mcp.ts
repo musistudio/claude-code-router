@@ -52,11 +52,17 @@ type SearchResult = {
   title?: string;
   url?: string;
 };
+type VisionAttemptFailure = {
+  error: string;
+  model: string;
+  statusCode?: number;
+};
 
 const protocolVersion = "2024-11-05";
 const defaultVisionBaseUrl = "https://api.openai.com/v1";
 const defaultVisionModel = "gpt-4o-mini";
 const defaultTimeoutMs = 30000;
+const maxVisionRetryCount = 9999;
 const maxLocalImageBytes = 20 * 1024 * 1024;
 const fusionUsageEventSchema = "ccr.fusion-usage.v1";
 const fusionUsageSyncBaseDelayMs = 100;
@@ -77,7 +83,7 @@ const visionTool = {
     detail: { enum: ["auto", "low", "high"], type: "string" },
     imageBase64: { description: "Single raw base64 image payload or data URL.", type: "string" },
     imagePath: { description: "Single local image path.", type: "string" },
-    imageUrl: { description: "Single HTTP(S) image URL or data URL.", type: "string" },
+    imageUrl: { description: "Single HTTP(S) image URL, data URL, or bare base64 payload.", type: "string" },
     images: {
       items: objectSchema({
         base64: { type: "string" },
@@ -250,7 +256,10 @@ async function analyzeVision(args: Record<string, unknown>): Promise<string> {
   if (!gatewayBaseUrl && !apiKey) {
     throw new Error("Missing vision API key. Set VISION_API_KEY.");
   }
-  const model = env("VISION_MODEL") || env("OPENAI_MODEL") || defaultVisionModel;
+  const primaryModel = env("VISION_MODEL") || env("OPENAI_MODEL") || defaultVisionModel;
+  const retryCount = clampInteger(readNumber(env("VISION_RETRY_COUNT")) ?? 0, 0, maxVisionRetryCount);
+  const models = uniqueStrings([primaryModel, ...readJsonStringArrayEnv("VISION_FALLBACK_MODELS_JSON")]);
+  const attempts = visionModelAttempts(models.length ? models : [primaryModel], retryCount);
   const detail = readString(args.detail);
   const imageParts = await buildImageParts(args, detail === "low" || detail === "high" ? detail : "auto");
   if (imageParts.length === 0) {
@@ -269,46 +278,63 @@ async function analyzeVision(args: Record<string, unknown>): Promise<string> {
     }
   ];
   const timeoutMs = clampInteger(readNumber(args.timeoutMs) ?? readNumber(env("VISION_TIMEOUT_MS")) ?? defaultTimeoutMs, 100, 600000);
-  const startedAt = Date.now();
-  let response: Response | undefined;
-  let usageScheduled = false;
-  try {
-    response = await fetch(resolveChatCompletionsUrl(baseUrl), {
-      body: JSON.stringify({ model, messages }),
-      headers: {
-        ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
-        "content-type": "application/json"
-      },
-      method: "POST",
-      signal: AbortSignal.timeout(timeoutMs)
-    });
-    const rawText = await response.text();
-    const payload = parseJson(rawText);
-    scheduleVisionUsageSync({
-      durationMs: Date.now() - startedAt,
-      gatewayRuntime: Boolean(gatewayBaseUrl),
-      model,
-      payload,
-      response
-    });
-    usageScheduled = true;
-    if (!response.ok) {
-      throw new Error(`Vision request failed (${response.status}): ${extractProviderError(rawText, payload)}`);
-    }
 
-    return extractResponseText(payload) || rawText;
-  } catch (error) {
-    if (!usageScheduled) {
+  const failures: VisionAttemptFailure[] = [];
+  let lastError: unknown;
+  for (let index = 0; index < attempts.length; index += 1) {
+    const model = attempts[index];
+    const startedAt = Date.now();
+    let response: Response | undefined;
+    let usageScheduled = false;
+    try {
+      response = await fetch(resolveChatCompletionsUrl(baseUrl), {
+        body: JSON.stringify({ model, messages }),
+        headers: {
+          ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
+          "content-type": "application/json"
+        },
+        method: "POST",
+        signal: AbortSignal.timeout(timeoutMs)
+      });
+      const rawText = await response.text();
+      const payload = parseJson(rawText);
       scheduleVisionUsageSync({
         durationMs: Date.now() - startedAt,
         gatewayRuntime: Boolean(gatewayBaseUrl),
         model,
-        response,
-        statusCode: 502
+        payload,
+        response
       });
+      usageScheduled = true;
+      if (!response.ok) {
+        throw new Error(`Vision request failed (${response.status}): ${extractProviderError(rawText, payload)}`);
+      }
+
+      return extractResponseText(payload) || rawText;
+    } catch (error) {
+      if (!usageScheduled) {
+        scheduleVisionUsageSync({
+          durationMs: Date.now() - startedAt,
+          gatewayRuntime: Boolean(gatewayBaseUrl),
+          model,
+          response,
+          statusCode: visionFailureStatusCode(error)
+        });
+      }
+      lastError = error;
+      failures.push({
+        error: formatError(error),
+        model,
+        ...(response ? { statusCode: response.status } : {})
+      });
+      if (index < attempts.length - 1) {
+        await wait(visionRetryDelayMs(response, failures.length - 1));
+        continue;
+      }
     }
-    throw error;
   }
+
+  throwVisionError(lastError, failures);
 }
 
 function scheduleVisionUsageSync(input: {
@@ -451,6 +477,71 @@ async function shutdownAfterUsageSyncDrain(exitCode: number): Promise<void> {
 
 function wait(delayMs: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+function readJsonStringArrayEnv(name: string): string[] {
+  const raw = env(name);
+  if (!raw) {
+    return [];
+  }
+  try {
+    const value = JSON.parse(raw) as unknown;
+    return readStringArray(value);
+  } catch {
+    return [];
+  }
+}
+
+function visionModelAttempts(models: string[], retryCount: number): string[] {
+  const attempts: string[] = [];
+  for (const model of models) {
+    for (let index = 0; index <= retryCount; index += 1) {
+      attempts.push(model);
+    }
+  }
+  return attempts;
+}
+
+function visionRetryDelayMs(response: Response | undefined, failedAttemptIndex: number): number {
+  const retryAfterMs = parseRetryAfterHeaderMs(response?.headers.get("retry-after") ?? null);
+  if (retryAfterMs !== undefined && retryAfterMs > 0) {
+    return clampInteger(retryAfterMs, 1, 60000);
+  }
+  const exponent = Math.min(10, Math.max(0, failedAttemptIndex));
+  return Math.min(30000, 1000 * 2 ** exponent);
+}
+
+function parseRetryAfterHeaderMs(value: string | null): number | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  const seconds = Number(trimmed);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  const retryAt = Date.parse(trimmed);
+  return Number.isFinite(retryAt) ? Math.max(0, retryAt - Date.now()) : undefined;
+}
+
+function visionFailureStatusCode(error: unknown): number {
+  const name = error instanceof Error ? error.name : "";
+  return name === "AbortError" || name === "TimeoutError" ? 504 : 502;
+}
+
+function throwVisionError(lastError: unknown, failures: VisionAttemptFailure[]): never {
+  if (failures.length <= 1) {
+    if (lastError instanceof Error) {
+      throw lastError;
+    }
+    throw new Error(formatError(lastError));
+  }
+  throw new Error(
+    `Vision request failed after ${failures.length} attempts. ` +
+    `${formatVisionAttemptFailures(failures)} Last error: ${formatError(lastError)}`
+  );
+}
+
+function formatVisionAttemptFailures(failures: VisionAttemptFailure[]): string {
+  return `Failures: ${failures.map((failure) =>
+    `${failure.model} ${failure.statusCode ? `HTTP ${failure.statusCode}` : "network"}`
+  ).join("; ")}.`;
 }
 
 function readVisionUsage(response: Response | undefined, payload: unknown): Record<string, number | undefined> {
@@ -736,9 +827,11 @@ async function buildImageParts(args: Record<string, unknown>, detail: "auto" | "
   }
 
   const parts: JsonValue[] = [];
+  const skipped: string[] = [];
   for (const input of inputs) {
-    const url = await imageInputToUrl(input);
-    if (!url) {
+    const result = await imageInputToUrl(input);
+    if ("skip" in result) {
+      skipped.push(result.skip);
       continue;
     }
     if (input.label) {
@@ -747,36 +840,182 @@ async function buildImageParts(args: Record<string, unknown>, detail: "auto" | "
     parts.push({
       image_url: {
         detail,
-        url
+        url: result.url
       },
       type: "image_url"
     });
   }
+  // Dropping bad images must not look like dropping the argument: surface every
+  // reason to the caller instead of silently proceeding without the image.
+  if (parts.length === 0) {
+    if (skipped.length === 0) {
+      throw new Error(`${toolName} requires imageUrl, imagePath, imageBase64, or images.`);
+    }
+    throw new Error(`${toolName} found no usable image. Skipped: ${skipped.join("; ")}.`);
+  }
   return parts;
 }
 
-async function imageInputToUrl(input: { base64?: string; mimeType?: string; path?: string; url?: string }): Promise<string | undefined> {
+type ImageInputToUrlResult = { url: string } | { skip: string };
+
+/**
+ * Turn one image input into a data URL ready for the upstream, or say why it cannot
+ * be used. The upstream (commonly litellm in front of a strict vision provider)
+ * rejects any image whose payload is not strictly valid base64 and reports that as
+ * a 400 which surfaces to the caller as a raw provider error -- so anything that
+ * cannot be made into a well-formed data URL is dropped here instead of forwarded.
+ *
+ * Failure shapes seen in production: a local file path passed as imageUrl, a bare
+ * [media_ref:...] id passed verbatim, a base64 payload whose length mod 4 is 1
+ * (irreparably truncated mid-image), and an XML/SVG payload -- which the typical
+ * upstream rejects outright (supported formats are jpeg/png/gif/webp), so
+ * relabeling it buys nothing. A remainder of 2 or 3 is repairable by padding.
+ * Local files (imagePath/images[].path) go through the same content checks.
+ */
+async function imageInputToUrl(input: { base64?: string; mimeType?: string; path?: string; url?: string }): Promise<ImageInputToUrlResult> {
   if (input.url) {
-    return input.url;
+    const url = input.url.trim();
+    if (/^https?:\/\//i.test(url)) {
+      return { url };
+    }
+    if (url.startsWith("data:")) {
+      return dataUrlResult(url, input.mimeType);
+    }
+    // Not an HTTP(S) URL and not a data URL. Either a bare base64 payload (the
+    // virtual-model tool loop's usual shape; wrapped here because strict gateways
+    // reject it as an invalid URL) or garbage that must not be forwarded as-is.
+    const normalized = normalizeImagePayload(url);
+    if (!normalized) {
+      return { skip: `imageUrl is neither an HTTP(S) URL, a data URL, nor base64 (${preview(url)})` };
+    }
+    return imageDataUrlOrSkip(normalized, "image/png");
   }
   if (input.base64) {
-    return toDataUrl(input.base64, input.mimeType || "image/png");
+    const value = input.base64.trim();
+    if (value.startsWith("data:")) {
+      // The schema documents imageBase64 as "Single raw base64 image payload or
+      // data URL"; both shapes must behave alike, so a data URL takes the same
+      // path as imageUrl above.
+      return dataUrlResult(value, input.mimeType);
+    }
+    const normalized = normalizeImagePayload(value);
+    if (!normalized) {
+      return { skip: "imageBase64 is not usable base64" };
+    }
+    return imageDataUrlOrSkip(normalized, input.mimeType);
   }
   if (!input.path) {
-    return undefined;
+    return { skip: "image entry has no url, base64, or path" };
   }
   const buffer = await readFile(input.path);
   if (buffer.byteLength > maxLocalImageBytes) {
     throw new Error(`Local image exceeds ${maxLocalImageBytes} bytes: ${input.path}`);
   }
-  return toDataUrl(buffer.toString("base64"), input.mimeType || mimeTypeFromPath(input.path));
+  // File contents get the same checks as every other input: a .svg on disk must
+  // not be forwarded as a fake raster data URL.
+  const normalized = normalizeImagePayload(buffer.toString("base64"));
+  if (!normalized) {
+    return { skip: `file at ${preview(input.path)} is not usable image data` };
+  }
+  return imageDataUrlOrSkip(normalized, input.mimeType || mimeTypeFromPath(input.path));
 }
 
-function toDataUrl(value: string, mimeType: string): string {
-  return value.startsWith("data:") ? value : `data:${mimeType};base64,${value}`;
+/** Only these media types are ever emitted on a data URL; strict upstreams validate them. */
+const supportedImageMimeTypes = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+
+/**
+ * Parse and validate a full `data:...;base64,...` URL. Shared by the imageUrl and
+ * imageBase64 fields so both accept the same shapes. Non-base64 data URLs are
+ * rejected; a header media type outside the supported set is dropped and the
+ * payload's sniffed type is used instead.
+ */
+function dataUrlResult(value: string, fallbackMimeType: string | undefined): ImageInputToUrlResult {
+  const comma = value.indexOf(",");
+  if (comma < 1) {
+    return { skip: `malformed data URL (${preview(value)})` };
+  }
+  const header = value.slice(5, comma);
+  if (!/;base64/i.test(header)) {
+    return { skip: `data URL is not base64 (${preview(value)})` };
+  }
+  const headerMimeType = header.split(";")[0] || undefined;
+  const normalized = normalizeImagePayload(value.slice(comma + 1));
+  if (!normalized) {
+    return { skip: `data URL payload is not usable base64 (${preview(value)})` };
+  }
+  return imageDataUrlOrSkip(normalized, headerMimeType || fallbackMimeType);
 }
 
-function mimeTypeFromPath(path: string): string {
+const base64PayloadPattern = /^[A-Za-z0-9+/]*={0,2}$/;
+const svgHeadPattern = /^(?:\uFEFF)?\s*(?:<\?xml|<svg)/i;
+
+/**
+ * Validate and repair a base64 image payload. Returns undefined when the bytes are
+ * not usable: non-base64 characters, an empty decode, or a length mod 4 of 1, which
+ * means the image was cut off mid-stream and padding cannot restore it. A remainder
+ * of 2 or 3 is fixed by adding `=` padding. SVG/XML payloads are flagged from the
+ * decoded head so the caller can reject them with a precise reason, and the raster
+ * format is sniffed so the caller can label the data URL with a supported type.
+ */
+function normalizeImagePayload(value: string): { payload: string; svg: boolean; sniffedType?: string } | undefined {
+  if (!value || !base64PayloadPattern.test(value) || value.length % 4 === 1) {
+    return undefined;
+  }
+  const padded = value.padEnd(value.length + ((4 - value.length % 4) % 4), "=");
+  const buffer = Buffer.from(padded, "base64");
+  if (buffer.byteLength === 0) {
+    return undefined;
+  }
+  return {
+    payload: padded,
+    svg: svgHeadPattern.test(buffer.subarray(0, 64).toString("utf8")),
+    sniffedType: sniffImageType(buffer)
+  };
+}
+
+/** Detect a raster format from its leading bytes; only the supported types are returned. */
+function sniffImageType(buffer: Buffer): string | undefined {
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return "image/jpeg";
+  }
+  if (buffer.length >= 8 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) {
+    return "image/png";
+  }
+  if (buffer.length >= 6 && buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x38 && (buffer[4] === 0x37 || buffer[4] === 0x39) && buffer[5] === 0x61) {
+    return "image/gif";
+  }
+  if (buffer.length >= 12 && buffer.subarray(0, 4).toString("latin1") === "RIFF" && buffer.subarray(8, 12).toString("latin1") === "WEBP") {
+    return "image/webp";
+  }
+  return undefined;
+}
+
+/**
+ * Pick the media-type label for the data URL. Only the supported raster types are
+ * ever emitted: an explicit label in that set wins, otherwise the sniffed format,
+ * otherwise image/png. The label is validated for its own sake -- it is part of the
+ * data URL a strict upstream checks -- while the bytes decide whether the image is
+ * decodable at all.
+ */
+function imageLabel(mimeType: string | undefined, image: { sniffedType?: string }): string {
+  const explicit = mimeType?.trim().toLowerCase();
+  if (explicit && supportedImageMimeTypes.has(explicit)) {
+    return explicit;
+  }
+  return image.sniffedType ?? "image/png";
+}
+
+function imageDataUrlOrSkip(image: { payload: string; svg: boolean; sniffedType?: string }, mimeType: string | undefined): ImageInputToUrlResult {
+  if (image.svg) {
+    return { skip: "SVG/XML image payload is not supported by the vision upstream (supported: image/jpeg, image/png, image/gif, image/webp)" };
+  }
+  return { url: `data:${imageLabel(mimeType, image)};base64,${image.payload}` };
+}
+
+/** Short, quoted head of a value for skip reasons and error messages. */
+function preview(value: string): string {
+  return JSON.stringify(value.length > 40 ? `${value.slice(0, 37)}…` : value);
+}function mimeTypeFromPath(path: string): string {
   const ext = extname(path).toLowerCase();
   if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
   if (ext === ".webp") return "image/webp";

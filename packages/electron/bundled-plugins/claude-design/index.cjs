@@ -104,6 +104,7 @@ const BOOTSTRAP_ROUTE_PATHS = ["/_bootstrap", "/api/bootstrap", "/edge-api/boots
 const TOKENIZED_PREVIEW_ROUTE_PATHS = ["/_t", "/design/_t"];
 const DESIGN_ONLINE_REQUIRED_ROUTE_PATHS = [CCR_RESOURCE_RUNTIME_PATH, "/design", CLAUDE_APP_LEGACY_DESIGN_PATH, OMELETTE_RPC_PATH_PREFIX, "/design/v1/design", "/v1/design", ...PRIVACY_CONSENT_ROUTE_PATHS, ...TOKENIZED_PREVIEW_ROUTE_PATHS, ...BOOTSTRAP_ROUTE_PATHS];
 const DESIGN_LOCAL_REQUIRED_ROUTE_PATHS = [CCR_RESOURCE_RUNTIME_PATH, OMELETTE_RPC_PATH_PREFIX, "/design/v1/design", "/v1/design", ...PRIVACY_CONSENT_ROUTE_PATHS, ...TOKENIZED_PREVIEW_ROUTE_PATHS, ...CLAUDE_APP_SPA_ROUTE_PATHS, ...BOOTSTRAP_ROUTE_PATHS, ...AUTH_ESCAPE_ROUTE_PATHS, ...AUTH_API_ROUTE_PATHS];
+const PARKED_MESSAGE_STATE_NOT_FOUND = 1;
 const ORGANIZATION_ROUTE_PATHS = ["/api/organizations", "/organizations"];
 const SHIP_API_ROUTE_PATHS = ["/api/billing/promotion/claude-ship", ...ORGANIZATION_ROUTE_PATHS];
 const SHIP_ONLINE_REQUIRED_ROUTE_PATHS = [CCR_RESOURCE_RUNTIME_PATH, "/v1/code", "/v1/sessions", ...SHIP_API_ROUTE_PATHS, ...PRIVACY_CONSENT_ROUTE_PATHS, ...BOOTSTRAP_ROUTE_PATHS, ...AUTH_ESCAPE_ROUTE_PATHS, ...AUTH_API_ROUTE_PATHS];
@@ -513,6 +514,15 @@ const DEFAULT_ME = {
 
 module.exports = createClaudeProductPlugin("design");
 module.exports.createClaudeProductPlugin = createClaudeProductPlugin;
+if (process.env.CCR_CLAUDE_DESIGN_PLUGIN_TEST_EXPORTS === "1") {
+  module.exports.__test = {
+    discoverLocalDesignIndexAssets,
+    injectDesignMeIntoHtml,
+    mergeDesignShellMe,
+    readLocalAsset,
+    routeMockRequest
+  };
+}
 
 function createClaudeProductPlugin(productName = "design") {
   const product = CLAUDE_PLUGIN_PRODUCTS[productName] || CLAUDE_PLUGIN_PRODUCTS.design;
@@ -940,6 +950,10 @@ async function routeMockRequest(runtime, method, url, request, requestBody) {
     return serveAsset(runtime, path, request);
   }
 
+  if (method === "GET" && path.startsWith("/design/design-systems/")) {
+    return serveAsset(runtime, path, request);
+  }
+
   if (method === "GET" && isClaudeAppStaticRoutePath(path)) {
     const claudeShipAsset = serveClaudeShipAsset(runtime, path);
     if (claudeShipAsset) {
@@ -977,7 +991,7 @@ async function routeMockRequest(runtime, method, url, request, requestBody) {
   }
 
   if (isDesignRestApiRoutePath(path)) {
-    return await handleDesignRestApi(runtime, method, path, request, requestBody);
+    return await handleDesignRestApi(runtime, method, path, url, request, requestBody);
   }
 
   if (path.startsWith("/v1/code/")) {
@@ -2229,6 +2243,7 @@ async function handleOmeletteConnectRpc(runtime, method, path, request, requestB
 
   const rpcName = path.split("/").pop();
   const isConnectProtoRequest = headerIncludes(request.headers["content-type"], "application/connect+proto");
+  const isJsonRpcRequest = headerIncludes(request.headers["content-type"], "application/json") && !isConnectProtoRequest;
   const rpcBody = rpcName === "Chat" || isConnectProtoRequest
     ? decodeConnectEnvelope(requestBody)
     : requestBody;
@@ -2341,6 +2356,16 @@ async function handleOmeletteConnectRpc(runtime, method, path, request, requestB
       return protoResponse(encodeListUserSkillsResponse(runtime));
     case "GetUsageStatus":
       return protoResponse(encodeUsageStatusResponse(runtime));
+    case "GetPrepaidBalance":
+      if (isJsonRpcRequest) {
+        return jsonResponse(200, prepaidBalancePayload(runtime));
+      }
+      return protoResponse(encodePrepaidBalanceResponse(runtime));
+    case "GetProjectPresence":
+      if (isJsonRpcRequest) {
+        return jsonResponse(200, projectPresencePayload(runtime));
+      }
+      return protoResponse(encodeProjectPresenceResponse(runtime, rpcBody));
     case "UpdateOrgSettings":
       updateOrgSettings(runtime, rpcBody);
       return protoResponse(Buffer.alloc(0));
@@ -2357,6 +2382,16 @@ async function handleOmeletteConnectRpc(runtime, method, path, request, requestB
       return protoResponse(encodeTokenResponse());
     case "CountTokens":
       return protoResponse(await countGatewayTokens(runtime, rpcBody));
+    case "GetParkedMessage":
+      if (isJsonRpcRequest) {
+        return jsonResponse(200, parkedMessagePayload());
+      }
+      return protoResponse(encodeParkedMessageResponse());
+    case "CancelChat":
+      if (isJsonRpcRequest) {
+        return jsonResponse(200, {});
+      }
+      return protoResponse(Buffer.alloc(0));
     case "Chat":
       return await chatWithGateway(runtime, rpcBody);
     case "TrackEvent":
@@ -2411,7 +2446,11 @@ async function handleOmeletteConnectRpc(runtime, method, path, request, requestB
     case "ExecuteExperienceAction":
     case "LintFiles":
     case "FigmaGetStatus":
+    case "GoogleGetStatus":
     case "GithubGetStatus":
+      if (isJsonRpcRequest) {
+        return jsonResponse(200, integrationStatusPayload(rpcName));
+      }
       return protoResponse(encodeIntegrationStatusResponse(rpcName));
     case "McpListConnected":
     case "McpListConnectors":
@@ -2972,19 +3011,23 @@ async function resolveDesignIndexAssets(runtime, request, options = {}) {
     return current;
   }
 
-  const fromRequests = discoverRequestedDesignIndexAssets(runtime.store);
   const fromLocal = discoverLocalDesignIndexAssets(runtime.assetDir);
+  if (fromLocal) {
+    return updateDesignIndexAssets(runtime, fromLocal, fromLocal.source || "local", { checkedAt: now });
+  }
+
+  const fromRequests = discoverRequestedDesignIndexAssets(runtime.store);
   const fromCache = discoverCachedDesignIndexAssets(runtime.store);
   const fromRemote = await discoverRemoteDesignIndexAssets(runtime, request);
   const fromRemoteCache = await cacheRemoteDesignIndexAssets(runtime, fromRemote, request);
-  const fallback = mergeDesignIndexAssetPartials(fromLocal, fromCache) || {};
+  const fallback = mergeDesignIndexAssetPartials(fromCache) || {};
   const seeded = {
-    html: isUsableDesignShellHtml(fromLocal?.html) ? fromLocal.html : current.html,
+    html: current.html,
     scriptPath: fallback.scriptPath || current.scriptPath,
     source: fallback.source || current.source || "current",
     stylePath: fallback.stylePath || current.stylePath
   };
-  const discovered = mergeDesignIndexAssets(seeded, fromRequests, fromRemoteCache || fromRemote, fromLocal);
+  const discovered = mergeDesignIndexAssets(seeded, fromRequests, fromRemoteCache || fromRemote);
   const safeDiscovered = selectUsableDesignIndexAssets(runtime, discovered, fallback, current);
   return updateDesignIndexAssets(runtime, safeDiscovered, safeDiscovered.source || "discovered", { checkedAt: now });
 }
@@ -3377,37 +3420,99 @@ function discoverLocalDesignIndexAssets(assetDir) {
   const assetRoot = pathModule.resolve(expandHomePath(assetDir));
   const scripts = [];
   const styles = [];
-  for (const entry of listLocalAssetFiles(assetRoot)) {
-    const requestPath = `/design/assets/${entry.relativePath}`;
-    if (!isDesignIndexScriptPath(requestPath) && !isDesignIndexStylePath(requestPath)) {
-      continue;
+  for (const root of localDesignAssetRoots(assetRoot)) {
+    for (const entry of listLocalAssetFiles(root)) {
+      const requestPath = `/design/assets/${entry.relativePath}`;
+      if (!isDesignIndexScriptPath(requestPath) && !isDesignIndexStylePath(requestPath)) {
+        continue;
+      }
+      if (isDesignIndexStylePath(requestPath)) {
+        styles.push({ mtimeMs: entry.stat.mtimeMs, path: requestPath, size: entry.stat.size });
+        continue;
+      }
+      let body;
+      try {
+        body = fs.readFileSync(entry.file);
+      } catch {
+        continue;
+      }
+      scripts.push({
+        mtimeMs: entry.stat.mtimeMs,
+        path: requestPath,
+        score: designEntryScriptScore(requestPath, body, entry.stat),
+        size: entry.stat.size
+      });
     }
-    if (isDesignIndexStylePath(requestPath)) {
-      styles.push({ mtimeMs: entry.stat.mtimeMs, path: requestPath, size: entry.stat.size });
-      continue;
-    }
-    let body;
-    try {
-      body = fs.readFileSync(entry.file);
-    } catch {
-      continue;
-    }
-    scripts.push({
-      mtimeMs: entry.stat.mtimeMs,
-      path: requestPath,
-      score: designEntryScriptScore(requestPath, body, entry.stat),
-      size: entry.stat.size
-    });
   }
   scripts.sort((a, b) => b.score - a.score || b.mtimeMs - a.mtimeMs || b.size - a.size);
   styles.sort((a, b) => b.mtimeMs - a.mtimeMs || b.size - a.size);
   const assets = {
-    html: "",
+    html: readLocalDesignIndexHtml(assetRoot),
     scriptPath: scripts[0]?.path,
     source: "local",
     stylePath: styles[0]?.path
   };
   return assets.html || assets.scriptPath || assets.stylePath ? assets : undefined;
+}
+
+function localDesignAssetRoots(assetRoot) {
+  return uniqueExistingDirectories([
+    assetRoot,
+    pathModule.join(assetRoot, "assets"),
+    pathModule.join(assetRoot, "design", "assets")
+  ]);
+}
+
+function readLocalDesignIndexHtml(assetRoot) {
+  for (const file of uniquePaths(localDesignIndexHtmlCandidates(assetRoot))) {
+    try {
+      if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
+        continue;
+      }
+      const html = fs.readFileSync(file, "utf8");
+      if (isUsableDesignShellHtml(html)) {
+        return html;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return "";
+}
+
+function localDesignIndexHtmlCandidates(assetRoot) {
+  const candidates = [
+    pathModule.join(assetRoot, "index.html"),
+    pathModule.join(assetRoot, "design", "index.html")
+  ];
+  if (pathModule.basename(assetRoot) === "assets") {
+    candidates.push(pathModule.join(pathModule.dirname(assetRoot), "index.html"));
+  }
+  return candidates;
+}
+
+function uniqueExistingDirectories(paths) {
+  return uniquePaths(paths).filter((directory) => {
+    try {
+      return fs.existsSync(directory) && fs.statSync(directory).isDirectory();
+    } catch {
+      return false;
+    }
+  });
+}
+
+function uniquePaths(paths) {
+  const seen = new Set();
+  const result = [];
+  for (const file of paths) {
+    const normalized = pathModule.resolve(file);
+    if (seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    result.push(normalized);
+  }
+  return result;
 }
 
 function localAssetDirExists(assetDir) {
@@ -9564,8 +9669,61 @@ function encodeUsageStatusResponse() {
   return Buffer.alloc(0);
 }
 
+function encodePrepaidBalanceResponse() {
+  return Buffer.alloc(0);
+}
+
+function encodeProjectPresenceResponse() {
+  return Buffer.concat([
+    protoInt32(1, 1)
+  ]);
+}
+
+function encodeParkedMessageResponse() {
+  return protoEnum(1, PARKED_MESSAGE_STATE_NOT_FOUND);
+}
+
 function encodeIntegrationStatusResponse() {
   return Buffer.alloc(0);
+}
+
+function projectPresencePayload(runtime) {
+  return {
+    accounts: [
+      {
+        accountUuid: runtime.me.accountUuid,
+        displayName: runtime.me.displayName,
+        email: runtime.me.email
+      }
+    ],
+    totalCount: 1
+  };
+}
+
+function prepaidBalancePayload() {
+  return {
+    balance: 0,
+    currency: "USD",
+    prepaidBalance: 0
+  };
+}
+
+function parkedMessagePayload() {
+  return {
+    doneEvent: "",
+    remainingMs: 0,
+    state: "NOT_FOUND",
+    turnEpoch: "0"
+  };
+}
+
+function integrationStatusPayload(rpcName) {
+  const name = String(rpcName || "").replace(/GetStatus$/, "").toLowerCase() || "integration";
+  return {
+    connected: false,
+    integration: name,
+    status: "disconnected"
+  };
 }
 
 function encodeModelPreset(preset) {
@@ -9654,7 +9812,7 @@ function upsertGenericRecord(store, collection, uuid, title, model, data) {
   store.persist();
 }
 
-async function handleDesignRestApi(runtime, method, path, request, requestBody) {
+async function handleDesignRestApi(runtime, method, path, url, request, requestBody) {
   const restPath = normalizeDesignRestPath(path);
 
   if (method === "GET" && restPath === "/v1/design/agents") {
@@ -9702,6 +9860,11 @@ async function handleDesignRestApi(runtime, method, path, request, requestBody) 
       const result = appendDesignAgentMessage(runtime, projectId, parseJsonBody(requestBody));
       return jsonResponse(200, result);
     }
+  }
+
+  const projectEventsMatch = restPath.match(/^\/v1\/design\/projects\/([^/]+)\/events$/);
+  if (method === "GET" && projectEventsMatch) {
+    return designProjectEventsResponse(decodeURIComponent(projectEventsMatch[1]));
   }
 
   if ((method === "GET" || method === "POST") && restPath === "/v1/design/files") {
@@ -9767,6 +9930,9 @@ async function handleDesignRestApi(runtime, method, path, request, requestBody) 
     const filePath = sanitizeProjectFilePath(decodeURIComponent(serveMatch[2]));
     const row = getProjectFileRow(runtime, projectId, filePath);
     if (!row) {
+      if (filePath === DEFAULT_PROJECT_FILE_PATH) {
+        return servePendingDesignPreviewResponse(runtime, projectId, filePath);
+      }
       return jsonResponse(404, { error: { message: `File not found: ${filePath}` } });
     }
     if (method === "HEAD") {
@@ -9825,19 +9991,18 @@ async function handleDesignRestApi(runtime, method, path, request, requestBody) 
     });
   }
 
-  const downloadMatch = restPath.match(/^\/v1\/design\/projects\/([^/]+)\/download$/);
-  if (method === "GET" && downloadMatch) {
+  const downloadMatch = restPath.match(/^\/v1\/design\/projects\/([^/]+)\/download(?:\/(.+))?$/);
+  if ((method === "GET" || method === "HEAD") && downloadMatch) {
     const projectId = decodeURIComponent(downloadMatch[1]);
-    const manifest = listProjectFileRows(runtime, projectId, "").map((row) => ({
-      content_type: row.content_type,
-      path: row.path,
-      size: Buffer.from(row.body_base64 || "", "base64").length,
-      version: row.version
-    }));
-    return textResponse(200, JSON.stringify({ files: manifest, project_id: projectId }, null, 2), {
-      "content-disposition": `attachment; filename="${projectId}.json"`,
-      "content-type": "application/json; charset=utf-8"
-    });
+    const filePath = designDownloadFilePath(downloadMatch[2], url);
+    if (filePath) {
+      const row = getProjectFileRow(runtime, projectId, filePath);
+      if (!row) {
+        return jsonResponse(404, { error: { message: `File not found: ${filePath}` } });
+      }
+      return serveProjectFileDownloadResponse(method, row, filePath);
+    }
+    return serveProjectArchiveDownloadResponse(method, runtime, projectId);
   }
 
   if (method === "POST" && restPath === "/v1/design/drop-suggestions") {
@@ -9948,6 +10113,112 @@ function isDesignRestApiRoutePath(path) {
     /^\/design\/_t\/[^/]+\/v1\/design\//.test(path);
 }
 
+function designProjectEventsResponse(projectId) {
+  return eventStreamResponse(200, async (response) => {
+    await writeResponseChunk(response, Buffer.from("retry: 30000\n\n", "utf8"));
+    await writeResponseChunk(response, Buffer.from(`event: presence\ndata: ${JSON.stringify({ accounts: [], projectId, totalCount: 0 })}\n\n`, "utf8"));
+    await new Promise((resolve) => {
+      let closed = false;
+      let timer;
+      const finish = () => {
+        if (closed) {
+          return;
+        }
+        closed = true;
+        if (timer) {
+          clearInterval(timer);
+        }
+        resolve();
+      };
+      response.on("close", finish);
+      response.on("error", finish);
+      timer = setInterval(() => {
+        if (!closed) {
+          response.write(": keep-alive\n\n");
+        }
+      }, 25_000);
+      setTimeout(finish, 5 * 60 * 1000);
+    });
+  }, {
+    "connection": "keep-alive",
+    "x-accel-buffering": "no"
+  });
+}
+
+function servePendingDesignPreviewResponse(runtime, projectId, filePath) {
+  const previewVersion = projectPreviewVersion(runtime, projectId);
+  const html = injectOmelettePreviewScripts(renderClaudeDesignPendingPreviewHtml(), previewVersion, previewPollUrl(projectId, filePath));
+  return textResponse(200, html, {
+    "cache-control": "no-store",
+    "content-type": "text/html; charset=utf-8",
+    etag: `"ccr-preview-${previewVersion}"`,
+    "x-ccr-preview-version": previewVersion
+  });
+}
+
+function renderClaudeDesignPendingPreviewHtml() {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Claude Design preview pending</title>
+  <style>html,body{margin:0;min-height:100%;background:transparent;color:transparent}</style>
+</head>
+<body></body>
+</html>`;
+}
+
+function designDownloadFilePath(pathSuffix, url) {
+  const suffixPath = safelyDecodeDesignPath(pathSuffix);
+  if (suffixPath) {
+    return suffixPath;
+  }
+  for (const key of ["path", "file", "file_path", "download_path", "asset_path"]) {
+    const queryPath = safelyDecodeDesignPath(url.searchParams.get(key));
+    if (queryPath) {
+      return queryPath;
+    }
+  }
+  return "";
+}
+
+function safelyDecodeDesignPath(value) {
+  const raw = stringValue(value);
+  if (!raw) {
+    return "";
+  }
+  try {
+    return sanitizeProjectFilePath(decodeURIComponent(raw));
+  } catch {
+    return sanitizeProjectFilePath(raw);
+  }
+}
+
+function serveProjectFileDownloadResponse(method, row, filePath) {
+  const body = method === "HEAD" ? Buffer.alloc(0) : Buffer.from(row.body_base64 || "", "base64");
+  const contentType = row.content_type || guessContentType(filePath);
+  return binaryResponse(200, body, {
+    "cache-control": "no-store",
+    "content-disposition": attachmentContentDisposition(pathModule.posix.basename(filePath) || "download"),
+    "content-type": contentType
+  });
+}
+
+function serveProjectArchiveDownloadResponse(method, runtime, projectId) {
+  const rows = listProjectFileRows(runtime, projectId, "");
+  const files = rows.map((row) => ({
+    body: Buffer.from(row.body_base64 || "", "base64"),
+    path: row.path
+  }));
+  const archive = method === "HEAD" ? Buffer.alloc(0) : createZipArchive(files);
+  return binaryResponse(200, archive, {
+    "cache-control": "no-store",
+    "content-disposition": attachmentContentDisposition(`${projectId || "claude-design-project"}.zip`),
+    "content-type": "application/zip"
+  });
+}
+
 function serveProjectFileResponse(runtime, projectId, row, filePath) {
   const body = Buffer.from(row.body_base64 || "", "base64");
   const contentType = row.content_type || guessContentType(filePath);
@@ -9960,7 +10231,30 @@ function serveProjectFileResponse(runtime, projectId, row, filePath) {
     const previewHtml = injectOmelettePreviewScripts(dependencySafeHtml, headers["x-ccr-preview-version"], previewPollUrl(projectId, filePath));
     return textResponse(200, previewHtml, headers);
   }
-  return binaryResponse(200, body, headers);
+  return binaryResponse(200, patchClaudeDesignProjectFileBody(body, filePath, contentType), headers);
+}
+
+function patchClaudeDesignProjectFileBody(body, filePath, contentType) {
+  if (!isDeckStageProjectScript(filePath, contentType)) {
+    return body;
+  }
+  const source = body.toString("utf8");
+  const patched = patchDeckStageThumbnailCloneVisibility(source);
+  return patched === source ? body : Buffer.from(patched, "utf8");
+}
+
+function isDeckStageProjectScript(filePath, contentType) {
+  return /(?:^|\/)deck-stage\.js$/i.test(String(filePath || "")) &&
+    (headerIncludes(contentType, "javascript") || headerIncludes(contentType, "text/plain") || !contentType);
+}
+
+function patchDeckStageThumbnailCloneVisibility(source) {
+  const current = "box-sizing:border-box;overflow:hidden;visibility:visible;opacity:1;";
+  const fixed = "box-sizing:border-box;overflow:hidden;display:block!important;visibility:visible!important;opacity:1!important;";
+  if (source.includes(fixed)) {
+    return source;
+  }
+  return source.replace(current, fixed);
 }
 
 function isHtmlProjectFile(filePath, contentType) {
@@ -13862,15 +14156,59 @@ function readLocalAsset(assetDir, requestPath) {
 
 function localAssetRelativePathCandidates(localRoot, requestPath) {
   const normalizedPath = normalizePath(requestPath);
-  const relativePath = normalizedPath
-    .replace(/^\/ship\//, "")
-    .replace(/^\/design\/assets\//, "")
-    .replace(/^\/assets\//, "")
-    .replace(/^\/design\//, "");
-  if (normalizedPath.startsWith("/design/assets/") && relativePath && !relativePath.includes("/")) {
-    return [relativePath, `v1/${relativePath}`];
+  if (normalizedPath.startsWith("/design/assets/")) {
+    return localAssetPathCandidatesForAssetPath(normalizedPath.slice("/design/assets/".length), "design");
   }
+  if (normalizedPath.startsWith("/ship/assets/")) {
+    return localAssetPathCandidatesForAssetPath(normalizedPath.slice("/ship/assets/".length), "ship");
+  }
+  if (normalizedPath.startsWith("/assets/")) {
+    const assetPath = normalizedPath.slice("/assets/".length);
+    return uniqueRelativePathCandidates([
+      ...localAssetPathCandidatesForAssetPath(assetPath, "design"),
+      ...localAssetPathCandidatesForAssetPath(assetPath, "ship")
+    ]);
+  }
+  if (normalizedPath.startsWith("/ship/")) {
+    const shipPath = normalizedPath.slice("/ship/".length);
+    return uniqueRelativePathCandidates([
+      `ship/${shipPath}`,
+      shipPath
+    ]);
+  }
+  if (normalizedPath.startsWith("/design/")) {
+    const designPath = normalizedPath.slice("/design/".length);
+    return uniqueRelativePathCandidates([
+      `design/${designPath}`,
+      designPath
+    ]);
+  }
+  const relativePath = normalizedPath.replace(/^\//, "");
   return [relativePath];
+}
+
+function localAssetPathCandidatesForAssetPath(assetPath, product) {
+  const normalizedAssetPath = String(assetPath || "").replace(/^\/+/, "");
+  if (!normalizedAssetPath) {
+    return [];
+  }
+  const candidates = [
+    `${product}/assets/${normalizedAssetPath}`,
+    `assets/${normalizedAssetPath}`,
+    normalizedAssetPath
+  ];
+  if (!normalizedAssetPath.includes("/")) {
+    candidates.push(
+      `${product}/assets/v1/${normalizedAssetPath}`,
+      "assets/v1/" + normalizedAssetPath,
+      "v1/" + normalizedAssetPath
+    );
+  }
+  return uniqueRelativePathCandidates(candidates);
+}
+
+function uniqueRelativePathCandidates(candidates) {
+  return Array.from(new Set(candidates.filter(Boolean)));
 }
 
 function isClaudeAppStaticRoutePath(path) {
@@ -14656,8 +14994,9 @@ function renderModulePreloadLinks(paths, lowPriority = false) {
 
 function injectDesignMeIntoHtml(html, me) {
   let nextHtml = html;
-  const meJsonScript = designMeJsonScript(me);
   const meJsonPattern = /<script\b(?=[^>]*\bid=["']omelette-me["'])[^>]*>[\s\S]*?<\/script>/i;
+  const designMe = mergeDesignShellMe(readDesignMePayloadFromHtml(nextHtml), me);
+  const meJsonScript = designMeJsonScript(designMe);
   if (meJsonPattern.test(nextHtml)) {
     nextHtml = nextHtml.replace(meJsonPattern, meJsonScript);
   }
@@ -14674,10 +15013,10 @@ function injectDesignMeIntoHtml(html, me) {
     snippets.push(meJsonScript);
   }
   if (!nextHtml.includes("ccr-claude-design-model-reset")) {
-    snippets.push(designModelPreferenceResetScript(me));
+    snippets.push(designModelPreferenceResetScript(designMe));
   }
   if (!nextHtml.includes("__OMELETTE_ME__")) {
-    snippets.push(designMeGlobalScript(me));
+    snippets.push(designMeGlobalScript(designMe));
   }
   if (earlySnippets.length) {
     nextHtml = injectHtmlAfterHeadOpen(nextHtml, earlySnippets.join("\n        "));
@@ -14686,6 +15025,67 @@ function injectDesignMeIntoHtml(html, me) {
     return nextHtml;
   }
   return injectHtmlAfterBodyOpen(nextHtml, snippets.join("\n        "));
+}
+
+function readDesignMePayloadFromHtml(html) {
+  const match = /<script\b(?=[^>]*\bid=["']omelette-me["'])[^>]*>([\s\S]*?)<\/script>/i.exec(String(html || ""));
+  if (!match) {
+    return undefined;
+  }
+  const text = decodeHtmlJsonText(match[1] || "").trim();
+  const value = parseMaybeJson(text, undefined);
+  return isRecord(value) ? value : undefined;
+}
+
+function mergeDesignShellMe(shellMe, runtimeMe) {
+  const merged = isRecord(runtimeMe) ? { ...runtimeMe } : {};
+  if (!isRecord(shellMe)) {
+    return merged;
+  }
+  if (typeof shellMe.hasProjects === "boolean" && merged.hasProjects === undefined) {
+    merged.hasProjects = shellMe.hasProjects;
+  }
+  const shellGrowthbookPayload = stringValue(shellMe.growthbookPayload);
+  const runtimeGrowthbookPayload = stringValue(merged.growthbookPayload);
+  if (shellGrowthbookPayload) {
+    merged.growthbookPayload = mergeGrowthbookPayloads(shellGrowthbookPayload, runtimeGrowthbookPayload);
+  }
+  return merged;
+}
+
+function mergeGrowthbookPayloads(shellPayload, runtimePayload) {
+  const shell = parseMaybeJson(shellPayload, {});
+  const runtime = parseMaybeJson(runtimePayload, {});
+  if (!isRecord(shell)) {
+    return stringValue(runtimePayload) || "{}";
+  }
+  if (!isRecord(runtime)) {
+    return JSON.stringify(shell);
+  }
+  return JSON.stringify({
+    ...shell,
+    ...runtime,
+    features: {
+      ...(isRecord(shell.features) ? shell.features : {}),
+      ...(isRecord(runtime.features) ? runtime.features : {})
+    }
+  });
+}
+
+function decodeHtmlJsonText(value) {
+  return String(value || "")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#34;/g, "\"")
+    .replace(/&#x22;/gi, "\"")
+    .replace(/&amp;/g, "&")
+    .replace(/&#38;/g, "&")
+    .replace(/&#x26;/gi, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&#60;/g, "<")
+    .replace(/&#x3c;/gi, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#62;/g, ">")
+    .replace(/&#x3e;/gi, ">");
 }
 
 function injectClaudeShipEntrypointIntoHtml(html) {
@@ -15013,6 +15413,418 @@ try {
       var frameIds = typeof WeakMap === 'function' ? new WeakMap() : null;
       var nextFrameId = 1;
       var blankPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=';
+      function dataUrlToBytes(dataUrl) {
+        try {
+          var base64 = String(dataUrl || blankPng).split(',', 2)[1] || '';
+          var raw = atob(base64);
+          var bytes = new Uint8Array(raw.length);
+          for (var i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+          return bytes;
+        } catch (e) {
+          return new Uint8Array(0);
+        }
+      }
+      function nativeImageFromDataUrl(dataUrl) {
+        var url = dataUrl || blankPng;
+        return {
+          toDataURL: function() { return url; },
+          toPNG: function() { return dataUrlToBytes(url); }
+        };
+      }
+      function serializableCaptureRect(rect) {
+        return {
+          height: Number(rect && rect.height) || 0,
+          width: Number(rect && rect.width) || 0,
+          x: Number(rect && rect.x) || 0,
+          y: Number(rect && rect.y) || 0
+        };
+      }
+      function isCapturedPngDataUrl(value) {
+        return typeof value === 'string' && /^data:image\\/png;base64,/i.test(value) && value !== blankPng;
+      }
+      function numericRectValue(rect, key, fallback) {
+        var value = rect && Number(rect[key]);
+        return Number.isFinite(value) && value > 0 ? value : fallback;
+      }
+      function waitForFramePaint(win) {
+        return new Promise(function(resolve) {
+          try {
+            var raf = win && win.requestAnimationFrame ? win.requestAnimationFrame.bind(win) : root.requestAnimationFrame && root.requestAnimationFrame.bind(root);
+            if (!raf) {
+              setTimeout(resolve, 0);
+              return;
+            }
+            raf(function() { raf(function() { resolve(); }); });
+          } catch (e) {
+            setTimeout(resolve, 0);
+          }
+        });
+      }
+      function frameCaptureViewport(frame, win, doc, rect) {
+        var rootElement = doc && doc.documentElement;
+        var body = doc && doc.body;
+        var frameRect;
+        try { frameRect = frame.getBoundingClientRect(); } catch (e) { frameRect = null; }
+        var viewportWidth = Math.max(
+          1,
+          Math.round(
+            Number(win && win.innerWidth) ||
+            Number(rootElement && rootElement.clientWidth) ||
+            Number(body && body.clientWidth) ||
+            Number(frame && frame.clientWidth) ||
+            Number(frameRect && frameRect.width) ||
+            1280
+          )
+        );
+        var viewportHeight = Math.max(
+          1,
+          Math.round(
+            Number(win && win.innerHeight) ||
+            Number(rootElement && rootElement.clientHeight) ||
+            Number(body && body.clientHeight) ||
+            Number(frame && frame.clientHeight) ||
+            Number(frameRect && frameRect.height) ||
+            720
+          )
+        );
+        var pageWidth = Math.max(
+          viewportWidth,
+          Math.round(Number(rootElement && rootElement.scrollWidth) || 0),
+          Math.round(Number(body && body.scrollWidth) || 0)
+        );
+        var pageHeight = Math.max(
+          viewportHeight,
+          Math.round(Number(rootElement && rootElement.scrollHeight) || 0),
+          Math.round(Number(body && body.scrollHeight) || 0)
+        );
+        var x = Math.max(0, Math.round(Number(rect && rect.x) || 0));
+        var y = Math.max(0, Math.round(Number(rect && rect.y) || 0));
+        var width = Math.max(1, Math.round(numericRectValue(rect, 'width', viewportWidth - x)));
+        var height = Math.max(1, Math.round(numericRectValue(rect, 'height', viewportHeight - y)));
+        return {
+          height: Math.min(height, Math.max(1, pageHeight - y)),
+          pageHeight: pageHeight,
+          pageWidth: pageWidth,
+          width: Math.min(width, Math.max(1, pageWidth - x)),
+          x: x,
+          y: y
+        };
+      }
+      function prepareCaptureClone(doc, size) {
+        var clone = doc.documentElement.cloneNode(true);
+        clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+        try {
+          var scripts = clone.querySelectorAll('script');
+          for (var i = 0; i < scripts.length; i++) scripts[i].remove();
+        } catch (e) {}
+        var head = clone.querySelector('head');
+        if (!head) {
+          head = doc.createElement('head');
+          clone.insertBefore(head, clone.firstChild);
+        }
+        var base = doc.createElement('base');
+        base.setAttribute('href', doc.baseURI || doc.location && doc.location.href || '');
+        head.insertBefore(base, head.firstChild);
+        var style = doc.createElement('style');
+        style.textContent = 'html,body{margin:0!important;width:' + size.pageWidth + 'px!important;min-width:' + size.pageWidth + 'px!important;height:' + size.pageHeight + 'px!important;min-height:' + size.pageHeight + 'px!important;overflow:hidden!important;}*{animation:none!important;transition:none!important;}';
+        head.appendChild(style);
+        return clone;
+      }
+      function capturedStyleSheetText(sheet) {
+        try {
+          var rules = sheet && sheet.cssRules;
+          if (!rules) return '';
+          var text = '';
+          for (var i = 0; i < rules.length; i++) {
+            text += rules[i].cssText + '\\n';
+          }
+          return text;
+        } catch (e) {
+          return '';
+        }
+      }
+      function capturedShadowStyleText(shadowRoot) {
+        var text = '';
+        try {
+          var sheets = shadowRoot && shadowRoot.adoptedStyleSheets || [];
+          for (var i = 0; i < sheets.length; i++) {
+            text += capturedStyleSheetText(sheets[i]);
+          }
+        } catch (e) {}
+        return text
+          .replace(/:host\\(([^)]*)\\)/g, '[data-ccr-shadow-host]$1')
+          .replace(/:host\\b/g, '[data-ccr-shadow-host]');
+      }
+      function appendCapturedShadowStyle(shadowRoot, cloneHost, doc) {
+        var text = capturedShadowStyleText(shadowRoot);
+        if (!text) return;
+        var style = doc.createElement('style');
+        style.setAttribute('data-ccr-captured-shadow-styles', 'true');
+        style.textContent = text;
+        cloneHost.appendChild(style);
+      }
+      function inlineOpenShadowRoots(sourceNode, cloneNode, doc) {
+        if (!sourceNode || !cloneNode) return;
+        if (sourceNode.nodeType === 1 && sourceNode.shadowRoot) {
+          while (cloneNode.firstChild) cloneNode.removeChild(cloneNode.firstChild);
+          try { cloneNode.setAttribute('data-ccr-shadow-host', 'true'); } catch (e) {}
+          appendCapturedShadowStyle(sourceNode.shadowRoot, cloneNode, doc);
+          var shadowChildren = Array.prototype.slice.call(sourceNode.shadowRoot.childNodes || []);
+          var shadowClones = [];
+          for (var i = 0; i < shadowChildren.length; i++) {
+            var shadowClone = shadowChildren[i].cloneNode(true);
+            shadowClones.push(shadowClone);
+            cloneNode.appendChild(shadowClone);
+          }
+          for (var j = 0; j < shadowChildren.length; j++) {
+            inlineOpenShadowRoots(shadowChildren[j], shadowClones[j], doc);
+          }
+          return;
+        }
+        var sourceChildren = Array.prototype.slice.call(sourceNode.childNodes || []);
+        var cloneChildren = Array.prototype.slice.call(cloneNode.childNodes || []);
+        var count = Math.min(sourceChildren.length, cloneChildren.length);
+        for (var k = 0; k < count; k++) {
+          inlineOpenShadowRoots(sourceChildren[k], cloneChildren[k], doc);
+        }
+      }
+      function captureFrameDataUrl(frame, rect) {
+        return captureFrameDataUrlFromParent(frame, rect).then(function(dataUrl) {
+          if (isCapturedPngDataUrl(dataUrl)) return dataUrl;
+          return captureFrameDataUrlViaEval(frame, rect).then(function(evalDataUrl) {
+            return isCapturedPngDataUrl(evalDataUrl) ? evalDataUrl : dataUrl;
+          }, function() {
+            return dataUrl;
+          });
+        }, function() {
+          return captureFrameDataUrlViaEval(frame, rect);
+        });
+      }
+      function captureFrameDataUrlViaEval(frame, rect) {
+        var code = '(' + captureCurrentDocumentDataUrl.toString() + ')(' +
+          JSON.stringify(serializableCaptureRect(rect || {})) + ',' +
+          JSON.stringify(blankPng) +
+          ')';
+        return postEval(frame, code, 5000);
+      }
+      function captureFrameDataUrlFromParent(frame, rect) {
+        return new Promise(function(resolve) {
+          try {
+            var win = frameSource(frame);
+            var doc = win && win.document;
+            if (!doc || !doc.documentElement) {
+              resolve(blankPng);
+              return;
+            }
+            var size = frameCaptureViewport(frame, win, doc, rect || {});
+            var clone = prepareCaptureClone(doc, size);
+            inlineOpenShadowRoots(doc.documentElement, clone, doc);
+            var serialized = new XMLSerializer().serializeToString(clone);
+            var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + size.width + '" height="' + size.height + '" viewBox="0 0 ' + size.width + ' ' + size.height + '"><foreignObject x="' + (-size.x) + '" y="' + (-size.y) + '" width="' + size.pageWidth + '" height="' + size.pageHeight + '">' + serialized + '</foreignObject></svg>';
+            var image = new Image();
+            var settled = false;
+            function finish(value) {
+              if (settled) return;
+              settled = true;
+              resolve(value || blankPng);
+            }
+            var timer = setTimeout(function() { finish(blankPng); }, 3000);
+            image.onload = function() {
+              clearTimeout(timer);
+              try {
+                var scale = Math.max(1, Math.min(2, Number(root.devicePixelRatio) || 1));
+                var maxPixels = 2000000;
+                while (size.width * size.height * scale * scale > maxPixels && scale > 1) {
+                  scale = Math.max(1, scale / 2);
+                }
+                var canvas = document.createElement('canvas');
+                canvas.width = Math.max(1, Math.round(size.width * scale));
+                canvas.height = Math.max(1, Math.round(size.height * scale));
+                var ctx = canvas.getContext('2d');
+                if (!ctx) {
+                  finish(blankPng);
+                  return;
+                }
+                ctx.scale(scale, scale);
+                ctx.drawImage(image, 0, 0);
+                finish(canvas.toDataURL('image/png'));
+              } catch (e) {
+                finish(blankPng);
+              }
+            };
+            image.onerror = function() {
+              clearTimeout(timer);
+              finish(blankPng);
+            };
+            image.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+          } catch (e) {
+            resolve(blankPng);
+          }
+        });
+      }
+      function captureCurrentDocumentDataUrl(rect, fallbackPng) {
+        return new Promise(function(resolve) {
+          try {
+            function cssTextFromStyleSheet(sheet) {
+              try {
+                var rules = sheet && sheet.cssRules;
+                if (!rules) return '';
+                var text = '';
+                for (var i = 0; i < rules.length; i++) {
+                  text += rules[i].cssText + '\\n';
+                }
+                return text;
+              } catch (e) {
+                return '';
+              }
+            }
+            function shadowStyleText(shadowRoot) {
+              var text = '';
+              try {
+                var sheets = shadowRoot && shadowRoot.adoptedStyleSheets || [];
+                for (var i = 0; i < sheets.length; i++) {
+                  text += cssTextFromStyleSheet(sheets[i]);
+                }
+              } catch (e) {}
+              return text
+                .replace(/:host\\(([^)]*)\\)/g, '[data-ccr-shadow-host]$1')
+                .replace(/:host\\b/g, '[data-ccr-shadow-host]');
+            }
+            function appendShadowStyle(shadowRoot, cloneHost) {
+              var text = shadowStyleText(shadowRoot);
+              if (!text) return;
+              var style = doc.createElement('style');
+              style.setAttribute('data-ccr-captured-shadow-styles', 'true');
+              style.textContent = text;
+              cloneHost.appendChild(style);
+            }
+            function inlineShadows(sourceNode, cloneNode) {
+              if (!sourceNode || !cloneNode) return;
+              if (sourceNode.nodeType === 1 && sourceNode.shadowRoot) {
+                while (cloneNode.firstChild) cloneNode.removeChild(cloneNode.firstChild);
+                try { cloneNode.setAttribute('data-ccr-shadow-host', 'true'); } catch (e) {}
+                appendShadowStyle(sourceNode.shadowRoot, cloneNode);
+                var shadowChildren = Array.prototype.slice.call(sourceNode.shadowRoot.childNodes || []);
+                var shadowClones = [];
+                for (var i = 0; i < shadowChildren.length; i++) {
+                  var shadowClone = shadowChildren[i].cloneNode(true);
+                  shadowClones.push(shadowClone);
+                  cloneNode.appendChild(shadowClone);
+                }
+                for (var j = 0; j < shadowChildren.length; j++) {
+                  inlineShadows(shadowChildren[j], shadowClones[j]);
+                }
+                return;
+              }
+              var sourceChildren = Array.prototype.slice.call(sourceNode.childNodes || []);
+              var cloneChildren = Array.prototype.slice.call(cloneNode.childNodes || []);
+              var count = Math.min(sourceChildren.length, cloneChildren.length);
+              for (var k = 0; k < count; k++) {
+                inlineShadows(sourceChildren[k], cloneChildren[k]);
+              }
+            }
+            var doc = document;
+            var rootElement = doc && doc.documentElement;
+            var body = doc && doc.body;
+            if (!rootElement) {
+              resolve(fallbackPng);
+              return;
+            }
+            var viewportWidth = Math.max(
+              1,
+              Math.round(
+                Number(window.innerWidth) ||
+                Number(rootElement.clientWidth) ||
+                Number(body && body.clientWidth) ||
+                1280
+              )
+            );
+            var viewportHeight = Math.max(
+              1,
+              Math.round(
+                Number(window.innerHeight) ||
+                Number(rootElement.clientHeight) ||
+                Number(body && body.clientHeight) ||
+                720
+              )
+            );
+            var pageWidth = Math.max(
+              viewportWidth,
+              Math.round(Number(rootElement.scrollWidth) || 0),
+              Math.round(Number(body && body.scrollWidth) || 0)
+            );
+            var pageHeight = Math.max(
+              viewportHeight,
+              Math.round(Number(rootElement.scrollHeight) || 0),
+              Math.round(Number(body && body.scrollHeight) || 0)
+            );
+            var x = Math.max(0, Math.round(Number(rect && rect.x) || 0));
+            var y = Math.max(0, Math.round(Number(rect && rect.y) || 0));
+            var width = Math.max(1, Math.round(Number(rect && rect.width) > 0 ? Number(rect.width) : viewportWidth - x));
+            var height = Math.max(1, Math.round(Number(rect && rect.height) > 0 ? Number(rect.height) : viewportHeight - y));
+            width = Math.min(width, Math.max(1, pageWidth - x));
+            height = Math.min(height, Math.max(1, pageHeight - y));
+            var clone = rootElement.cloneNode(true);
+            clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+            try {
+              var scripts = clone.querySelectorAll('script');
+              for (var i = 0; i < scripts.length; i++) scripts[i].remove();
+            } catch (e) {}
+            var head = clone.querySelector('head');
+            if (!head) {
+              head = doc.createElement('head');
+              clone.insertBefore(head, clone.firstChild);
+            }
+            var base = doc.createElement('base');
+            base.setAttribute('href', doc.baseURI || location.href || '');
+            head.insertBefore(base, head.firstChild);
+            var style = doc.createElement('style');
+            style.textContent = 'html,body{margin:0!important;width:' + pageWidth + 'px!important;min-width:' + pageWidth + 'px!important;height:' + pageHeight + 'px!important;min-height:' + pageHeight + 'px!important;overflow:hidden!important;}*{animation:none!important;transition:none!important;}';
+            head.appendChild(style);
+            inlineShadows(rootElement, clone);
+            var serialized = new XMLSerializer().serializeToString(clone);
+            var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '"><foreignObject x="' + (-x) + '" y="' + (-y) + '" width="' + pageWidth + '" height="' + pageHeight + '">' + serialized + '</foreignObject></svg>';
+            var image = new Image();
+            var settled = false;
+            function finish(value) {
+              if (settled) return;
+              settled = true;
+              resolve(value || fallbackPng);
+            }
+            var timer = setTimeout(function() { finish(fallbackPng); }, 3000);
+            image.onload = function() {
+              clearTimeout(timer);
+              try {
+                var scale = Math.max(1, Math.min(2, Number(window.devicePixelRatio) || 1));
+                var maxPixels = 2000000;
+                while (width * height * scale * scale > maxPixels && scale > 1) {
+                  scale = Math.max(1, scale / 2);
+                }
+                var canvas = doc.createElement('canvas');
+                canvas.width = Math.max(1, Math.round(width * scale));
+                canvas.height = Math.max(1, Math.round(height * scale));
+                var ctx = canvas.getContext('2d');
+                if (!ctx) {
+                  finish(fallbackPng);
+                  return;
+                }
+                ctx.scale(scale, scale);
+                ctx.drawImage(image, 0, 0);
+                finish(canvas.toDataURL('image/png'));
+              } catch (e) {
+                finish(fallbackPng);
+              }
+            };
+            image.onerror = function() {
+              clearTimeout(timer);
+              finish(fallbackPng);
+            };
+            image.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+          } catch (e) {
+            resolve(fallbackPng);
+          }
+        });
+      }
       function isFrame(node) {
         if (!node || node.nodeType !== 1) return false;
         var tag = String(node.tagName || '').toLowerCase();
@@ -15281,17 +16093,12 @@ try {
           };
         }
         if (typeof proto.capturePage !== 'function') {
-          proto.capturePage = function() {
-            return Promise.resolve({
-              toDataURL: function() { return blankPng; },
-              toPNG: function() {
-                try {
-                  var raw = atob(blankPng.split(',')[1]);
-                  var bytes = new Uint8Array(raw.length);
-                  for (var i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-                  return bytes;
-                } catch (e) { return new Uint8Array(0); }
-              }
+          proto.capturePage = function(rect) {
+            var frame = this;
+            return waitForFramePaint(frameSource(frame)).then(function() {
+              return captureFrameDataUrl(frame, rect);
+            }).then(nativeImageFromDataUrl, function() {
+              return nativeImageFromDataUrl(blankPng);
             });
           };
         }
@@ -15892,6 +16699,21 @@ function escapeJsonForScript(value) {
 
 function escapeHtmlAttribute(value) {
   return String(value).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
+function attachmentContentDisposition(fileName) {
+  const basename = pathModule.posix.basename(sanitizeProjectFilePath(fileName) || "download") || "download";
+  const fallback = basename
+    .replace(/[^\x20-\x7e]+/g, "_")
+    .replace(/["\\;\r\n]/g, "_")
+    .trim() || "download";
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeRfc5987ValueChars(basename)}`;
+}
+
+function encodeRfc5987ValueChars(value) {
+  return encodeURIComponent(value).replace(/['()*]/g, (char) =>
+    `%${char.charCodeAt(0).toString(16).toUpperCase()}`
+  );
 }
 
 function escapeRegExp(value) {

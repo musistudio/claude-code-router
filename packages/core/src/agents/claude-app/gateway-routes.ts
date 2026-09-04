@@ -1,6 +1,8 @@
 import type { AppConfig } from "@ccr/core/contracts/app";
-import { availableGatewayModelIds, normalizeProfileScopeValue } from "@ccr/core/contracts/app";
+import { availableGatewayModelIds, effectiveContextWindowPercentFor, normalizeProfileScopeValue } from "@ccr/core/contracts/app";
+import { findModelCatalogEntry, findProviderModelCatalogEntry, type ModelCatalogEntry } from "@ccr/core/gateway/model-catalog";
 import { modelRegistryForConfig } from "@ccr/core/routing/model-registry";
+import { resolveUsageModelAttribution } from "@ccr/core/usage/model-attribution";
 
 export const CLAUDE_APP_ONE_MILLION_CONTEXT_SUFFIX = "[1m]";
 const CLAUDE_APP_ENCODED_ROUTE_PREFIX = "anthropic/claude-ccr-h";
@@ -15,6 +17,7 @@ export type ClaudeAppGatewayModelRoute = {
 };
 
 export type ClaudeAppGatewayModelRouteOptions = {
+  defaultTargetModel?: string;
   displayName?: (model: string) => string | undefined;
   supportsOneMillionContext?: (model: string) => boolean;
 };
@@ -26,21 +29,26 @@ export type ClaudeAppGatewayInferenceModel = {
 };
 
 export function inferClaudeAppGatewayTargetModel(
-  config: Pick<AppConfig, "Providers" | "profile" | "virtualModelProfiles">
+  config: Pick<AppConfig, "Providers" | "profile" | "virtualModelProfiles">,
+  options: Pick<ClaudeAppGatewayModelRouteOptions, "defaultTargetModel"> = {}
 ): string | undefined {
+  const defaultModel = options.defaultTargetModel?.trim();
+  const resolvedDefaultModel = defaultModel
+    ? canonicalClaudeAppGatewayTargetModel(defaultModel, config)
+    : undefined;
   const profileModel = inferGlobalClaudeProfileModel(config);
   const resolvedProfileModel = profileModel
     ? canonicalClaudeAppGatewayTargetModel(profileModel, config)
     : undefined;
-  return resolvedProfileModel ?? availableGatewayModelIds(config)[0];
+  return resolvedDefaultModel ?? resolvedProfileModel ?? availableGatewayModelIds(config)[0];
 }
 
 export function buildClaudeAppGatewayModelRoutes(
   config: Pick<AppConfig, "Providers" | "profile" | "virtualModelProfiles">,
   options: ClaudeAppGatewayModelRouteOptions = {}
 ): ClaudeAppGatewayModelRoute[] {
-  const targetModels = claudeAppGatewayTargetModels(config);
-  const displayNames = claudeAppGatewayDisplayNames(targetModels, options);
+  const targetModels = claudeAppGatewayTargetModels(config, options);
+  const displayNames = claudeAppGatewayDisplayNames(targetModels, config, options);
   const configuredTargetKeys = new Set(targetModels.map((model) =>
     stripClaudeAppGatewayOneMillionContextSuffix(model).toLowerCase()
   ));
@@ -84,7 +92,7 @@ export function resolveClaudeAppGatewayRouteModel(
   const normalized = model.trim().toLowerCase();
   const decodedRouteModel = decodeClaudeAppGatewayRouteId(normalized);
   if (decodedRouteModel) {
-    const decodedTarget = claudeAppGatewayTargetModels(config).find((targetModel) =>
+    const decodedTarget = claudeAppGatewayTargetModels(config, options).find((targetModel) =>
       stripClaudeAppGatewayOneMillionContextSuffix(targetModel).toLowerCase() === decodedRouteModel.toLowerCase()
     );
     if (decodedTarget) {
@@ -131,8 +139,11 @@ function inferGlobalClaudeProfileModel(config: Pick<AppConfig, "profile">): stri
   )?.model.trim() ?? "";
 }
 
-function claudeAppGatewayTargetModels(config: Pick<AppConfig, "Providers" | "profile" | "virtualModelProfiles">): string[] {
-  const defaultTargetModel = inferClaudeAppGatewayTargetModel(config);
+function claudeAppGatewayTargetModels(
+  config: Pick<AppConfig, "Providers" | "profile" | "virtualModelProfiles">,
+  options: Pick<ClaudeAppGatewayModelRouteOptions, "defaultTargetModel"> = {}
+): string[] {
+  const defaultTargetModel = inferClaudeAppGatewayTargetModel(config, options);
 
   return uniqueStrings([
     ...(defaultTargetModel ? [defaultTargetModel] : []),
@@ -165,14 +176,34 @@ function claudeAppGatewaySupportsOneMillionContext(
   }
 
   const providerOverride = claudeAppGatewayProviderSupportsOneMillionContext(baseModel, config);
-  return providerOverride ?? Boolean(options.supportsOneMillionContext?.(baseModel));
+  if (providerOverride !== undefined) {
+    return providerOverride;
+  }
+  const catalogEntry = claudeAppGatewayCatalogEntry(baseModel, config);
+  const physicalSelector = claudeAppGatewayPhysicalModelSelector(baseModel, config);
+  return Boolean(
+    catalogEntry?.limits?.supports1MContext ||
+    options.supportsOneMillionContext?.(physicalSelector ?? baseModel) ||
+    (physicalSelector && physicalSelector !== baseModel && options.supportsOneMillionContext?.(baseModel))
+  );
+}
+
+function claudeAppGatewayCatalogEntry(
+  model: string,
+  config: Pick<AppConfig, "Providers" | "virtualModelProfiles">
+): ModelCatalogEntry | undefined {
+  const resolved = claudeAppGatewayResolvedProviderModel(model, config);
+  if (!resolved) {
+    return findModelCatalogEntry(model);
+  }
+  return findProviderModelCatalogEntry(resolved.provider, resolved.model, [model]);
 }
 
 function claudeAppGatewayProviderSupportsOneMillionContext(
   model: string,
   config: Pick<AppConfig, "Providers" | "virtualModelProfiles">
 ): boolean | undefined {
-  const resolved = modelRegistryForConfig(config).resolveProviderModel(model);
+  const resolved = claudeAppGatewayResolvedProviderModel(model, config);
   if (!resolved) {
     return undefined;
   }
@@ -184,19 +215,41 @@ function claudeAppGatewayProviderSupportsOneMillionContext(
   if (!contextWindow) {
     return undefined;
   }
-  const effectivePercent = percentage(metadata?.effectiveContextWindowPercent) ?? 100;
+  const effectivePercent = effectiveContextWindowPercentFor(metadata) ?? 100;
   return Math.floor((contextWindow * effectivePercent) / 100) >= 1_000_000;
+}
+
+function claudeAppGatewayPhysicalModelSelector(
+  model: string,
+  config: Pick<AppConfig, "Providers" | "virtualModelProfiles">
+): string | undefined {
+  const resolved = claudeAppGatewayResolvedProviderModel(model, config);
+  return resolved ? `${resolved.provider.name}/${resolved.model}` : undefined;
+}
+
+function claudeAppGatewayResolvedProviderModel(
+  model: string,
+  config: Pick<AppConfig, "Providers" | "virtualModelProfiles">
+) {
+  const registry = modelRegistryForConfig(config);
+  const direct = registry.resolveProviderModel(model);
+  if (direct) {
+    return direct;
+  }
+
+  const attribution = resolveUsageModelAttribution(config, model);
+  if (!attribution.provider || !attribution.model) {
+    return undefined;
+  }
+  const resolved = registry.resolve(`${attribution.provider}/${attribution.model}`);
+  return resolved?.kind === "provider"
+    ? { model: resolved.model, provider: resolved.provider }
+    : undefined;
 }
 
 function positiveInteger(value: number | undefined): number | undefined {
   return value !== undefined && Number.isFinite(value) && value > 0
     ? Math.trunc(value)
-    : undefined;
-}
-
-function percentage(value: number | undefined): number | undefined {
-  return value !== undefined && Number.isFinite(value) && value > 0 && value <= 100
-    ? value
     : undefined;
 }
 
@@ -263,7 +316,7 @@ function encodeClaudeAppGatewayRouteModel(model: string): string {
   return Buffer.from(stripClaudeAppGatewayOneMillionContextSuffix(model), "utf8").toString("hex");
 }
 
-function decodeClaudeAppGatewayRouteId(routeId: string): string | undefined {
+export function decodeClaudeAppGatewayRouteId(routeId: string): string | undefined {
   const normalized = stripClaudeAppGatewayOneMillionContextSuffix(routeId).toLowerCase();
   const match = /^anthropic\/claude-ccr(?:\d+)?-h([0-9a-f]+)$/.exec(normalized);
   const encoded = match?.[1];
@@ -303,13 +356,15 @@ function claudeAppGatewayRouteMatchIds(route: ClaudeAppGatewayModelRoute): strin
 
 function claudeAppGatewayDisplayNames(
   models: string[],
+  config: Pick<AppConfig, "Providers" | "virtualModelProfiles">,
   options: ClaudeAppGatewayModelRouteOptions
 ): string[] {
   const baseNames = models.map((model) => {
     const targetModel = stripClaudeAppGatewayOneMillionContextSuffix(model);
+    const catalogDisplayName = claudeAppGatewayProviderCatalogDisplayName(targetModel, config);
     return claudeAppGatewayDisplayNameWithProvider(
       targetModel,
-      options.displayName?.(targetModel) ?? claudeAppGatewayBaseDisplayName(targetModel)
+      options.displayName?.(targetModel) ?? catalogDisplayName ?? claudeAppGatewayBaseDisplayName(targetModel)
     );
   });
   const counts = new Map<string, number>();
@@ -328,6 +383,17 @@ function claudeAppGatewayDisplayNames(
     duplicateIndexes.set(key, duplicateIndex);
     return `${baseName} #${duplicateIndex}`;
   });
+}
+
+function claudeAppGatewayProviderCatalogDisplayName(
+  model: string,
+  config: Pick<AppConfig, "Providers" | "virtualModelProfiles">
+): string | undefined {
+  const resolved = modelRegistryForConfig(config).resolve(model);
+  if (resolved?.kind !== "provider") {
+    return undefined;
+  }
+  return findProviderModelCatalogEntry(resolved.provider, resolved.model, [model])?.displayName;
 }
 
 function claudeAppGatewayBaseDisplayName(model: string): string {

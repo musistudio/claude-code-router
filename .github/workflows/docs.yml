@@ -26,6 +26,16 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      - name: Set up workspace Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install workspace dependencies
+        run: npm ci --ignore-scripts
+
       - name: Build and upload docs
         uses: withastro/action@v6
         env:

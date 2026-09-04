@@ -1,11 +1,11 @@
 ---
-title: Custom MCP Tool
-pageTitle: Custom MCP Tool
+title: Custom MCP tool
+pageTitle: Custom MCP tool
 eyebrow: Fusion
-lead: Connect built-in, local, or remote MCP tools to a Fusion model.
+lead: Connect built-in, local, or remote MCP tools to a Fusion model, including the built-in image and video generation tools.
 ---
 
-## Entry Point
+## Entry point
 
 Choose a built-in tool under **Tools**, or click **Add custom MCP** to connect a custom service.
 
@@ -15,17 +15,17 @@ Custom MCP supports:
 - **streamable-http / sse**: remote MCP services.
 - **Discover tools**: read tools exposed by an MCP server.
 
-## Image and Video Generation
+## Image and video generation
 
 Media is exposed as two ordinary built-in Fusion tools: **Image generation** and **Video generation**. They behave like the built-in search tool, do not belong to ToolHub, and do not create a separate section on the Fusion page.
 
 Fusion tool loops do not have a turn-count or tool-call-count limit. Request timeout and client cancellation still apply.
 
-Each tool has one model selector:
+Each tool has one primary model selector, with optional retries and fallback model selectors:
 
 - Selecting `Provider/model` sends the request through ai-gateway, which applies the configured endpoint, active credential, extra headers, and extra body. The media tool never asks for a separate xAI API key.
 - An imported Grok Agent automatically contributes `grok-imagine-image-quality` and `grok-imagine-video`. ai-gateway reuses its existing OAuth login to access `api.x.ai`; Grok CLI is not started.
-- Image and video models are independent, and separate Fusion profiles may bind different media models.
+- Image and video models are independent. Their retry counts and fallback models are also independent, and separate Fusion profiles may bind different media models.
 
 To configure media:
 
@@ -36,7 +36,7 @@ To configure media:
 
 CCR calls providers through ai-gateway's generic media protocol: `images/generations` and `images/edits` for images, and `videos/generations` plus `videos/{id}` for videos. The selectors show provider models with a declared or detected matching media capability; Grok API is one supported implementation.
 
-## Runtime Tools
+## Runtime tools
 
 CCR creates profile-specific runtime tool names when the Fusion model is saved. This prevents model bindings from colliding across Fusion profiles.
 
@@ -55,7 +55,7 @@ Artifacts are stored in CCR's private data directory and include a local path, M
 
 Local image inputs still undergo canonical-path, file-signature, and size checks. A scoped current working directory, the system temporary directory, and the CCR config directory are allowed by default. Filesystem roots, the user home directory, and directories above the user home are never trusted implicitly; add an explicit `allowedInputRoots` entry when broader access is intentional. The UI does not expose an “Allowed image roots” field.
 
-To connect an MCP client directly instead of using Fusion:
+To connect an MCP client directly:
 
 ```text
 http://127.0.0.1:3456/__ccr/media/mcp

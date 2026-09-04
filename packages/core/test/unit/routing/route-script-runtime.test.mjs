@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { ROUTER_SCRIPT_MAX_SOURCE_BYTES } from "@ccr/core/contracts/app.ts";
 import { gatewayService } from "@ccr/core/gateway/application/gateway-service.ts";
 import { ClaudeCodeRouterPlugin } from "@ccr/core/gateway/claude-code-router-plugin.ts";
 import { buildRouteScriptInput } from "@ccr/core/routing/route-script-context.ts";
@@ -134,6 +135,21 @@ test("route script input derives every documented routing summary field", () => 
   });
 });
 
+test("route script input uses the provided profile id instead of parsing the API key slug", () => {
+  const input = buildRouteScriptInput({
+    body: { model: "Provider/alpha" },
+    headers: { "X-Auth-Api-Key-Id": "profile:Claude-Work-Profile" },
+    log: console,
+    method: "POST",
+    url: "/v1/messages"
+  }, {
+    profileId: "Claude Work/Profile"
+  });
+
+  assert.equal(input.apiKeyId, "profile:Claude-Work-Profile");
+  assert.equal(input.profileId, "Claude Work/Profile");
+});
+
 test("route scripts receive frozen per-request input and a stable hash helper", async () => {
   const runtime = new RouteScriptRuntime({ workerCount: 1, workerFile });
   const script = routeScript(`
@@ -234,13 +250,13 @@ test("route script validation rejects invalid metadata, paths, content, and limi
   const cases = [
     [{ ...valid, apiVersion: 2 }, /unsupported route script api or language/i],
     [{ ...valid, language: "typescript" }, /unsupported route script api or language/i],
-    [{ ...valid, file: undefined, source: " " }, /between 1 and 65536 bytes/i],
+    [{ ...valid, file: undefined, source: " " }, new RegExp(`between 1 and ${ROUTER_SCRIPT_MAX_SOURCE_BYTES} bytes`, "i")],
     [{ ...valid, file: `${valid.file}.txt` }, /\.js, \.mjs, or \.cjs extension/i],
     [{ ...valid, timeoutMs: 9 }, /between 10 and 30000 ms/i],
     [{ ...valid, timeoutMs: 30001 }, /between 10 and 30000 ms/i],
     [{ ...valid, file: path.join(routeScriptDirectory, "missing.js") }, /unable to read route script file/i],
     [{ ...valid, file: directoryFile }, /is not a file/i],
-    [routeScript("x".repeat(64 * 1024 + 1)), /exceeds 65536 bytes/i]
+    [routeScript("x".repeat(ROUTER_SCRIPT_MAX_SOURCE_BYTES + 1)), new RegExp(`exceeds ${ROUTER_SCRIPT_MAX_SOURCE_BYTES} bytes`, "i")]
   ];
   try {
     for (const [script, expectedMessage] of cases) {
@@ -501,6 +517,49 @@ test("the route-script test service validates, executes, and previews a custom d
       rewrites: [{ key: "request.body.tested", operation: "set", value: true }]
     });
     assert.ok(result.durationMs >= 0);
+  } finally {
+    await gatewayService.stop();
+  }
+});
+
+test("the route-script test service exposes the configured profile id", async () => {
+  const profile = {
+    agent: "claude-code",
+    enabled: true,
+    id: "Claude Work/Profile",
+    model: "Provider/alpha",
+    name: "Claude Work",
+    scope: "ccr"
+  };
+  const script = routeScript(`
+    return {
+      rewrites: [{ key: "request.body.profileId", operation: "set", value: input.profileId }]
+    };
+  `);
+  try {
+    const result = await gatewayService.testRouteScript({
+      ...routingConfig(),
+      profile: {
+        enabled: true,
+        profiles: [profile]
+      }
+    }, {
+      request: {
+        body: { messages: [], model: "Provider/alpha" },
+        headers: { "x-auth-api-key-id": "profile:Claude-Work-Profile" },
+        method: "POST",
+        url: "/v1/messages"
+      },
+      script
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.matched, true);
+    assert.deepEqual(result.output.rewrites, [{
+      key: "request.body.profileId",
+      operation: "set",
+      value: "Claude Work/Profile"
+    }]);
   } finally {
     await gatewayService.stop();
   }

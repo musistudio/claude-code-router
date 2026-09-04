@@ -1,42 +1,44 @@
 ---
 title: Claude Code Router
-pageTitle: Documentation
+pageTitle: Claude Code Router documentation
 eyebrow: Product Documentation
-lead: Use CCR to connect Claude Code, Codex, Grok CLI, Kimi CLI, Pi, ZCode, and compatible API clients to the model providers you choose. If this is your first visit, get one routed request working before diving into routing, Fusion, Bots, and observability.
+lead: "Covers what CCR does, how the docs are organized, and the recommended reading order. Start here if you are new to CCR."
 ---
 
-## Get One Routed Request Working
+## What CCR can do
 
-Start with the shortest successful path:
+CCR is a model gateway that runs locally (or on your own server): it receives requests from agents like Claude Code and Codex, forwards them to any provider according to your routing config, and logs everything. Core capabilities:
 
-1. Choose desktop, npm CLI, or Docker from [Install and launch CCR](guides/install/).
-2. Open **Providers**, add a preset or custom endpoint, enter an API key, and select at least one model.
-3. Open **Agent Profiles**, choose the default model and entry mode for Claude Code, Codex, Grok CLI, Kimi CLI, Pi, or ZCode.
-4. Start the local gateway service. The default endpoint is `http://127.0.0.1:3456`.
-5. Send one request from your agent, then open **Logs** to confirm the resolved provider, model, status, tokens, and errors.
+- **Connect any provider**: OpenRouter, DeepSeek, Z.AI, or any service compatible with the OpenAI, Anthropic, or Gemini APIs, with multi-key rotation and usage tracking.
+- **Smart routing**: pick models with conditional rules, rewrite requests, retry on failure, and fall back to backup models; Claude Code Subagents and Workflows can pick different models automatically.
+- **Fusion models**: combine a text model with vision, web search, image generation, video generation, or custom MCP tools into a new model.
+- **ToolHub**: collapse many MCP servers into one dynamic tool-resolution entry point.
+- **AgentClaw**: turn an agent on your machine into a bot reachable from Slack, Discord, Weixin, and other IM platforms.
+- **Logs and observability**: request logs record the provider, model, latency, tokens, and cost of every request; the Observability page shows each agent's execution trace.
 
-| Entry | Best for | Next step |
-| --- | --- | --- |
-| [Desktop app](guides/install/) | Full tray, login import, app launching, and local configuration | Download the app, then finish provider and Agent Profile onboarding |
-| [npm CLI](guides/cli/) | Running the gateway and browser management UI without Electron | Run `ccr ui`, then open `http://127.0.0.1:3458` |
-| [Docker](guides/docker/) | Containerized or remote-host deployment | Confirm auth and exposed ports before configuring providers |
+## Documentation structure
 
-## Common Next Steps
-
-- Requests are not reaching CCR: start with [Q&A](troubleshooting/) and [Logs & Observability](guides/observability/).
-- Route by model, header, or body conditions: read [Routing](configuration/routing/).
-- Add vision, web search, or MCP tools to a model: open [Fusion](configuration/fusion-models/).
-- Relay an agent through IM or a Bot: start with [Bot setup](configuration/bot-setup/).
-
-## Documentation Structure
-
-The top navigation is split into four standalone pages:
+The top-level nav holds Quick start and the featured capabilities (Fusion, ToolHub, Routing, One-click import, Extensions, AgentClaw); detailed configuration and Q&A live in the sidebar. Click the site logo to return to this home page:
 
 | Page | Contents |
 | --- | --- |
-| [Documentation](./) | Product positioning, architecture overview, and reading path |
-| [Quick Start](guides/) | Desktop, CLI, and Docker installation plus provider and Agent Profile setup |
-| [Detailed Configuration](configuration/overview/) | Overview dashboard, API keys, server, providers, routing, Agent Profiles, Fusion, Bots, tray, and config database location |
-| [Q&A](troubleshooting/) | Request logs, observability panel, and common questions |
+| [Documentation](./) | What CCR does, the doc structure, and the reading path |
+| [Quick start](guides/) | Desktop, CLI, and Docker installation, plus provider and Agent Config setup; the sidebar's "Detailed configuration" group covers every settings page |
+| [Fusion](fusion/) | Combine a base model with vision, web search, MCP tools, image generation, or video generation into a new model |
+| [ToolHub](toolhub/) | Collapse many MCP servers into one dynamic tool-resolution entry point |
+| [Routing](routing/) | Control every request with built-in routes, conditional rules, rewrites, retries, and fallback |
+| [One-click import](provider-import/) | Import providers through provider deeplinks, manifests, or embeddable buttons |
+| [Extensions](extensions/) | Build wrapper plugins and core gateway plugins for local routes, providers, and gateway capabilities |
+| [AgentClaw](agentclaw/) | IM access for local agents with an interface styled after [OpenClaw](https://openclaw.ai) (an open-source personal AI assistant that runs on your own machine and interacts through IM platforms); configure the IM bot, handoff modes, Project/Session commands, and platform credentials |
 
-Bot platform guides are child pages under Detailed Configuration. Each platform has its own page so platform dashboard fields, callback URLs, signatures, and FAQs can be expanded independently.
+AgentClaw platform guides are child pages under the AgentClaw section — one page per platform, each covering platform dashboard fields, permissions, event subscriptions, long-connection/Socket/QR login, and FAQs.
+
+## Reading path
+
+New to CCR? Read in this order:
+
+1. [Install and start CCR](guides/install/): choose between the desktop app, npm CLI, and Docker; see the [CLI reference](guides/cli/) for commands and [Docker deployment](guides/docker/) for containers.
+2. [Add a provider](guides/provider/): add at least one provider and verify it with protocol detection and connectivity checks.
+3. [Connect Agent Config](guides/agent-profile/): point agents like Claude Code at CCR.
+4. [Enable logging and observability](guides/observability/): confirm in the request log that traffic actually goes through CCR.
+5. Then go deeper as needed: [Detailed configuration](configuration/overview/) covers every settings page; [Routing](routing/), [Fusion](fusion/), and [AgentClaw](agentclaw/) cover the featured capabilities; [Q&A](troubleshooting/) collects common issues like 401, 404, timeouts, and unexpected routing.

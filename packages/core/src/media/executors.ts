@@ -8,6 +8,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { GatewayMediaProtocol } from "@ccr/core/contracts/app";
 import type { ImageEditRequest, ImageGenerateRequest, MediaExecutionContext, MediaExecutionResult, VideoGenerateRequest } from "@ccr/core/media/contracts";
 import { detectMediaType } from "@ccr/core/media/storage";
+import { sanitizeHeaderValue } from "@ccr/core/providers/runtime-topology";
 import { fetchWithSystemProxy } from "@ccr/core/proxy/system-proxy-fetch";
 
 const maxApiArtifactBytes = 250 * 1024 * 1024;
@@ -115,15 +116,21 @@ export class GatewayMediaExecutor {
       if (attempt < 3) await delay(attempt * 500, undefined, { signal });
     }
     if (!response) throw lastError ?? mediaError("artifact_download_failed", "Failed to download generated artifact.", true);
-    if (!response.ok) throw mediaError("artifact_download_failed", `Failed to download generated artifact: HTTP ${response.status}.`, true);
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw mediaError("artifact_download_failed", `Failed to download generated artifact: HTTP ${response.status}.`, true);
+    }
     const declaredLength = Number(response.headers.get("content-length") ?? 0);
-    if (declaredLength > maxApiArtifactBytes) throw mediaError("artifact_too_large", "Generated artifact exceeds the 250 MB limit.", false);
+    if (declaredLength > maxApiArtifactBytes) {
+      await response.body?.cancel();
+      throw mediaError("artifact_too_large", "Generated artifact exceeds the 250 MB limit.", false);
+    }
     if (!response.body) throw mediaError("artifact_download_failed", "Generated artifact response has no body.", true);
     const temporary = path.join(os.tmpdir(), `ccr-media-${randomUUID()}.download`);
     const file = openSync(temporary, "wx", 0o600);
+    const reader = response.body.getReader();
     let size = 0;
     try {
-      const reader = response.body.getReader();
       while (true) {
         const chunk = await reader.read();
         if (chunk.done) break;
@@ -136,6 +143,7 @@ export class GatewayMediaExecutor {
         writeSync(file, buffer);
       }
     } catch (error) {
+      await reader.cancel().catch(() => undefined);
       closeSync(file);
       rmSync(temporary, { force: true });
       throw error;
@@ -185,7 +193,7 @@ export class GatewayMediaExecutor {
         : {}),
       ...(jsonBody ? { "content-type": "application/json" } : {}),
       ...(idempotencyKey ? { "idempotency-key": idempotencyKey } : {}),
-      "x-target-model": this.target.model,
+      "x-target-model": sanitizeHeaderValue(this.target.model),
       "x-target-provider": this.target.providerSelector
     };
   }

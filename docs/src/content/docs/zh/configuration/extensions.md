@@ -1,7 +1,7 @@
 ---
 title: 扩展机制
 pageTitle: 扩展机制
-eyebrow: 详细配置
+eyebrow: 扩展
 lead: 了解 CCR 扩展如何加载、能注册哪些能力，并从零创建、安装和调试自己的扩展。
 ---
 
@@ -11,8 +11,8 @@ CCR 的扩展分为两层：
 
 | 类型 | 配置位置 | 运行位置 | 适合做什么 |
 | --- | --- | --- | --- |
-| Wrapper plugin | `plugins` | CCR Desktop 的 Electron wrapper 进程 | 注册本地 HTTP 路由、启动本地后端、拦截代理流量、添加内置浏览器入口、连接 Provider 账号用量 |
-| Core gateway plugin | `providerPlugins` 或 `plugins[].coreGateway.providerPlugins` | core gateway runtime | 扩展上游 Provider、认证方式或 core gateway 内部能力 |
+| Wrapper plugin | `plugins` | CCR Desktop 的 Electron wrapper 进程 | 注册本地 HTTP 路由、启动本地后端、拦截代理流量、添加内置浏览器入口、连接供应商账号用量 |
+| Core gateway plugin | `providerPlugins` 或 `plugins[].coreGateway.providerPlugins` | core gateway runtime | 扩展上游供应商、认证方式或 core gateway 内部能力 |
 
 多数用户自定义扩展应从 Wrapper plugin 开始。它能拿到 CCR 配置、私有数据目录和日志对象，并通过 `ctx` 注册能力。
 
@@ -33,11 +33,9 @@ CCR 的扩展分为两层：
 1. 先按启用的运行面应用配置：App 运行面的 `apps`，Gateway 运行面的 `proxy.routes`、`coreGateway.virtualModelProfiles` 和 `coreGateway.config`，以及 Provider 运行面的 `coreGateway.providerPlugins`。
 2. 当任一启用的运行面需要 JavaScript 注册能力时，会加载扩展模块。`module` 必须解析到明确的本地 JavaScript 文件路径，例如绝对路径、`~/` 开头路径，或相对 CCR 配置目录的 `./...` 路径。
 3. 任何通过 `module` 加载 JavaScript 的扩展都必须显式声明 `trusted-code` 权限。权限不是操作系统级沙箱；它用于限制 CCR 插件 API，并把“执行本地代码”的信任边界显式化。
-4. 如果没有配置 `module`，CCR 不会再加载内置兜底扩展。带 JavaScript 模块的插件市场安装会从 GitHub 市场 manifest 下载选中的插件到 CCR 数据目录，并把本地缓存后的模块路径写入配置。
+4. 如果没有配置 `module`，CCR 不会再加载内置兜底扩展。
 5. 模块可以导出函数，也可以导出包含 `setup(ctx)` 或 `activate(ctx)` 的对象。
 6. 扩展停止时，CCR 会反向执行 `stop`、`onStop` 钩子，并关闭该扩展注册的 HTTP 后端和 SQLite store。
-
-扩展市场会从 GitHub 获取。默认 manifest 地址是 `https://raw.githubusercontent.com/musistudio/claude-code-router/main/marketplace/plugins.json`；可以通过 `CCR_PLUGIN_MARKETPLACE_URL` 指向另一个兼容的 HTTPS manifest。市场模块 URL 必须使用 HTTPS，市场条目可以通过 `integrity`、`sha256` 或 `hash` 提供 SHA-256 摘要。
 
 扩展模块常见导出形式：
 
@@ -84,9 +82,11 @@ module.exports = async function setup(ctx) {
 | `ctx.registerProxyRoute(route)` | 把代理模式捕获到的某个 host/path 转发到扩展后端或其他 upstream |
 | `ctx.registerApp(app)` | 在内置浏览器应用列表里添加入口 |
 | `ctx.openSqliteStore(options)` | 在扩展数据目录打开 SQLite store |
-| `ctx.registerProviderAccountConnector(connector)` | 注册 Provider 账号余额或额度读取器 |
+| `ctx.registerProviderAccountConnector(connector)` | 注册供应商账号余额或额度读取器 |
 | `ctx.registerCoreGatewayProviderPlugin(plugin)` | 向 core gateway 注入 provider plugin |
 | `ctx.registerCoreGatewayVirtualModelProfile(profile)` | 向 core gateway 注入虚拟模型配置 |
+
+Provider account connector 的 `resolve(request)` 会收到 `request.fetchProviderAccountJson({ endpoint, method, requestOrigin, credentials, headers, body, timeoutMs })`。它通过 CCR Desktop 的内置浏览器会话发请求，因此 `credentials: "include"` 可以为同源账号 API 带上浏览器 Cookie。
 
 Gateway route handler 会额外收到 helper：
 
@@ -211,7 +211,7 @@ CCR 的运行配置存储在 SQLite 中。请通过 UI 添加扩展；旧版 JSO
 }
 ```
 
-保存扩展配置后需要重启网关。配置数据库位置见 [配置数据库位置](/configuration/config-file/)。
+保存扩展配置后需要重启网关。配置数据库位置见 [配置数据库位置](/configuration/configuration-file/)。
 
 本地目录选择器会按顺序识别这些入口信息：
 

@@ -4,6 +4,7 @@ import grokLogoUrl from "@/assets/agent-logos/grok.ico";
 import kiloLogoUrl from "@/assets/agent-logos/kilo.svg";
 import openCodeLogoUrl from "@/assets/agent-logos/opencode.ico";
 import piLogoUrl from "@/assets/agent-logos/pi.svg";
+import workbuddyLogoUrl from "@/assets/agent-logos/workbuddy.png";
 import zcodeLogoUrl from "@/assets/agent-logos/zcode.png";
 import moonshotProviderIconUrl from "@/assets/provider-icons/moonshot.ico";
 import {
@@ -19,6 +20,7 @@ import type {
   GatewayProviderConfig,
   ProfileConfig,
   ProfileOpenSurface,
+  ProfileRoutingConfig,
   CodexProfileConfigFormat,
   ProfileScope,
   ProfileSurface,
@@ -30,6 +32,7 @@ import {
 
 import { isPlainRecord, normalizeProviderModelSelector, stringValue, uniqueStrings } from "./common";
 import { virtualModelProfileModelNames } from "./providers";
+import { normalizeRouterRules } from "./routing";
 import { endpointFromHostPort } from "./services";
 import { keyValueRowsFromRecord, recordFromKeyValueRows, stringRecordValue, validateProfileEnvRows } from "./virtual-models";
 import { isGatewayProviderEnabled } from "@ccr/core/contracts/app";
@@ -397,8 +400,67 @@ function createBotGatewayDraft(botGateway?: BotGatewayRuntimeConfig) {
   };
 }
 
+function createProfileRoutingDraft(routing?: ProfileConfig["routing"]): Pick<AddProfileDraft, "routingEnabled" | "routingEnhancedRoute" | "routingRules"> {
+  const normalized = normalizeProfileRoutingConfig(routing);
+  return {
+    routingEnabled: Boolean(normalized?.enabled),
+    routingEnhancedRoute: normalized?.enhancedRoute ?? true,
+    routingRules: normalized?.rules ?? []
+  };
+}
+
+export function normalizeProfileRoutingConfig(value: unknown): ProfileRoutingConfig | undefined {
+  if (value === false) {
+    return {
+      enabled: false,
+      enhancedRoute: true,
+      rules: []
+    };
+  }
+  if (value === true) {
+    return {
+      enabled: true,
+      enhancedRoute: true,
+      rules: []
+    };
+  }
+  if (!isPlainRecord(value)) {
+    return undefined;
+  }
+  return {
+    enabled: typeof value.enabled === "boolean" ? value.enabled : true,
+    enhancedRoute: typeof value.enhancedRoute === "boolean"
+      ? value.enhancedRoute
+      : typeof value.useEnhancedRoute === "boolean"
+        ? value.useEnhancedRoute
+        : typeof value.builtInRoute === "boolean"
+          ? value.builtInRoute
+          : typeof value.builtinRoute === "boolean"
+            ? value.builtinRoute
+            : typeof value.useBuiltInRoute === "boolean"
+              ? value.useBuiltInRoute
+              : true,
+    rules: (normalizeRouterRules(value.rules) ?? []).filter((rule) => rule.type !== "script")
+  };
+}
+
+function profileRoutingConfigFromDraft(draft: AddProfileDraft): ProfileRoutingConfig | undefined {
+  const rules = draft.routingRules.filter((rule) => rule.type !== "script").map((rule) => ({ ...rule }));
+  const supportsEnhancedRoute = draft.agent === "claude-code" || draft.agent === "codex";
+  const hasEnhancedRouteConfig = supportsEnhancedRoute && draft.routingEnhancedRoute === false;
+  const hasRoutingConfig = draft.routingEnabled || rules.length > 0 || hasEnhancedRouteConfig;
+  if (!hasRoutingConfig) {
+    return undefined;
+  }
+  return {
+    enabled: draft.routingEnabled,
+    enhancedRoute: supportsEnhancedRoute ? draft.routingEnhancedRoute : true,
+    rules
+  };
+}
+
 export function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code", name?: string): AddProfileDraft {
-  const surface = agent === "zcode" || agent === "claude-design" ? "app" : "cli";
+  const surface = agent === "workbuddy" || agent === "zcode" || agent === "claude-design" ? "app" : "cli";
   return {
     agent,
     appPath: "",
@@ -414,6 +476,7 @@ export function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code"
     opusModel: "",
     providerId: "claude-code-router",
     providerName: "Claude Code Router",
+    ...createProfileRoutingDraft(),
     scope: "ccr",
     settingsFile: "~/.claude/settings.json",
     showAllSessions: false,
@@ -426,12 +489,15 @@ export function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code"
 export function profileDraftWithDetectedAppPath(
   draft: AddProfileDraft,
   chatgptAppPath?: string,
-  opencodeAppPath?: string
+  opencodeAppPath?: string,
+  workbuddyAppPath?: string
 ): AddProfileDraft {
   const detectedPath = (draft.agent === "codex"
     ? chatgptAppPath
     : draft.agent === "opencode"
       ? opencodeAppPath
+      : draft.agent === "workbuddy"
+        ? workbuddyAppPath
       : "")?.trim() || "";
   if (draft.appPath.trim() || !detectedPath) {
     return draft;
@@ -447,11 +513,13 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
     const surface = normalizeProfileSurfaceForForm(profile.surface);
     return {
       ...createProfileDraft("claude-code", profile.name),
+      ...createProfileRoutingDraft(profile.routing),
       ...botDraft,
       appPath: profile.appPath ?? "",
       botConfigId,
       botEnabled: surface !== "cli" && Boolean(selectedBot || profile.botGateway?.enabled),
       envRows: keyValueRowsFromRecord(claudeCodeProfileEnv(profile.env ?? {})),
+      availableModels: profileDraftAvailableModels(profile),
       fableModel: profile.fableModel ?? "",
       haikuModel: profile.haikuModel ?? profile.smallFastModel ?? "",
       managedCompact: Boolean(profile.managedCompact),
@@ -467,9 +535,8 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
   if (profile.agent === "grok" || profile.agent === "kimi" || profile.agent === "pi") {
     return {
       ...createProfileDraft(profile.agent, profile.name),
-      availableModels: profile.agent === "kimi"
-        ? uniqueStrings([profile.model, ...(profile.availableModels ?? [])].map(normalizeProfileClientModel).filter(Boolean))
-        : [],
+      ...createProfileRoutingDraft(profile.routing),
+      availableModels: profileDraftAvailableModels(profile),
       envRows: keyValueRowsFromRecord(codexCompatibleProfileEnv(profile.env ?? {})),
       model: profile.model,
       scope: "ccr",
@@ -479,17 +546,20 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
   if (profile.agent === "claude-design") {
     return {
       ...createProfileDraft("claude-design", profile.name),
+      ...createProfileRoutingDraft(profile.routing),
       envRows: [],
       model: "",
       scope: "ccr",
       surface: "app"
     };
   }
-  const surface = profile.agent === "zcode" ? "app" : normalizeProfileSurfaceForForm(profile.surface);
+  const surface = profile.agent === "workbuddy" || profile.agent === "zcode" ? "app" : normalizeProfileSurfaceForForm(profile.surface);
   return {
     ...createProfileDraft(profile.agent, profile.name),
+    ...createProfileRoutingDraft(profile.routing),
     ...botDraft,
     appPath: profile.appPath ?? "",
+    availableModels: profileDraftAvailableModels(profile),
     botConfigId,
     botEnabled: surface !== "cli" && Boolean(selectedBot || profile.botGateway?.enabled),
     configFile: profile.configFile ?? defaultCodexConfigFile(profile.agent),
@@ -499,7 +569,7 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
     providerId: profile.providerId ?? "claude-code-router",
     providerName: profile.providerName ?? "Claude Code Router",
     scope: normalizeProfileFormScope(profile.scope),
-    showAllSessions: profile.agent === "zcode" || profile.agent === "opencode" || profile.agent === "kilo" ? false : Boolean(profile.showAllSessions),
+    showAllSessions: profile.agent === "zcode" || profile.agent === "opencode" || profile.agent === "kilo" || profile.agent === "workbuddy" ? false : Boolean(profile.showAllSessions),
     surface
   };
 }
@@ -518,6 +588,9 @@ export function isProfileDraftSubmittable(draft: AddProfileDraft): boolean {
   if (botAllowed && draft.botEnabled && draft.botHandoffEnabled && !isNumberDraftValid(draft.botHandoffIdleSeconds, 30, 86_400)) {
     return false;
   }
+  if (draft.availableModels.length > 0 && !draft.model.trim()) {
+    return false;
+  }
   if (draft.agent === "claude-code") {
     return Boolean(draft.model.trim());
   }
@@ -531,12 +604,9 @@ export function isProfileDraftSubmittable(draft: AddProfileDraft): boolean {
     return true;
   }
   if (draft.agent === "kimi") {
-    return Boolean(draft.model.trim()) && draft.availableModels.length > 0;
+    return Boolean(draft.model.trim());
   }
-  return (
-    Boolean(draft.providerId.trim()) &&
-    Boolean(draft.providerName.trim())
-  );
+  return true;
 }
 
 function matchingBotConfigId(botGateway: BotGatewayRuntimeConfig | undefined, botConfigs: BotGatewaySavedConfig[]): string {
@@ -572,10 +642,11 @@ export function profileConfigFromDraft(
         }
       }
     : {};
+  const routing = profileRoutingConfigFromDraft(draft);
   return normalizeProfileItem({
     agent: draft.agent,
     appPath: draft.appPath,
-    availableModels: draft.agent === "kimi" ? draft.availableModels : undefined,
+    availableModels: profileConfigAvailableModelsFromDraft(draft),
     ...botGateway,
     configFile: draft.configFile,
     enabled: existingProfile?.enabled ?? true,
@@ -591,15 +662,29 @@ export function profileConfigFromDraft(
     model: draft.model,
     name: draft.name,
     opusModel: draft.opusModel,
-    providerId: draft.providerId,
-    providerName: draft.providerName,
+    providerId: draft.providerId.trim() || "claude-code-router",
+    providerName: draft.providerName.trim() || "Claude Code Router",
+    ...(routing ? { routing } : {}),
     scope: draft.scope,
     settingsFile: draft.settingsFile,
-    showAllSessions: draft.agent === "zcode" || draft.agent === "opencode" || draft.agent === "kilo" || draft.agent === "claude-design" ? false : draft.showAllSessions,
+    showAllSessions: draft.agent === "zcode" || draft.agent === "opencode" || draft.agent === "kilo" || draft.agent === "workbuddy" || draft.agent === "claude-design" ? false : draft.showAllSessions,
     sonnetModel: draft.sonnetModel,
     smallFastModel: draft.haikuModel || draft.smallFastModel,
     surface: draft.surface
   }, existingProfiles.length);
+}
+
+function profileDraftAvailableModels(profile: ProfileConfig): string[] {
+  return profile.availableModels?.length
+    ? uniqueStrings([profile.model, ...profile.availableModels].map(normalizeProfileClientModel).filter(Boolean))
+    : [];
+}
+
+function profileConfigAvailableModelsFromDraft(draft: AddProfileDraft): string[] | undefined {
+  const availableModels = uniqueStrings(draft.availableModels.map(normalizeProfileClientModel).filter(Boolean));
+  return availableModels.length > 0
+    ? uniqueStrings([draft.model, ...availableModels].map(normalizeProfileClientModel).filter(Boolean))
+    : undefined;
 }
 
 function botGatewayHandoffFromProfileDraft(
@@ -1119,7 +1204,7 @@ export function profileSummaryItems(
     : [];
   const appPath = profile.appPath?.trim() || "";
   const appPathSummaryItems = appPath && surface !== "cli" && profile.agent !== "zcode"
-    ? [{ label: t(profile.agent === "claude-code" ? "CLAUDE_APP_PATH" : profile.agent === "opencode" ? "OPENCODE_APP_PATH" : "CHATGPT_APP_PATH"), value: appPath }]
+    ? [{ label: t("APP_PATH"), value: appPath }]
     : [];
   const savedBot = profile.botConfigId
     ? config.botConfigs.find((item) => item.id === profile.botConfigId)
@@ -1133,6 +1218,14 @@ export function profileSummaryItems(
     : profile.managedCompact
       ? [{ label: t("CCR managed compact"), value: t("Enabled") }]
       : [];
+  const routing = normalizeProfileRoutingConfig(profile.routing);
+  const routingParts = [
+    ...(routing?.enabled ? [`${routing.rules.length} ${t(routing.rules.length === 1 ? "route" : "routes")}`] : []),
+    routing?.enhancedRoute === false ? t("Enhanced route off") : ""
+  ].filter(Boolean);
+  const routingSummaryItems = routingParts.length > 0
+    ? [{ label: t("Routing"), value: routingParts.join(" · ") }]
+    : [];
   const displayProfileModel = (value: string) => profileModelDisplayValue(
     value,
     parseProfileModelValue(value, config.Providers, config.virtualModelProfiles ?? []),
@@ -1145,6 +1238,12 @@ export function profileSummaryItems(
     : profile.agent === "claude-code"
       ? t("Keep Claude Code default")
       : defaultProfileClientModel(config);
+  const allowedModelSummaryItems = profile.availableModels?.length
+    ? [{
+        label: t("Allowed model list"),
+        value: String(uniqueStrings([profile.model, ...profile.availableModels].filter(Boolean)).length)
+      }]
+    : [];
 
   if (profile.agent === "claude-code") {
     const aliasItems = [
@@ -1160,8 +1259,10 @@ export function profileSummaryItems(
       }));
     return [
       { label: t("Model"), value: modelValue },
+      ...allowedModelSummaryItems,
       ...aliasItems,
       ...managedCompactItems,
+      ...routingSummaryItems,
       ...botSummaryItems,
       ...appPathSummaryItems,
       ...envSummaryItems
@@ -1171,27 +1272,25 @@ export function profileSummaryItems(
   if (profile.agent === "grok" || profile.agent === "kimi" || profile.agent === "pi") {
     return [
       { label: t(profile.agent === "kimi" ? "Kimi model" : profile.agent === "pi" ? "Pi model" : "Model"), value: modelValue },
-      ...(profile.agent === "kimi"
-        ? [{
-            label: t("Allowed models"),
-            value: String(uniqueStrings([profile.model, ...(profile.availableModels ?? [])].filter(Boolean)).length)
-          }]
-        : []),
+      ...allowedModelSummaryItems,
+      ...routingSummaryItems,
       ...envSummaryItems
     ];
   }
 
   if (profile.agent === "claude-design") {
     return [
-      { label: t("Entry mode"), value: t("App only") }
+      { label: t("Entry mode"), value: t("App only") },
+      ...routingSummaryItems
     ];
   }
 
   return [
-    { label: t(profile.agent === "kilo" ? "Kilo model" : "Model"), value: modelValue },
-    { label: t("Provider ID"), value: profile.providerId ?? "claude-code-router" },
-    ...(profile.agent === "zcode" || profile.agent === "opencode" || profile.agent === "kilo" || !profile.showAllSessions ? [] : [{ label: t("Show all sessions"), value: t("Enabled") }]),
+    { label: t(profile.agent === "kilo" ? "Kilo model" : profile.agent === "workbuddy" ? "Workbuddy model" : "Model"), value: modelValue },
+    ...allowedModelSummaryItems,
+    ...(profile.agent === "zcode" || profile.agent === "opencode" || profile.agent === "kilo" || profile.agent === "workbuddy" || !profile.showAllSessions ? [] : [{ label: t("Show all sessions"), value: t("Enabled") }]),
     ...managedCompactItems,
+    ...routingSummaryItems,
     ...appPathSummaryItems,
     ...botSummaryItems,
     ...envSummaryItems
@@ -1202,15 +1301,16 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
   const agent = normalizeProfileAgent(profile.agent);
   const name = profile.name.trim() || profileAgentLabel(profile.agent);
   const model = profile.model.trim();
-  const availableModels = uniqueStrings([
-    model,
-    ...(profile.availableModels ?? []).map(normalizeProfileClientModel)
-  ].filter(Boolean));
+  const explicitAvailableModels = uniqueStrings((profile.availableModels ?? []).map(normalizeProfileClientModel).filter(Boolean));
+  const availableModels = explicitAvailableModels.length > 0
+    ? uniqueStrings([model, ...explicitAvailableModels].filter(Boolean))
+    : undefined;
   const scope = normalizeProfileScope(profile.scope);
   const surface = normalizeProfileSurfaceForAgent(agent, profile.surface);
   const env = isPlainRecord(profile.env) ? stringRecordValue(profile.env) : {};
   const botGateway = surface !== "cli" ? normalizeBotGatewayRuntimeConfig(profile.botGateway) : undefined;
   const botConfigId = surface !== "cli" ? stringValue(profile.botConfigId) : "";
+  const routing = normalizeProfileRoutingConfig(profile.routing);
   if (agent === "claude-code") {
     const appPath = profile.appPath?.trim() || "";
     return {
@@ -1218,6 +1318,7 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
       ...(surface !== "cli" && appPath ? { appPath } : {}),
       ...(botConfigId ? { botConfigId } : {}),
       ...(botGateway ? { botGateway } : {}),
+      ...(availableModels ? { availableModels } : {}),
       enabled: profile.enabled,
       env: claudeCodeProfileEnv(env),
       fableModel: stringValue(profile.fableModel) || "",
@@ -1227,6 +1328,7 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
       model,
       name,
       opusModel: stringValue(profile.opusModel) || "",
+      ...(routing ? { routing } : {}),
       scope,
       settingsFile: profile.settingsFile?.trim() || "~/.claude/settings.json",
       sonnetModel: stringValue(profile.sonnetModel) || "",
@@ -1237,12 +1339,13 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
   if (agent === "grok" || agent === "kimi" || agent === "pi") {
     return {
       agent,
-      ...(agent === "kimi" ? { availableModels } : {}),
+      ...(availableModels ? { availableModels } : {}),
       enabled: profile.enabled,
       env: codexCompatibleProfileEnv(env),
       id: profile.id || `profile-${index + 1}`,
       model,
       name,
+      ...(routing ? { routing } : {}),
       scope: "ccr",
       surface: "cli"
     };
@@ -1255,6 +1358,7 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
       id: profile.id || `profile-${index + 1}`,
       model: "",
       name,
+      ...(routing ? { routing } : {}),
       scope: "ccr",
       surface: "app"
     };
@@ -1264,6 +1368,7 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
     ...(surface !== "cli" && agent !== "zcode" && profile.appPath?.trim() ? { appPath: profile.appPath.trim() } : {}),
     ...(botConfigId ? { botConfigId } : {}),
     ...(botGateway ? { botGateway } : {}),
+    ...(availableModels ? { availableModels } : {}),
     cliMiddleware: true,
     codexCliPath: "",
     codexHome: "",
@@ -1277,8 +1382,9 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
     name,
     providerId: profile.providerId?.trim() || "claude-code-router",
     providerName: profile.providerName?.trim() || "Claude Code Router",
+    ...(routing ? { routing } : {}),
     scope,
-    showAllSessions: agent === "zcode" || agent === "opencode" || agent === "kilo" ? false : Boolean(profile.showAllSessions),
+    showAllSessions: agent === "zcode" || agent === "opencode" || agent === "kilo" || agent === "workbuddy" ? false : Boolean(profile.showAllSessions),
     surface
   };
 }
@@ -1349,6 +1455,8 @@ export function normalizeUnknownProfileItem(value: Record<string, unknown>, inde
         ? "kilo"
       : rawAgent === "pi" || rawAgent === "pi-agent" || rawAgent === "pi agent" || rawAgent === "pi-coding-agent" || rawAgent === "pi coding agent"
         ? "pi"
+      : rawAgent === "workbuddy" || rawAgent === "work-buddy" || rawAgent === "work buddy" || rawAgent === "workbuddy-agent" || rawAgent === "workbuddy agent"
+        ? "workbuddy"
         : rawAgent === "zcode" || rawAgent === "z-code" || rawAgent === "z code"
           ? "zcode"
         : rawAgent === "claude-design" || rawAgent === "claude design" || rawAgent === "design"
@@ -1413,6 +1521,7 @@ export function normalizeUnknownProfileItem(value: Record<string, unknown>, inde
         : undefined,
     providerId: typeof value.providerId === "string" ? value.providerId : undefined,
     providerName: typeof value.providerName === "string" ? value.providerName : undefined,
+    routing: normalizeProfileRoutingConfig(value.routing ?? value.route),
     scope: typeof value.scope === "string" ? normalizeProfileScope(value.scope) : "global",
     settingsFile: typeof value.settingsFile === "string" ? value.settingsFile : undefined,
     showAllSessions: typeof value.showAllSessions === "boolean"
@@ -1443,6 +1552,9 @@ function readUnknownProfileAppPath(value: Record<string, unknown>, agent: Profil
   }
   if (agent === "opencode") {
     return readUnknownString(value, "openCodeAppPath", "opencodeAppPath", "opencode_app_path");
+  }
+  if (agent === "workbuddy") {
+    return readUnknownString(value, "workbuddyAppPath", "workbuddy_app_path", "workBuddyAppPath", "work_buddy_app_path");
   }
   return undefined;
 }
@@ -1491,6 +1603,9 @@ export function profileAgentLabel(agent: ProfileConfig["agent"]): string {
   if (agent === "pi") {
     return "Pi";
   }
+  if (agent === "workbuddy") {
+    return "Workbuddy";
+  }
   if (agent === "opencode") {
     return "OpenCode";
   }
@@ -1521,7 +1636,7 @@ export function profileSurfaceLabel(surface: ProfileSurface): string {
 }
 
 export function profileOpenSurfaces(profile: ProfileConfig): ProfileOpenSurface[] {
-  if (profile.agent === "zcode" || profile.agent === "claude-design") {
+  if (profile.agent === "workbuddy" || profile.agent === "zcode" || profile.agent === "claude-design") {
     return ["app"];
   }
   if (profile.agent === "grok" || profile.agent === "kimi" || profile.agent === "pi" || profile.agent === "kilo") {
@@ -1537,7 +1652,7 @@ export function profileOpenSurfaces(profile: ProfileConfig): ProfileOpenSurface[
   return ["cli", "app"];
 }
 
-export function profileOpenCommandFallback(profile: ProfileConfig, surface: ProfileOpenSurface = profile.agent === "zcode" || profile.agent === "claude-design" ? "app" : "cli"): string {
+export function profileOpenCommandFallback(profile: ProfileConfig, surface: ProfileOpenSurface = profile.agent === "workbuddy" || profile.agent === "zcode" || profile.agent === "claude-design" ? "app" : "cli"): string {
   const profileRef = profile.name.trim() || profile.id;
   return ["ccr", shellCommandQuote(profileRef), ...(surface === "app" ? ["app"] : [])].join(" ");
 }
@@ -1573,19 +1688,22 @@ export function profileAgentLogoUrl(agent: ProfileConfig["agent"]): string {
   if (agent === "kilo") {
     return kiloLogoUrl;
   }
+  if (agent === "workbuddy") {
+    return workbuddyLogoUrl;
+  }
   return codexLogoUrl;
 }
 
-function normalizeCodexCompatibleAgent(agent: ProfileConfig["agent"]): "codex" | "kilo" | "opencode" | "zcode" {
-  return agent === "zcode" ? "zcode" : agent === "opencode" ? "opencode" : agent === "kilo" ? "kilo" : "codex";
+function normalizeCodexCompatibleAgent(agent: ProfileConfig["agent"]): "codex" | "kilo" | "opencode" | "workbuddy" | "zcode" {
+  return agent === "zcode" ? "zcode" : agent === "opencode" ? "opencode" : agent === "kilo" ? "kilo" : agent === "workbuddy" ? "workbuddy" : "codex";
 }
 
 function normalizeProfileAgent(agent: ProfileConfig["agent"]): ProfileConfig["agent"] {
-  return agent === "claude-design" ? "claude-design" : agent === "zcode" ? "zcode" : agent === "opencode" ? "opencode" : agent === "kilo" ? "kilo" : agent === "pi" ? "pi" : agent === "grok" ? "grok" : agent === "kimi" ? "kimi" : agent === "codex" ? "codex" : "claude-code";
+  return agent === "claude-design" ? "claude-design" : agent === "zcode" ? "zcode" : agent === "workbuddy" ? "workbuddy" : agent === "opencode" ? "opencode" : agent === "kilo" ? "kilo" : agent === "pi" ? "pi" : agent === "grok" ? "grok" : agent === "kimi" ? "kimi" : agent === "codex" ? "codex" : "claude-code";
 }
 
 function normalizeProfileSurfaceForAgent(agent: ProfileConfig["agent"], surface: unknown): ProfileSurface {
-  return agent === "zcode" || agent === "claude-design" ? "app" : agent === "grok" || agent === "kimi" || agent === "pi" || agent === "kilo" ? "cli" : normalizeProfileSurface(surface);
+  return agent === "workbuddy" || agent === "zcode" || agent === "claude-design" ? "app" : agent === "grok" || agent === "kimi" || agent === "pi" || agent === "kilo" ? "cli" : normalizeProfileSurface(surface);
 }
 
 function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
@@ -1594,7 +1712,9 @@ function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
     : agent === "opencode"
       ? "~/.config/opencode/opencode.jsonc"
       : agent === "kilo"
-        ? "~/.config/kilo/kilo.jsonc"
+      ? "~/.config/kilo/kilo.jsonc"
+      : agent === "workbuddy"
+        ? "~/.workbuddy/config.toml"
         : agent === "pi"
           ? "~/.pi/agent"
           : agent === "claude-design"

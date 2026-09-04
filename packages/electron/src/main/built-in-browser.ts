@@ -78,10 +78,14 @@ class BuiltInBrowserService {
     this.registerIpcHandlers();
   }
 
-  async open(config: AppConfig): Promise<void> {
+  async open(config: AppConfig, url?: string): Promise<void> {
     await this.syncProxy(config);
 
     const window = this.ensureWindow();
+    const targetUrl = typeof url === "string" ? url.trim() : "";
+    if (targetUrl) {
+      this.navigate(targetUrl);
+    }
     if (window.isMinimized()) {
       window.restore();
     }

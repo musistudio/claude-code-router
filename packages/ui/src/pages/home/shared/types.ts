@@ -23,12 +23,13 @@ import type {
   GatewayMcpStdioMessageMode,
   PluginDependency,
   PluginMarketplaceEntry,
+  ProviderAccountBrowserCredentialsMode,
   ProviderModelMetadata,
   ProfileConfig,
   ProfileScope,
   ProfileSurface,
-  RouterBuiltInAgentRuleId,
   RouterFallbackConfig,
+  RouterRule,
   RouterRuleOperator,
   RouterRuleRewriteOperation,
   RouterRuleType,
@@ -92,11 +93,15 @@ export type AddProviderDraft = {
   accountMode: ProviderAccountDraftMode;
   accountRefreshIntervalMs: string;
   apiKey: string;
+  autoFetchModels: boolean;
+  autoFetchKnownModels: string[];
   baseUrl: string;
   capabilities: GatewayProviderCapability[];
   catalogModelMetadata?: Record<string, ProviderModelMetadata>;
   credentialMode: "apiKey" | "pool";
   credentials: ProviderCredentialDraft[];
+  extraBodyText: string;
+  extraHeadersText: string;
   icon: string;
   modelDescriptions?: Record<string, string>;
   modelDisplayNames?: Record<string, string>;
@@ -114,6 +119,11 @@ export type AddProviderDraft = {
   usageBalanceRemainingPath: string;
   usageBalanceUnit: string;
   usageBalanceUsedPath: string;
+  usageBrowserCredentials: ProviderAccountBrowserCredentialsMode;
+  usageBrowserHeaderTemplates: KeyValueDraftRow[];
+  usageBrowserLoginUrl: string;
+  usageBrowserRequestOrigin: string;
+  usageBrowserTimeoutMs: string;
   usageMessagePath: string;
   usageRequestBodyText: string;
   usageRequestHeaders: KeyValueDraftRow[];
@@ -136,7 +146,7 @@ export type ProviderCredentialDraft = {
   weight: string;
 };
 
-export type ProviderAccountDraftMode = "standard" | "http-json" | "raw";
+export type ProviderAccountDraftMode = "standard" | "http-json" | "browser" | "raw";
 export type ProviderUsageFieldTarget =
   | "balance"
   | "balanceLimit"
@@ -184,6 +194,9 @@ export type AddProfileDraft = {
   opusModel: string;
   providerId: string;
   providerName: string;
+  routingEnabled: boolean;
+  routingEnhancedRoute: boolean;
+  routingRules: RouterRule[];
   scope: ProfileScope;
   settingsFile: string;
   showAllSessions: boolean;
@@ -307,7 +320,9 @@ export type VirtualModelDraft = {
   fixedModel: string;
   id: string;
   includeInGatewayModels: boolean;
+  imageGenerationFallbackModels: string[];
   imageGenerationModel: string;
+  imageGenerationRetryCount: string;
   instructionsAppend: string;
   instructionsPrepend: string;
   instructionsReplace: string;
@@ -323,8 +338,12 @@ export type VirtualModelDraft = {
   toolsText: string;
   customMcpServer: McpServerDraft;
   customToolName: string;
+  visionFallbackModels: string[];
   visionModel: string;
+  visionRetryCount: string;
+  videoGenerationFallbackModels: string[];
   videoGenerationModel: string;
+  videoGenerationRetryCount: string;
   webSearchEnvRows: KeyValueDraftRow[];
   webSearchProvider: VirtualModelFusionWebSearchProvider;
   executionMode: VirtualModelExecutionMode;
@@ -427,7 +446,6 @@ export type PluginSettingsDraft = {
 };
 
 export type RoutingRuleRow = {
-  builtInAgent?: RouterBuiltInAgentRuleId;
   condition: string;
   enabled: boolean;
   index?: number;

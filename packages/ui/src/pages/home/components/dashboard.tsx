@@ -4,25 +4,26 @@ import {
   Area, arrayMove, Badge, Bar, BarChart, Button,
   Card, CardContent, CardHeader, CardTitle, CartesianGrid, Cell, constrainOverviewWidgetSize,
   Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, cn, codexLogoUrl, compactId,
-  compactUserAgent, compareProviderAccountSnapshots, ComposedChart, CSS, DEFAULT_OVERVIEW_WIDGETS, DndContext,
+  compactUserAgent, compareProviderAccountSnapshots, ComposedChart, CSS, Checkbox, DEFAULT_OVERVIEW_WIDGETS, DndContext,
   Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle,
   DragEndEvent, DragOverEvent, DragOverlay, DragStartEvent, Field, formatAxisNumber, formatBytes,
-  formatCompactNumber, formatDuration, formatLogDateTime, formatPercent, formatProviderAccountDetailDate, formatProviderAccountMeterTitle, formatProviderAccountMeterValue,
+  formatCompactNumber, formatDuration, formatLogDateTime, formatPercent, formatPercentFixed, formatProviderAccountDetailDate, formatProviderAccountMeterTitle, formatProviderAccountMeterValue,
   formatStatusBucketDate, formatSystemStatusRange, formatUsdCost, KeyboardSensor,
   LabelList, LayoutGroup, Line, LoaderCircle, MeasuringStrategy, MetricTone,
   motion, normalizeAgentFilterValue, normalizeOverviewWidget, normalizeOverviewWidgets,
-  OverviewMetricKind, overviewMetricOptions, overviewWidgetCollisionDetection, OverviewWidgetConfig, OverviewWidgetSize, overviewWidgetSizeOptions,
+  OverviewAccountCardSize, OverviewMetricKind, overviewMetricOptions, overviewWidgetCollisionDetection, OverviewWidgetConfig, OverviewWidgetSize, overviewWidgetSizeOptions,
   OverviewWidgetType, OverviewWidgetVariant, Pencil, Pie, PieChart, Plus,
   PointerSensor, primaryProviderAccountMeter, providerAccountMeterDetailValidityProgress, providerAccountMeterProgress, providerAccountMetersForDisplay, providerAccountProgressClass, isGatewayProviderEnabled, isProviderAccountManualResetMeter,
-  providerAccountSnapshotKey, providerAccountSnapshotLabel,
-  ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ReactPointerEvent, rectSortingStrategy, RefreshCw, Select,
+  providerAccountSnapshotKey, providerAccountSnapshotLabel, providerDisplayIcon,
+  ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ReactPointerEvent, rectSortingStrategy, RefreshCw, RequestLogEntry, Select,
   SelectControl, SortableContext, sortableKeyboardCoordinates, systemStatusPointTooltip,
-  Tooltip, translateOptions, Trash2, UsageComparisonRow, usageRangeOptions,
+  Tabs, TabsList, TabsTrigger, Tooltip, translateOptions, Trash2, UsageComparisonRow, usageRangeOptions,
   GatewayProviderConfig, UsageSeriesPoint, UsageStatsRange, UsageStatsSnapshot, usageStatusTone, UsageTotals, useAppText,
   useEffect, useMemo, useRef, useSensor, useSensors, useSortable,
   useState, X, XAxis, YAxis
 } from "../shared/index";
 import { buildTokenActivity, type TokenActivityCell } from "@/lib/usage-activity";
+import { LogExpandedDetails } from "./network-logs";
 import { ShareCardWidget } from "./share-cards";
 import {
   CalendarDays, ChartNoAxesCombined, ChartPie, CreditCard, GripHorizontal, Inbox, Layers3,
@@ -263,6 +264,35 @@ export function OverviewView({
     });
   }
 
+  function changeWidgetAccountProviders(id: string, accountProviders: string[]) {
+    updateWidget(id, {
+      accountProvider: accountProviders.length === 1 ? accountProviders[0] : undefined,
+      accountProviders: accountProviders.length > 0 ? accountProviders : undefined
+    });
+  }
+
+  function changeWidgetAccountCardSize(id: string, accountKey: string, size: OverviewAccountCardSize | undefined) {
+    const current = widgets.find((widget) => widget.id === id);
+    if (!current) {
+      return;
+    }
+    const accountCardSizes = { ...(current.accountCardSizes ?? {}) };
+    if (size) {
+      accountCardSizes[accountKey] = size;
+    } else {
+      delete accountCardSizes[accountKey];
+    }
+    updateWidget(id, {
+      accountCardSizes: Object.keys(accountCardSizes).length > 0 ? accountCardSizes : undefined
+    });
+  }
+
+  function changeWidgetAccountCardOrder(id: string, accountCardOrder: string[]) {
+    updateWidget(id, {
+      accountCardOrder: accountCardOrder.length > 0 ? accountCardOrder : undefined
+    });
+  }
+
   function changeWidgetShareData(id: string, type: ShareOverviewWidgetType) {
     const current = widgets.find((widget) => widget.id === id);
     if (!current) {
@@ -302,8 +332,12 @@ export function OverviewView({
                   onSelect={() => setSelectedWidgetId(widget.id)}
                 >
                   <OverviewWidgetRenderer
+                    editing={editing}
+                    onChangeAccountCardOrder={(accountKeys) => changeWidgetAccountCardOrder(widget.id, accountKeys)}
+                    onChangeAccountCardSize={(accountKey, size) => changeWidgetAccountCardSize(widget.id, accountKey, size)}
                     providerAccounts={providerAccounts}
                     providerAccountRefreshing={providerAccountRefreshing}
+                    providers={filterProviders}
                     refreshProviderAccounts={refreshProviderAccounts}
                     usageRange={usageRange}
                     usageStats={usageStats}
@@ -323,6 +357,7 @@ export function OverviewView({
           <OverviewWidgetDragOverlay
             providerAccounts={providerAccounts}
             providerAccountRefreshing={providerAccountRefreshing}
+            providers={filterProviders}
             refreshProviderAccounts={refreshProviderAccounts}
             usageRange={usageRange}
             usageStats={usageStats}
@@ -403,7 +438,7 @@ export function OverviewView({
             <OverviewWidgetProperties
               providerAccounts={providerAccounts}
               widget={selectedWidget}
-              onChangeAccountProvider={(accountProvider) => selectedWidget ? updateWidget(selectedWidget.id, { accountProvider }) : undefined}
+              onChangeAccountProviders={(accountProviders) => selectedWidget ? changeWidgetAccountProviders(selectedWidget.id, accountProviders) : undefined}
               onChangeAnalysisData={(type) => selectedWidget ? changeWidgetAnalysisData(selectedWidget.id, type) : undefined}
               onChangeBreakdownData={(type) => selectedWidget ? changeWidgetBreakdownData(selectedWidget.id, type) : undefined}
               onChangeCategory={(category) => selectedWidget ? changeWidgetCategory(selectedWidget.id, category) : undefined}
@@ -621,7 +656,7 @@ function OverviewWidgetPalette({
 function OverviewWidgetProperties({
   providerAccounts,
   widget,
-  onChangeAccountProvider,
+  onChangeAccountProviders,
   onChangeAnalysisData,
   onChangeBreakdownData,
   onChangeCategory,
@@ -633,7 +668,7 @@ function OverviewWidgetProperties({
 }: {
   providerAccounts: ProviderAccountSnapshot[];
   widget: OverviewWidgetConfig | undefined;
-  onChangeAccountProvider: (accountProvider: string | undefined) => void;
+  onChangeAccountProviders: (accountProviders: string[]) => void;
   onChangeAnalysisData: (type: "client-analysis" | "provider-analysis") => void;
   onChangeBreakdownData: (type: "model-distribution" | "token-mix") => void;
   onChangeCategory: (category: OverviewWidgetCategory) => void;
@@ -652,13 +687,11 @@ function OverviewWidgetProperties({
   const category = overviewWidgetCategory(widget.type);
   const dataOptions = overviewWidgetDataOptions(widget, providerAccounts);
   const dataValue = overviewWidgetDataValue(widget);
+  const accountProviderValues = overviewWidgetAccountProviderValues(widget);
   const sizeOptions = overviewWidgetSizeOptions.filter((option) => (
-    constrainOverviewWidgetSize(option.value, widget.type, widget.variant, widget.accountProvider) === option.value
+    constrainOverviewWidgetSize(option.value, widget.type, widget.variant, accountProviderValues) === option.value
   ));
   const changeData = (value: string) => {
-    if (category === "account-balance") {
-      onChangeAccountProvider(value || undefined);
-    }
     if (category === "metric") {
       onChangeMetric(value as OverviewMetricKind);
     }
@@ -685,7 +718,15 @@ function OverviewWidgetProperties({
       </Field>
 
       <Field label={t("Data")}>
-        <SelectControl onChange={changeData} options={translateOptions(dataOptions, t)} value={dataValue} />
+        {category === "account-balance" ? (
+          <OverviewAccountDataSelector
+            options={dataOptions}
+            value={accountProviderValues}
+            onChange={onChangeAccountProviders}
+          />
+        ) : (
+          <SelectControl onChange={changeData} options={translateOptions(dataOptions, t)} value={dataValue} />
+        )}
       </Field>
 
       <Field label={t("Widget size")}>
@@ -700,6 +741,51 @@ function OverviewWidgetProperties({
         <Trash2 className="h-3.5 w-3.5" />
         {t("Remove widget")}
       </Button>
+    </div>
+  );
+}
+
+function OverviewAccountDataSelector({
+  onChange,
+  options,
+  value
+}: {
+  onChange: (value: string[]) => void;
+  options: Array<{ label: string; value: string }>;
+  value: string[];
+}) {
+  const t = useAppText();
+  const selected = new Set(value);
+  const accountOptions = options.filter((option) => option.value);
+  const allSelected = selected.size === 0;
+
+  function toggleAccount(account: string, checked: boolean) {
+    const next = new Set(selected);
+    if (checked) {
+      next.add(account);
+    } else {
+      next.delete(account);
+    }
+    onChange([...next]);
+  }
+
+  return (
+    <div className="overview-account-data-picker min-w-0 overflow-hidden rounded-md border border-border/70 bg-card/50 p-1.5">
+      <label className="flex min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[12px] font-medium transition-colors hover:bg-muted/50">
+        <Checkbox checked={allSelected} onCheckedChange={(checked) => checked ? onChange([]) : undefined} />
+        <span className="min-w-0 flex-1 truncate">{t("All accounts")}</span>
+      </label>
+      <div className="mt-1 max-h-44 space-y-0.5 overflow-y-auto pr-1">
+        {accountOptions.map((option) => (
+          <label className="flex min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[12px] transition-colors hover:bg-muted/50" key={option.value}>
+            <Checkbox
+              checked={selected.has(option.value)}
+              onCheckedChange={(checked) => toggleAccount(option.value, checked)}
+            />
+            <span className="min-w-0 flex-1 truncate">{option.label}</span>
+          </label>
+        ))}
+      </div>
     </div>
   );
 }
@@ -726,6 +812,7 @@ function SortableOverviewWidget({
     disabled: !editing,
     id: widget.id
   });
+  const { onKeyDown, onPointerDown, ...dragListeners } = listeners ?? {};
 
   return (
     <motion.div
@@ -744,16 +831,33 @@ function SortableOverviewWidget({
         transition
       }}
       {...attributes}
-      {...listeners}
+      {...dragListeners}
+      onKeyDown={(event) => {
+        if (overviewWidgetSortShouldIgnoreTarget(event.target)) {
+          return;
+        }
+        onKeyDown?.(event);
+      }}
+      onPointerDown={(event) => {
+        if (overviewWidgetSortShouldIgnoreTarget(event.target)) {
+          return;
+        }
+        onPointerDown?.(event);
+      }}
     >
       {children}
     </motion.div>
   );
 }
 
+function overviewWidgetSortShouldIgnoreTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(target.closest("[data-overview-widget-drag-lock='true']"));
+}
+
 function OverviewWidgetDragOverlay({
   providerAccounts,
   providerAccountRefreshing = false,
+  providers,
   refreshProviderAccounts,
   usageRange,
   usageStats,
@@ -761,6 +865,7 @@ function OverviewWidgetDragOverlay({
 }: {
   providerAccounts: ProviderAccountSnapshot[];
   providerAccountRefreshing?: boolean;
+  providers: GatewayProviderConfig[];
   refreshProviderAccounts?: () => void | Promise<void>;
   usageRange: UsageStatsRange;
   usageStats: UsageStatsSnapshot;
@@ -771,6 +876,7 @@ function OverviewWidgetDragOverlay({
       <OverviewWidgetRenderer
         providerAccounts={providerAccounts}
         providerAccountRefreshing={providerAccountRefreshing}
+        providers={providers}
         refreshProviderAccounts={refreshProviderAccounts}
         usageRange={usageRange}
         usageStats={usageStats}
@@ -1011,15 +1117,23 @@ function overviewWidgetResizeCursor(axis: OverviewWidgetResizeAxis): string {
 }
 
 function OverviewWidgetRenderer({
+  editing,
+  onChangeAccountCardOrder,
+  onChangeAccountCardSize,
   providerAccounts,
   providerAccountRefreshing = false,
+  providers,
   refreshProviderAccounts,
   usageRange,
   usageStats,
   widget
 }: {
+  editing?: boolean;
+  onChangeAccountCardOrder?: (accountKeys: string[]) => void;
+  onChangeAccountCardSize?: (accountKey: string, size: OverviewAccountCardSize) => void;
   providerAccounts: ProviderAccountSnapshot[];
   providerAccountRefreshing?: boolean;
+  providers: GatewayProviderConfig[];
   refreshProviderAccounts?: () => void | Promise<void>;
   usageRange: UsageStatsRange;
   usageStats: UsageStatsSnapshot;
@@ -1030,7 +1144,7 @@ function OverviewWidgetRenderer({
   if (widget.type === "system-status") {
     content = <SystemStatusBar usageRange={usageRange} usageStats={usageStats} variant={widget.variant === "compact" ? "compact" : "timeline"} />;
   } else if (widget.type === "account-balance") {
-    content = <ProviderAccountsOverview accountProvider={widget.accountProvider} accounts={providerAccounts} dimensions={dimensions} refreshing={providerAccountRefreshing} variant={overviewAccountVariant(widget.variant)} onRefresh={refreshProviderAccounts} />;
+    content = <ProviderAccountsOverview accountCardOrder={widget.accountCardOrder} accountCardSizes={widget.accountCardSizes} accountProviders={overviewWidgetAccountProviderValues(widget)} accounts={providerAccounts} dimensions={dimensions} editing={editing} providers={providers} refreshing={providerAccountRefreshing} variant={overviewAccountVariant(widget.variant)} onChangeAccountCardOrder={onChangeAccountCardOrder} onChangeAccountCardSize={onChangeAccountCardSize} onRefresh={refreshProviderAccounts} />;
   } else if (widget.type === "metric") {
     content = <OverviewMetricWidget metric={widget.metric ?? "requests"} totals={usageStats.totals} variant={overviewMetricVariant(widget.variant)} />;
   } else if (widget.type === "usage-trend") {
@@ -1764,12 +1878,15 @@ function overviewWidgetDataOptions(widget: OverviewWidgetConfig, providerAccount
     return overviewAnalysisDataOptions();
   }
   if (category === "account-balance") {
+    const selectedValues = overviewWidgetAccountProviderValues(widget);
     const options = providerAccounts
       .filter((account) => account.provider)
       .sort(compareProviderAccountSnapshots)
       .map((account) => ({ label: providerAccountSnapshotLabel(account), value: providerAccountSnapshotKey(account) }));
-    if (widget.accountProvider && !options.some((option) => option.value === widget.accountProvider)) {
-      options.push({ label: widget.accountProvider, value: widget.accountProvider });
+    for (const accountProvider of selectedValues) {
+      if (!options.some((option) => option.value === accountProvider)) {
+        options.push({ label: accountProvider, value: accountProvider });
+      }
     }
     return [{ label: "All accounts", value: "" }, ...options];
   }
@@ -1800,7 +1917,7 @@ function overviewWidgetDataValue(widget: OverviewWidgetConfig): string {
     return widget.type;
   }
   if (category === "account-balance") {
-    return widget.accountProvider ?? "";
+    return overviewWidgetAccountProviderValues(widget)[0] ?? "";
   }
   if (category === "activity") {
     return "token-activity";
@@ -1809,6 +1926,27 @@ function overviewWidgetDataValue(widget: OverviewWidgetConfig): string {
     return widget.type;
   }
   return category;
+}
+
+function overviewWidgetAccountProviderValues(widget: OverviewWidgetConfig): string[] {
+  return uniqueOverviewStrings([
+    ...(widget.accountProviders ?? []),
+    ...(widget.accountProvider ? [widget.accountProvider] : [])
+  ]);
+}
+
+function uniqueOverviewStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const item = value.trim();
+    if (!item || seen.has(item)) {
+      continue;
+    }
+    seen.add(item);
+    result.push(item);
+  }
+  return result;
 }
 
 function overviewWidgetCategory(type: OverviewWidgetType): OverviewWidgetCategory {
@@ -2288,29 +2426,74 @@ function SystemStatusBar({
 }
 
 function ProviderAccountsOverview({
-  accountProvider,
+  accountCardOrder,
+  accountCardSizes,
+  accountProviders,
   accounts,
   dimensions,
+  editing = false,
+  onChangeAccountCardOrder,
+  onChangeAccountCardSize,
   onRefresh,
+  providers,
   refreshing = false,
   variant = "cards"
 }: {
-  accountProvider?: string;
+  accountCardOrder?: string[];
+  accountCardSizes?: Record<string, OverviewAccountCardSize>;
+  accountProviders?: string[];
   accounts: ProviderAccountSnapshot[];
   dimensions: OverviewWidgetDimensions;
+  editing?: boolean;
+  onChangeAccountCardOrder?: (accountKeys: string[]) => void;
+  onChangeAccountCardSize?: (accountKey: string, size: OverviewAccountCardSize) => void;
   onRefresh?: () => void | Promise<void>;
+  providers: GatewayProviderConfig[];
   refreshing?: boolean;
   variant?: OverviewAccountVariant;
 }) {
   const t = useAppText();
-  const selectedAccountProvider = accountProvider?.trim();
-  const sortedAccounts = [...accounts].sort(compareProviderAccountSnapshots);
-  const visibleAccounts = selectedAccountProvider
-    ? sortedAccounts.filter((account) => providerAccountSelectionMatches(account, selectedAccountProvider)).slice(0, 1)
+  const selectedAccountProviders = new Set((accountProviders ?? []).map((provider) => provider.trim()).filter(Boolean));
+  const sortedAccounts = accounts.map(providerAccountSnapshotForOverview).sort(compareProviderAccountSnapshots);
+  const filteredAccounts = selectedAccountProviders.size > 0
+    ? sortedAccounts.filter((account) => providerAccountSelectionMatches(account, selectedAccountProviders))
     : sortedAccounts
       .filter((account) => account.meters.length > 0 || account.status === "error");
+  const visibleAccounts = providerAccountOrderAccounts(filteredAccounts, accountCardOrder);
   const isSingleAccount = visibleAccounts.length === 1;
   const showHeading = dimensions.height >= 2 && dimensions.width >= 2;
+  const bentoLayout = !isSingleAccount && variant === "cards"
+    ? providerAccountBentoLayout(visibleAccounts, dimensions, accountCardSizes)
+    : undefined;
+  const accountGridItems = bentoLayout?.items ?? visibleAccounts.map((account) => ({ account, span: undefined }));
+  const accountCardSortSensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 6
+      }
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates
+    })
+  );
+
+  function finishAccountCardSort(event: DragEndEvent) {
+    if (!onChangeAccountCardOrder) {
+      return;
+    }
+    const activeId = String(event.active.id);
+    const overId = event.over ? String(event.over.id) : "";
+    if (!overId || activeId === overId) {
+      return;
+    }
+    const currentOrder = visibleAccounts.map(providerAccountSnapshotKey);
+    const activeIndex = currentOrder.indexOf(activeId);
+    const overIndex = currentOrder.indexOf(overId);
+    if (activeIndex < 0 || overIndex < 0 || activeIndex === overIndex) {
+      return;
+    }
+    onChangeAccountCardOrder(arrayMove(currentOrder, activeIndex, overIndex));
+  }
 
   return (
     <Card className="overview-card flex h-full min-h-0 min-w-0 flex-col">
@@ -2326,17 +2509,20 @@ function ProviderAccountsOverview({
         {visibleAccounts.length === 0 ? (
           <OverviewEmptyState className="h-full py-4" compact label={t("No account balance connectors configured")} />
         ) : isSingleAccount ? (
-          <ProviderAccountSinglePanel account={visibleAccounts[0]} dimensions={dimensions} refreshing={refreshing} variant={variant} onRefresh={onRefresh} />
+          <ProviderAccountSinglePanel account={visibleAccounts[0]} dimensions={dimensions} providers={providers} refreshing={refreshing} variant={variant} onRefresh={onRefresh} />
         ) : variant === "compact" ? (
           <div className={cn("grid h-full min-h-0 grid-cols-1 overflow-y-auto pr-1", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions, visibleAccounts.length))}>
             {visibleAccounts.map((account) => {
               const meter = primaryProviderAccountDisplayMeter(account);
               return (
                 <div className="overview-nested-surface flex min-h-0 min-w-0 items-center justify-between gap-3 overflow-hidden border px-3 py-2" key={providerAccountSnapshotKey(account)}>
-                  <div className="min-w-0">
-                    <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
-                    {providerAccountShowSource(dimensions) && meter ? <div className="truncate text-[11px] text-muted-foreground">{t(meter.label)}</div> : null}
-                    {providerAccountShowRefreshTime(dimensions) ? <div className="truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+                  <div className="flex min-w-0 items-center gap-2">
+                    <ProviderAccountLogo account={account} className="h-7 w-7 rounded-md" providers={providers} />
+                    <div className="min-w-0">
+                      <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
+                      {providerAccountShowSource(dimensions) && meter ? <div className="truncate text-[11px] text-muted-foreground">{t(meter.label)}</div> : null}
+                      {providerAccountShowRefreshTime(dimensions) ? <div className="truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+                    </div>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1 text-right">
                     {providerAccountShowRefresh(dimensions) ? <ProviderAccountRefreshButton account={account} refreshing={refreshing} onRefresh={onRefresh} /> : null}
@@ -2354,10 +2540,13 @@ function ProviderAccountsOverview({
               return (
                 <div className="min-w-0 overflow-hidden" key={providerAccountSnapshotKey(account)}>
                   <div className="flex min-w-0 items-end justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
-                      {providerAccountShowSource(dimensions) && meter ? <div className="truncate text-[11px] text-muted-foreground">{t(meter.label)}</div> : null}
-                      {providerAccountShowRefreshTime(dimensions) ? <div className="truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+                    <div className="flex min-w-0 items-center gap-2">
+                      <ProviderAccountLogo account={account} className="h-6 w-6 rounded-md" providers={providers} />
+                      <div className="min-w-0">
+                        <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
+                        {providerAccountShowSource(dimensions) && meter ? <div className="truncate text-[11px] text-muted-foreground">{t(meter.label)}</div> : null}
+                        {providerAccountShowRefreshTime(dimensions) ? <div className="truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+                      </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-2 text-[12px] font-semibold">
                       {meter ? <span>{formatProviderAccountMeterValue(meter)}</span> : null}
@@ -2373,10 +2562,45 @@ function ProviderAccountsOverview({
               );
             })}
           </div>
+        ) : variant === "cards" ? (
+          <DndContext sensors={accountCardSortSensors} onDragEnd={finishAccountCardSort}>
+            <SortableContext items={accountGridItems.map(({ account }) => providerAccountSnapshotKey(account))} strategy={rectSortingStrategy}>
+              <div
+                className={cn(
+                  "grid h-full min-h-0 grid-flow-dense items-stretch overflow-hidden",
+                  providerAccountBentoGridRowClass(),
+                  providerAccountGapClass(dimensions),
+                  providerAccountBentoGridClass(dimensions, visibleAccounts.length)
+                )}
+                data-provider-account-grid="true"
+              >
+                {accountGridItems.map(({ account, span }) => {
+                  const accountKey = providerAccountSnapshotKey(account);
+                  return (
+                    <SortableProviderAccountCard account={account} disabled={!editing || !onChangeAccountCardOrder} key={accountKey} span={span}>
+                      {(dragHandle) => (
+                        <ProviderAccountSummaryCard account={account} bentoSpan={span} dimensions={dimensions} dragHandle={dragHandle} editing={editing} providers={providers} refreshing={refreshing} variant={variant} onChangeCardSize={onChangeAccountCardSize} onRefresh={onRefresh} />
+                      )}
+                    </SortableProviderAccountCard>
+                  );
+                })}
+                {(bentoLayout?.hiddenCount ?? 0) > 0 ? (
+                  <ProviderAccountBentoOverflowTile count={bentoLayout?.hiddenCount ?? 0} />
+                ) : null}
+              </div>
+            </SortableContext>
+          </DndContext>
         ) : (
-          <div className={cn("grid h-full min-h-0 grid-cols-1 overflow-y-auto pr-1", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions, visibleAccounts.length))}>
-            {visibleAccounts.map((account) => {
-              return <ProviderAccountSummaryCard account={account} dimensions={dimensions} key={providerAccountSnapshotKey(account)} refreshing={refreshing} variant={variant} onRefresh={onRefresh} />;
+          <div
+            className={cn(
+              "grid h-full min-h-0 auto-rows-max content-start grid-cols-1 overflow-y-auto pb-2 pr-2 [scrollbar-gutter:stable]",
+              providerAccountGapClass(dimensions),
+              providerAccountGridClass(dimensions, visibleAccounts.length)
+            )}
+            data-provider-account-grid="true"
+          >
+            {accountGridItems.map(({ account, span }) => {
+              return <ProviderAccountSummaryCard account={account} bentoSpan={span} dimensions={dimensions} editing={editing} key={providerAccountSnapshotKey(account)} providers={providers} refreshing={refreshing} variant={variant} onChangeCardSize={onChangeAccountCardSize} onRefresh={onRefresh} />;
             })}
           </div>
         )}
@@ -2385,31 +2609,123 @@ function ProviderAccountsOverview({
   );
 }
 
+function SortableProviderAccountCard({
+  account,
+  children,
+  disabled,
+  span
+}: {
+  account: ProviderAccountSnapshot;
+  children: (dragHandle: ReactNode) => ReactNode;
+  disabled: boolean;
+  span?: ProviderAccountBentoSpan;
+}) {
+  const t = useAppText();
+  const accountKey = providerAccountSnapshotKey(account);
+  const {
+    attributes,
+    isDragging,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition
+  } = useSortable({
+    disabled,
+    id: accountKey
+  });
+  const { onKeyDown, onPointerDown, ...dragListeners } = listeners ?? {};
+  const dragHandle = disabled ? null : (
+    <button
+      {...attributes}
+      {...dragListeners}
+      aria-label={t("Move account card")}
+      className="shrink-0 cursor-grab rounded-md p-1 text-muted-foreground/75 opacity-0 transition-[background-color,color,opacity] hover:bg-muted hover:text-foreground active:cursor-grabbing focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25 group-hover/account-card:opacity-100"
+      data-account-card-drag-handle="true"
+      data-overview-widget-drag-lock="true"
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => {
+        event.stopPropagation();
+        onKeyDown?.(event);
+      }}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        onPointerDown?.(event);
+      }}
+      ref={setActivatorNodeRef}
+      title={t("Move account card")}
+      type="button"
+    >
+      <GripHorizontal aria-hidden="true" className="h-3.5 w-3.5" />
+    </button>
+  );
+
+  return (
+    <div
+      className={cn(
+        "min-h-0 min-w-0",
+        span ? providerAccountBentoSpanClass(span) : undefined,
+        !disabled && "cursor-grab active:cursor-grabbing",
+        isDragging && "relative z-30 opacity-70"
+      )}
+      data-provider-account-sortable-id={accountKey}
+      data-overview-widget-drag-lock="true"
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        if (providerAccountCardSortShouldIgnoreTarget(event.target)) {
+          return;
+        }
+        onPointerDown?.(event);
+      }}
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition
+      }}
+    >
+      {children(dragHandle)}
+    </div>
+  );
+}
+
+function providerAccountCardSortShouldIgnoreTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(target.closest("button,a,input,select,textarea,[contenteditable='true'],[data-account-card-resize-handle]"));
+}
+
 function ProviderAccountSinglePanel({
   account,
   dimensions,
   onRefresh,
+  providers,
   refreshing = false,
   variant
 }: {
   account: ProviderAccountSnapshot;
   dimensions: OverviewWidgetDimensions;
   onRefresh?: () => void | Promise<void>;
+  providers: GatewayProviderConfig[];
   refreshing?: boolean;
   variant: OverviewAccountVariant;
 }) {
   const t = useAppText();
   const quotaMeters = providerAccountQuotaMeters(account);
   const balanceMeter = primaryProviderAccountBalanceMeter(account);
-  const meters = providerAccountMetersForDisplayOrdered(account, providerAccountMeterLimit(dimensions, true, variant));
+  const meterLimit = providerAccountMeterLimitAvoidingOrphanExtra(
+    account,
+    providerAccountMeterLimit(dimensions, true, variant)
+  );
+  const meters = providerAccountMetersForDisplayOrdered(account, meterLimit);
   const showQuotaVisual = providerAccountUsesQuotaVisual(variant) && quotaMeters.length > 0;
 
   return (
     <div className={cn("flex h-full min-h-0 min-w-0 flex-col overflow-hidden", providerAccountStackClass(dimensions))}>
-      <div className="flex min-w-0 items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className={cn("truncate font-semibold", dimensions.height <= 1 ? "text-[12px]" : "text-[13px]")}>{providerAccountSnapshotLabel(account)}</div>
-          {providerAccountShowRefreshTime(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+      <div className="flex min-w-0 shrink-0 items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-2">
+          <ProviderAccountLogo account={account} className={cn("rounded-md", dimensions.height <= 1 ? "h-7 w-7" : "h-9 w-9")} providers={providers} />
+          <div className="min-w-0">
+            <div className={cn("truncate font-semibold", dimensions.height <= 1 ? "text-[12px]" : "text-[13px]")}>{providerAccountSnapshotLabel(account)}</div>
+            {providerAccountShowRefreshTime(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+          </div>
         </div>
         {providerAccountShowRefresh(dimensions) ? <ProviderAccountRefreshButton account={account} refreshing={refreshing} onRefresh={onRefresh} /> : null}
       </div>
@@ -2422,9 +2738,6 @@ function ProviderAccountSinglePanel({
           {meters.map((meter) => (
             <ProviderAccountMeterLine account={account} dimensions={dimensions} key={meter.id} meter={meter} single onRefresh={onRefresh} />
           ))}
-          {providerAccountShowExtraCount(dimensions) && account.meters.length > meters.length ? (
-            <div className="truncate text-[10px] text-muted-foreground">+{account.meters.length - meters.length}</div>
-          ) : null}
         </div>
       ) : (
         <div className="truncate text-[12px] text-muted-foreground">{account.message || account.errors?.[0]?.message || t("Unavailable")}</div>
@@ -2435,29 +2748,156 @@ function ProviderAccountSinglePanel({
 
 function ProviderAccountSummaryCard({
   account,
+  bentoSpan,
   dimensions,
+  dragHandle,
+  editing = false,
+  onChangeCardSize,
   onRefresh,
+  providers,
   refreshing = false,
   variant
 }: {
   account: ProviderAccountSnapshot;
+  bentoSpan?: ProviderAccountBentoSpan;
   dimensions: OverviewWidgetDimensions;
+  dragHandle?: ReactNode;
+  editing?: boolean;
+  onChangeCardSize?: (accountKey: string, size: OverviewAccountCardSize) => void;
   onRefresh?: () => void | Promise<void>;
+  providers: GatewayProviderConfig[];
   refreshing?: boolean;
   variant: OverviewAccountVariant;
 }) {
   const t = useAppText();
   const quotaMeters = providerAccountQuotaMeters(account);
   const balanceMeter = primaryProviderAccountBalanceMeter(account);
-  const meters = providerAccountMetersForDisplayOrdered(account, providerAccountMeterLimit(dimensions, false, variant));
   const showQuotaVisual = providerAccountUsesQuotaVisual(variant) && quotaMeters.length > 0;
+  const primaryMeter = primaryProviderAccountDisplayMeter(account);
+  const cardBentoSpan = bentoSpan ?? providerAccountBentoSpan(account, dimensions);
+  const compactBento = cardBentoSpan.height === 1;
+  const baseBentoSecondaryLimit = providerAccountBentoSecondaryLimit(dimensions, cardBentoSpan);
+  const bentoSecondaryLimit = compactBento
+    ? baseBentoSecondaryLimit
+    : Math.max(baseBentoSecondaryLimit, providerAccountMeterLimitAvoidingOrphanExtra(account, 1 + baseBentoSecondaryLimit) - 1);
+  const meterLimit = variant === "cards" && !compactBento
+    ? Math.max(providerAccountMeterLimit(dimensions, false, variant), 1 + bentoSecondaryLimit)
+    : providerAccountMeterLimit(dimensions, false, variant);
+  const meters = providerAccountMetersForDisplayOrdered(account, meterLimit);
+  const secondaryMeters = primaryMeter
+    ? meters.filter((meter) => meter !== primaryMeter).slice(0, bentoSecondaryLimit)
+    : [];
+  const primaryProgress = primaryMeter && isProviderAccountQuotaMeter(primaryMeter) ? providerAccountMeterProgress(primaryMeter) : undefined;
+  const resizeHandle = editing && onChangeCardSize
+    ? <ProviderAccountCardResizeHandle account={account} currentSize={providerAccountBentoSizeFromSpan(cardBentoSpan)} maxHeight={providerAccountBentoRowCount(dimensions) >= 2 ? 2 : 1} maxWidth={providerAccountBentoColumnCount(dimensions, 2) >= 2 ? 2 : 1} onResize={onChangeCardSize} />
+    : null;
+
+  if (variant === "cards") {
+    if (compactBento) {
+      return (
+        <div className={cn("overview-account-bento-tile overview-nested-surface group/account-card relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden border p-2.5", providerAccountBentoSpanClass(cardBentoSpan))} data-account-status={account.status} data-provider-account-card-layout="compact">
+          <div className="flex min-w-0 shrink-0 items-start justify-between gap-2.5">
+            <div className="flex min-w-0 flex-1 items-center gap-2.5" data-provider-account-compact-brand="true">
+              <ProviderAccountLogo account={account} className="h-8 w-8 rounded-md shadow-sm" providers={providers} />
+              <div className="min-w-0">
+                <div className="truncate text-[13px] font-semibold leading-tight">{providerAccountSnapshotLabel(account)}</div>
+              </div>
+            </div>
+            {dragHandle || providerAccountShowRefresh(dimensions) ? (
+              <div className="flex shrink-0 items-center gap-1" data-provider-account-compact-actions="true">
+                {dragHandle}
+                {providerAccountShowRefresh(dimensions) ? <ProviderAccountRefreshButton account={account} className="h-7 w-7" iconClassName="h-4 w-4" refreshing={refreshing} onRefresh={onRefresh} /> : null}
+              </div>
+            ) : null}
+          </div>
+          <div className="mt-auto min-h-0 min-w-0 pt-2">
+            {primaryMeter ? (
+              <div className="min-w-0 text-right" data-provider-account-compact-meter="true">
+                <div className="truncate text-[10px] font-semibold leading-none text-muted-foreground">
+                  {formatProviderAccountMeterTitle(primaryMeter, t)}
+                </div>
+                <div className="mt-1 truncate text-[19px] font-semibold leading-none tracking-tight">{formatProviderAccountMeterValue(primaryMeter, t)}</div>
+              </div>
+            ) : (
+              <div className="line-clamp-2 min-w-0 text-[11px] font-medium leading-snug text-muted-foreground" data-provider-account-compact-message="true">
+                {account.message || account.errors?.[0]?.message || t("Unavailable")}
+              </div>
+            )}
+          </div>
+          {primaryProgress !== undefined && providerAccountShowProgress(dimensions) ? (
+            <div className="overview-account-bento-track mt-1.5 h-1.5 shrink-0 overflow-hidden rounded-full">
+              <div className="overview-account-bento-fill h-full rounded-full" style={{ width: `${primaryProgress}%` }} />
+            </div>
+          ) : null}
+          {resizeHandle}
+        </div>
+      );
+    }
+
+    return (
+      <div className={cn("overview-account-bento-tile overview-nested-surface group/account-card relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden border", providerAccountBentoSpanClass(cardBentoSpan), providerAccountCardPaddingClass(dimensions))} data-account-status={account.status} data-provider-account-card-layout="expanded">
+        <div className="flex min-w-0 shrink-0 items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-2">
+            <ProviderAccountLogo account={account} className="h-8 w-8 rounded-md" providers={providers} />
+            <div className="min-w-0">
+              <div className="truncate text-[13px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
+              {providerAccountShowRefreshTime(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+            </div>
+          </div>
+          {dragHandle || providerAccountShowRefresh(dimensions) ? (
+            <div className="flex shrink-0 items-center gap-1">
+              {dragHandle}
+              {providerAccountShowRefresh(dimensions) ? <ProviderAccountRefreshButton account={account} refreshing={refreshing} onRefresh={onRefresh} /> : null}
+            </div>
+          ) : null}
+        </div>
+
+        {primaryMeter ? (
+          <>
+            <div className="mt-3 min-w-0">
+              <div className="flex min-w-0 items-end justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="truncate text-[11px] font-medium text-muted-foreground">{formatProviderAccountMeterTitle(primaryMeter, t)}</div>
+                  <div className={cn("truncate font-semibold tracking-tight", dimensions.height >= 3 ? "text-[22px]" : "text-[20px]")}>{formatProviderAccountMeterValue(primaryMeter, t)}</div>
+                </div>
+                {primaryProgress !== undefined && primaryMeter.unit.trim() !== "%" ? (
+                  <div className="overview-account-bento-badge shrink-0">{primaryProgress}%</div>
+                ) : null}
+              </div>
+              {primaryProgress !== undefined && providerAccountShowProgress(dimensions) ? (
+                <div className="overview-account-bento-track mt-2 h-2 overflow-hidden rounded-full">
+                  <div className="overview-account-bento-fill h-full rounded-full" style={{ width: `${primaryProgress}%` }} />
+                </div>
+              ) : null}
+            </div>
+
+            {secondaryMeters.length > 0 ? (
+              <div className="mt-auto min-h-0 space-y-1.5 border-t border-border/45 pt-2">
+                {secondaryMeters.map((meter) => (
+                  <ProviderAccountMeterLine account={account} compact dimensions={dimensions} key={meter.id} meter={meter} onRefresh={onRefresh} />
+                ))}
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <div className="mt-3 flex min-h-0 flex-1 items-center overflow-hidden text-[12px] text-muted-foreground">
+            <span className="min-w-0 truncate">{account.message || account.errors?.[0]?.message || t("Unavailable")}</span>
+          </div>
+        )}
+        {resizeHandle}
+      </div>
+    );
+  }
 
   return (
-    <div className={cn("overview-nested-surface min-h-0 min-w-0 overflow-hidden border", providerAccountCardPaddingClass(dimensions))}>
+    <div className={cn("overview-nested-surface flex h-full min-w-0 flex-col overflow-hidden border", providerAccountCardPaddingClass(dimensions))}>
       <div className="flex min-w-0 items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="truncate text-[13px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
-          {providerAccountShowRefreshTime(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+        <div className="flex min-w-0 items-start gap-2">
+          <ProviderAccountLogo account={account} className="h-8 w-8 rounded-md" providers={providers} />
+          <div className="min-w-0">
+            <div className="truncate text-[13px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
+            {providerAccountShowRefreshTime(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+          </div>
         </div>
         {providerAccountShowRefresh(dimensions) ? <ProviderAccountRefreshButton account={account} refreshing={refreshing} onRefresh={onRefresh} /> : null}
       </div>
@@ -2470,13 +2910,10 @@ function ProviderAccountSummaryCard({
           <ProviderAccountBalanceMetric dimensions={dimensions} meter={balanceMeter} compact />
         </div>
       ) : meters.length > 0 ? (
-        <div className={cn("mt-2 min-h-0 overflow-hidden", providerAccountStackClass(dimensions))}>
+        <div className={cn("mt-2 min-h-0", providerAccountStackClass(dimensions))}>
           {meters.map((meter) => (
             <ProviderAccountMeterLine account={account} dimensions={dimensions} key={meter.id} meter={meter} onRefresh={onRefresh} />
           ))}
-          {providerAccountShowExtraCount(dimensions) && account.meters.length > meters.length ? (
-            <div className="truncate text-[10px] text-muted-foreground">+{account.meters.length - meters.length}</div>
-          ) : null}
         </div>
       ) : (
         <div className="mt-2 truncate text-[12px] text-muted-foreground">{account.message || account.errors?.[0]?.message || t("Unavailable")}</div>
@@ -2485,12 +2922,301 @@ function ProviderAccountSummaryCard({
   );
 }
 
+function ProviderAccountCardResizeHandle({
+  account,
+  currentSize,
+  maxHeight,
+  maxWidth,
+  onResize
+}: {
+  account: ProviderAccountSnapshot;
+  currentSize: OverviewAccountCardSize;
+  maxHeight: 1 | 2;
+  maxWidth: 1 | 2;
+  onResize: (accountKey: string, size: OverviewAccountCardSize) => void;
+}) {
+  const t = useAppText();
+  const size = overviewAccountCardSizeDimensions(currentSize);
+
+  function startResize(handle: OverviewAccountCardResizeHandle, event: ReactPointerEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const accountKey = providerAccountSnapshotKey(account);
+    const startSize = size;
+    const startY = event.clientY;
+    const startX = event.clientX;
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    let activeSize = currentSize;
+    document.body.style.cursor = providerAccountCardResizeCursor(handle);
+    document.body.style.userSelect = "none";
+
+    const update = (pointerEvent: PointerEvent) => {
+      const nextWidth = providerAccountNextResizeDimension(
+        startSize.width,
+        maxWidth,
+        providerAccountCardResizeWidthDelta(handle, pointerEvent.clientX - startX)
+      );
+      const nextHeight = providerAccountNextResizeDimension(
+        startSize.height,
+        maxHeight,
+        providerAccountCardResizeHeightDelta(handle, pointerEvent.clientY - startY)
+      );
+      const nextSize = overviewAccountCardSize(nextWidth, nextHeight);
+      if (nextSize === activeSize) {
+        return;
+      }
+      activeSize = nextSize;
+      onResize(accountKey, nextSize);
+    };
+    const stop = () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      window.removeEventListener("pointermove", update);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+
+    window.addEventListener("pointermove", update);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+  }
+
+  return (
+    <>
+      {overviewAccountCardResizeHandles.map((handle) => (
+        <button
+          aria-label={t("Resize account card")}
+          className={providerAccountCardResizeHandleClass(handle)}
+          data-account-card-resize-handle={handle}
+          key={handle}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          onPointerDown={(event) => startResize(handle, event)}
+          title={t("Resize account card")}
+          type="button"
+        >
+          {providerAccountCardResizeHandleIcon(handle)}
+        </button>
+      ))}
+    </>
+  );
+}
+
+type OverviewAccountCardResizeHandle = "bottom" | "bottom-left" | "bottom-right" | "left" | "right" | "top" | "top-left" | "top-right";
+
+const overviewAccountCardResizeHandles: OverviewAccountCardResizeHandle[] = [
+  "top",
+  "right",
+  "bottom",
+  "left",
+  "top-left",
+  "top-right",
+  "bottom-right",
+  "bottom-left"
+];
+
+function overviewAccountCardSizeDimensions(size: OverviewAccountCardSize): ProviderAccountBentoSpan {
+  const [widthText, heightText] = size.split(":");
+  return {
+    height: heightText === "2" ? 2 : 1,
+    width: widthText === "2" ? 2 : 1
+  };
+}
+
+function overviewAccountCardSize(width: 1 | 2, height: 1 | 2): OverviewAccountCardSize {
+  return `${width}:${height}` as OverviewAccountCardSize;
+}
+
+function providerAccountNextResizeDimension(start: 1 | 2, max: 1 | 2, delta: number): 1 | 2 {
+  if (max === 1) {
+    return 1;
+  }
+  if (delta >= 18) {
+    return 2;
+  }
+  if (delta <= -18) {
+    return 1;
+  }
+  return start;
+}
+
+function providerAccountCardResizeWidthDelta(handle: OverviewAccountCardResizeHandle, deltaX: number): number {
+  if (handle.includes("right")) {
+    return deltaX;
+  }
+  if (handle.includes("left")) {
+    return -deltaX;
+  }
+  return 0;
+}
+
+function providerAccountCardResizeHeightDelta(handle: OverviewAccountCardResizeHandle, deltaY: number): number {
+  if (handle.includes("bottom")) {
+    return deltaY;
+  }
+  if (handle.includes("top")) {
+    return -deltaY;
+  }
+  return 0;
+}
+
+function providerAccountCardResizeCursor(handle: OverviewAccountCardResizeHandle): string {
+  if (handle === "left" || handle === "right") {
+    return "ew-resize";
+  }
+  if (handle === "top" || handle === "bottom") {
+    return "ns-resize";
+  }
+  if (handle === "top-left" || handle === "bottom-right") {
+    return "nwse-resize";
+  }
+  return "nesw-resize";
+}
+
+function providerAccountCardResizeHandleClass(handle: OverviewAccountCardResizeHandle): string {
+  const base = "group/account-resize absolute z-20 touch-none border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-ring/20";
+  if (handle === "top") {
+    return cn(base, "left-10 right-10 top-0 h-4 cursor-ns-resize");
+  }
+  if (handle === "bottom") {
+    return cn(base, "bottom-0 left-10 right-10 h-4 cursor-ns-resize");
+  }
+  if (handle === "left") {
+    return cn(base, "bottom-10 left-0 top-10 w-4 cursor-ew-resize");
+  }
+  if (handle === "right") {
+    return cn(base, "bottom-10 right-0 top-10 w-4 cursor-ew-resize");
+  }
+  const cornerClass = "h-8 w-8";
+  if (handle === "top-left") {
+    return cn(base, cornerClass, "left-0 top-0 cursor-nwse-resize");
+  }
+  if (handle === "top-right") {
+    return cn(base, cornerClass, "right-0 top-0 cursor-nesw-resize");
+  }
+  if (handle === "bottom-left") {
+    return cn(base, cornerClass, "bottom-0 left-0 cursor-nesw-resize");
+  }
+  return cn(base, cornerClass, "bottom-0 right-0 cursor-nwse-resize");
+}
+
+function providerAccountCardResizeHandleIcon(handle: OverviewAccountCardResizeHandle): ReactNode {
+  const markerClass = "pointer-events-none absolute rounded-full bg-muted-foreground/35 opacity-0 transition-[background-color,opacity] group-hover/account-card:opacity-100 group-hover/account-resize:bg-primary/55 group-focus-visible/account-resize:opacity-100 group-focus-visible/account-resize:bg-primary/55";
+  if (handle === "top" || handle === "bottom" || handle === "left" || handle === "right") {
+    return (
+      <span
+        aria-hidden="true"
+        className={cn(
+          markerClass,
+          (handle === "top" || handle === "bottom")
+            ? "left-1/2 h-0.5 w-12 -translate-x-1/2"
+            : "top-1/2 h-12 w-0.5 -translate-y-1/2",
+          handle === "top" && "top-1.5",
+          handle === "bottom" && "bottom-1.5",
+          handle === "left" && "left-1.5",
+          handle === "right" && "right-1.5"
+        )}
+      />
+    );
+  }
+  const cornerLineClass = "absolute rounded-full bg-muted-foreground/35 transition-colors group-hover/account-resize:bg-primary/55 group-focus-visible/account-resize:bg-primary/55";
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "pointer-events-none absolute h-3.5 w-3.5 opacity-0 transition-opacity group-hover/account-card:opacity-100 group-focus-visible/account-resize:opacity-100",
+        handle === "top-left" && "left-2 top-2",
+        handle === "top-right" && "right-2 top-2",
+        handle === "bottom-left" && "bottom-2 left-2",
+        handle === "bottom-right" && "bottom-2 right-2"
+      )}
+    >
+      <span
+        className={cn(
+          cornerLineClass,
+          "h-0.5 w-3.5",
+          handle.includes("top") ? "top-0" : "bottom-0",
+          handle.includes("left") ? "left-0" : "right-0"
+        )}
+      />
+      <span
+        className={cn(
+          cornerLineClass,
+          "h-3.5 w-0.5",
+          handle.includes("top") ? "top-0" : "bottom-0",
+          handle.includes("left") ? "left-0" : "right-0"
+        )}
+      />
+    </span>
+  );
+}
+
+function ProviderAccountBentoOverflowTile({ count }: { count: number }) {
+  const t = useAppText();
+  return (
+    <div className="overview-account-bento-more overview-account-bento-tile overview-nested-surface row-span-1 flex min-h-0 min-w-0 flex-col justify-center overflow-hidden border p-3 text-center" data-account-status="unknown">
+      <div className="truncate text-[22px] font-semibold tracking-tight">+{count}</div>
+      <div className="truncate text-[11px] font-medium text-muted-foreground">{t("More")}</div>
+    </div>
+  );
+}
+
+function ProviderAccountLogo({
+  account,
+  className,
+  providers
+}: {
+  account: ProviderAccountSnapshot;
+  className?: string;
+  providers: GatewayProviderConfig[];
+}) {
+  const iconUrl = providerAccountIconUrl(account, providers);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [iconUrl]);
+  const fallbackLabel = account.provider.trim().slice(0, 1).toUpperCase();
+
+  if (iconUrl && !failed) {
+    return (
+      <span className={cn("flex shrink-0 items-center justify-center overflow-hidden border border-border bg-background p-0.5", className)}>
+        <img alt="" className="h-full w-full object-contain" draggable={false} src={iconUrl} onError={() => setFailed(true)} />
+      </span>
+    );
+  }
+
+  return (
+    <span className={cn("flex shrink-0 items-center justify-center border border-border bg-muted text-[10px] font-semibold text-muted-foreground", className)}>
+      {fallbackLabel || <WalletCards className="h-3.5 w-3.5" />}
+    </span>
+  );
+}
+
+function providerAccountIconUrl(account: ProviderAccountSnapshot, providers: GatewayProviderConfig[]): string {
+  const providerName = account.provider.trim().toLowerCase();
+  if (!providerName) {
+    return "";
+  }
+  const provider = providers.find((item) => (
+    item.name.trim().toLowerCase() === providerName
+      || item.id?.trim().toLowerCase() === providerName
+      || item.provider?.trim().toLowerCase() === providerName
+  ));
+  return provider ? providerDisplayIcon(provider) : "";
+}
+
 function ProviderAccountRefreshButton({
   account,
+  className,
+  iconClassName,
   onRefresh,
   refreshing = false
 }: {
   account: ProviderAccountSnapshot;
+  className?: string;
+  iconClassName?: string;
   onRefresh?: () => void | Promise<void>;
   refreshing?: boolean;
 }) {
@@ -2499,7 +3225,7 @@ function ProviderAccountRefreshButton({
   return (
     <button
       aria-label={label}
-      className="m-0 inline-flex shrink-0 appearance-none items-center justify-center border-0 bg-transparent p-0 text-muted-foreground shadow-none transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-45"
+      className={cn("m-0 inline-flex h-6 w-6 shrink-0 appearance-none items-center justify-center rounded-md border-0 bg-transparent p-0 text-muted-foreground shadow-none transition-colors hover:bg-muted/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-45", className)}
       disabled={refreshing || !onRefresh}
       title={`${label} (${account.status})`}
       type="button"
@@ -2508,7 +3234,7 @@ function ProviderAccountRefreshButton({
         void onRefresh?.();
       }}
     >
-      {refreshing ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+      {refreshing ? <LoaderCircle className={cn("h-3.5 w-3.5 animate-spin", iconClassName)} /> : <RefreshCw className={cn("h-3.5 w-3.5", iconClassName)} />}
     </button>
   );
 }
@@ -2533,12 +3259,14 @@ function formatProviderAccountUpdatedAt(value: string): string {
 
 function ProviderAccountMeterLine({
   account,
+  compact = false,
   dimensions,
   meter,
   onRefresh,
   single = false
 }: {
   account: ProviderAccountSnapshot;
+  compact?: boolean;
   dimensions: OverviewWidgetDimensions;
   meter: ReturnType<typeof providerAccountMetersForDisplay>[number];
   onRefresh?: () => void | Promise<void>;
@@ -2551,8 +3279,8 @@ function ProviderAccountMeterLine({
   const [resetDialogDetail, setResetDialogDetail] = useState<NonNullable<ProviderAccountMeter["details"]>[number]>();
   const title = formatProviderAccountMeterTitle(meter, t);
   const detailsId = `provider-account-meter-${providerAccountSnapshotKey(account)}-${meter.id}-details`.replace(/[^a-zA-Z0-9_-]/g, "-");
-  const titleClassName = cn("min-w-0 truncate font-medium text-muted-foreground", single && dimensions.height >= 2 ? "text-[13px]" : "text-[12px]");
-  const valueClassName = cn("shrink-0 font-semibold tracking-tight", single && dimensions.height >= 2 ? "text-[18px]" : "text-[15px]");
+  const titleClassName = cn("min-w-0 truncate font-medium text-muted-foreground", compact ? "text-[10px]" : single && dimensions.height >= 2 ? "text-[13px]" : "text-[12px]");
+  const valueClassName = cn("shrink-0 font-semibold tracking-tight", compact ? "text-[12px]" : single && dimensions.height >= 2 ? "text-[18px]" : "text-[15px]");
   const meterSummary = (
     <>
       <div className="flex min-w-0 items-center gap-1.5">
@@ -2563,7 +3291,7 @@ function ProviderAccountMeterLine({
         ) : null}
         <div className={titleClassName}>{title}</div>
       </div>
-      <div className={valueClassName}>{formatProviderAccountMeterValue(meter)}</div>
+      <div className={valueClassName}>{formatProviderAccountMeterValue(meter, t)}</div>
     </>
   );
 
@@ -2574,7 +3302,7 @@ function ProviderAccountMeterLine({
           aria-controls={detailsId}
           aria-expanded={detailsOpen}
           aria-label={`${t(detailsOpen ? "Collapse" : "Expand")} ${title}`}
-          className="group -mx-1 flex w-[calc(100%+8px)] min-w-0 items-end justify-between gap-3 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
+          className={cn("group -mx-1 flex w-[calc(100%+8px)] min-w-0 items-end justify-between gap-3 rounded-md px-1 text-left transition-colors hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25", compact ? "py-0" : "py-0.5")}
           onClick={() => setDetailsOpen((current) => !current)}
           type="button"
         >
@@ -2586,7 +3314,7 @@ function ProviderAccountMeterLine({
         </div>
       )}
       {progress !== undefined && providerAccountShowProgress(dimensions) ? (
-        <div className={cn("mt-1.5 overflow-hidden rounded-full", single ? "bg-muted" : "bg-background", dimensions.height <= 1 ? "h-1.5" : "h-2")}>
+        <div className={cn("mt-1.5 overflow-hidden rounded-full", single ? "bg-muted" : "bg-background", compact || dimensions.height <= 1 ? "h-1.5" : "h-2")}>
           <div className={cn("h-full rounded-full", providerAccountProgressClass(account.status))} style={{ width: `${progress}%` }} />
         </div>
       ) : null}
@@ -3205,8 +3933,48 @@ function primaryProviderAccountDisplayMeter(account: ProviderAccountSnapshot): P
   return providerAccountQuotaMeters(account)[0] ?? primaryProviderAccountBalanceMeter(account) ?? primaryProviderAccountMeter(account);
 }
 
-function providerAccountSelectionMatches(account: ProviderAccountSnapshot, value: string): boolean {
-  return providerAccountSnapshotKey(account) === value || account.provider === value;
+const providerAccountBalanceBreakdownMeterIds = new Set(["granted_balance", "topped_up_balance"]);
+
+function providerAccountSnapshotForOverview(account: ProviderAccountSnapshot): ProviderAccountSnapshot {
+  const hasTotalBalance = account.meters.some(
+    (meter) => meter.kind === "balance" && meter.id.trim().toLowerCase() === "balance"
+  );
+  if (!hasTotalBalance) {
+    return account;
+  }
+  const meters = account.meters.filter(
+    (meter) => meter.kind !== "balance" || !providerAccountBalanceBreakdownMeterIds.has(meter.id.trim().toLowerCase())
+  );
+  return meters.length === account.meters.length ? account : { ...account, meters };
+}
+
+function providerAccountSelectionMatches(account: ProviderAccountSnapshot, values: ReadonlySet<string>): boolean {
+  return values.has(providerAccountSnapshotKey(account)) || values.has(account.provider);
+}
+
+function providerAccountOrderAccounts(accounts: ProviderAccountSnapshot[], order: string[] | undefined): ProviderAccountSnapshot[] {
+  const accountOrder = uniqueOverviewStrings(order ?? []);
+  if (accountOrder.length === 0) {
+    return accounts;
+  }
+  const accountsByKey = new Map(accounts.map((account) => [providerAccountSnapshotKey(account), account]));
+  const used = new Set<string>();
+  const orderedAccounts: ProviderAccountSnapshot[] = [];
+  for (const accountKey of accountOrder) {
+    const account = accountsByKey.get(accountKey);
+    if (!account || used.has(accountKey)) {
+      continue;
+    }
+    used.add(accountKey);
+    orderedAccounts.push(account);
+  }
+  for (const account of accounts) {
+    const accountKey = providerAccountSnapshotKey(account);
+    if (!used.has(accountKey)) {
+      orderedAccounts.push(account);
+    }
+  }
+  return orderedAccounts;
 }
 
 function primaryProviderAccountBalanceMeter(account: ProviderAccountSnapshot): ProviderAccountMeter | undefined {
@@ -3334,12 +4102,213 @@ function providerAccountMeterLimit(dimensions: OverviewWidgetDimensions, single:
   return 2;
 }
 
+function providerAccountMeterLimitAvoidingOrphanExtra(account: ProviderAccountSnapshot, maxCount: number): number {
+  return account.meters.length - maxCount === 1 ? maxCount + 1 : maxCount;
+}
+
 function providerAccountContentPaddingClass(dimensions: OverviewWidgetDimensions): string {
   return dimensions.height <= 1 || dimensions.width <= 1 ? "p-2" : "p-3";
 }
 
 function providerAccountCardPaddingClass(dimensions: OverviewWidgetDimensions): string {
   return dimensions.height <= 1 || dimensions.width <= 1 ? "p-2" : "p-3";
+}
+
+function providerAccountBentoGridRowClass(): string {
+  return "auto-rows-fr";
+}
+
+function providerAccountBentoSecondaryLimit(dimensions: OverviewWidgetDimensions, span?: ProviderAccountBentoSpan): number {
+  if (span?.height === 1 || dimensions.height <= 1) return 0;
+  if (span?.height === 2) return dimensions.height >= 3 || dimensions.width >= 2 ? 2 : 1;
+  if (dimensions.width <= 1) return 1;
+  if (dimensions.height === 2) return 1;
+  return 2;
+}
+
+type ProviderAccountBentoSpan = {
+  height: 1 | 2;
+  width: 1 | 2;
+};
+
+function providerAccountBentoLayout(accounts: ProviderAccountSnapshot[], dimensions: OverviewWidgetDimensions, cardSizes: Record<string, OverviewAccountCardSize> | undefined): {
+  hiddenCount: number;
+  items: Array<{ account: ProviderAccountSnapshot; span: ProviderAccountBentoSpan }>;
+} {
+  const columns = providerAccountBentoColumnCount(dimensions, accounts.length);
+  const maxRows = providerAccountBentoRowCount(dimensions);
+  const maxUnits = providerAccountBentoMaxUnits(dimensions, accounts.length);
+  const items = accounts.map((account) => ({
+    account,
+    manual: providerAccountConfiguredCardSize(account, cardSizes) !== undefined,
+    span: providerAccountBentoSpan(account, dimensions, cardSizes)
+  }));
+  let usedUnits = providerAccountBentoUsedUnits(items);
+
+  for (let index = items.length - 1; index >= 0 && usedUnits > maxUnits; index -= 1) {
+    if (items[index].span.height === 2 && !items[index].manual) {
+      usedUnits -= items[index].span.width;
+      items[index] = { ...items[index], span: { ...items[index].span, height: 1 } };
+    }
+  }
+
+  let visibleItems = items;
+  if (usedUnits > maxUnits) {
+    const visibleBudget = Math.max(0, maxUnits - 1);
+    visibleItems = [];
+    let visibleUnits = 0;
+
+    for (const item of items) {
+      const itemUnits = providerAccountBentoSpanUnits(item.span);
+      if (visibleUnits + itemUnits > visibleBudget) {
+        break;
+      }
+      visibleItems.push(item);
+      visibleUnits += itemUnits;
+    }
+  }
+
+  // 格子预算挡不住「行数超限」：双行卡片会把 dense 排布撑出额外行，
+  // auto-rows-fr 会把组件高度均分给实际用到的每一行，行数超过组件高度档位时
+  // 行高会被压到卡片最小内容高度以下，单行卡片内容被裁切。
+  // 这里按真实 dense 排布模拟行数，超限时先降级双行卡片（跳过手动尺寸），再从尾部隐藏。
+  for (let guard = 0; guard <= items.length * 2 + 1; guard += 1) {
+    const rowsUsed = providerAccountBentoPackedRowCount(visibleItems, columns, visibleItems.length < items.length);
+    if (rowsUsed <= maxRows || visibleItems.length === 0) {
+      break;
+    }
+    let demotableIndex = -1;
+    for (let index = visibleItems.length - 1; index >= 0; index -= 1) {
+      if (visibleItems[index].span.height === 2 && !visibleItems[index].manual) {
+        demotableIndex = index;
+        break;
+      }
+    }
+    if (demotableIndex >= 0) {
+      visibleItems = visibleItems.map((item, index) => index === demotableIndex
+        ? { ...item, span: { ...item.span, height: 1 as const } }
+        : item);
+      continue;
+    }
+    if (visibleItems.length <= 1) {
+      break;
+    }
+    visibleItems = visibleItems.slice(0, -1);
+  }
+
+  return {
+    hiddenCount: accounts.length - visibleItems.length,
+    items: visibleItems
+  };
+}
+
+function providerAccountBentoPackedRowCount(items: Array<{ span: ProviderAccountBentoSpan }>, columns: number, includeOverflowTile: boolean): number {
+  const occupied = new Set<string>();
+  let rowCount = 0;
+  const place = (itemWidth: number, itemHeight: number) => {
+    const width = Math.max(1, Math.min(itemWidth, columns));
+    const height = Math.max(1, itemHeight);
+    for (let row = 0; ; row += 1) {
+      for (let column = 0; column + width <= columns; column += 1) {
+        let fits = true;
+        for (let offsetY = 0; offsetY < height && fits; offsetY += 1) {
+          for (let offsetX = 0; offsetX < width; offsetX += 1) {
+            if (occupied.has(`${row + offsetY}:${column + offsetX}`)) {
+              fits = false;
+              break;
+            }
+          }
+        }
+        if (fits) {
+          for (let offsetY = 0; offsetY < height; offsetY += 1) {
+            for (let offsetX = 0; offsetX < width; offsetX += 1) {
+              occupied.add(`${row + offsetY}:${column + offsetX}`);
+            }
+          }
+          rowCount = Math.max(rowCount, row + height);
+          return;
+        }
+      }
+    }
+  };
+  for (const item of items) {
+    place(item.span.width, item.span.height);
+  }
+  if (includeOverflowTile) {
+    place(1, 1);
+  }
+  return rowCount;
+}
+
+function providerAccountBentoUsedUnits(items: Array<{ span: ProviderAccountBentoSpan }>): number {
+  return items.reduce((total, item) => total + providerAccountBentoSpanUnits(item.span), 0);
+}
+
+function providerAccountBentoSpanUnits(span: ProviderAccountBentoSpan): number {
+  return span.width * span.height;
+}
+
+function providerAccountBentoMaxUnits(dimensions: OverviewWidgetDimensions, itemCount: number): number {
+  return Math.max(1, providerAccountBentoColumnCount(dimensions, itemCount) * providerAccountBentoRowCount(dimensions));
+}
+
+function providerAccountBentoColumnCount(dimensions: OverviewWidgetDimensions, itemCount: number): 1 | 2 | 3 {
+  if (dimensions.width >= 3) return itemCount <= 2 ? 2 : 3;
+  if (dimensions.width >= 2) return 2;
+  return 1;
+}
+
+function providerAccountBentoRowCount(dimensions: OverviewWidgetDimensions): number {
+  // Bento 行高由 auto-rows-fr 在组件内容高度内均分，单行卡片的最小内容高度约 100px，
+  // 组件每个高度档位（overview 网格一行约 148px）只够容纳等量的 bento 行；
+  // 行数一旦超过组件高度档位，行高会被均分压缩到卡片最小高度以下，内容被裁切。
+  return dimensions.height;
+}
+
+function providerAccountBentoGridClass(dimensions: OverviewWidgetDimensions, itemCount: number): string {
+  const columns = providerAccountBentoColumnCount(dimensions, itemCount);
+  if (columns === 3) return "grid-cols-3";
+  if (columns === 2) return "grid-cols-2";
+  return "grid-cols-1";
+}
+
+function providerAccountBentoSpan(account: ProviderAccountSnapshot, dimensions: OverviewWidgetDimensions, cardSizes?: Record<string, OverviewAccountCardSize>): ProviderAccountBentoSpan {
+  const configuredSize = providerAccountConfiguredCardSize(account, cardSizes);
+  if (configuredSize) {
+    return providerAccountBentoSpanFromSize(configuredSize, dimensions);
+  }
+  if (dimensions.height <= 1) return { height: 1, width: 1 };
+  if (dimensions.width <= 1) return { height: 1, width: 1 };
+  if (providerAccountQuotaMeters(account).length > 0) return { height: 2, width: 1 };
+  if (dimensions.height >= 3 && account.meters.length > 2) return { height: 2, width: 1 };
+  return { height: 1, width: 1 };
+}
+
+function providerAccountConfiguredCardSize(account: ProviderAccountSnapshot, cardSizes?: Record<string, OverviewAccountCardSize>): OverviewAccountCardSize | undefined {
+  return cardSizes?.[providerAccountSnapshotKey(account)] ?? cardSizes?.[account.provider];
+}
+
+function providerAccountBentoSpanFromSize(size: OverviewAccountCardSize, dimensions: OverviewWidgetDimensions): ProviderAccountBentoSpan {
+  const [widthText, heightText] = size.split(":");
+  return {
+    height: providerAccountClampBentoSpanDimension(heightText === "2" ? 2 : 1, providerAccountBentoRowCount(dimensions) >= 2 ? 2 : 1),
+    width: providerAccountClampBentoSpanDimension(widthText === "2" ? 2 : 1, providerAccountBentoColumnCount(dimensions, 2) >= 2 ? 2 : 1)
+  };
+}
+
+function providerAccountBentoSizeFromSpan(span: ProviderAccountBentoSpan): OverviewAccountCardSize {
+  return `${span.width}:${span.height}` as OverviewAccountCardSize;
+}
+
+function providerAccountClampBentoSpanDimension(value: 1 | 2, max: 1 | 2): 1 | 2 {
+  return max === 1 ? 1 : value;
+}
+
+function providerAccountBentoSpanClass(span: ProviderAccountBentoSpan): string {
+  return cn(
+    span.width === 2 ? "col-span-2" : "col-span-1",
+    span.height === 2 ? "row-span-2" : "row-span-1"
+  );
 }
 
 function providerAccountGapClass(dimensions: OverviewWidgetDimensions): string {
@@ -3370,10 +4339,6 @@ function providerAccountShowRefresh(dimensions: OverviewWidgetDimensions): boole
 
 function providerAccountShowProgress(dimensions: OverviewWidgetDimensions): boolean {
   return dimensions.height >= 1;
-}
-
-function providerAccountShowExtraCount(dimensions: OverviewWidgetDimensions): boolean {
-  return dimensions.height >= 3;
 }
 
 export function AgentAnalysisView({
@@ -3452,10 +4417,17 @@ export function AgentAnalysisView({
         </div>
       ) : null}
 
+      {snapshot.requestScanTruncated ? (
+        <AnalysisNotice>
+          {t("Analysis is limited to the newest")} {formatCompactNumber(snapshot.requestScanLimit)} {t("requests in the selected range.")}
+        </AnalysisNotice>
+      ) : null}
+
       {selectedSession || snapshot.selectedSession ? (
         <AgentSessionDetailCard
           clearSession={() => setSelectedSession(undefined)}
           detail={snapshot.selectedSession}
+          loading={loading}
           selectedSession={selectedSession}
         />
       ) : null}
@@ -3474,10 +4446,12 @@ export function AgentAnalysisView({
 function AgentSessionDetailCard({
   clearSession,
   detail,
+  loading,
   selectedSession
 }: {
   clearSession: () => void;
   detail?: AgentAnalysisSnapshot["selectedSession"];
+  loading: boolean;
   selectedSession?: AgentAnalysisSessionSelection;
 }) {
   const t = useAppText();
@@ -3487,6 +4461,7 @@ function AgentSessionDetailCard({
     : selectedSession
       ? `${t(agentKindLabel(selectedSession.agent))} / ${compactId(selectedSession.id)}`
       : t("Session");
+  const [detailTab, setDetailTab] = useState<AgentSessionDetailTab>("trace");
 
   return (
     <Dialog className="items-start" onOpenChange={(open) => !open && clearSession()} open>
@@ -3502,50 +4477,16 @@ function AgentSessionDetailCard({
             <X className="h-3.5 w-3.5" />
           </Button>
         </DialogHeader>
-        <DialogBody>
+        <DialogBody className={detailTab === "trajectory" ? "overflow-hidden" : undefined}>
         {!detail ? (
-          <AnalysisEmptyState label={t("Loading session metrics")} />
+          <AnalysisEmptyState label={t(loading ? "Loading session metrics" : "Session not found or outside the selected range")} />
         ) : (
-          <div className="space-y-4">
-            <AgentTracePanel trace={detail.trace} />
+          <div className={detailTab === "trajectory" ? "flex h-full min-h-0 flex-col gap-4" : "space-y-4"}>
+            <AgentSessionDetailTabs activeTab={detailTab} setActiveTab={setDetailTab} />
 
-            <div className="min-w-0">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <div className="text-[12px] font-semibold">{t("Session Requests")}</div>
-              </div>
-              {detail.requests.length === 0 ? (
-                <AnalysisEmptyState label={t("No session requests")} />
-              ) : (
-                <div className={cn("max-h-[260px]", agentListFrameClassName)}>
-                  <table className={cn("min-w-[980px]", agentListTableClassName)}>
-                    <thead className={agentListHeadClassName}>
-                      <tr>
-                        <th className="px-3 py-2 font-semibold">{t("Time")}</th>
-                        <th className="px-3 py-2 font-semibold">{t("Status")}</th>
-                        <th className="px-3 py-2 font-semibold">{t("Route")}</th>
-                        <th className="px-3 py-2 font-semibold">{t("Model")}</th>
-                        <th className="px-3 py-2 text-right font-semibold">{t("Tools")}</th>
-                        <th className="px-3 py-2 text-right font-semibold">{t("Tokens")}</th>
-                        <th className="px-3 py-2 text-right font-semibold">{t("Duration")}</th>
-                      </tr>
-                    </thead>
-                    <tbody className={agentListBodyClassName}>
-                      {detail.requests.map((request) => (
-                        <tr className={agentListRowClassName()} key={request.id}>
-                          <td className="px-3 py-2 font-mono">{formatLogDateTime(request.createdAt)}</td>
-                          <td className="px-3 py-2 font-semibold">{request.statusCode || "-"}</td>
-                          <td className="max-w-[140px] px-3 py-2" title={formatRouteReason(request.routeReason)}>{formatRouteReason(request.routeReason)}</td>
-                          <td className="max-w-[300px] px-3 py-2" title={`${request.provider}/${request.model}`}>{request.provider}/{request.model}</td>
-                          <td className="px-3 py-2 text-right" title={request.tools.join(", ")}>{formatCompactNumber(request.toolCallCount)}</td>
-                          <td className="px-3 py-2 text-right">{formatCompactNumber(request.totalTokens)}</td>
-                          <td className="px-3 py-2 text-right">{formatDuration(request.durationMs)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+            {detailTab === "trace" ? <AgentTracePanel trace={detail.trace} /> : null}
+            {detailTab === "trajectory" ? <AgentSessionTrajectoryPanel detail={detail} /> : null}
+            {detailTab === "requests" ? <AgentSessionRequestsPanel detail={detail} /> : null}
           </div>
         )}
         </DialogBody>
@@ -3554,32 +4495,732 @@ function AgentSessionDetailCard({
   );
 }
 
+type AgentSessionDetailTab = "requests" | "trace" | "trajectory";
+
+function AgentSessionDetailTabs({
+  activeTab,
+  setActiveTab
+}: {
+  activeTab: AgentSessionDetailTab;
+  setActiveTab: (tab: AgentSessionDetailTab) => void;
+}) {
+  const t = useAppText();
+  const tabs: Array<{ label: string; value: AgentSessionDetailTab }> = [
+    { label: "Call chain", value: "trace" },
+    { label: "Session Trajectory", value: "trajectory" },
+    { label: "Session Records", value: "requests" }
+  ];
+
+  return (
+    <Tabs
+      className="inline-flex max-w-full"
+      onValueChange={(value) => setActiveTab(value as AgentSessionDetailTab)}
+      value={activeTab}
+    >
+      <TabsList aria-label={t("Trace Detail")} className="w-fit max-w-full flex-wrap items-center gap-1 rounded-md border border-border bg-background p-1">
+        {tabs.map((tab) => (
+          <TabsTrigger
+            className="h-8 rounded px-3 text-[12px] font-medium data-[state=active]:bg-card data-[state=active]:text-foreground"
+            key={tab.value}
+            value={tab.value}
+          >
+            {t(tab.label)}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
+  );
+}
+
+function AgentSessionRequestsPanel({ detail }: { detail: AgentSessionDetail }) {
+  const t = useAppText();
+  const requests = useMemo(() => [...detail.requests].sort(compareSessionRequestsByTime), [detail.requests]);
+  const [selectedRequestLogId, setSelectedRequestLogId] = useState<number>();
+
+  return (
+    <div className="min-w-0">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="text-[12px] font-semibold">{t("Session Records")}</div>
+      </div>
+      {requests.length === 0 ? (
+        <AnalysisEmptyState label={t("No session records")} />
+      ) : (
+        <div className={cn("max-h-[620px]", agentListFrameClassName)}>
+          <table className={cn("min-w-[1060px]", agentListTableClassName)}>
+            <thead className={agentListHeadClassName}>
+              <tr>
+                <th className="px-3 py-2 font-semibold">{t("Time")}</th>
+                <th className="px-3 py-2 font-semibold">{t("Status")}</th>
+                <th className="px-3 py-2 font-semibold">{t("Route")}</th>
+                <th className="px-3 py-2 font-semibold">{t("Model")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Tools")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Token")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Cost")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Duration")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Details")}</th>
+              </tr>
+            </thead>
+            <tbody className={agentListBodyClassName}>
+              {requests.map((request) => (
+                <tr className={agentListRowClassName()} key={request.id}>
+                  <td className="px-3 py-2 font-mono">{formatLogDateTime(request.createdAt)}</td>
+                  <td className="px-3 py-2 font-semibold">{request.statusCode || "-"}</td>
+                  <td className="max-w-[140px] px-3 py-2" title={formatRouteReason(request.routeReason)}>{formatRouteReason(request.routeReason)}</td>
+                  <td className="max-w-[300px] px-3 py-2" title={`${request.provider}/${request.model}`}>{request.provider}/{request.model}</td>
+                  <td className="px-3 py-2 text-right" title={request.tools.join(", ")}>{formatCompactNumber(request.toolCallCount)}</td>
+                  <td className="px-3 py-2 text-right">{formatCompactNumber(request.totalTokens)}</td>
+                  <td className="px-3 py-2 text-right">{formatUsdCost(request.costUsd ?? 0)}</td>
+                  <td className="px-3 py-2 text-right">{formatDuration(request.durationMs)}</td>
+                  <td className="px-3 py-2 text-right">
+                    <Button
+                      className="h-7 px-2 text-[11px]"
+                      onClick={() => setSelectedRequestLogId(request.id)}
+                      type="button"
+                      variant="outline"
+                    >
+                      {t("View details")}
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {typeof selectedRequestLogId === "number" ? (
+        <AgentSessionRequestLogDialog
+          onClose={() => setSelectedRequestLogId(undefined)}
+          requestLogId={selectedRequestLogId}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function AgentSessionRequestLogDialog({
+  onClose,
+  requestLogId
+}: {
+  onClose: () => void;
+  requestLogId: number;
+}) {
+  const t = useAppText();
+  const [entry, setEntry] = useState<RequestLogEntry>();
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    setEntry(undefined);
+    setError("");
+    setLoading(true);
+
+    if (!window.ccr?.getRequestLogDetail) {
+      setError(t("Request log detail is unavailable."));
+      setLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+
+    void window.ccr.getRequestLogDetail({ id: requestLogId })
+      .then((detail) => {
+        if (!active) {
+          return;
+        }
+        if (detail) {
+          setEntry(detail);
+        } else {
+          setError(t("Request log not found."));
+        }
+      })
+      .catch((requestError) => {
+        if (active) {
+          setError(requestError instanceof Error ? requestError.message : String(requestError));
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [requestLogId, t]);
+
+  return (
+    <Dialog className="items-start" onOpenChange={(open) => !open && onClose()} open>
+      <DialogContent className="h-[calc(100dvh-1.5rem)] max-w-[1180px] origin-top sm:h-[min(820px,calc(100dvh-3rem))]">
+        <DialogHeader>
+          <div className="min-w-0">
+            <DialogTitle>{t("Request Log")}</DialogTitle>
+            <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground" title={String(requestLogId)}>
+              #{requestLogId}{entry ? ` · ${entry.method} ${entry.path}` : ""}
+            </div>
+          </div>
+          <Button aria-label={t("Close")} onClick={onClose} size="iconSm" title={t("Close")} type="button" variant="ghost">
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </DialogHeader>
+        <DialogBody className="overflow-auto p-0">
+          {entry ? (
+            <LogExpandedDetails detailError={error} detailLoading={loading} entry={entry} />
+          ) : (
+            <div className="flex min-h-[360px] items-center justify-center px-4 py-8 text-center text-[12px] text-muted-foreground">
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <LoaderCircle className="h-4 w-4 animate-spin" />
+                  <span>{t("Loading full payload...")}</span>
+                </div>
+              ) : (
+                <div className={cn("rounded-md border px-4 py-3 font-semibold", error && "border-rose-200 bg-rose-50 text-rose-700")}>
+                  {error || t("Request log not found.")}
+                </div>
+              )}
+            </div>
+          )}
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AgentSessionTrajectoryPanel({ detail }: { detail: AgentSessionDetail }) {
+  const t = useAppText();
+  const trajectory = useMemo(() => buildAgentTrajectoryTree(detail), [detail]);
+  const expandableNodeIds = useMemo(() => trajectory.flat.filter(trajectoryNodeHasVisibleChildren).map((node) => node.id), [trajectory.flat]);
+  const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(() => new Set(expandableNodeIds));
+  const [query, setQuery] = useState("");
+  const [selectedNodeId, setSelectedNodeId] = useState<string>();
+  const [detailDrawerOpen, setDetailDrawerOpen] = useState(true);
+  const visibleRows = useMemo(() => visibleTrajectoryRows(trajectory.roots, expandedNodeIds, query), [expandedNodeIds, query, trajectory.roots]);
+  const listNodes = useMemo(() => trajectory.flat.filter(isTrajectoryListNode), [trajectory.flat]);
+  const defaultSelectedNode =
+    listNodes.find((node) => node.kind === "assistant" && node.content.trim()) ??
+    listNodes.find((node) => node.content.trim()) ??
+    listNodes[0];
+  const selectedNode = listNodes.find((node) => node.id === selectedNodeId) ?? defaultSelectedNode;
+  const callCount = detail.trace.llmRunCount + detail.trace.toolRunCount + detail.trace.subagentRunCount;
+
+  useEffect(() => {
+    setExpandedNodeIds(new Set(expandableNodeIds));
+  }, [detail.conversation.length, detail.requests.length, detail.session.id, detail.trace.runCount, expandableNodeIds]);
+
+  const toggleNode = (nodeId: string) => {
+    setExpandedNodeIds((current) => {
+      const next = new Set(current);
+      if (next.has(nodeId)) {
+        next.delete(nodeId);
+      } else {
+        next.add(nodeId);
+      }
+      return next;
+    });
+  };
+
+  return (
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-border/70 bg-card/70 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border/60 px-3 py-2.5">
+        <div className="min-w-0 flex-1">
+          <div className="text-[12px] font-semibold">{t("Session Trajectory")}</div>
+          <div className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground" title={detail.trace.sessionId}>
+            {compactId(detail.trace.sessionId)} | {formatLogDateTime(detail.trace.startedAt)} - {formatLogDateTime(detail.trace.endedAt)}
+          </div>
+        </div>
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
+          <Badge variant="outline">{t("Duration")} {formatDuration(detail.trace.durationMs)}</Badge>
+          <Badge variant="outline">{formatCompactNumber(detail.conversation.length)} {t("Turns")}</Badge>
+          <Badge variant="outline">{formatCompactNumber(callCount)} {t("Calls")}</Badge>
+          <input
+            aria-label={t("Search")}
+            className="h-7 w-[190px] rounded-md border border-border bg-background px-2 text-[11px] outline-none transition-colors placeholder:text-muted-foreground focus:border-primary/60"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={t("Search")}
+            value={query}
+          />
+        </div>
+      </div>
+
+      <div className={cn(
+        "grid min-h-0 min-w-0 flex-1 grid-cols-1 overflow-hidden",
+        detailDrawerOpen && "lg:grid-cols-[minmax(0,1fr)_430px]"
+      )}>
+        <div className={cn("min-h-0 min-w-0 overflow-auto", detailDrawerOpen && "border-b border-border/60 lg:border-b-0 lg:border-r")}>
+          {listNodes.length === 0 ? (
+            <AnalysisEmptyState label={t("No trajectory events")} />
+          ) : visibleRows.length === 0 ? (
+            <AnalysisEmptyState label={t("No matching events")} />
+          ) : (
+            <div className="divide-y divide-border/50">
+              {visibleRows.map(({ level, node }) => (
+                <AgentTrajectoryNodeRow
+                  expanded={expandedNodeIds.has(node.id)}
+                  key={node.id}
+                  level={level}
+                  node={node}
+                  selected={selectedNode?.id === node.id}
+                  onSelect={() => {
+                    setSelectedNodeId(node.id);
+                    setDetailDrawerOpen(true);
+                  }}
+                  onToggle={() => toggleNode(node.id)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+        {detailDrawerOpen ? (
+          <AgentTrajectoryDetailPanel
+            node={selectedNode}
+            onClose={() => setDetailDrawerOpen(false)}
+          />
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 const agentListSurfaceClassName = "rounded-md border border-border/70 bg-card/70 shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
 const agentListFrameClassName = cn("overflow-auto", agentListSurfaceClassName);
 const agentListTableClassName = "w-full border-collapse text-left text-[11px]";
-const agentListHeadClassName = "sticky top-0 z-10 border-b border-border/70 bg-muted/80 text-muted-foreground backdrop-blur";
+const agentListHeadClassName = "sticky top-0 z-10 border-b border-border/70 bg-muted/80 text-muted-foreground backdrop-blur [&_th]:min-w-[64px] [&_th]:whitespace-nowrap";
 const agentListBodyClassName = "divide-y divide-border/50";
 
 function agentListRowClassName({
   danger,
-  selected
+  selected,
+  warning
 }: {
   danger?: boolean;
   selected?: boolean;
+  warning?: boolean;
 } = {}) {
   return cn(
     "bg-card/40 transition-colors hover:bg-muted/30",
     danger && "bg-rose-500/5 hover:bg-rose-500/10",
+    warning && "bg-amber-500/5 hover:bg-amber-500/10",
     selected && "bg-teal-500/10 shadow-[inset_2px_0_0_rgba(20,184,166,0.7)] hover:bg-teal-500/15"
   );
 }
 
-type AgentTraceDetail = NonNullable<AgentAnalysisSnapshot["selectedSession"]>["trace"];
+type AgentSessionDetail = NonNullable<AgentAnalysisSnapshot["selectedSession"]>;
+type AgentTraceDetail = AgentSessionDetail["trace"];
+type AgentConversationTurn = AgentSessionDetail["conversation"][number];
+type AgentConversationItem = NonNullable<AgentConversationTurn["messages"]>[number];
 type TracePayloadPreviewValue = NonNullable<NonNullable<AgentAnalysisTraceRun["tool"]>["input"]>;
+type AgentSyntheticTrajectoryNodeKind = "tool-result";
+type AgentTrajectoryNodeKind = AgentAnalysisTraceRun["kind"] | AgentConversationItem["role"] | AgentSyntheticTrajectoryNodeKind;
+type AgentTrajectoryDetailTab = "preview" | "raw";
+
+type AgentTrajectoryNode = {
+  children: AgentTrajectoryNode[];
+  content: string;
+  costUsd?: number;
+  createdAt: string;
+  durationMs: number;
+  error?: string;
+  id: string;
+  kind: AgentTrajectoryNodeKind;
+  model?: string;
+  offsetMs: number;
+  provider?: string;
+  requestId?: string;
+  requestLogId?: number;
+  run?: AgentAnalysisTraceRun;
+  message?: AgentConversationItem;
+  sourcePreview?: boolean;
+  sourceTruncated?: boolean;
+  status: AgentAnalysisTraceRun["status"];
+  statusCode?: number;
+  stepIndex: number;
+  title: string;
+  totalTokens: number;
+  truncated?: boolean;
+  turn?: AgentConversationTurn;
+  turnIndex?: number;
+};
+
+type AgentTrajectoryVisibleRow = {
+  level: number;
+  node: AgentTrajectoryNode;
+};
+
+function compareSessionRequestsByTime(left: AgentSessionDetail["requests"][number], right: AgentSessionDetail["requests"][number]): number {
+  return sortableTimestamp(left.createdAt) - sortableTimestamp(right.createdAt) || left.id - right.id;
+}
+
+function compareConversationTurnsByTime(left: AgentConversationTurn, right: AgentConversationTurn): number {
+  return sortableTimestamp(left.createdAt) - sortableTimestamp(right.createdAt) || left.id - right.id;
+}
+
+function compareTraceRunsByTime(left: AgentAnalysisTraceRun, right: AgentAnalysisTraceRun): number {
+  return (
+    sortableTimestamp(left.startedAt) - sortableTimestamp(right.startedAt) ||
+    left.offsetMs - right.offsetMs ||
+    left.depth - right.depth ||
+    left.id.localeCompare(right.id)
+  );
+}
+
+function sortableTimestamp(value: string | undefined): number {
+  const time = Date.parse(value ?? "");
+  return Number.isFinite(time) ? time : 0;
+}
+
+function buildAgentTrajectoryTree(detail: AgentSessionDetail): { flat: AgentTrajectoryNode[]; roots: AgentTrajectoryNode[] } {
+  const sortedRuns = [...detail.trace.runs].sort(compareTraceRunsByTime);
+  const requestRunsByRequestId = new Map<string, AgentAnalysisTraceRun[]>();
+  const requestByRequestId = new Map(detail.requests.map((request) => [request.requestId, request]));
+  const roots: AgentTrajectoryNode[] = [];
+  const handledRunIds = new Set<string>();
+
+  for (const run of sortedRuns) {
+    if (run.requestId && !(run.kind === "agent" && run.id === detail.trace.rootRunId)) {
+      const requestRuns = requestRunsByRequestId.get(run.requestId) ?? [];
+      requestRuns.push(run);
+      requestRunsByRequestId.set(run.requestId, requestRuns);
+    }
+  }
+
+  [...detail.conversation].sort((left, right) => compareConversationTurnsByTime(left, right)).forEach((turn, index) => {
+    const requestRuns = requestRunsByRequestId.get(turn.requestId) ?? [];
+    const request = requestByRequestId.get(turn.requestId);
+    const status = turn.statusCode >= 400 ? "error" : "success";
+    const turnStartMs = sortableTimestamp(turn.createdAt);
+    const traceStartMs = sortableTimestamp(detail.trace.startedAt);
+    const offsetMs = Math.max(0, turnStartMs - traceStartMs);
+    const messageNodes = conversationItemsForTurn(turn).map((message, messageIndex) =>
+      conversationTrajectoryNode({
+        content: message.content,
+        id: `conversation:${turn.id}:${message.id}`,
+        index,
+        kind: message.role,
+        message,
+        offsetMs: offsetMs + messageIndex * 0.001,
+        requestTokens: message.role === "assistant"
+          ? request?.outputTokens ?? 0
+          : message.role === "user"
+            ? request?.inputTokens ?? 0
+            : 0,
+        sourcePreview: message.sourcePreview,
+        sourceTruncated: message.sourceTruncated,
+        status,
+        title: trajectoryRoleTitle(message.role),
+        truncated: message.truncated,
+        turn
+      })
+    );
+
+    roots.push(...messageNodes);
+
+    const operationParent =
+      [...messageNodes].reverse().find((node) => node.kind === "user") ??
+      messageNodes.find((node) => node.kind !== "assistant") ??
+      messageNodes[0];
+
+    appendRunNodesToTrajectory({
+      handledRunIds,
+      parent: operationParent,
+      roots,
+      runs: requestRuns
+    });
+  });
+
+  appendRunNodesToTrajectory({
+    handledRunIds,
+    roots,
+    runs: sortedRuns.filter((run) => !(run.kind === "agent" && run.id === detail.trace.rootRunId) && !handledRunIds.has(run.id))
+  });
+
+  sortTrajectoryNodes(roots);
+  const flat: AgentTrajectoryNode[] = [];
+  let stepIndex = 1;
+  const collect = (node: AgentTrajectoryNode) => {
+    node.stepIndex = stepIndex;
+    stepIndex += 1;
+    flat.push(node);
+    node.children.forEach(collect);
+  };
+  roots.forEach(collect);
+  return { flat, roots };
+}
+
+function appendRunNodesToTrajectory({
+  handledRunIds,
+  parent,
+  roots,
+  runs
+}: {
+  handledRunIds: Set<string>;
+  parent?: AgentTrajectoryNode;
+  roots: AgentTrajectoryNode[];
+  runs: AgentAnalysisTraceRun[];
+}) {
+  const runByRunId = new Map(runs.map((run) => [run.id, run]));
+  const runNodeByRunId = new Map<string, AgentTrajectoryNode>();
+  for (const run of runs) {
+    if (handledRunIds.has(run.id)) {
+      continue;
+    }
+    handledRunIds.add(run.id);
+    if (!isTrajectoryTraceRunVisible(run)) {
+      continue;
+    }
+    const node = traceRunTrajectoryNode(run);
+    runNodeByRunId.set(run.id, node);
+  }
+
+  for (const run of runs) {
+    const node = runNodeByRunId.get(run.id);
+    if (!node) {
+      continue;
+    }
+    const parentNode = findVisibleTrajectoryRunParent(run, runByRunId, runNodeByRunId);
+    if (parentNode) {
+      parentNode.children.push(node);
+    } else if (parent) {
+      parent.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+}
+
+function findVisibleTrajectoryRunParent(
+  run: AgentAnalysisTraceRun,
+  runByRunId: Map<string, AgentAnalysisTraceRun>,
+  runNodeByRunId: Map<string, AgentTrajectoryNode>
+): AgentTrajectoryNode | undefined {
+  let parentId = run.parentId;
+  while (parentId) {
+    const visibleParent = runNodeByRunId.get(parentId);
+    if (visibleParent) {
+      return visibleParent;
+    }
+    parentId = runByRunId.get(parentId)?.parentId;
+  }
+  return undefined;
+}
+
+function isTrajectoryTraceRunVisible(run: AgentAnalysisTraceRun): boolean {
+  return run.kind === "subagent" || run.kind === "tool";
+}
+
+function traceRunTrajectoryNode(run: AgentAnalysisTraceRun): AgentTrajectoryNode {
+  const node: AgentTrajectoryNode = {
+    children: [],
+    content: trajectoryRunContent(run),
+    costUsd: run.costUsd,
+    createdAt: run.startedAt,
+    durationMs: run.durationMs,
+    error: run.error,
+    id: `run:${run.id}`,
+    kind: run.kind,
+    model: run.model,
+    offsetMs: run.offsetMs,
+    provider: run.provider,
+    requestId: run.requestId,
+    requestLogId: run.requestLogId,
+    run,
+    status: run.status,
+    statusCode: run.statusCode,
+    stepIndex: 0,
+    title: run.kind === "tool" ? run.toolName || run.name : run.name,
+    totalTokens: run.totalTokens
+  };
+  if (run.kind === "tool") {
+    const resultNode = toolResultTrajectoryNode(run);
+    if (resultNode) {
+      node.children.push(resultNode);
+    }
+  }
+  return node;
+}
+
+function toolResultTrajectoryNode(run: AgentAnalysisTraceRun): AgentTrajectoryNode | undefined {
+  const result = run.tool?.result?.preview.trim();
+  if (!result) {
+    return undefined;
+  }
+  return {
+    children: [],
+    content: result,
+    createdAt: run.endedAt,
+    durationMs: 0,
+    error: run.error,
+    id: `run:${run.id}:tool-result`,
+    kind: "tool-result",
+    offsetMs: run.offsetMs + run.durationMs + 0.001,
+    requestId: run.tool?.resultRequestId ?? run.requestId,
+    requestLogId: run.tool?.resultRequestLogId ?? run.requestLogId,
+    run,
+    status: run.status,
+    statusCode: run.statusCode,
+    stepIndex: 0,
+    title: "Tool result",
+    totalTokens: 0
+  };
+}
+
+function conversationItemsForTurn(turn: AgentConversationTurn): AgentConversationItem[] {
+  const messages = turn.messages?.filter((message) => message.content.trim()) ?? [];
+  if (messages.length > 0) {
+    return messages;
+  }
+
+  const items: AgentConversationItem[] = [];
+  if (turn.user?.content.trim()) {
+    items.push({
+      ...turn.user,
+      id: "legacy:user",
+      role: "user"
+    });
+  }
+  if (turn.assistant?.content.trim()) {
+    items.push({
+      ...turn.assistant,
+      id: "legacy:assistant",
+      role: "assistant"
+    });
+  }
+  return items;
+}
+
+function conversationTrajectoryNode({
+  content,
+  id,
+  index,
+  kind,
+  message,
+  offsetMs,
+  requestTokens,
+  sourcePreview,
+  sourceTruncated,
+  status,
+  title,
+  truncated,
+  turn
+}: {
+  content: string;
+  id: string;
+  index: number;
+  kind: AgentConversationItem["role"];
+  message?: AgentConversationItem;
+  offsetMs: number;
+  requestTokens: number;
+  sourcePreview: boolean;
+  sourceTruncated: boolean;
+  status: AgentAnalysisTraceRun["status"];
+  title: string;
+  truncated: boolean;
+  turn: AgentConversationTurn;
+}): AgentTrajectoryNode {
+  return {
+    children: [],
+    content,
+    createdAt: turn.createdAt,
+    durationMs: kind === "assistant" ? turn.durationMs : 0,
+    id,
+    kind,
+    message,
+    model: turn.model,
+    offsetMs,
+    provider: turn.provider,
+    requestId: turn.requestId,
+    requestLogId: turn.id,
+    sourcePreview,
+    sourceTruncated,
+    status,
+    statusCode: turn.statusCode,
+    stepIndex: 0,
+    title,
+    totalTokens: requestTokens,
+    truncated,
+    turn,
+    turnIndex: index + 1
+  };
+}
+
+function trajectoryRoleTitle(role: AgentConversationItem["role"]): string {
+  if (role === "assistant") return "Assistant";
+  if (role === "context") return "Context";
+  if (role === "developer") return "Developer";
+  if (role === "system") return "System";
+  if (role === "tool") return "Tool";
+  return "User";
+}
+
+function sortTrajectoryNodes(nodes: AgentTrajectoryNode[]): void {
+  nodes.sort(compareTrajectoryNodes);
+  for (const node of nodes) {
+    sortTrajectoryNodes(node.children);
+  }
+}
+
+function compareTrajectoryNodes(left: AgentTrajectoryNode, right: AgentTrajectoryNode): number {
+  return left.offsetMs - right.offsetMs || trajectoryNodePriority(left.kind) - trajectoryNodePriority(right.kind) || left.title.localeCompare(right.title);
+}
+
+function trajectoryNodePriority(kind: AgentTrajectoryNodeKind): number {
+  if (kind === "agent") return 0;
+  if (kind === "user") return 1;
+  if (kind === "subagent") return 2;
+  if (kind === "route") return 3;
+  if (kind === "llm") return 4;
+  if (kind === "tool") return 5;
+  if (kind === "tool-result") return 6;
+  return 7;
+}
+
+function visibleTrajectoryRows(nodes: AgentTrajectoryNode[], expandedNodeIds: Set<string>, query: string): AgentTrajectoryVisibleRow[] {
+  const normalizedQuery = query.trim().toLowerCase();
+  const rows: AgentTrajectoryVisibleRow[] = [];
+  const visit = (node: AgentTrajectoryNode, level: number) => {
+    if (normalizedQuery && !trajectorySubtreeMatches(node, normalizedQuery)) {
+      return;
+    }
+    const visible = isTrajectoryListNode(node);
+    if (visible) {
+      rows.push({ level, node });
+    }
+    if (normalizedQuery || !visible || expandedNodeIds.has(node.id)) {
+      node.children.forEach((child) => visit(child, visible ? level + 1 : level));
+    }
+  };
+  nodes.forEach((node) => visit(node, 0));
+  return rows;
+}
+
+function isTrajectoryListNode(node: AgentTrajectoryNode): boolean {
+  return node.kind !== "agent" && node.kind !== "llm" && node.kind !== "route";
+}
+
+function trajectoryNodeHasVisibleChildren(node: AgentTrajectoryNode): boolean {
+  return node.children.some((child) => isTrajectoryListNode(child) || trajectoryNodeHasVisibleChildren(child));
+}
+
+function trajectorySubtreeMatches(node: AgentTrajectoryNode, normalizedQuery: string): boolean {
+  return trajectoryNodeSearchText(node).includes(normalizedQuery) || node.children.some((child) => trajectorySubtreeMatches(child, normalizedQuery));
+}
+
+function trajectoryNodeSearchText(node: AgentTrajectoryNode): string {
+  return [
+    node.title,
+    node.content,
+    node.requestId,
+    node.model,
+    node.provider,
+    node.error,
+    trajectoryNodeKindLabel(node.kind)
+  ].filter(Boolean).join(" ").toLowerCase();
+}
 
 function AgentTracePanel({ trace }: { trace: AgentTraceDetail }) {
   const t = useAppText();
   const durationMs = Math.max(trace.durationMs, 1);
+  const runs = useMemo(() => [...trace.runs].sort(compareTraceRunsByTime), [trace.runs]);
   const [selectedToolRun, setSelectedToolRun] = useState<AgentAnalysisTraceRun>();
 
   return (
@@ -3594,26 +5235,30 @@ function AgentTracePanel({ trace }: { trace: AgentTraceDetail }) {
         <Badge variant="outline">{formatCompactNumber(trace.runCount)} {t("Runs")}</Badge>
       </div>
 
-      {trace.runs.length === 0 ? (
+      {runs.length === 0 ? (
         <AnalysisEmptyState label={t("No trace runs")} />
       ) : (
-        <div className={cn("max-h-[420px]", agentListFrameClassName)}>
-          <table className={cn("min-w-[1180px]", agentListTableClassName)}>
+        <div className={cn("max-h-[520px]", agentListFrameClassName)}>
+          <table className={cn("min-w-[1260px]", agentListTableClassName)}>
             <thead className={agentListHeadClassName}>
               <tr>
                 <th className="px-3 py-2 font-semibold">{t("Run")}</th>
                 <th className="px-3 py-2 font-semibold">{t("Timeline")}</th>
                 <th className="px-3 py-2 font-semibold">{t("Status")}</th>
                 <th className="px-3 py-2 font-semibold">{t("Target")}</th>
-                <th className="px-3 py-2 text-right font-semibold">{t("Tokens")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Token")}</th>
                 <th className="px-3 py-2 text-right font-semibold">{t("Cache")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Cost")}</th>
                 <th className="px-3 py-2 text-right font-semibold">{t("Concurrency")}</th>
                 <th className="px-3 py-2 text-right font-semibold">{t("Duration")}</th>
               </tr>
             </thead>
             <tbody className={agentListBodyClassName}>
-              {trace.runs.map((run) => (
-                <tr className={agentListRowClassName({ danger: run.status === "error" })} key={run.id}>
+              {runs.map((run) => (
+                <tr className={agentListRowClassName({
+                  danger: run.status === "error",
+                  warning: run.status === "partial"
+                })} key={run.id}>
                   <td className="max-w-[360px] px-3 py-2">
                     <div className="flex min-w-0 items-center gap-2" style={{ paddingLeft: `${Math.min(run.depth, 8) * 16}px` }}>
                       <span className={cn("h-2 w-2 shrink-0 rounded-full", traceRunDotClass(run))} />
@@ -3636,8 +5281,8 @@ function AgentTracePanel({ trace }: { trace: AgentTraceDetail }) {
                     </div>
                   </td>
                   <td className="px-3 py-2">
-                    <Badge className={cn("border", run.status === "error" ? "border-rose-200 bg-rose-50 text-rose-700" : "border-emerald-200 bg-emerald-50 text-emerald-700")} variant="outline">
-                      {t(run.status === "error" ? "Error" : "Success")}
+                    <Badge className={cn("border", traceRunStatusBadgeClass(run.status))} variant="outline">
+                      {t(traceRunStatusLabel(run.status))}
                     </Badge>
                   </td>
                   <td className="max-w-[260px] px-3 py-2" title={traceRunTarget(run)}>
@@ -3645,6 +5290,7 @@ function AgentTracePanel({ trace }: { trace: AgentTraceDetail }) {
                   </td>
                   <td className="px-3 py-2 text-right">{run.totalTokens > 0 ? formatCompactNumber(run.totalTokens) : "-"}</td>
                   <td className="px-3 py-2 text-right">{run.cacheReadTokens + run.cacheWriteTokens > 0 ? formatCompactNumber(run.cacheReadTokens + run.cacheWriteTokens) : "-"}</td>
+                  <td className="px-3 py-2 text-right">{run.costUsd !== undefined ? formatUsdCost(run.costUsd) : "-"}</td>
                   <td className="px-3 py-2 text-right">{formatCompactNumber(run.concurrentRequests)}</td>
                   <td className="px-3 py-2 text-right">{formatDuration(run.durationMs)}</td>
                 </tr>
@@ -3661,14 +5307,6 @@ function AgentTracePanel({ trace }: { trace: AgentTraceDetail }) {
       ) : null}
     </div>
   );
-}
-
-function traceRunKindLabel(kind: AgentAnalysisTraceRun["kind"]): string {
-  if (kind === "agent") return "Agent";
-  if (kind === "llm") return "LLM";
-  if (kind === "route") return "Route";
-  if (kind === "subagent") return "Subagent";
-  return "Tool";
 }
 
 function TraceRunTarget({
@@ -3690,6 +5328,203 @@ function TraceRunTarget({
         <Button className="h-6 shrink-0 border-border bg-transparent px-2 text-[10px] shadow-none hover:bg-transparent active:bg-transparent" onClick={onOpenTool} type="button" variant="outline">
           {t("Parameters")} / {t("Result")}
         </Button>
+      ) : null}
+    </div>
+  );
+}
+
+function AgentTrajectoryNodeRow({
+  expanded,
+  level,
+  node,
+  onSelect,
+  onToggle,
+  selected
+}: {
+  expanded: boolean;
+  level: number;
+  node: AgentTrajectoryNode;
+  onSelect: () => void;
+  onToggle: () => void;
+  selected: boolean;
+}) {
+  const t = useAppText();
+  const preview = trajectoryNodePreview(trajectoryNodeListContent(node, t));
+  const hasChildren = trajectoryNodeHasVisibleChildren(node);
+
+  return (
+    <div
+      className={cn(
+        "flex w-full min-w-0 items-start bg-card/30 px-2.5 py-2 text-left transition-colors [contain-intrinsic-size:36px] [content-visibility:auto] hover:bg-muted/40",
+        selected && "bg-primary/10 shadow-[inset_2px_0_0_hsl(var(--primary))] hover:bg-primary/10"
+      )}
+      onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect();
+        }
+      }}
+      role="button"
+      tabIndex={0}
+    >
+      <div className="flex min-w-0 flex-1 items-center gap-2" style={{ paddingLeft: `${Math.min(level, 10) * 18}px` }}>
+        {hasChildren ? (
+          <button
+            aria-label={t(expanded ? "Collapse" : "Expand")}
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggle();
+            }}
+            title={t(expanded ? "Collapse" : "Expand")}
+            type="button"
+          >
+            {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          </button>
+        ) : (
+          <span className="h-5 w-5 shrink-0" />
+        )}
+        <span className={cn("min-w-[84px] shrink-0 rounded px-1.5 py-0.5 text-center font-mono text-[9px] font-semibold uppercase", trajectoryNodeBadgeClass(node))}>
+          {trajectoryNodeRoleTag(node.kind)}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-[12px] text-foreground/90" title={preview || trajectoryNodeTitle(node, t)}>
+          {preview || trajectoryNodeTitle(node, t)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function AgentTrajectoryDetailPanel({
+  node,
+  onClose
+}: {
+  node?: AgentTrajectoryNode;
+  onClose: () => void;
+}) {
+  const t = useAppText();
+  const [tab, setTab] = useState<AgentTrajectoryDetailTab>("preview");
+
+  useEffect(() => {
+    setTab("preview");
+  }, [node?.id]);
+
+  if (!node) {
+    return <AnalysisEmptyState label={t("No trajectory events")} />;
+  }
+
+  return (
+    <aside className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background/80 shadow-[-8px_0_18px_rgba(15,23,42,0.04)]">
+      <div className="flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-border/60 px-3 py-2">
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className={cn("rounded px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase", trajectoryNodeBadgeClass(node))}>
+              {trajectoryNodeRoleTag(node.kind)}
+            </span>
+            <span className="truncate text-[12px] font-medium" title={trajectoryNodeTitle(node, t)}>
+              {trajectoryNodeTitle(node, t)}
+            </span>
+          </div>
+          <div className="mt-1 text-[10px] text-muted-foreground">
+            {node.turnIndex ? `${t("Round")} ${node.turnIndex} | ` : ""}{t("Step")} {node.stepIndex}
+          </div>
+        </div>
+        <Button aria-label={t("Collapse details")} onClick={onClose} size="iconSm" title={t("Collapse details")} type="button" variant="ghost">
+          <ChevronRight className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+
+      <div className="flex shrink-0 border-b border-border/60 px-3">
+        {(["preview", "raw"] as AgentTrajectoryDetailTab[]).map((item) => (
+          <button
+            className={cn(
+              "h-10 border-b-2 px-2 text-[12px] font-medium transition-colors",
+              tab === item ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+            )}
+            key={item}
+            onClick={() => setTab(item)}
+            type="button"
+          >
+            {t(item === "preview" ? "Preview" : "Raw")}
+          </button>
+        ))}
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-auto">
+        {tab === "preview" ? <AgentTrajectoryNodePreview node={node} /> : null}
+        {tab === "raw" ? <TracePayloadContent content={trajectoryNodeRawJson(node)} kind="json" /> : null}
+      </div>
+    </aside>
+  );
+}
+
+function AgentTrajectoryNodePreview({ node }: { node: AgentTrajectoryNode }) {
+  const t = useAppText();
+  const run = node.run;
+  const tool = run?.tool;
+  const inputRequest = tool && run?.requestLogId
+    ? { callId: tool.callId, part: "tool-input" as const, requestLogId: run.requestLogId }
+    : undefined;
+  const resultRequest = tool?.resultRequestLogId
+    ? { callId: tool.callId, part: "tool-result" as const, requestLogId: tool.resultRequestLogId }
+    : undefined;
+
+  if (node.kind === "tool-result") {
+    return <TracePayloadContent content={node.content} kind={node.content.trim() ? "text" : "empty"} />;
+  }
+
+  if (run?.kind === "tool") {
+    return (
+      <div className="space-y-3 p-3">
+        <TracePayloadPane fallback={tool?.input} label={t("Tool parameters")} request={inputRequest} />
+        <TracePayloadPane fallback={tool?.result} label={t("Tool result")} request={resultRequest} />
+      </div>
+    );
+  }
+
+  if (isConversationRoleNodeKind(node.kind)) {
+    return <TracePayloadContent content={node.content} kind={node.content.trim() ? "text" : "empty"} />;
+  }
+
+  return (
+    <div className="space-y-4 p-4 text-[12px]">
+      <div className="grid grid-cols-[92px_minmax(0,1fr)] gap-x-4 gap-y-2">
+        <div className="text-muted-foreground">{t("Source")}</div>
+        <div>{t(trajectoryNodeKindLabel(node.kind))}</div>
+        <div className="text-muted-foreground">{t("Status")}</div>
+        <div>{t(traceRunStatusLabel(node.status))}{node.statusCode ? ` (${node.statusCode})` : ""}</div>
+        <div className="text-muted-foreground">{t("Target")}</div>
+        <div className="truncate" title={run ? traceRunTarget(run) : undefined}>{run ? traceRunTarget(run) : "-"}</div>
+        <div className="text-muted-foreground">{t("Request")}</div>
+        <div className="truncate font-mono" title={node.requestId}>{node.requestId ? compactId(node.requestId) : "-"}</div>
+        <div className="text-muted-foreground">{t("Model")}</div>
+        <div className="truncate" title={node.provider && node.model ? `${node.provider}/${node.model}` : node.model}>
+          {node.provider && node.model ? `${node.provider}/${node.model}` : node.model || "-"}
+        </div>
+        <div className="text-muted-foreground">{t("Tokens")}</div>
+        <div>{node.totalTokens > 0 ? `${formatCompactNumber(node.totalTokens)} tok` : "-"}</div>
+        <div className="text-muted-foreground">{t("Cost")}</div>
+        <div>{node.costUsd !== undefined ? formatUsdCost(node.costUsd) : "-"}</div>
+      </div>
+
+      <div>
+        <div className="mb-2 font-medium">{t("Request Timing")}</div>
+        <div className="grid grid-cols-[92px_minmax(0,1fr)] gap-x-4 gap-y-1.5">
+          <div className="text-muted-foreground">{t("Started")}</div>
+          <div className="font-mono">{formatLogDateTime(node.createdAt)}</div>
+          <div className="text-muted-foreground">{t("Total duration")}</div>
+          <div>{formatDuration(node.durationMs)}</div>
+          <div className="text-muted-foreground">{t("Offset")}</div>
+          <div>{formatDuration(node.offsetMs)}</div>
+        </div>
+      </div>
+
+      {node.content.trim() ? (
+        <div>
+          <div className="mb-2 font-medium">{t("Preview")}</div>
+          <TracePayloadContent content={node.content} kind="text" />
+        </div>
       ) : null}
     </div>
   );
@@ -3807,7 +5642,7 @@ function TracePayloadPane({
   const unavailable = !loading && Boolean(request) && full !== undefined && !full.found;
 
   return (
-    <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border/60 bg-muted/20">
+    <section className="flex min-h-[160px] flex-col overflow-hidden rounded-lg border border-border/60 bg-muted/20">
       <div className="flex min-h-11 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border/60 px-3 py-2">
         <div className="text-[12px] font-semibold">{label}</div>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5 text-[10px] text-muted-foreground">
@@ -3905,7 +5740,7 @@ function JsonComplexNode({
   root?: boolean;
 }) {
   const t = useAppText();
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(Boolean(root));
   const empty = entries.length === 0;
 
   return (
@@ -3987,6 +5822,14 @@ function traceRunTarget(run: AgentAnalysisTraceRun): string {
   return run.path || "-";
 }
 
+function traceRunKindLabel(kind: AgentAnalysisTraceRun["kind"]): string {
+  if (kind === "agent") return "Agent";
+  if (kind === "llm") return "LLM";
+  if (kind === "route") return "Route";
+  if (kind === "subagent") return "Subagent";
+  return "Tool";
+}
+
 function traceRunBarStyle(run: AgentAnalysisTraceRun, traceDurationMs: number): { left: string; width: string } {
   const left = Math.max(0, Math.min(99.2, (run.offsetMs / traceDurationMs) * 100));
   const rawWidth = (run.durationMs / traceDurationMs) * 100;
@@ -4000,6 +5843,7 @@ function traceRunBarStyle(run: AgentAnalysisTraceRun, traceDurationMs: number): 
 
 function traceRunDotClass(run: AgentAnalysisTraceRun): string {
   if (run.status === "error") return "bg-rose-500";
+  if (run.status === "partial") return "bg-amber-500";
   if (run.kind === "agent") return "bg-teal-500";
   if (run.kind === "route") return "bg-cyan-500";
   if (run.kind === "subagent") return "bg-amber-500";
@@ -4009,11 +5853,136 @@ function traceRunDotClass(run: AgentAnalysisTraceRun): string {
 
 function traceRunBarClass(run: AgentAnalysisTraceRun): string {
   if (run.status === "error") return "bg-rose-500";
+  if (run.status === "partial") return "bg-amber-500";
   if (run.kind === "agent") return "bg-teal-500";
   if (run.kind === "route") return "bg-cyan-500";
   if (run.kind === "subagent") return "bg-amber-500";
   if (run.kind === "tool") return "bg-emerald-500";
   return "bg-blue-500";
+}
+
+function traceRunStatusBadgeClass(status: AgentAnalysisTraceRun["status"]): string {
+  if (status === "error") return "border-rose-200 bg-rose-50 text-rose-700";
+  if (status === "partial") return "border-amber-200 bg-amber-50 text-amber-700";
+  return "border-emerald-200 bg-emerald-50 text-emerald-700";
+}
+
+function traceRunStatusLabel(status: AgentAnalysisTraceRun["status"]): string {
+  if (status === "error") return "Error";
+  if (status === "partial") return "Partial failure";
+  return "Success";
+}
+
+function trajectoryNodeTitle(node: AgentTrajectoryNode, t: (value: string) => string): string {
+  if (node.kind === "user") return t("User sent");
+  if (node.kind === "assistant") return t("Model reply");
+  if (node.kind === "context") return t("Context");
+  if (node.kind === "developer") return t("Developer");
+  if (node.kind === "system") return t("System");
+  if (node.kind === "tool-result") return t("Tool result");
+  return node.title;
+}
+
+function trajectoryNodeListContent(node: AgentTrajectoryNode, t: (value: string) => string): string {
+  const content = node.content.trim();
+  if (node.kind === "tool-result") {
+    return content;
+  }
+  if (node.run?.kind === "tool") {
+    const input = trajectoryNodePreview(node.run.tool?.input?.preview ?? "");
+    return [
+      node.run.toolName || node.run.name,
+      input
+    ].filter(Boolean).join(" ");
+  }
+  if (isConversationRoleNodeKind(node.kind)) {
+    return content;
+  }
+  if (node.kind === "llm") {
+    return node.error ? node.error : t("Request");
+  }
+  if (node.kind === "route") {
+    return content || node.run?.routeReason || node.title;
+  }
+  return content || node.title;
+}
+
+function isConversationRoleNodeKind(kind: AgentTrajectoryNodeKind): kind is AgentConversationItem["role"] {
+  return kind === "assistant" || kind === "context" || kind === "developer" || kind === "system" || kind === "tool" || kind === "user";
+}
+
+function trajectoryNodeKindLabel(kind: AgentTrajectoryNodeKind): string {
+  if (kind === "user") return "User";
+  if (kind === "assistant") return "Assistant";
+  if (kind === "context") return "Context";
+  if (kind === "developer") return "Developer";
+  if (kind === "system") return "System";
+  if (kind === "tool-result") return "Tool Result";
+  return traceRunKindLabel(kind);
+}
+
+function trajectoryNodeRoleTag(kind: AgentTrajectoryNodeKind): string {
+  return trajectoryNodeKindLabel(kind).toUpperCase();
+}
+
+function trajectoryNodeBadgeClass(node: AgentTrajectoryNode): string {
+  if (node.status === "error") return "bg-rose-100 text-rose-700";
+  if (node.kind === "system") return "bg-slate-100 text-slate-700";
+  if (node.kind === "context") return "bg-emerald-100 text-emerald-700";
+  if (node.kind === "developer") return "bg-indigo-100 text-indigo-700";
+  if (node.kind === "user") return "bg-blue-100 text-blue-700";
+  if (node.kind === "assistant") return "bg-violet-100 text-violet-700";
+  if (node.kind === "tool-result") return "bg-emerald-100 text-emerald-700";
+  if (node.kind === "tool") return "bg-amber-100 text-amber-700";
+  if (node.kind === "route") return "bg-cyan-100 text-cyan-700";
+  if (node.kind === "subagent") return "bg-emerald-100 text-emerald-700";
+  if (node.kind === "agent") return "bg-teal-100 text-teal-700";
+  return "bg-slate-100 text-slate-700";
+}
+
+function trajectoryNodePreview(value: string): string {
+  const compact = value.replace(/\s+/g, " ").trim();
+  return compact.length > 180 ? `${compact.slice(0, 180)}...` : compact;
+}
+
+function trajectoryRunContent(run: AgentAnalysisTraceRun): string {
+  if (run.kind === "tool") {
+    const input = run.tool?.input?.preview.trim();
+    const result = run.tool?.result?.preview.trim();
+    return [
+      input ? `Input\n${input}` : "",
+      result ? `Result\n${result}` : "",
+      run.error ? `Error\n${run.error}` : ""
+    ].filter(Boolean).join("\n\n");
+  }
+  return [
+    run.routeReason ? `Route: ${run.routeReason}` : "",
+    run.error ? `Error: ${run.error}` : ""
+  ].filter(Boolean).join("\n");
+}
+
+function trajectoryNodeRawJson(node: AgentTrajectoryNode): string {
+  return JSON.stringify({
+    content: node.content,
+    costUsd: node.costUsd,
+    durationMs: node.durationMs,
+    error: node.error,
+    kind: node.kind,
+    model: node.model,
+    offsetMs: node.offsetMs,
+    provider: node.provider,
+    requestId: node.requestId,
+    requestLogId: node.requestLogId,
+    sourcePreview: node.sourcePreview,
+    sourceTruncated: node.sourceTruncated,
+    status: node.status,
+    statusCode: node.statusCode,
+    stepIndex: node.stepIndex,
+    title: node.title,
+    totalTokens: node.totalTokens,
+    truncated: node.truncated,
+    turnIndex: node.turnIndex
+  }, null, 2);
 }
 
 function formatRouteReason(value: string | undefined): string {
@@ -4041,7 +6010,7 @@ function AgentSessionsCard({
         <AnalysisEmptyState label={t("No session activity")} />
       ) : (
         <div className={cn("h-full", agentListFrameClassName)}>
-          <table className={cn("min-w-[1260px]", agentListTableClassName)}>
+          <table className={cn("min-w-[1420px]", agentListTableClassName)}>
             <thead className={agentListHeadClassName}>
               <tr>
                 <th className="px-3 py-2 font-semibold">{t("Session")}</th>
@@ -4054,6 +6023,8 @@ function AgentSessionsCard({
                 <th className="px-3 py-2 text-right font-semibold">{t("Tools")}</th>
                 <th className="px-3 py-2 text-right font-semibold">{t("Subagents")}</th>
                 <th className="px-3 py-2 text-right font-semibold">{t("Errors")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Cache rate")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Cost")}</th>
                 <th className="px-3 py-2 font-semibold">{t("Models")}</th>
                 <th className="px-3 py-2 font-semibold">{t("Providers")}</th>
                 <th className="px-3 py-2 font-semibold">{t("UA")}</th>
@@ -4077,6 +6048,8 @@ function AgentSessionsCard({
                     <td className="px-3 py-2 text-right">{formatCompactNumber(session.toolCallCount)}</td>
                     <td className="px-3 py-2 text-right">{formatCompactNumber(session.subagentCallCount)}</td>
                     <td className="px-3 py-2 text-right">{formatCompactNumber(session.errorCount)}</td>
+                    <td className="px-3 py-2 text-right">{formatPercentFixed(session.cacheRatio)}</td>
+                    <td className="px-3 py-2 text-right font-semibold">{formatUsdCost(session.costUsd)}</td>
                     <td className="max-w-[240px] px-3 py-2" title={session.models.join(", ")}>{session.models.join(", ") || "-"}</td>
                     <td className="max-w-[220px] px-3 py-2" title={session.providers.join(", ")}>{session.providers.join(", ") || "-"}</td>
                     <td className="max-w-[220px] px-3 py-2 font-mono" title={session.userAgent}>{compactUserAgent(session.userAgent)}</td>
@@ -4100,6 +6073,15 @@ function AnalysisEmptyState({ label }: { label: string }) {
   return (
     <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-8 text-center text-[12px] text-muted-foreground">
       {label}
+    </div>
+  );
+}
+
+function AnalysisNotice({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex shrink-0 items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+      <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+      <span>{children}</span>
     </div>
   );
 }
@@ -4143,7 +6125,7 @@ function UsageAnalysisCard({
                   {visibleColumns.map((column) => (
                     <th className="px-3 py-2 font-semibold" key={column.key}>{column.label}</th>
                   ))}
-                  <th className="px-3 py-2 text-right font-semibold">{t("Tokens")}</th>
+                  <th className="px-3 py-2 text-right font-semibold">{t("Token")}</th>
                   {showCost ? <th className="px-3 py-2 text-right font-semibold">{t("Cost")}</th> : null}
                   <th className="px-3 py-2 text-right font-semibold">{t("Requests")}</th>
                   {showTokenBreakdown ? <th className="px-3 py-2 text-right font-semibold">{t("Input")}</th> : null}
@@ -4166,7 +6148,7 @@ function UsageAnalysisCard({
                     {showTokenBreakdown ? <td className="px-3 py-2 text-right">{formatCompactNumber(row.inputTokens)}</td> : null}
                     {showTokenBreakdown ? <td className="px-3 py-2 text-right">{formatCompactNumber(row.outputTokens)}</td> : null}
                     {showTokenBreakdown ? <td className="px-3 py-2 text-right">{formatCompactNumber(row.cacheTokens)}</td> : null}
-                    {showCacheRate ? <td className="px-3 py-2 text-right">{formatPercent(row.cacheRatio)}</td> : null}
+                    {showCacheRate ? <td className="px-3 py-2 text-right">{formatPercentFixed(row.cacheRatio)}</td> : null}
                   </tr>
                 ))}
               </tbody>

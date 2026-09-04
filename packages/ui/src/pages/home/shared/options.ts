@@ -28,6 +28,7 @@ import type {
   GatewayProviderProtocol,
   OverviewMetricKind,
   OverviewWidgetSize,
+  ProviderAccountBrowserCredentialsMode,
   ProfileConfig,
   ProfileScope,
   ProfileSurface,
@@ -61,6 +62,7 @@ import runapiProviderIconUrl from "@/assets/provider-icons/runapi.jpg";
 import siliconflowProviderIconUrl from "@/assets/provider-icons/siliconflow.png";
 import teamorouterProviderIconUrl from "@/assets/provider-icons/teamorouter.png";
 import unity2ProviderIconUrl from "@/assets/provider-icons/unity2.jpg";
+import xiaomiMimoProviderIconUrl from "@/assets/provider-icons/xiaomi-mimo.png";
 import zaiGlobalCodingProviderIconUrl from "@/assets/provider-icons/zai-global-coding.svg";
 import zaiGlobalGeneralProviderIconUrl from "@/assets/provider-icons/zai-global-general.svg";
 import zhipuCnCodingProviderIconUrl from "@/assets/provider-icons/zhipu-cn-coding.png";
@@ -72,7 +74,7 @@ import trayVioletIconUrl from "@/assets/tray-violet.png";
 type ViewId = "onboarding" | "overview" | "observability" | "api-keys" | "server" | "profile" | "networking" | "logs" | "providers" | "models" | "routing" | "virtual-models" | "extensions";
 type NavigationId = ViewId;
 type OnboardingStepId = "provider" | "profile" | "enter";
-type ProviderAccountDraftMode = "standard" | "http-json" | "raw";
+type ProviderAccountDraftMode = "standard" | "http-json" | "browser" | "raw";
 type ApiKeyLimitMetric = "images" | "requests" | "tokens";
 type ApiKeyExpirationPreset = "7d" | "30d" | "90d" | "custom" | "never";
 type LimitWindowPreset = "day" | "hour" | "minute";
@@ -120,6 +122,7 @@ export const agentFilterOptions: Array<{ label: string; value: AgentFilterValue 
   { label: "Kilo CLI", value: "kilo" },
   { label: "OpenCode", value: "opencode" },
   { label: "Pi", value: "pi" },
+  { label: "Workbuddy", value: "workbuddy" },
   { label: "ZCode", value: "zcode" },
   { label: "Claude Design", value: "claude-design" },
   { label: "Unknown", value: "unknown" }
@@ -135,6 +138,7 @@ export const profileAgentOptions: ProfileAgentOption[] = [
   { label: "Kilo CLI", value: "kilo" },
   { label: "OpenCode", value: "opencode" },
   { label: "Pi", value: "pi" },
+  { label: "Workbuddy", value: "workbuddy" },
   { label: "ZCode", value: "zcode" },
   { label: "Claude Design", value: "claude-design" }
 ];
@@ -180,12 +184,19 @@ export const providerProtocolOptions: Array<{ label: string; value: GatewayProvi
 export const providerAccountModeOptions: Array<{ label: string; value: ProviderAccountDraftMode }> = [
   { label: "Standard usage endpoint", value: "standard" },
   { label: "HTTP JSON request", value: "http-json" },
+  { label: "Browser request", value: "browser" },
   { label: "Raw connector JSON", value: "raw" }
 ];
 
 export const providerUsageMethodOptions: Array<{ label: string; value: "GET" | "POST" }> = [
   { label: "GET", value: "GET" },
   { label: "POST", value: "POST" }
+];
+
+export const providerBrowserCredentialsOptions: Array<{ label: string; value: ProviderAccountBrowserCredentialsMode }> = [
+  { label: "Do not send credentials", value: "omit" },
+  { label: "Include cookies", value: "include" },
+  { label: "Same-origin only", value: "same-origin" }
 ];
 
 export const apiKeyExpirationOptions: Array<{ label: string; value: ApiKeyExpirationPreset }> = [
@@ -213,11 +224,12 @@ export const routerRuleTypeOptions: Array<{ label: string; value: RouterRuleType
   { label: "Node.js script", value: "script" }
 ];
 
-export type RouterConditionSource = "request.header" | "request.body";
+export type RouterConditionSource = "request.header" | "request.body" | "request.auth";
 
 export const routerConditionSourceOptions: Array<{ label: string; value: RouterConditionSource }> = [
   { label: "request.header", value: "request.header" },
-  { label: "request.body", value: "request.body" }
+  { label: "request.body", value: "request.body" },
+  { label: "request.auth", value: "request.auth" }
 ];
 
 export const routerRuleOperatorOptions: Array<{ label: string; value: RouterRuleOperator }> = [
@@ -378,6 +390,10 @@ export const providerPresetIconUrls: Record<string, string> = {
   siliconflow: siliconflowProviderIconUrl,
   teamorouter: teamorouterProviderIconUrl,
   unity2: unity2ProviderIconUrl,
+  xiaomi: xiaomiMimoProviderIconUrl,
+  "xiaomi-token-plan-ams": xiaomiMimoProviderIconUrl,
+  "xiaomi-token-plan-cn": xiaomiMimoProviderIconUrl,
+  "xiaomi-token-plan-sgp": xiaomiMimoProviderIconUrl,
   "zai-global-coding": zaiGlobalCodingProviderIconUrl,
   "zai-global-general": zaiGlobalGeneralProviderIconUrl,
   "zhipu-cn-coding": zhipuCnCodingProviderIconUrl,

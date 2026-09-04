@@ -4,6 +4,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSy
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 import { codexCliMiddlewareRuntimeScript } from "@ccr/core/agents/codex/cli-middleware-runtime.ts";
 
 test("generated Codex CLI middleware runtime is valid JavaScript", () => {
@@ -11,6 +12,40 @@ test("generated Codex CLI middleware runtime is valid JavaScript", () => {
   const file = path.join(dir, "ccr-codex-cli-middleware.js");
   writeFileSync(file, codexCliMiddlewareRuntimeScript());
   execFileSync(process.execPath, ["--check", file], { stdio: "pipe" });
+});
+
+test("generated Codex CLI middleware converts Windows SDK paths before URL scheme detection", () => {
+  const fn = evaluateRuntimeFunction("botGatewaySdkImportSpecifier");
+  const windowsPath = "C:\\Users\\macao\\AppData\\Local\\Programs\\Claude Code Router\\resources\\app.asar\\dist\\main\\bot-gateway-sdk\\dist\\index.js";
+
+  assert.equal(
+    fn(windowsPath),
+    "file:///C:/Users/macao/AppData/Local/Programs/Claude%20Code%20Router/resources/app.asar/dist/main/bot-gateway-sdk/dist/index.js"
+  );
+  assert.equal(fn("file:///tmp/sdk/index.js"), "file:///tmp/sdk/index.js");
+  assert.equal(fn("@the-next-ai/bot-gateway-sdk"), "@the-next-ai/bot-gateway-sdk");
+});
+
+test("generated Codex CLI middleware materializes bundled Bot Gateway stdio runner", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-bot-runner-"));
+  const source = path.join(dir, "resources", "app.asar", "dist", "main", "bot-gateway-sdk", "bin", "bot-gateway-stdio.mjs");
+  const configDir = path.join(dir, "config");
+  mkdirSync(path.dirname(source), { recursive: true });
+  writeFileSync(source, "#!/usr/bin/env node\nconsole.log('ok');\n");
+
+  const resolveCommand = evaluateRuntimeFunction(
+    "resolveBundledBotGatewayCommand",
+    ["normalizeDuplicateShebangs", "materializeBotGatewayStdioRunnerPath"],
+    configDir
+  );
+  const command = resolveCommand({ bundledStdioPath: () => source });
+  const expectedRunner = path.join(configDir, "bot-gateway", "runners", "bot-gateway-stdio.mjs");
+
+  assert.equal(command.command, process.execPath);
+  assert.deepEqual(command.args, [expectedRunner]);
+  assert.equal(command.cwd, path.dirname(expectedRunner));
+  assert.notEqual(command.cwd, path.dirname(source));
+  assert.equal(readFileSync(expectedRunner, "utf8"), "#!/usr/bin/env node\nconsole.log('ok');\n");
 });
 
 test("Codex app-server uses ChatGPT's bundled Node as a signed supervisor", { skip: process.platform !== "darwin" }, () => {
@@ -366,7 +401,7 @@ test("Codex app-server delegates public Git marketplaces and leaves account-priv
   });
 });
 
-test("Codex app-server delegates the native model catalog unchanged", { skip: process.platform === "win32" }, () => {
+test("Codex app-server merges CCR Fast Mode catalog metadata without spoofing auth", { skip: process.platform === "win32" }, () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-native-models-"));
   const runtimeFile = writeRuntimeScript(dir);
   const fakeCodex = path.join(dir, "fake-codex");
@@ -378,7 +413,10 @@ test("Codex app-server delegates the native model catalog unchanged", { skip: pr
     "const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });",
     "input.on('line', (line) => {",
     "  const request = JSON.parse(line);",
-    "  process.stdout.write(JSON.stringify({ id: request.id, result: { data: [{ id: 'native-model', hidden: true }], nextCursor: null } }) + '\\n');",
+    "  let result = {};",
+    "  if (request.method === 'model/list') result = { data: [{ id: 'native-model', hidden: true }], nextCursor: null };",
+    "  else if (request.method === 'configRequirements/read') result = { requirements: { featureRequirements: { fast_mode: false, other_feature: false } } };",
+    "  process.stdout.write(JSON.stringify({ id: request.id, result }) + '\\n');",
     "});",
     ""
   ].join("\n"));
@@ -388,18 +426,49 @@ test("Codex app-server delegates the native model catalog unchanged", { skip: pr
     encoding: "utf8",
     env: {
       ...process.env,
-      CCR_CODEX_MODEL_CATALOG: JSON.stringify({ models: [{ slug: "must-not-be-merged" }] }),
+      CCR_CODEX_CHATGPT_AUTH_FILE: "",
+      CCR_CODEX_MODEL_CATALOG: JSON.stringify({
+        models: [
+          { display_name: "Native Fast", slug: "native-model", supports_fast_mode: true },
+          { display_name: "Plain Model", slug: "plain-model" }
+        ]
+      }),
       CCR_CODEX_REMOTE_FRONTEND_MODE: "app",
       CCR_REAL_CODEX_CLI_PATH: fakeCodex,
-      CODEX_HOME: codexHome
+      CODEX_HOME: codexHome,
+      CODEXL_CODEX_CHATGPT_AUTH_FILE: ""
     },
-    input: JSON.stringify({ id: 1, method: "model/list", params: {} }) + "\n"
+    input: [
+      JSON.stringify({ id: 1, method: "model/list", params: {} }),
+      JSON.stringify({ id: 2, method: "getAuthStatus", params: { includeToken: true } }),
+      JSON.stringify({ id: 3, method: "account/read", params: {} }),
+      JSON.stringify({ id: 4, method: "configRequirements/read", params: {} }),
+      ""
+    ].join("\n")
   });
 
   assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(JSON.parse(result.stdout.trim()).result, {
-    data: [{ id: "native-model", hidden: true }],
-    nextCursor: null
+  const responses = new Map(result.stdout.trim().split(/\r?\n/).map((line) => JSON.parse(line)).map((response) => [response.id, response]));
+  const models = responses.get(1).result.data;
+  const nativeModel = models.find((model) => model.id === "native-model");
+  const plainModel = models.find((model) => model.id === "plain-model");
+  assert.equal(nativeModel.hidden, true);
+  assert.deepEqual(nativeModel.additionalSpeedTiers, ["fast"]);
+  assert.deepEqual(nativeModel.serviceTiers, [{ id: "priority", name: "Fast", description: "1.5x speed, increased usage" }]);
+  assert.deepEqual(plainModel.additionalSpeedTiers, []);
+  assert.deepEqual(plainModel.serviceTiers, []);
+  assert.deepEqual(responses.get(2).result, {
+    authMethod: "amazonBedrock",
+    authToken: "ccr-local-profile",
+    requiresOpenaiAuth: false
+  });
+  assert.deepEqual(responses.get(3).result, {
+    account: { type: "amazonBedrock", credentialSource: "codexManaged" },
+    requiresOpenaiAuth: false
+  });
+  assert.deepEqual(responses.get(4).result.requirements.featureRequirements, {
+    fast_mode: true,
+    other_feature: false
   });
 });
 
@@ -1040,6 +1109,43 @@ function writeRuntimeScript(dir) {
   writeFileSync(file, codexCliMiddlewareRuntimeScript());
   chmodSync(file, 0o700);
   return file;
+}
+
+function evaluateRuntimeFunction(name, dependencies = [], configDir = "") {
+  const runtime = codexCliMiddlewareRuntimeScript();
+  const source = [
+    ...dependencies.map((dependency) => extractRuntimeFunctionSource(runtime, dependency)),
+    extractRuntimeFunctionSource(runtime, name)
+  ].join("\n");
+  const fsRuntime = { existsSync, mkdirSync, readFileSync, writeFileSync };
+  return Function("path", "pathToFileURL", "fs", "CONFIG_DIR", `${source}; return ${name};`)(
+    path,
+    pathToFileURL,
+    fsRuntime,
+    configDir
+  );
+}
+
+function extractRuntimeFunctionSource(source, name) {
+  const start = source.indexOf(`function ${name}(`);
+  assert.notEqual(start, -1);
+  const openBrace = source.indexOf("{", start);
+  assert.notEqual(openBrace, -1);
+
+  let depth = 0;
+  for (let index = openBrace; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === "{") {
+      depth += 1;
+    } else if (character === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return source.slice(start, index + 1);
+      }
+    }
+  }
+
+  throw new Error(`Unable to extract runtime function ${name}.`);
 }
 
 function writeFakeClaudeCli(dir) {

@@ -624,7 +624,10 @@ function contextArchiveToolContinuationGuidance(toolName: string): string {
   return [
     "CCR context archive is available for this compacted continuation.",
     `If the compact handoff indicates missing historical details are stored in archived history, use the ${toolName} tool when that history is needed.`,
-    "Use ordinary task judgment: answer directly when the compact handoff and retained tail are sufficient; call the history tool when exact pre-compaction details are needed."
+    "Use ordinary task judgment: answer directly when the compact handoff and retained tail are sufficient; call the history tool when exact pre-compaction details are needed.",
+    "Before implementing or finalizing behavior that depends on pre-compaction requirements, tests, file edits, failure output, or edge cases that are not explicit in the handoff, ask the archive for the missing details instead of relying on memory.",
+    "Treat the handoff's implementation details as evidence, not authority: original user requirements and failing checks take precedence, especially for public API runtime shape such as constructors, isinstance/class checks, attribute access, exports, ordering, callbacks, and error semantics.",
+    "After compact, prefer the shortest path to the user's explicit deliverable: fix known failures, run focused verification, and avoid starting broad new test plans, refactors, or extra validation unless they are already required by the handoff or a failing check."
   ].join(" ");
 }
 

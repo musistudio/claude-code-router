@@ -1,1 +1,1 @@
-export { ProxyAgent } from "undici";
+export { Agent, ProxyAgent, fetch } from "undici";

@@ -1,0 +1,29 @@
+---
+interface Props {
+  target: string;
+  lang: string;
+  label: string;
+}
+
+const { target, lang, label } = Astro.props;
+const baseUrl = import.meta.env.BASE_URL ?? "/";
+const basePath = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+const resolvedTarget =
+  basePath !== "/" && target.startsWith("/") ? `${basePath}${target.slice(1)}` : target;
+const canonical = Astro.site ? new URL(resolvedTarget, Astro.site).href : resolvedTarget;
+---
+
+<html lang={lang}>
+  <head>
+    <meta charset="utf-8" />
+    <title>Redirecting…</title>
+    <meta http-equiv="refresh" content={`0;url=${resolvedTarget}`} />
+    <link rel="canonical" href={canonical} />
+    <script define:vars={{ target: resolvedTarget }}>
+      window.location.replace(target + window.location.hash);
+    </script>
+  </head>
+  <body>
+    <a href={resolvedTarget}>{label}</a>
+  </body>
+</html>

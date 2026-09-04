@@ -38,6 +38,8 @@ export function createEmptyAgentAnalysis(range: UsageStatsRange): AgentAnalysisS
     range,
     recentRequests: [],
     routes: [],
+    requestScanLimit: 0,
+    requestScanTruncated: false,
     scannedRequestCount: 0,
     sessions: [],
     subagents: [],
@@ -168,6 +170,10 @@ export function formatPercent(value: number): string {
   return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
 }
 
+export function formatPercentFixed(value: number, fractionDigits = 2): string {
+  return `${(Math.max(0, Math.min(1, value)) * 100).toFixed(fractionDigits)}%`;
+}
+
 export function logSelectOptions(label: string, values: string[], selected: string | undefined): Array<{ label: string; value: string }> {
   const merged = new Set(values);
   if (selected) {
@@ -180,7 +186,7 @@ export function logSelectOptions(label: string, values: string[], selected: stri
 }
 
 export function normalizeAgentFilterValue(value: string): AgentFilterValue {
-  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "kilo" || value === "opencode" || value === "pi" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "kilo" || value === "opencode" || value === "pi" || value === "workbuddy" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
 }
 
 export function agentKindLabel(agent: AgentKind): string {
@@ -207,6 +213,9 @@ export function agentKindLabel(agent: AgentKind): string {
   }
   if (agent === "pi") {
     return "Pi";
+  }
+  if (agent === "workbuddy") {
+    return "Workbuddy";
   }
   if (agent === "zcode") {
     return "ZCode";

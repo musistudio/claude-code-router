@@ -313,13 +313,17 @@ export function ModelSelector({
 }
 
 export function ModelMultiSelector({
+  hasExplicitSelection = true,
   onChange,
   providers,
+  requiredValues = [],
   value,
   virtualModelProfiles = []
 }: {
+  hasExplicitSelection?: boolean;
   onChange: (value: string[]) => void;
   providers: GatewayProviderConfig[];
+  requiredValues?: string[];
   value: string[];
   virtualModelProfiles?: VirtualModelProfileConfig[];
 }) {
@@ -340,16 +344,30 @@ export function ModelMultiSelector({
       model.provider.toLowerCase().includes(normalizedQuery) ||
       model.value.toLowerCase().includes(normalizedQuery) ||
       model.displayName.toLowerCase().includes(normalizedQuery));
-  const selected = new Set(value.map(normalizeProviderModelSelector).filter(Boolean));
+  const required = new Set(requiredValues.map(modelSelectionKey).filter(Boolean));
+  const selected = new Set([...value, ...requiredValues].map(modelSelectionKey).filter(Boolean));
+  const canClearSelection = hasExplicitSelection && Array.from(selected).some((key) => !required.has(key));
 
   function toggleModel(model: string) {
-    onChange(selected.has(model)
-      ? value.filter((candidate) => normalizeProviderModelSelector(candidate) !== model)
+    const key = modelSelectionKey(model);
+    if (required.has(key) && selected.has(key)) {
+      return;
+    }
+    onChange(selected.has(key)
+      ? value.filter((candidate) => modelSelectionKey(candidate) !== key)
       : [...value, model]);
   }
 
   function selectVisibleModels() {
-    onChange(Array.from(new Set([...value.map(normalizeProviderModelSelector).filter(Boolean), ...models.map((model) => model.value)])));
+    onChange(Array.from(new Set([
+      ...requiredValues.map(normalizeProviderModelSelector).filter(Boolean),
+      ...value.map(normalizeProviderModelSelector).filter(Boolean),
+      ...models.map((model) => model.value)
+    ])));
+  }
+
+  function clearOptionalModels() {
+    onChange(requiredValues.map(normalizeProviderModelSelector).filter(Boolean));
   }
 
   return (
@@ -368,7 +386,7 @@ export function ModelMultiSelector({
         <Button disabled={models.length === 0} onClick={selectVisibleModels} size="sm" type="button" variant="outline">
           {t("All")}
         </Button>
-        <Button disabled={selected.size === 0} onClick={() => onChange([])} size="sm" type="button" variant="outline">
+        <Button disabled={!canClearSelection} onClick={clearOptionalModels} size="sm" type="button" variant="outline">
           {t("Clear")}
         </Button>
       </div>
@@ -380,17 +398,20 @@ export function ModelMultiSelector({
         ) : null}
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {models.map((model) => {
-            const checked = selected.has(model.value);
+            const key = modelSelectionKey(model.value);
+            const checked = selected.has(key);
+            const locked = checked && required.has(key);
             return (
               <Label
                 className={cn(
                   "flex h-9 min-w-0 cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-2 text-left text-[12px] transition-colors hover:bg-muted",
-                  checked && "border-primary bg-accent"
+                  checked && "border-primary bg-accent",
+                  locked && "cursor-not-allowed opacity-75 hover:bg-accent"
                 )}
                 key={model.value}
                 title={`${model.provider}/${model.displayName}`}
               >
-                <Checkbox checked={checked} onCheckedChange={() => toggleModel(model.value)} />
+                <Checkbox checked={checked} disabled={locked} onCheckedChange={() => toggleModel(model.value)} />
                 <span className="min-w-0 flex-1 truncate">{model.provider} / {model.displayName}</span>
               </Label>
             );
@@ -399,4 +420,8 @@ export function ModelMultiSelector({
       </div>
     </div>
   );
+}
+
+function modelSelectionKey(value: string): string {
+  return normalizeProviderModelSelector(value).toLowerCase();
 }

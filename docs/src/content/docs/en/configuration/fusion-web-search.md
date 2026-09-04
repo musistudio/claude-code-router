@@ -1,11 +1,11 @@
 ---
-title: Built-In Web Search
-pageTitle: Built-In Web Search
+title: Built-in web search
+pageTitle: Built-in web search
 eyebrow: Fusion
-lead: Use CCR's built-in Web Search tool to give models live search context.
+lead: Add live web retrieval to a model with CCR's built-in web_search capability, backed by In-app Browser or a search service such as Brave, Bing, or Tavily.
 ---
 
-## Select The Capability
+## Select the capability
 
 Use `ccr-fusion-builtins / web_search`.
 

@@ -21,6 +21,16 @@ export const enConfigurationDocs = import.meta.glob<ConfigurationDocModule>(
   { eager: true }
 );
 
+export const zhConfigurationAgentDocs = import.meta.glob<ConfigurationDocModule>(
+  "./content/docs/zh/configuration/agents/*.md",
+  { eager: true }
+);
+
+export const enConfigurationAgentDocs = import.meta.glob<ConfigurationDocModule>(
+  "./content/docs/en/configuration/agents/*.md",
+  { eager: true }
+);
+
 export function configurationSlugFromPath(filePath: string): string {
   const file = filePath.split("/").pop() ?? filePath;
   return file.replace(/\.md$/, "");

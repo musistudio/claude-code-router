@@ -266,8 +266,9 @@ async function recordLargeAgentRequests(store, dbFile, { paddingBytes, requestCo
 
 test("RequestLogStore keeps list rows lightweight and detail rows complete", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-test-"));
+  let store;
   try {
-    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
     const body = JSON.stringify({ messages: [{ content: "hello", role: "user" }], model: "request-model" });
     const response = JSON.stringify({
       model: "response-model",
@@ -312,14 +313,195 @@ test("RequestLogStore keeps list rows lightweight and detail rows complete", asy
     assert.match(detail.requestBody.text, /request-model/);
     assert.match(detail.responseBody?.text ?? "", /response-model/);
   } finally {
+    await store?.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore keeps large request bodies in sidecar storage and reads them by chunk", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-sidecar-test-"));
+  let store;
+  try {
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const body = JSON.stringify({
+      messages: [{ content: "hello", role: "user" }],
+      model: "request-model",
+      padding: "中🙂".repeat(40 * 1024),
+      tail: "request-tail"
+    });
+    const response = JSON.stringify({
+      model: "response-model",
+      padding: "y".repeat(220 * 1024),
+      tail: "response-tail",
+      usage: {
+        input_tokens: 3,
+        output_tokens: 4,
+        total_tokens: 7
+      }
+    });
+
+    await store.record({
+      completedAt: new Date().toISOString(),
+      durationMs: 42,
+      method: "POST",
+      path: "/v1/messages",
+      providerName: "test-provider",
+      requestBody: Buffer.from(body, "utf8"),
+      requestHeaders: { "content-type": "application/json" },
+      requestId: "request-log-sidecar-test",
+      responseBodyText: response,
+      responseHeaders: { "content-type": "application/json" },
+      startedAt: new Date().toISOString(),
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/messages"
+    });
+
+    const page = await store.list({ pageSize: 25 });
+    assert.equal(page.items.length, 1);
+    assert.equal(page.items[0].requestBody.text, "");
+    assert.equal(page.items[0].requestBody.preview, true);
+    assert.ok(page.items[0].requestBody.bodyRef);
+
+    const detail = await store.getDetail({ id: page.items[0].id });
+    assert.ok(detail);
+    assert.equal(detail.requestBody.preview, true);
+    assert.equal(detail.requestBody.truncated, false);
+    assert.match(detail.requestBody.text, /bytes omitted from preview/);
+    assert.match(detail.requestBody.text, /request-tail/);
+    assert.equal(detail.responseBody?.preview, true);
+    assert.equal(detail.responseBody?.truncated, false);
+    assert.match(detail.responseBody?.text ?? "", /response-tail/);
+
+    const requestChunk = await store.getBodyChunk({
+      id: detail.id,
+      length: 512 * 1024,
+      offset: 0,
+      side: "request"
+    });
+    assert.ok(requestChunk);
+    assert.equal(requestChunk.eof, true);
+    assert.equal(requestChunk.truncated, false);
+    assert.equal(requestChunk.text, body);
+
+    let unicodeOffset = 0;
+    const unicodeChunks = [];
+    while (true) {
+      const unicodeChunk = await store.getBodyChunk({
+        id: detail.id,
+        length: 4097,
+        offset: unicodeOffset,
+        side: "request"
+      });
+      assert.ok(unicodeChunk);
+      unicodeChunks.push(unicodeChunk.text);
+      if (unicodeChunk.eof) break;
+      assert.ok(unicodeChunk.nextOffset > unicodeOffset);
+      unicodeOffset = unicodeChunk.nextOffset;
+    }
+    assert.equal(unicodeChunks.join(""), body);
+
+    const responseChunk = await store.getBodyChunk({
+      id: detail.id,
+      length: 512 * 1024,
+      offset: 0,
+      side: "response"
+    });
+    assert.ok(responseChunk);
+    assert.equal(responseChunk.eof, true);
+    assert.equal(responseChunk.truncated, false);
+    assert.equal(responseChunk.text, response);
+  } finally {
+    await store?.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore stores decoded Claude App route models for observability", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-claude-app-model-test-"));
+  let store;
+  try {
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const sessionId = "claude-app-hex-session";
+    const routedModel = "Provider/real-model";
+    const encodedModel = `anthropic/claude-ccr-h${Buffer.from(routedModel, "utf8").toString("hex")}`;
+    const startedAt = new Date().toISOString();
+    const responseBodyText = [
+      "event: message_start",
+      `data: ${JSON.stringify({
+        message: {
+          model: encodedModel,
+          usage: {
+            input_tokens: 3,
+            output_tokens: 5,
+            total_tokens: 8
+          }
+        },
+        type: "message_start"
+      })}`,
+      "",
+      "event: message_stop",
+      "data: {\"type\":\"message_stop\"}",
+      ""
+    ].join("\n");
+
+    await store.record({
+      completedAt: startedAt,
+      durationMs: 42,
+      fallbackModel: routedModel,
+      method: "POST",
+      model: routedModel,
+      path: "/v1/messages",
+      providerName: "Provider",
+      providerProtocol: "anthropic_messages",
+      requestedModel: encodedModel,
+      requestBody: Buffer.from(JSON.stringify({
+        messages: [{ content: "hello", role: "user" }],
+        model: routedModel
+      }), "utf8"),
+      requestHeaders: {
+        "content-type": "application/json",
+        "user-agent": "openai-codex test",
+        "x-codex-session-id": sessionId
+      },
+      requestId: "claude-app-hex-request",
+      resolvedModel: routedModel,
+      responseBodyText,
+      responseHeaders: { "content-type": "text/event-stream" },
+      startedAt,
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/messages"
+    });
+
+    const page = await store.list({ pageSize: 25 });
+    assert.equal(page.items.length, 1);
+    assert.equal(page.items[0].provider, "Provider");
+    assert.equal(page.items[0].model, "real-model");
+    assert.equal(page.items[0].requestedModel, encodedModel);
+    assert.equal(page.items[0].resolvedModel, routedModel);
+    assert.equal(page.items[0].responseModel, encodedModel);
+
+    const selected = await store.analyze({
+      range: "30d",
+      sessionAgent: "codex",
+      sessionId
+    });
+    assert.equal(selected.selectedSession?.requests[0]?.model, "real-model");
+    assert.deepEqual(selected.selectedSession?.session.models, ["real-model"]);
+    assert.equal(
+      selected.selectedSession?.trace.runs.find((run) => run.kind === "llm")?.model,
+      "real-model"
+    );
+  } finally {
+    await store?.close();
     rmSync(dir, { force: true, recursive: true });
   }
 });
 
 test("RequestLogStore persists actively reported route hops without synthesizing Core diffs", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-route-trace-test-"));
+  let store;
   try {
-    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
     const startedAtMs = Date.now();
     const startedAt = new Date(startedAtMs).toISOString();
     const recorder = new RequestRouteTraceRecorder(startedAtMs);
@@ -381,14 +563,16 @@ test("RequestLogStore persists actively reported route hops without synthesizing
     assert.equal(detail.routeTrace.hops.at(-1).name, "router.policy");
     assert.ok(detail.routeTrace.hops.at(-1).changes.some((change) => change.path === "/body/model"));
   } finally {
+    await store?.close();
     rmSync(dir, { force: true, recursive: true });
   }
 });
 
 test("RequestLogStore redacts secrets and records CCR metadata", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-metadata-test-"));
+  let store;
   try {
-    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
     const startedAt = new Date().toISOString();
 
     await store.record({
@@ -451,14 +635,16 @@ test("RequestLogStore redacts secrets and records CCR metadata", async () => {
     assert.equal(detail.outputTokens, 20);
     assert.equal(detail.totalTokens, 130);
   } finally {
+    await store?.close();
     rmSync(dir, { force: true, recursive: true });
   }
 });
 
 test("RequestLogStore marks interrupted successful-status streams as errors", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-interrupted-stream-test-"));
+  let store;
   try {
-    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
     const startedAt = new Date().toISOString();
     const error = "Client connection closed before response completed.";
 
@@ -490,6 +676,7 @@ test("RequestLogStore marks interrupted successful-status streams as errors", as
     assert.equal(page.items[0].isStream, true);
     assert.equal(page.items[0].error, error);
   } finally {
+    await store?.close();
     rmSync(dir, { force: true, recursive: true });
   }
 });
@@ -836,8 +1023,9 @@ test("stream request log outcomes preserve completed client closures and mark re
 
 test("RequestLogStore applies raw trace updates to existing request logs", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-raw-trace-test-"));
+  let store;
   try {
-    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
     const startedAt = new Date().toISOString();
     const errorStream = [
       "event: error",
@@ -898,18 +1086,21 @@ test("RequestLogStore applies raw trace updates to existing request logs", async
     assert.equal(detail.requestHeaders["x-client-name"], "codex-cli");
     assert.equal(detail.requestHeaders["x-goog-api-key"], "[redacted]");
   } finally {
+    await store?.close();
     rmSync(dir, { force: true, recursive: true });
   }
 });
 
 test("RequestLogStore analyzes agent sessions and exposes trace payloads", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-agent-test-"));
+  let store;
   try {
-    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
     const startedAt = new Date(Date.now() - 1000).toISOString();
     const completedAt = new Date().toISOString();
     const requestBody = {
       messages: [
+        { content: "Current runtime context. This snapshot supersedes earlier runtime-context snapshots.", role: "user" },
         { content: "inspect repo", role: "user" },
         {
           content: JSON.stringify({ ok: true, files: ["README.md"] }),
@@ -918,12 +1109,14 @@ test("RequestLogStore analyzes agent sessions and exposes trace payloads", async
         }
       ],
       model: "gpt-test",
-      session_id: "session-1"
+      session_id: "session-1",
+      system: "Initial System Prompt"
     };
     const responseBody = {
       choices: [
         {
           message: {
+            content: "I will inspect README.md.",
             role: "assistant",
             tool_calls: [
               {
@@ -986,7 +1179,21 @@ test("RequestLogStore analyzes agent sessions and exposes trace payloads", async
     });
     assert.equal(selected.selectedSession?.trace.toolRunCount, 1);
     assert.equal(selected.selectedSession?.trace.llmRunCount, 1);
+    assert.equal(selected.selectedSession?.conversation.length, 1);
+    assert.equal(selected.selectedSession?.conversation[0]?.user?.content, "inspect repo");
+    assert.equal(selected.selectedSession?.conversation[0]?.assistant?.content, "I will inspect README.md.");
+    assert.deepEqual(
+      selected.selectedSession?.conversation[0]?.messages?.map((message) => message.role),
+      ["system", "context", "user", "tool", "assistant"]
+    );
+    assert.equal(selected.selectedSession?.conversation[0]?.messages?.[0]?.content, "Initial System Prompt");
+    assert.equal(selected.selectedSession?.conversation[0]?.messages?.[2]?.content, "inspect repo");
+    assert.equal(selected.selectedSession?.trace.runs.some((run) => run.kind === "route"), false);
     assert.equal(selected.selectedSession?.trace.runs.some((run) => run.toolName === "read_file"), true);
+    assert.equal(
+      selected.selectedSession?.trace.runs.find((run) => run.id === selected.selectedSession?.trace.rootRunId)?.status,
+      "success"
+    );
 
     const inputPayload = await store.getTracePayload({
       callId: "call-read",
@@ -1006,14 +1213,419 @@ test("RequestLogStore analyzes agent sessions and exposes trace payloads", async
     assert.equal(resultPayload.kind, "json");
     assert.match(resultPayload.content, /files/);
   } finally {
+    await store?.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore pairs tool results without stable call ids", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-tool-result-fallback-test-"));
+  let store;
+  try {
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const startedAt = new Date(Date.now() - 1000).toISOString();
+    const completedAt = new Date().toISOString();
+    const requestBody = {
+      input: [
+        { content: "run diagnostic", role: "user" },
+        {
+          output: "diagnostic ok\npid=42",
+          type: "custom_tool_call_output"
+        }
+      ],
+      model: "gpt-test"
+    };
+    const responseBody = {
+      output: [
+        {
+          arguments: JSON.stringify({ command: "pwd" }),
+          name: "Shell",
+          type: "function_call"
+        }
+      ],
+      output_text: "I will run the diagnostic.",
+      usage: {
+        input_tokens: 9,
+        output_tokens: 4,
+        total_tokens: 13
+      }
+    };
+
+    await store.record({
+      completedAt,
+      durationMs: 90,
+      method: "POST",
+      path: "/v1/responses",
+      providerName: "test-provider",
+      providerProtocol: "openai_responses",
+      requestBody: Buffer.from(JSON.stringify(requestBody), "utf8"),
+      requestHeaders: {
+        "content-type": "application/json",
+        "user-agent": "openai-codex test",
+        "x-codex-session-id": "session-tool-result-fallback"
+      },
+      requestId: "agent-tool-result-fallback",
+      responseBodyText: JSON.stringify(responseBody),
+      responseHeaders: { "content-type": "application/json" },
+      startedAt,
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/responses"
+    });
+
+    const page = await store.list({ pageSize: 25 });
+    const detail = await store.getDetail({ id: page.items[0].id });
+    assert.ok(detail);
+
+    const selected = await store.analyze({
+      range: "30d",
+      sessionAgent: "codex",
+      sessionId: "session-tool-result-fallback"
+    });
+    const toolRun = selected.selectedSession?.trace.runs.find((run) => run.kind === "tool" && run.toolName === "Shell");
+    assert.ok(toolRun);
+    assert.match(toolRun.tool?.result?.preview ?? "", /diagnostic ok/);
+
+    const resultPayload = await store.getTracePayload({
+      callId: toolRun.tool?.callId,
+      part: "tool-result",
+      requestLogId: detail.id
+    });
+    assert.equal(resultPayload.found, true);
+    assert.match(resultPayload.content, /pid=42/);
+  } finally {
+    await store?.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore reads sidecar bodies when pairing session tool results", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-tool-result-sidecar-test-"));
+  let store;
+  try {
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const startedAt = new Date(Date.now() - 1000).toISOString();
+    const completedAt = new Date().toISOString();
+    const requestBody = {
+      model: "claude-test",
+      prefix: "p".repeat(130 * 1024),
+      messages: [
+        { content: "run probe", role: "user" },
+        {
+          content: [{ id: "call-probe", input: { command: "probe" }, name: "Bash", type: "tool_use" }],
+          role: "assistant"
+        },
+        {
+          content: [{ content: "sidecar probe result\nok=true", tool_use_id: "call-probe", type: "tool_result" }],
+          role: "user"
+        }
+      ],
+      suffix: "s".repeat(130 * 1024)
+    };
+    const responseBody = {
+      content: [
+        { text: "I will run the probe.", type: "text" },
+        { id: "call-probe", input: { command: "probe" }, name: "Bash", type: "tool_use" }
+      ],
+      model: "claude-test",
+      role: "assistant",
+      usage: {
+        input_tokens: 12,
+        output_tokens: 5,
+        total_tokens: 17
+      }
+    };
+
+    await store.record({
+      completedAt,
+      durationMs: 120,
+      method: "POST",
+      path: "/v1/messages",
+      providerName: "test-provider",
+      providerProtocol: "anthropic_messages",
+      requestBody: Buffer.from(JSON.stringify(requestBody), "utf8"),
+      requestHeaders: {
+        "content-type": "application/json",
+        "user-agent": "claude-code test",
+        "x-claude-session-id": "session-tool-result-sidecar"
+      },
+      requestId: "agent-tool-result-sidecar",
+      responseBodyText: JSON.stringify(responseBody),
+      responseHeaders: { "content-type": "application/json" },
+      startedAt,
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/messages"
+    });
+
+    const page = await store.list({ pageSize: 25 });
+    assert.equal(page.items[0].requestBody.preview, true);
+    assert.doesNotMatch(page.items[0].requestBody.text, /sidecar probe result/);
+
+    const detail = await store.getDetail({ id: page.items[0].id });
+    assert.ok(detail);
+
+    const selected = await store.analyze({
+      range: "30d",
+      sessionAgent: "claude-code",
+      sessionId: "session-tool-result-sidecar"
+    });
+    const toolRun = selected.selectedSession?.trace.runs.find((run) => run.kind === "tool" && run.toolName === "Bash");
+    assert.ok(toolRun);
+    assert.match(toolRun.tool?.result?.preview ?? "", /sidecar probe result/);
+
+    const resultPayload = await store.getTracePayload({
+      callId: "call-probe",
+      part: "tool-result",
+      requestLogId: detail.id
+    });
+    assert.equal(resultPayload.found, true);
+    assert.match(resultPayload.content, /ok=true/);
+  } finally {
+    await store?.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore extracts assistant text from nested responses completion payloads", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-agent-response-text-test-"));
+  let store;
+  try {
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const startedAt = new Date(Date.now() - 1000).toISOString();
+    const completedAt = new Date().toISOString();
+    await store.record({
+      completedAt,
+      durationMs: 120,
+      method: "POST",
+      path: "/v1/responses",
+      providerName: "test-provider",
+      providerProtocol: "openai_responses",
+      requestBody: Buffer.from(JSON.stringify({
+        input: [{ content: [{ text: "write status", type: "input_text" }], role: "user" }],
+        model: "gpt-test",
+        session_id: "session-response-text"
+      }), "utf8"),
+      requestHeaders: {
+        "content-type": "application/json",
+        "user-agent": "openai-codex test",
+        "x-codex-session-id": "session-response-text"
+      },
+      requestId: "agent-response-text-1",
+      responseBodyText: [
+        "event: response.completed",
+        'data: {"type":"response.completed","response":{"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Nested final answer."}]}],"usage":{"input_tokens":4,"output_tokens":3,"total_tokens":7}}}',
+        ""
+      ].join("\n"),
+      responseHeaders: { "content-type": "text/event-stream" },
+      startedAt,
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/responses"
+    });
+
+    const selected = await store.analyze({
+      range: "30d",
+      sessionAgent: "codex",
+      sessionId: "session-response-text"
+    });
+    assert.equal(selected.selectedSession?.conversation[0]?.user?.content, "write status");
+    assert.equal(selected.selectedSession?.conversation[0]?.assistant?.content, "Nested final answer.");
+  } finally {
+    await store?.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore ignores subagent markers in tool definitions and placeholder text", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-subagent-detection-test-"));
+  let store;
+  try {
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const baseTime = Date.now() - 5000;
+
+    async function recordClaudeRequest({ body, offsetMs, sessionId }) {
+      const startedAtMs = baseTime + offsetMs;
+      await store.record({
+        completedAt: new Date(startedAtMs + 100).toISOString(),
+        durationMs: 100,
+        method: "POST",
+        path: "/v1/messages",
+        providerName: "test-provider",
+        requestBody: Buffer.from(JSON.stringify({
+          ...body,
+          model: "claude-test"
+        }), "utf8"),
+        requestHeaders: {
+          "content-type": "application/json",
+          "user-agent": "claude-cli test",
+          "x-ccr-route-reason": "default",
+          "x-ccr-routed-model": "test-provider/claude-test",
+          "x-claude-code-session-id": sessionId
+        },
+        requestId: `${sessionId}-request`,
+        responseBodyText: JSON.stringify({ model: "claude-test" }),
+        responseHeaders: { "content-type": "application/json" },
+        startedAt: new Date(startedAtMs).toISOString(),
+        statusCode: 200,
+        url: "http://127.0.0.1:3456/v1/messages"
+      });
+    }
+
+    await recordClaudeRequest({
+      body: {
+        messages: [{ content: "normal main-agent request", role: "user" }],
+        tools: [{
+          description: "Use <CCR-SUBAGENT-MODEL>Provider/claude-opus</CCR-SUBAGENT-MODEL> when spawning an agent.",
+          input_schema: {
+            properties: {
+              prompt: {
+                description: "Start with <CCR-SUBAGENT-MODEL>Provider/model</CCR-SUBAGENT-MODEL>.",
+                type: "string"
+              }
+            },
+            type: "object"
+          },
+          name: "Agent"
+        }]
+      },
+      offsetMs: 0,
+      sessionId: "tool-description-session"
+    });
+    await recordClaudeRequest({
+      body: {
+        messages: [{ content: "normal request", role: "user" }],
+        system: "Example: <CCR-SUBAGENT-MODEL>Provider/model</CCR-SUBAGENT-MODEL>"
+      },
+      offsetMs: 1000,
+      sessionId: "placeholder-session"
+    });
+    await recordClaudeRequest({
+      body: {
+        messages: [{
+          content: "<CCR-SUBAGENT-MODEL>Provider/claude-opus</CCR-SUBAGENT-MODEL>\nInspect the repository.",
+          role: "user"
+        }]
+      },
+      offsetMs: 2000,
+      sessionId: "real-subagent-session"
+    });
+
+    const toolDescription = await store.analyze({
+      range: "30d",
+      sessionAgent: "claude-code",
+      sessionId: "tool-description-session"
+    });
+    assert.equal(toolDescription.selectedSession?.trace.subagentRunCount, 0);
+    assert.equal(toolDescription.selectedSession?.subagents.length, 0);
+
+    const placeholder = await store.analyze({
+      range: "30d",
+      sessionAgent: "claude-code",
+      sessionId: "placeholder-session"
+    });
+    assert.equal(placeholder.selectedSession?.trace.subagentRunCount, 0);
+    assert.equal(placeholder.selectedSession?.subagents.length, 0);
+
+    const realSubagent = await store.analyze({
+      range: "30d",
+      sessionAgent: "claude-code",
+      sessionId: "real-subagent-session"
+    });
+    assert.equal(realSubagent.selectedSession?.trace.subagentRunCount, 1);
+    assert.equal(realSubagent.selectedSession?.subagents[0]?.model, "Provider/claude-opus");
+  } finally {
+    await store?.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore distinguishes partial session failures from failed sessions", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-agent-status-test-"));
+  let store;
+  try {
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const baseTime = Date.now() - 5000;
+
+    async function recordAgentRequest({ offsetMs, requestId, sessionId, statusCode }) {
+      const startedAtMs = baseTime + offsetMs;
+      await store.record({
+        completedAt: new Date(startedAtMs + 100).toISOString(),
+        durationMs: 100,
+        ...(statusCode >= 400 ? { error: "upstream request failed" } : {}),
+        method: "POST",
+        path: "/v1/chat/completions",
+        providerName: "test-provider",
+        providerProtocol: "openai_chat_completions",
+        requestBody: Buffer.from(JSON.stringify({
+          messages: [{ content: "continue task", role: "user" }],
+          model: "gpt-test",
+          session_id: sessionId
+        }), "utf8"),
+        requestHeaders: {
+          "content-type": "application/json",
+          "user-agent": "openai-codex test",
+          "x-codex-session-id": sessionId
+        },
+        requestId,
+        responseBodyText: JSON.stringify({ model: "gpt-test" }),
+        responseHeaders: { "content-type": "application/json" },
+        startedAt: new Date(startedAtMs).toISOString(),
+        statusCode,
+        url: "http://127.0.0.1:3456/v1/chat/completions"
+      });
+    }
+
+    await recordAgentRequest({
+      offsetMs: 0,
+      requestId: "mixed-failed",
+      sessionId: "session-mixed",
+      statusCode: 502
+    });
+    await recordAgentRequest({
+      offsetMs: 1000,
+      requestId: "mixed-recovered",
+      sessionId: "session-mixed",
+      statusCode: 200
+    });
+    await recordAgentRequest({
+      offsetMs: 2000,
+      requestId: "failed-only",
+      sessionId: "session-failed",
+      statusCode: 502
+    });
+
+    const mixed = await store.analyze({
+      range: "30d",
+      sessionAgent: "codex",
+      sessionId: "session-mixed"
+    });
+    const mixedTrace = mixed.selectedSession?.trace;
+    assert.equal(
+      mixedTrace?.runs.find((run) => run.id === mixedTrace.rootRunId)?.status,
+      "partial"
+    );
+    assert.equal(mixedTrace?.runs.some((run) => run.kind === "llm" && run.status === "error"), true);
+    assert.equal(mixedTrace?.runs.some((run) => run.kind === "llm" && run.status === "success"), true);
+
+    const failed = await store.analyze({
+      range: "30d",
+      sessionAgent: "codex",
+      sessionId: "session-failed"
+    });
+    const failedTrace = failed.selectedSession?.trace;
+    assert.equal(
+      failedTrace?.runs.find((run) => run.id === failedTrace.rootRunId)?.status,
+      "error"
+    );
+  } finally {
+    await store?.close();
     rmSync(dir, { force: true, recursive: true });
   }
 });
 
 test("RequestLogStore agent analysis cache ratio denominator includes cache tokens when total tokens omit cache", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-cache-ratio-test-"));
+  let store;
   try {
-    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
     const startedAt = new Date(Date.now() - 1000).toISOString();
     const completedAt = new Date().toISOString();
 
@@ -1058,6 +1670,7 @@ test("RequestLogStore agent analysis cache ratio denominator includes cache toke
     assert.equal(analysis.agents[0]?.cacheRatio, 0.9);
     assert.equal(analysis.routes[0]?.cacheRatio, 0.9);
   } finally {
+    await store?.close();
     rmSync(dir, { force: true, recursive: true });
   }
 });
@@ -1067,9 +1680,10 @@ test("RequestLogStore analyzes large bodies without dropping agent metadata", {
   timeout: 30000
 }, async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-large-analysis-test-"));
+  let store;
   try {
     const dbFile = path.join(dir, "request-logs.sqlite");
-    const store = new RequestLogStore(dbFile);
+    store = new RequestLogStore(dbFile);
     const requestCount = 48;
     await recordLargeAgentRequests(store, dbFile, {
       paddingBytes: 256 * 1024,
@@ -1084,6 +1698,7 @@ test("RequestLogStore analyzes large bodies without dropping agent metadata", {
     assert.equal(analysis.sessions[0]?.id, "large-session");
     assert.equal(analysis.tools[0]?.name, "read_file");
   } finally {
+    await store?.close();
     rmSync(dir, { force: true, recursive: true });
   }
 });
@@ -1093,9 +1708,10 @@ test("RequestLogStore streams more body text than the bounded worker heap", {
   timeout: 30000
 }, async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-bounded-heap-test-"));
+  let store;
   try {
     const dbFile = path.join(dir, "request-logs.sqlite");
-    const store = new RequestLogStore(dbFile);
+    store = new RequestLogStore(dbFile);
     const requestCount = 384;
     const totalBodyBytes = await recordLargeAgentRequests(store, dbFile, {
       paddingBytes: 256 * 1024,
@@ -1110,19 +1726,21 @@ test("RequestLogStore streams more body text than the bounded worker heap", {
     assert.equal(analysis.sessions[0]?.id, "bounded-heap-session");
     assert.equal(analysis.tools[0]?.name, "read_file");
   } finally {
+    await store?.close();
     rmSync(dir, { force: true, recursive: true });
   }
 });
 
-test("RequestLogStore keeps analysis bounded by the maximum row count", {
+test("RequestLogStore reports when analysis is bounded by the maximum row count", {
   skip: isBoundedHeapWorker,
   timeout: 30000
 }, async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-analysis-limit-test-"));
+  let store;
   try {
     const dbFile = path.join(dir, "request-logs.sqlite");
-    const store = new RequestLogStore(dbFile);
-    const requestCount = 5000;
+    store = new RequestLogStore(dbFile);
+    const requestCount = 5001;
     const startedAt = new Date().toISOString();
     await store.list({ pageSize: 1 });
     const database = createBetterSqliteDatabase(dbFile);
@@ -1161,10 +1779,13 @@ test("RequestLogStore keeps analysis bounded by the maximum row count", {
     }
 
     const analysis = await store.analyze({ range: "30d" });
-    assert.equal(analysis.scannedRequestCount, requestCount);
-    assert.equal(analysis.totals.requestCount, requestCount);
+    assert.equal(analysis.requestScanLimit, 5000);
+    assert.equal(analysis.requestScanTruncated, true);
+    assert.equal(analysis.scannedRequestCount, 5000);
+    assert.equal(analysis.totals.requestCount, 5000);
     assert.equal(analysis.sessions[0]?.id, "max-row-session");
   } finally {
+    await store?.close();
     rmSync(dir, { force: true, recursive: true });
   }
 });
@@ -1194,8 +1815,9 @@ test("RequestLogStore bounded heap regression", {
 
 test("RequestLogStore identifies Grok CLI requests in agent analysis", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-grok-agent-test-"));
+  let store;
   try {
-    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
     const startedAt = new Date().toISOString();
     await store.record({
       completedAt: startedAt,
@@ -1222,14 +1844,16 @@ test("RequestLogStore identifies Grok CLI requests in agent analysis", async () 
     assert.equal(analysis.agents[0]?.agent, "grok");
     assert.equal(analysis.agents[0]?.label, "Grok CLI");
   } finally {
+    await store?.close();
     rmSync(dir, { force: true, recursive: true });
   }
 });
 
 test("RequestLogStore does not identify an unknown client as Grok CLI from its model name", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-grok-model-test-"));
+  let store;
   try {
-    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
     const startedAt = new Date().toISOString();
     await store.record({
       completedAt: startedAt,
@@ -1255,14 +1879,16 @@ test("RequestLogStore does not identify an unknown client as Grok CLI from its m
     assert.equal(analysis.scannedRequestCount, 1);
     assert.equal(analysis.agents[0]?.agent, "unknown");
   } finally {
+    await store?.close();
     rmSync(dir, { force: true, recursive: true });
   }
 });
 
 test("RequestLogStore identifies Kimi CLI without inferring it from a Kimi model name", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-kimi-agent-test-"));
+  let store;
   try {
-    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
     const startedAt = new Date().toISOString();
     for (const [requestId, requestHeaders] of [
       ["kimi-agent-request", { "content-type": "application/json", "user-agent": "kimi-code-cli/0.27.0" }],
@@ -1296,14 +1922,16 @@ test("RequestLogStore identifies Kimi CLI without inferring it from a Kimi model
     assert.equal(unknownAnalysis.scannedRequestCount, 2);
     assert.equal(unknownAnalysis.totals.requestCount, 1);
   } finally {
+    await store?.close();
     rmSync(dir, { force: true, recursive: true });
   }
 });
 
 test("RequestLogStore identifies OpenCode from its explicit client header", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-opencode-agent-test-"));
+  let store;
   try {
-    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
     const startedAt = new Date().toISOString();
     await store.record({
       completedAt: startedAt,
@@ -1331,14 +1959,16 @@ test("RequestLogStore identifies OpenCode from its explicit client header", asyn
     assert.equal(analysis.agents[0]?.agent, "opencode");
     assert.equal(analysis.agents[0]?.label, "OpenCode");
   } finally {
+    await store?.close();
     rmSync(dir, { force: true, recursive: true });
   }
 });
 
 test("RequestLogStore identifies Kilo CLI from its explicit client header", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-kilo-agent-test-"));
+  let store;
   try {
-    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
     const startedAt = new Date().toISOString();
     await store.record({
       completedAt: startedAt,
@@ -1366,14 +1996,16 @@ test("RequestLogStore identifies Kilo CLI from its explicit client header", asyn
     assert.equal(analysis.agents[0]?.agent, "kilo");
     assert.equal(analysis.agents[0]?.label, "Kilo CLI");
   } finally {
+    await store?.close();
     rmSync(dir, { force: true, recursive: true });
   }
 });
 
 test("RequestLogStore does not identify an unknown client as OpenCode from its model name", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-opencode-model-test-"));
+  let store;
   try {
-    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
     const startedAt = new Date().toISOString();
     await store.record({
       completedAt: startedAt,
@@ -1399,6 +2031,7 @@ test("RequestLogStore does not identify an unknown client as OpenCode from its m
     assert.equal(analysis.scannedRequestCount, 1);
     assert.equal(analysis.agents[0]?.agent, "unknown");
   } finally {
+    await store?.close();
     rmSync(dir, { force: true, recursive: true });
   }
 });

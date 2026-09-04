@@ -3,7 +3,7 @@
  */
 import { join as pathJoin } from "node:path";
 import type { AppConfig, GatewayMcpServerConfig, VirtualModelFusionVisionConfig, VirtualModelFusionWebSearchConfig, VirtualModelFusionWebSearchProvider } from "@ccr/core/contracts/app";
-import { BUILTIN_FUSION_VISION_TOOL_NAME, BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME, GROK_MEDIA_FUSION_TOOL_NAMES, MEDIA_TOOLS_MCP_SERVER_NAME, MEDIA_IMAGE_EDIT_TOOL_PREFIX, MEDIA_IMAGE_GENERATE_TOOL_PREFIX, MEDIA_JOB_CANCEL_TOOL_PREFIX, MEDIA_JOB_GET_TOOL_PREFIX, MEDIA_VIDEO_START_TOOL_PREFIX } from "@ccr/core/contracts/app";
+import { BUILTIN_FUSION_VISION_TOOL_NAME, BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME, GROK_MEDIA_FUSION_TOOL_NAMES, MEDIA_TOOLS_MCP_SERVER_NAME, MEDIA_IMAGE_EDIT_TOOL_PREFIX, MEDIA_IMAGE_GENERATE_TOOL_PREFIX, MEDIA_JOB_CANCEL_TOOL_PREFIX, MEDIA_JOB_GET_TOOL_PREFIX, MEDIA_VIDEO_START_TOOL_PREFIX, ROUTER_FALLBACK_MAX_RETRY_COUNT } from "@ccr/core/contracts/app";
 import { TOOL_HUB_MCP_SERVER_NAME, toolHubBuiltInBackendServers, toolHubMcpRuntimeConfig, toolHubRequestTimeoutMs } from "@ccr/core/mcp/toolhub-config";
 import { isRecord, numberValue, stringListValue, stringValue } from "@ccr/core/gateway/internal/value";
 import { defaultFusionWebSearchProvider, fusionModelProviderName } from "@ccr/core/gateway/internal/shared";
@@ -54,6 +54,8 @@ export async function fusionBuiltinToolArtifacts(
             ...(useGatewayVisionRuntime ? { VISION_GATEWAY_BASE_URL: `${coreEndpoint}/v1` } : { VISION_BASE_URL: visionConfig.baseUrl || "" }),
             ...(useGatewayVisionRuntime && coreAuthToken ? { VISION_GATEWAY_API_KEY: coreAuthToken } : {}),
             ...(resolvedVision.model ? { VISION_MODEL: resolvedVision.model } : {}),
+            ...(resolvedVision.fallbackModels.length ? { VISION_FALLBACK_MODELS_JSON: JSON.stringify(resolvedVision.fallbackModels) } : {}),
+            ...(visionConfig.retryCount !== undefined ? { VISION_RETRY_COUNT: String(visionConfig.retryCount) } : {}),
             ...(visionConfig.baseUrl && visionConfig.apiKey ? { VISION_API_KEY: visionConfig.apiKey } : {}),
             ...(visionConfig.timeoutMs ? { VISION_TIMEOUT_MS: String(visionConfig.timeoutMs) } : {}),
             ...(usageSync ? {
@@ -590,6 +592,43 @@ export function withFusionWebSearchToolInstructions(profile: Record<string, unkn
 }
 
 
+export function withFusionVisionToolInstructions(profile: Record<string, unknown>): Record<string, unknown> | undefined {
+  const metadata = isRecord(profile.metadata) ? profile.metadata : undefined;
+  const fusionVision = isRecord(metadata?.fusionVision) ? metadata.fusionVision : undefined;
+  const toolName = stringValue(fusionVision?.toolName) || legacyFusionVisionConfig(profile)?.toolName;
+  if (!toolName) {
+    return undefined;
+  }
+  const execution = isRecord(profile.execution) ? profile.execution : {};
+  if (execution.matchMultimodal !== true) {
+    return undefined;
+  }
+
+  const instruction = [
+    `When the request includes image media references such as [media_ref:...], call the ${toolName} function tool before answering visual questions.`,
+    "Pass the user's image question in the prompt field.",
+    "Pass the exact media_ref token string, including brackets, in the field that matches the media reference source type. Use imageUrl or images[].url for refs listed as url. Use imageBase64 or images[].base64 for refs listed as base64.",
+    "The gateway replaces media_ref tokens with the original media URL or base64 payload during tool execution.",
+    "Do not search the filesystem for the media_ref or claim that the image is unavailable unless this function tool returns an error."
+  ].join(" ");
+  const instructions = isRecord(profile.instructions) ? profile.instructions : {};
+  if ([instructions.prepend, instructions.append, instructions.replace].some((value) => stringValue(value)?.includes(instruction))) {
+    return undefined;
+  }
+  const replace = stringValue(instructions.replace);
+  const append = stringValue(instructions.append);
+  return {
+    ...profile,
+    instructions: {
+      ...instructions,
+      ...(replace
+        ? { replace: `${replace.trim()}\n\n${instruction}` }
+        : { append: [append, instruction].filter(Boolean).join("\n\n") })
+    }
+  };
+}
+
+
 function coreGatewayCompatibleWebSearchToolName(toolName: string, fallbackName?: string): string {
   if (coreGatewayWebSearchToolNameMatches(toolName)) {
     return toolName;
@@ -645,9 +684,14 @@ function readFusionVisionConfig(value: unknown): VirtualModelFusionVisionConfig 
     toolName,
     apiKey: stringValue(value.apiKey),
     baseUrl: stringValue(value.baseUrl),
+    fallbackModels: stringListValue(value.fallbackModels),
     model: stringValue(value.model),
     modelSelector: stringValue(value.modelSelector)
   };
+  const retryCount = numberValue(value.retryCount);
+  if (retryCount !== undefined) {
+    config.retryCount = Math.min(ROUTER_FALLBACK_MAX_RETRY_COUNT, Math.max(0, Math.trunc(retryCount)));
+  }
   const timeoutMs = numberValue(value.timeoutMs);
   if (timeoutMs) {
     config.timeoutMs = timeoutMs;
@@ -683,27 +727,27 @@ export function readFusionWebSearchConfig(value: unknown): VirtualModelFusionWeb
 
 function resolveFusionVisionRuntime(
   config: VirtualModelFusionVisionConfig
-): { model?: string; providers: CoreGatewayProvider[] } {
+): { fallbackModels: string[]; model?: string; providers: CoreGatewayProvider[] } {
   const selector = config.modelSelector || config.model;
   if (config.baseUrl) {
     return {
+      fallbackModels: uniqueStrings(config.fallbackModels ?? []),
       model: config.model || config.modelSelector,
       providers: []
     };
   }
 
-  const parsed = parseFusionModelSelector(selector);
-  if (!parsed) {
-    return {
-      model: selector ? normalizeGatewayModelSelector(selector) : undefined,
-      providers: []
-    };
-  }
-
   return {
-    model: `${parsed.providerName}/${parsed.model}`,
+    fallbackModels: uniqueStrings((config.fallbackModels ?? []).map(normalizeFusionVisionRuntimeModel)),
+    model: selector ? normalizeFusionVisionRuntimeModel(selector) : undefined,
     providers: []
   };
+}
+
+
+function normalizeFusionVisionRuntimeModel(selector: string): string {
+  const parsed = parseFusionModelSelector(selector);
+  return parsed ? `${parsed.providerName}/${parsed.model}` : normalizeGatewayModelSelector(selector);
 }
 
 

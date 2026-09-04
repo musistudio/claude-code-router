@@ -23,12 +23,13 @@ test("Claude Design window CDP options are derived from plugin status", () => {
       fallbackHosts: ["claude.com", "www.anthropic.com"],
       host: "claude.ai",
       paths: ["/design", "/v1/design", "/api"]
-    }
+    },
+    frontendUrl: "http://127.0.0.1:6173/design"
   });
 
   assert.deepEqual(options, {
     backendUrl: "http://127.0.0.1:45678/",
-    hosts: ["claude.ai", "claude.com", "www.anthropic.com"],
+    hosts: ["claude.ai", "127.0.0.1:6173", "claude.com", "www.anthropic.com"],
     paths: ["/design", "/v1/design", "/api"]
   });
 });
@@ -54,6 +55,13 @@ test("Claude Design window CDP rewrites matching Claude requests to the local ba
       options
     ),
     "http://127.0.0.1:45678/_t/541cb539-11c0-4789-9d87-bfa6c87153aa/v1/design/projects/8964ff52-6e42-4b71-9247-1b7c18baee70/serve/index.html?srcmap=1"
+  );
+  assert.equal(
+    claudeDesignRedirectUrlForRequest("http://127.0.0.1:6173/design/v1/design/projects/project-1/events?tab=tab-1", {
+      ...options,
+      hosts: [...options.hosts, "127.0.0.1:6173"]
+    }),
+    "http://127.0.0.1:45678/design/v1/design/projects/project-1/events?tab=tab-1"
   );
   assert.equal(
     claudeDesignRedirectUrlForRequest("https://claude.ai/", options),

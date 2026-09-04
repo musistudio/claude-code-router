@@ -52,6 +52,7 @@ test("provider model metadata config preserves custom pricing, image, web search
       input_usd_per_million_tokens: 2,
       outputUsdPerMillionTokens: 8
     },
+    supports_fast_mode: true,
     supported_reasoning_levels: ["low", "medium", "high", "xhigh", "max", "ultra"],
     supports_reasoning_summaries: true
   }), {
@@ -67,6 +68,7 @@ test("provider model metadata config preserves custom pricing, image, web search
       inputUsdPerMillionTokens: 2,
       outputUsdPerMillionTokens: 8
     },
+    supportsFastMode: true,
     supportedReasoningLevels: [
       { description: "low", effort: "low" },
       { description: "medium", effort: "medium" },
@@ -76,6 +78,32 @@ test("provider model metadata config preserves custom pricing, image, web search
       { description: "ultra", effort: "ultra" }
     ],
     supportsReasoningSummaries: true
+  });
+});
+
+test("provider model metadata config preserves OpenRouter discount routing settings", () => {
+  assert.deepEqual(providerModelMetadataFromConfigForTest({
+    open_router_discount_routing: {
+      allow_fallbacks: true,
+      cache_hit_rate: 0.8,
+      enabled: true,
+      min_savings_ratio: 0.1,
+      min_savings_usd: 0.0002,
+      price_ttl_ms: 120000,
+      provider_blacklist: ["cheap-provider", "other-provider"],
+      require_parameters: false
+    }
+  }), {
+    openRouterDiscountRouting: {
+      allowFallbacks: true,
+      cacheHitRate: 0.8,
+      enabled: true,
+      endpointTtlMs: 120000,
+      minSavingsRatio: 0.1,
+      minSavingsUsd: 0.0002,
+      providerBlacklist: ["cheap-provider", "other-provider"],
+      requireParameters: false
+    }
   });
 });
 

@@ -2,7 +2,16 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "n
 import os from "node:os";
 import path from "node:path";
 import { buildCodexModelCatalogIds } from "@ccr/core/agents/codex/model-catalog";
-import type { AppConfig, ProfileConfig } from "@ccr/core/contracts/app";
+import type { AppConfig, GatewayProviderConfig, ProfileConfig, ProviderModelMetadata } from "@ccr/core/contracts/app";
+import {
+  findModelCatalogEntry,
+  findProviderModelCatalogEntry,
+  modelCatalogMaxInputTokens,
+  type ModelCatalogEntry
+} from "@ccr/core/gateway/model-catalog";
+import { profileAllowedModels } from "@ccr/core/profiles/model-allowlist";
+import { modelRegistryForConfig } from "@ccr/core/routing/model-registry";
+import { resolveUsageModelAttribution } from "@ccr/core/usage/model-attribution";
 
 export type PiProfileConfigWriteResult = {
   changed: boolean;
@@ -15,6 +24,13 @@ export type PiProfileConfigWriteResult = {
 
 const privateDirMode = 0o700;
 const privateFileMode = 0o600;
+
+type PiModelResolutionConfig = Pick<AppConfig, "Providers" | "virtualModelProfiles">;
+
+type PiResolvedModelMetadata = {
+  catalogEntry?: ModelCatalogEntry;
+  providerMetadata?: ProviderModelMetadata;
+};
 
 export function resolvePiAgentDir(configDir: string, profile: ProfileConfig): string {
   if (profile.scope === "ccr" || profile.scope === "custom") {
@@ -49,7 +65,7 @@ export function writePiGatewayConfig(
   const sessionDir = resolvePiSessionDir(configDir, profile);
   const file = path.join(profileHome, "models.json");
   const providerId = sanitizeProviderId(profile.providerId || "") || "claude-code-router";
-  const models = piProfileModels(config, defaultModel);
+  const models = piProfileModels(config, profile, defaultModel);
   const model = models.includes(defaultModel) ? defaultModel : models[0] || defaultModel || "default";
   const content = `${JSON.stringify(piModelsJson(config, profile, providerId, token, models), null, 2)}\n`;
   const changed = writeJsonFileIfChanged(file, content);
@@ -73,6 +89,10 @@ function piModelsJson(
   token: string,
   models: string[]
 ): Record<string, unknown> {
+  const resolutionConfig: PiModelResolutionConfig = {
+    Providers: config.Providers ?? [],
+    virtualModelProfiles: config.virtualModelProfiles ?? []
+  };
   return {
     providers: {
       [providerId]: {
@@ -84,23 +104,66 @@ function piModelsJson(
           "x-ccr-client": "pi",
           "x-ccr-profile": profile.id || profile.name || "pi"
         },
-        models: models.map(piModelConfig)
+        models: models.map((model) => piModelConfig(model, resolutionConfig))
       }
     }
   };
 }
 
-function piModelConfig(model: string): Record<string, unknown> {
+function piModelConfig(model: string, config: PiModelResolutionConfig): Record<string, unknown> {
+  const metadata = piResolvedModelMetadata(config, model);
+  const contextWindow = positiveNumber(metadata.providerMetadata?.contextWindow)
+    ?? positiveNumber(metadata.providerMetadata?.maxContextWindow)
+    ?? positiveNumber(modelCatalogMaxInputTokens(metadata.catalogEntry));
+  const maxTokens = positiveNumber(metadata.providerMetadata?.maxOutputTokens)
+    ?? piCatalogMaxTokens(metadata.catalogEntry);
   return {
     id: model,
-    name: model
+    name: model,
+    ...(contextWindow ? { contextWindow } : {}),
+    ...(maxTokens ? { maxTokens } : {})
   };
 }
 
-function piProfileModels(config: AppConfig, defaultModel: string): string[] {
+function piResolvedModelMetadata(config: PiModelResolutionConfig, model: string): PiResolvedModelMetadata {
+  const registry = modelRegistryForConfig(config);
+  const attribution = resolveUsageModelAttribution(config, model);
+  const physicalModel = attribution.model?.trim();
+  const physicalProvider = registry.findProvider(attribution.provider);
+  if (physicalProvider && physicalModel) {
+    return {
+      catalogEntry: findProviderModelCatalogEntry(physicalProvider, physicalModel, [model]),
+      providerMetadata: providerModelMetadataFor(physicalProvider, physicalModel)
+    };
+  }
+
+  if (registry.resolve(model)?.kind === "gateway") {
+    return {};
+  }
+
+  return { catalogEntry: findModelCatalogEntry(physicalModel || model) };
+}
+
+function providerModelMetadataFor(provider: GatewayProviderConfig, model: string): ProviderModelMetadata | undefined {
+  const metadata = provider.modelMetadata ?? {};
+  const direct = metadata[model];
+  if (direct) {
+    return direct;
+  }
+  const normalized = model.trim().toLowerCase();
+  const match = Object.entries(metadata).find(([candidate]) => candidate.trim().toLowerCase() === normalized);
+  return match?.[1];
+}
+
+function piCatalogMaxTokens(entry: ModelCatalogEntry | undefined): number | undefined {
+  return positiveNumber(entry?.limits?.maxTokens)
+    ?? positiveNumber(entry?.limits?.outputTokens);
+}
+
+function piProfileModels(config: AppConfig, profile: ProfileConfig, defaultModel: string): string[] {
   return uniqueStrings([
     defaultModel,
-    ...buildCodexModelCatalogIds(config, defaultModel)
+    ...buildCodexModelCatalogIds(config, defaultModel, { allowedModels: profileAllowedModels({ ...profile, model: defaultModel }) })
   ].filter(Boolean));
 }
 
@@ -157,6 +220,12 @@ function uniqueStrings(values: string[]): string[] {
     result.push(trimmed);
   }
   return result;
+}
+
+function positiveNumber(value: number | undefined): number | undefined {
+  return value !== undefined && Number.isFinite(value) && value > 0
+    ? Math.trunc(value)
+    : undefined;
 }
 
 function sanitizeProviderId(value: string): string {

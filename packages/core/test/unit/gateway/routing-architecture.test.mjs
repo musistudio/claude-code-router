@@ -45,6 +45,21 @@ test("model registry canonicalizes provider models and rejects ambiguous bare mo
   assert.equal(registry.resolve("Primary/not-configured"), undefined);
 });
 
+test("model registry prefers target-provider exact slash models over provider selectors", () => {
+  const registry = new ModelRegistry(routingConfig({
+    Providers: [
+      { id: "openai", models: ["gpt-oss-20b"], name: "OpenAI" },
+      { id: "groq", models: ["openai/gpt-oss-20b"], name: "Groq" }
+    ]
+  }));
+
+  const resolved = registry.resolve("openai/gpt-oss-20b", { providerName: "Groq" });
+
+  assert.equal(resolved?.kind, "provider");
+  assert.equal(resolved?.canonicalSelector, "Groq/openai/gpt-oss-20b");
+  assert.equal(resolved?.model, "openai/gpt-oss-20b");
+});
+
 test("model registry accepts known internal provider suffixes only", () => {
   const registry = new ModelRegistry(routingConfig());
 
@@ -152,6 +167,32 @@ test("router config compilation rejects conflicting provider and model targets",
   assert.equal(compiled.rules[0].diagnostics[0].code, "rule-provider-model-conflict");
 });
 
+test("router config compilation accepts target-provider slash-namespaced model ids", () => {
+  const config = routingConfig({
+    Providers: [
+      { id: "openai", models: ["gpt-oss-20b"], name: "OpenAI" },
+      { id: "groq", models: ["openai/gpt-oss-20b"], name: "Groq" }
+    ]
+  });
+  config.Router.rules = [{
+    condition: { left: "request.url", operator: "contains", right: "/v1" },
+    enabled: true,
+    id: "slash-model",
+    name: "Slash model",
+    rewrites: [
+      { key: "request.header.x-target-provider", operation: "set", value: "Groq" },
+      { key: "request.body.model", operation: "set", value: "openai/gpt-oss-20b" }
+    ],
+    type: "condition"
+  }];
+
+  const compiled = compileRouterConfig(config);
+
+  assert.equal(compiled.rules[0].active, true);
+  assert.deepEqual(compiled.rules[0].diagnostics, []);
+  assert.equal(compiled.rules[0].model?.canonicalSelector, "Groq/openai/gpt-oss-20b");
+});
+
 test("router config compilation validates provider conflicts against final header rewrites", () => {
   const config = routingConfig();
   config.Router.rules = [
@@ -247,6 +288,79 @@ test("router config compilation accepts unrestricted Node.js script rules", () =
   assert.deepEqual(compiled.rules[0].diagnostics, []);
   assert.equal(compiled.rules[1].active, false);
   assert.equal(compiled.rules[1].diagnostics[0].code, "script-source-invalid");
+});
+
+test("router config compilation disables Node.js script rules in profile routing", () => {
+  const config = routingConfig({
+    profile: {
+      enabled: true,
+      profiles: [{
+        agent: "claude-code",
+        enabled: true,
+        id: "profile-a",
+        model: "Primary/alpha",
+        name: "Profile A",
+        routing: {
+          enabled: true,
+          enhancedRoute: true,
+          rules: [{
+            enabled: true,
+            id: "profile-script",
+            name: "Profile script",
+            script: {
+              apiVersion: 1,
+              file: "/tmp/profile-route.js",
+              language: "javascript",
+              timeoutMs: 1000
+            },
+            type: "script"
+          }]
+        },
+        scope: "ccr"
+      }]
+    }
+  });
+
+  const compiled = compileRouterConfig(config);
+
+  assert.equal(compiled.profileRoutings[0].rules[0].active, false);
+  assert.equal(compiled.profileRoutings[0].rules[0].diagnostics[0].code, "script-api-unsupported");
+  assert.match(compiled.profileRoutings[0].rules[0].diagnostics[0].message, /does not support Node\.js script rules/);
+});
+
+test("router config compilation ignores rules from disabled profile routing", () => {
+  const config = routingConfig({
+    profile: {
+      enabled: true,
+      profiles: [{
+        agent: "claude-code",
+        enabled: true,
+        id: "profile-a",
+        model: "Primary/alpha",
+        name: "Profile A",
+        routing: {
+          enabled: false,
+          enhancedRoute: true,
+          rules: [{
+            condition: { left: "request.header.x-task", operator: "==", right: "heavy" },
+            enabled: true,
+            id: "disabled-profile-rule",
+            name: "Disabled profile rule",
+            rewrites: [{ key: "request.body.model", operation: "set", value: "Primary/missing" }],
+            type: "condition"
+          }]
+        },
+        scope: "ccr"
+      }]
+    }
+  });
+
+  const compiled = compileRouterConfig(config);
+
+  assert.equal(compiled.profileRoutings[0].active, false);
+  assert.deepEqual(compiled.profileRoutings[0].rules, []);
+  assert.deepEqual(compiled.profileRoutings[0].diagnostics, []);
+  assert.equal(compiled.diagnostics.some((diagnostic) => diagnostic.ruleId === "disabled-profile-rule"), false);
 });
 
 test("dynamic script rewrites cannot mutate protected headers without breaking trusted static config", () => {

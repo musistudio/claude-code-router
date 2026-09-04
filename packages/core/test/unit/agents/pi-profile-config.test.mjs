@@ -59,3 +59,84 @@ test("Pi profile config writes a CCR OpenAI Responses provider", () => {
     rmSync(root, { force: true, recursive: true });
   }
 });
+
+test("Pi profile config writes catalog token limits for known models", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "ccr-pi-profile-limits-"));
+  try {
+    const config = createDefaultAppConfig();
+    config.gateway.host = "127.0.0.1";
+    config.gateway.port = 3459;
+    config.Providers = [
+      {
+        api_key: "sk-test",
+        baseUrl: "https://api.deepseek.example/v1",
+        models: ["deepseek-v4-flash", "unknown-model"],
+        name: "DeepSeek",
+        type: "openai_chat_completions"
+      }
+    ];
+    const profile = {
+      agent: "pi",
+      enabled: true,
+      id: "pi-main",
+      model: "DeepSeek/deepseek-v4-flash",
+      name: "Pi Main",
+      providerId: "ccr-pi",
+      scope: "ccr",
+      surface: "cli"
+    };
+
+    const result = writePiGatewayConfig(root, config, profile, "ccr-profile-token", "DeepSeek/deepseek-v4-flash");
+    const payload = JSON.parse(readFileSync(result.file, "utf8"));
+    const models = payload.providers["ccr-pi"].models;
+    const deepseek = models.find((model) => model.id === "DeepSeek/deepseek-v4-flash");
+    const unknown = models.find((model) => model.id === "DeepSeek/unknown-model");
+
+    assert.equal(deepseek.contextWindow, 1_050_000);
+    assert.equal(deepseek.maxTokens, 393_216);
+    assert.deepEqual(unknown, {
+      id: "DeepSeek/unknown-model",
+      name: "DeepSeek/unknown-model"
+    });
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("Pi profile config writes 1M catalog limits for GLM 5.3", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "ccr-pi-profile-glm-"));
+  try {
+    const config = createDefaultAppConfig();
+    config.gateway.host = "127.0.0.1";
+    config.gateway.port = 3459;
+    config.Providers = [
+      {
+        api_key: "sk-test",
+        baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
+        models: ["glm-5.3"],
+        name: "Zhipu AI (China) - Coding Plan",
+        type: "openai_chat_completions"
+      }
+    ];
+    const profile = {
+      agent: "pi",
+      enabled: true,
+      id: "pi-main",
+      model: "Zhipu AI (China) - Coding Plan/glm-5.3",
+      name: "Pi Main",
+      providerId: "ccr-pi",
+      scope: "ccr",
+      surface: "cli"
+    };
+
+    const result = writePiGatewayConfig(root, config, profile, "ccr-profile-token", "Zhipu AI (China) - Coding Plan/glm-5.3");
+    const payload = JSON.parse(readFileSync(result.file, "utf8"));
+    const models = payload.providers["ccr-pi"].models;
+    const glm = models.find((model) => model.id === "Zhipu AI (China) - Coding Plan/glm-5.3");
+
+    assert.equal(glm?.contextWindow, 1_048_576);
+    assert.equal(glm?.maxTokens, 131_072);
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});

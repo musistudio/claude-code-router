@@ -1,18 +1,18 @@
 ---
-title: Config Database Location
-pageTitle: Config Database Location
-eyebrow: Detailed Configuration
+title: Config database location
+pageTitle: Config database location
+eyebrow: Detailed configuration
 lead: Locate the SQLite configuration database maintained by the CCR desktop app.
 ---
 
-## Default Locations
+## Default locations
 
 - **macOS/Linux**: `~/.claude-code-router/config.sqlite`
 - **Windows**: `%APPDATA%\claude-code-router\config.sqlite`
 
-Docker sets `HOME=/data`, so its configuration database is `/data/.claude-code-router/config.sqlite`. Persist the complete `/data` directory rather than mounting only one database file.
+Docker sets `HOME=/data`, so its configuration database is `/data/.claude-code-router/config.sqlite`. Persist the complete `/data` directory so the configuration database and companion files are preserved.
 
-## Applying Changes
+## Applying changes
 
 CCR stores runtime configuration in SQLite. A legacy `config.json` is read only once as a migration source when no SQLite config exists; after migration, editing `config.json` does not affect the current configuration.
 

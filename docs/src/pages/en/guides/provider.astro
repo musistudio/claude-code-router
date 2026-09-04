@@ -1,0 +1,25 @@
+---
+import DocPage from "../../../components/DocPage.astro";
+import { pageKeyFromSlug } from "../../../docs-structure";
+import { enGuideDocs, sectionSlugFromPath } from "../../../section-docs";
+
+const providerDoc = Object.entries(enGuideDocs).find(
+  ([filePath]) => sectionSlugFromPath(filePath) === "provider"
+)?.[1];
+const appUrl = `${import.meta.env.BASE_URL}guides/provider-app/?locale=en`;
+---
+
+<DocPage
+  locale="en"
+  pageKey="guides"
+  doc={providerDoc}
+  activeSidebarItem={pageKeyFromSlug("guides", "en", "provider")}
+>
+  <iframe
+    slot="interactive"
+    src={appUrl}
+    title="CCR providers — live UI"
+    loading="lazy"
+    class="interactive-frame interactive-frame--manager"
+  />
+</DocPage>

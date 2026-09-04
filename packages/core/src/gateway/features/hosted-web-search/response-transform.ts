@@ -1,4 +1,5 @@
 import { Readable, Transform } from "node:stream";
+import { StringDecoder } from "node:string_decoder";
 import type { GatewayProviderProtocol } from "@ccr/core/contracts/app";
 import { isRecord, numberValue, stringValue } from "@ccr/core/gateway/internal/value";
 import { formatError } from "@ccr/core/gateway/http/io";
@@ -65,6 +66,7 @@ function hostedWebSearchProtocolSseStream(
   const recordsPromise = context.records?.length
     ? Promise.resolve(context.records)
     : selectHostedWebSearchProtocolRecords(context, integration);
+  const decoder = new StringDecoder("utf8");
   let records: BrowserWebSearchProtocolRecord[] | undefined;
   let pending = "";
   let passThrough = false;
@@ -84,7 +86,7 @@ function hostedWebSearchProtocolSseStream(
 
   return input.pipe(new Transform({
     transform(chunk, _encoding, callback) {
-      const text = chunk.toString();
+      const text = decoder.write(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
       const rawText = pending + text;
       void (async () => {
         await ensureRecords();
@@ -103,6 +105,7 @@ function hostedWebSearchProtocolSseStream(
       }).finally(() => callback());
     },
     flush(callback) {
+      pending += decoder.end();
       void (async () => {
         await ensureRecords();
         if (passThrough || !records) {
@@ -263,6 +266,7 @@ function anthropicHostedWebSearchProtocolSseStream(
   const recordsPromise = context.records?.length
     ? Promise.resolve(context.records)
     : selectHostedWebSearchProtocolRecords(context, integration);
+  const decoder = new StringDecoder("utf8");
   let records: BrowserWebSearchProtocolRecord[] | undefined;
   let pending = "";
   let passThrough = false;
@@ -286,7 +290,7 @@ function anthropicHostedWebSearchProtocolSseStream(
 
   return input.pipe(new Transform({
     transform(chunk, _encoding, callback) {
-      const text = chunk.toString();
+      const text = decoder.write(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
       const rawText = pending + text;
       void (async () => {
         await ensureRecords();
@@ -305,6 +309,7 @@ function anthropicHostedWebSearchProtocolSseStream(
       }).finally(() => callback());
     },
     flush(callback) {
+      pending += decoder.end();
       void (async () => {
         await ensureRecords();
         if (passThrough || !records) {

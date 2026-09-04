@@ -23,10 +23,12 @@ GLM-5.2 + GLM-5V-Turbo = GLM-5.2V
 
 选择 `ccr-fusion-builtins / vision_understand`，并为 Vision model 选择真正支持图像理解的模型。
 
+也可以配置视觉模型自己的重试次数和备用视觉模型。这一层只作用于内置图像工具调用：如果 Vision model 在整理图片上下文时失败，CCR 会先重试这个 Vision model，再尝试配置的备用 Vision model。基础文本模型保持不变。
+
 ## 模型要求
 
 Vision model 决定图片、截图、图表和 OCR 内容的理解质量。基础模型决定最终回答的风格、推理能力和代码能力。
 
 ## 排查要点
 
-图像请求失败时，相关信息包括 Vision model 是否支持视觉输入，以及请求日志中的 Fusion 工具调用报错。
+图像请求失败时，相关信息包括 Vision model 是否支持视觉输入、视觉模型的重试次数和备用模型配置，以及请求日志中的 Fusion 工具调用报错。

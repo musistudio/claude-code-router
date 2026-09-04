@@ -1,8 +1,8 @@
 ---
 title: 一键导入供应商
 pageTitle: 一键导入供应商
-eyebrow: 详细配置
-lead: 快速添加常见模型供应商，确认无误后即可保存，减少手动配置的繁琐步骤。
+eyebrow: 一键导入
+lead: 通过预设按钮或 ccr://provider 深度链接（deeplink）一键导入模型供应商：CCR 先展示将写入的配置，确认后再保存。供应商也可以嵌入按钮或发布 manifest，让用户从网页完成导入。
 ---
 
 ## 一键导入
@@ -106,6 +106,14 @@ lead: 快速添加常见模型供应商，确认无误后即可保存，减少�
     <span class="provider-import-icon-shell"><img src="../../provider-icons/infistar-ai.jpg" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">无限星河</span><span class="provider-import-meta">OpenAI 兼容网关</span></span>
   </a>
+  <a class="provider-import-button provider-minimax" href="ccr://provider?name=MiniMax+%28Global%29&amp;base_url=https%3A%2F%2Fapi.minimax.io%2Fv1&amp;protocol=openai_chat_completions&amp;models=MiniMax-M3&amp;source=https%3A%2F%2Fplatform.minimax.io%2Fdocs" aria-label="导入 MiniMax 全球供应商">
+    <span class="provider-import-icon-shell"><img src="../../provider-icons/minimax.ico" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">MiniMax（全球）</span><span class="provider-import-meta">Chat Completions</span></span>
+  </a>
+  <a class="provider-import-button provider-minimax" href="ccr://provider?name=MiniMax+%28China%29&amp;base_url=https%3A%2F%2Fapi.minimaxi.com%2Fv1&amp;protocol=openai_chat_completions&amp;models=MiniMax-M3&amp;source=https%3A%2F%2Fplatform.minimaxi.com%2Fdocs" aria-label="导入 MiniMax 国内供应商">
+    <span class="provider-import-icon-shell"><img src="../../provider-icons/minimax.ico" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">MiniMax（国内）</span><span class="provider-import-meta">Chat Completions</span></span>
+  </a>
 </div>
 
 ## 嵌入式按钮组件
@@ -162,13 +170,13 @@ CCR 也提供了一个无框架的按钮脚本，供应商可以嵌入到自己�
 
 | 参数 | 说明 |
 | --- | --- |
-| `name` | Provider 展示名称 |
-| `base_url` | Provider API Base URL，直链导入时必填 |
-| `api_key` | 可选 Provider API Key |
+| `name` | 供应商展示名称 |
+| `base_url` | 供应商 API Base URL，直链导入时必填 |
+| `api_key` | 可选供应商 API Key |
 | `protocol` | 协议类型，支持 `openai_chat_completions`、`openai_responses`、`anthropic_messages`、`gemini_generate_content`、`gemini_interactions` |
 | `models` | 模型列表。HTML 中用逗号或换行分隔，JS 中可传字符串或数组 |
-| `icon` | Provider 图标 URL |
-| `source` | Provider 官网或配置来源 |
+| `icon` | 供应商图标 URL |
+| `source` | 供应商官网或配置来源 |
 | `manifest` | 远程 manifest URL。传入后按钮会生成 manifest 导入链接 |
 | `payload` | JSON 或 base64url JSON 配置。JS 中也可以传对象 |
 | `usage_url` | 可选账号用量接口 |
@@ -218,12 +226,12 @@ Manifest 可以把供应商信息放在顶层 `provider` 对象中：
 
 | 字段 | 说明 |
 | --- | --- |
-| `provider.name` | Provider 展示名称 |
-| `provider.base_url` | Provider API Base URL，必填 |
+| `provider.name` | 供应商展示名称 |
+| `provider.base_url` | 供应商 API Base URL，必填 |
 | `provider.protocol` | 协议类型 |
 | `provider.models` | 模型列表，字符串数组 |
-| `provider.icon` | Provider 图标 URL |
-| `provider.source` | Provider 官网或配置来源 |
+| `provider.icon` | 供应商图标 URL |
+| `provider.source` | 供应商官网或配置来源 |
 | `provider.account.enabled` | 是否启用账号用量读取 |
 | `provider.account.refreshIntervalMs` | 用量刷新间隔，单位毫秒 |
 | `provider.account.connectors` | 用量读取 connector 列表 |
@@ -290,13 +298,13 @@ Manifest 可以把供应商信息放在顶层 `provider` 对象中：
 
 | 参数 | 说明 |
 | --- | --- |
-| `name` | Provider 展示名称 |
-| `base_url` | Provider API Base URL，必填 |
-| `api_key` | 可选 Provider API Key |
+| `name` | 供应商展示名称 |
+| `base_url` | 供应商 API Base URL，必填 |
+| `api_key` | 可选供应商 API Key |
 | `protocol` | 协议类型，支持 `openai_chat_completions`、`openai_responses`、`anthropic_messages`、`gemini_generate_content`、`gemini_interactions` |
 | `models` | 模型列表，支持逗号或换行分隔，也可以重复传入 |
-| `icon` | Provider 图标 URL |
-| `source` | Provider 官网或配置来源 |
+| `icon` | 供应商图标 URL |
+| `source` | 供应商官网或配置来源 |
 | `manifest` | 远程 manifest URL |
 | `payload` | JSON 或 base64url JSON 配置 |
 | `usage_url` | 可选账号用量接口 |

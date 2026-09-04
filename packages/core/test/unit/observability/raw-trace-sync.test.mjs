@@ -6,11 +6,12 @@ import { Readable } from "node:stream";
 import test from "node:test";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
 import { rawTraceSyncHeader } from "@ccr/core/gateway/internal/shared.ts";
-import { rawTraceHardMaxBodyBytes } from "@ccr/core/observability/request-log-limits.ts";
+import { rawTraceHardMaxBodyBytes, rawTraceMaxPartBytes } from "@ccr/core/observability/request-log-limits.ts";
 import {
   applyRawTraceRequestLogPolicy,
   buildRawTraceConfig,
   createBodySampler,
+  isToleratedDirectorySyncErrorForTest,
   readRawTraceRequestLogBundle,
   RawTraceSynchronizer
 } from "@ccr/core/observability/raw-trace-sync.ts";
@@ -116,15 +117,16 @@ test("raw trace defers body persistence when the upstream status is unknown", ()
   assert.equal(policy.update.requestBodyText, "private request body");
 });
 
-test("raw trace source defaults to the 50 MB hard body ceiling", () => {
+test("raw trace source keeps raw body parts unbounded for sidecar storage", () => {
   const config = createConfig();
   const previous = process.env.CCR_RAW_TRACE_ENABLED;
   process.env.CCR_RAW_TRACE_ENABLED = "1";
   try {
     const rawTrace = buildRawTraceConfig(config, "sync-token");
-    assert.equal(rawTrace.maxPartBytes, rawTraceHardMaxBodyBytes);
+    assert.equal(rawTrace.maxPartBytes, rawTraceMaxPartBytes);
+    assert.ok(rawTrace.maxPartBytes > rawTraceHardMaxBodyBytes);
     config.observability.requestLogMaxBodyBytes = Number.MAX_SAFE_INTEGER;
-    assert.equal(buildRawTraceConfig(config, "sync-token").maxPartBytes, rawTraceHardMaxBodyBytes);
+    assert.equal(buildRawTraceConfig(config, "sync-token").maxPartBytes, rawTraceMaxPartBytes);
   } finally {
     if (previous === undefined) delete process.env.CCR_RAW_TRACE_ENABLED;
     else process.env.CCR_RAW_TRACE_ENABLED = previous;
@@ -873,6 +875,48 @@ test("fallback raw bundles keep unique bundle ids while sharing the logical requ
     rmSync(dir, { force: true, recursive: true });
   }
 });
+
+// A real directory handle cannot drive these cases: on Linux and macOS the
+// fsync either succeeds or fails with a code that depends on the filesystem
+// under the temp directory, and on Windows it always fails. The predicate is
+// the only place where the platform-independent contract can be pinned down.
+test("raw trace tolerates every directory fsync rejection a platform may return", () => {
+  // Node rejects fsync on a directory handle with EPERM on Windows
+  // (errno -4048, verified on Node 24.14.1 win32) and with EINVAL, ENOTSUP or
+  // EISDIR across POSIX filesystems. Flushing a directory is a best-effort
+  // barrier, so none of these may fail the spool.
+  for (const code of ["EINVAL", "EISDIR", "ENOTSUP", "EPERM"]) {
+    assert.equal(
+      isToleratedDirectorySyncErrorForTest(directorySyncError(code)),
+      true,
+      `expected a directory fsync ${code} to be tolerated`
+    );
+  }
+});
+
+test("raw trace still propagates real storage failures from a directory fsync", () => {
+  // The tolerated set must stay a set. If it ever degrades into a blanket
+  // catch, an unwritable or failing spool would be acknowledged as durable.
+  for (const code of ["EACCES", "EIO", "ENOSPC", "EROFS", "EBADF", "EMFILE"]) {
+    assert.equal(
+      isToleratedDirectorySyncErrorForTest(directorySyncError(code)),
+      false,
+      `expected a directory fsync ${code} to keep propagating`
+    );
+  }
+  assert.equal(isToleratedDirectorySyncErrorForTest(new Error("fsync failed")), false);
+  assert.equal(isToleratedDirectorySyncErrorForTest(directorySyncError("")), false);
+  assert.equal(isToleratedDirectorySyncErrorForTest(undefined), false);
+});
+
+function directorySyncError(code) {
+  // Shaped like the rejection Node produces for fsync on a directory handle,
+  // e.g. "EPERM: operation not permitted, fsync" on Windows.
+  const error = new Error(`${code}: directory fsync rejected, fsync`);
+  error.code = code;
+  error.syscall = "fsync";
+  return error;
+}
 
 function createConfig() {
   const config = createDefaultAppConfig();

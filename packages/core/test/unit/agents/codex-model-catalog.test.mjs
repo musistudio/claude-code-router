@@ -22,6 +22,19 @@ test("codex catalog removes duplicate model IDs case-insensitively without reord
   assert.deepEqual(ids, ["provider/model-a", "Provider/MODEL-B"]);
 });
 
+test("codex catalog filters model IDs with a profile allowlist", () => {
+  const ids = buildCodexModelCatalogIds({
+    Providers: [
+      { name: "Provider", type: "openai_responses", models: ["alpha", "beta"] },
+      { name: "Other", type: "openai_responses", models: ["gamma"] }
+    ]
+  }, "Provider/alpha", {
+    allowedModels: ["Provider/alpha"]
+  });
+
+  assert.deepEqual(ids, ["Provider/alpha"]);
+});
+
 test("codex catalog treats unknown models as text-only while enabling apply_patch", () => {
   const model = catalogModelFor({
     Providers: [
@@ -37,6 +50,23 @@ test("codex catalog treats unknown models as text-only while enabling apply_patc
   assert.deepEqual(model.supported_reasoning_levels, []);
   assert.equal(model.default_reasoning_level, null);
   assert.equal(model.apply_patch_tool_type, "freeform");
+});
+
+test("codex catalog publishes configured provider model descriptions", () => {
+  const model = catalogModelFor({
+    Providers: [
+      {
+        modelDescriptions: {
+          "MODEL-A": "Fast sidecar model for simple code search."
+        },
+        models: ["model-a"],
+        name: "Custom",
+        type: "openai_chat_completions"
+      }
+    ]
+  }, "Custom/model-a");
+
+  assert.equal(model.description, "Fast sidecar model for simple code search.");
 });
 
 test("codex catalog uses model catalog capabilities for known text models", () => {
@@ -314,14 +344,30 @@ test("codex catalog uses provider model metadata for reasoning effort and speed 
   assert.equal(model.supports_reasoning_summaries, true);
 });
 
-test("codex catalog caps persisted local Codex GPT-5 context metadata", () => {
-  const cases = [
-    ["gpt-5-codex", 256000],
-    ["gpt-5.5", 256000],
-    ["gpt-5.6-sol", 368000]
-  ];
+test("codex catalog synthesizes Fast Mode tiers from provider model metadata", () => {
+  const model = catalogModelFor({
+    Providers: [
+      {
+        modelMetadata: {
+          "fast-model": {
+            supportsFastMode: true
+          }
+        },
+        models: ["fast-model"],
+        name: "Provider",
+        type: "openai_responses"
+      }
+    ]
+  }, "Provider/fast-model");
 
-  for (const [modelName, expectedContextWindow] of cases) {
+  assert.deepEqual(model.additional_speed_tiers, ["fast"]);
+  assert.deepEqual(model.service_tiers, [{ id: "priority", name: "Fast", description: "1.5x speed, increased usage" }]);
+});
+
+test("codex catalog preserves persisted local Codex GPT-5 context metadata", () => {
+  const cases = ["gpt-5-codex", "gpt-5.5", "gpt-5.6-sol"];
+
+  for (const modelName of cases) {
     const model = catalogModelFor({
       Providers: [
         {
@@ -340,9 +386,58 @@ test("codex catalog caps persisted local Codex GPT-5 context metadata", () => {
       ]
     }, `Codex API/${modelName}`);
 
-    assert.equal(model.context_window, expectedContextWindow);
-    assert.equal(model.max_context_window, expectedContextWindow);
+    assert.equal(model.context_window, 272000);
+    assert.equal(model.max_context_window, 300000);
   }
+});
+
+test("codex catalog reports pinned context windows in full", () => {
+  const model = catalogModelFor({
+    Providers: [
+      {
+        api_base_url: "https://chatgpt.com/backend-api/codex",
+        api_key: "ccr-local-agent-login",
+        modelMetadata: {
+          "gpt-5.6-sol": {
+            contextWindow: 1000000,
+            contextWindowPinned: true,
+            effectiveContextWindowPercent: 95,
+            maxContextWindow: 1000000
+          }
+        },
+        models: ["gpt-5.6-sol"],
+        name: "Codex API",
+        type: "openai_responses"
+      }
+    ]
+  }, "Codex API/gpt-5.6-sol");
+
+  assert.equal(model.context_window, 1000000);
+  assert.equal(model.effective_context_window_percent, 100);
+});
+
+test("codex catalog preserves pinned context windows", () => {
+  const model = catalogModelFor({
+    Providers: [
+      {
+        api_base_url: "https://chatgpt.com/backend-api/codex",
+        api_key: "ccr-local-agent-login",
+        modelMetadata: {
+          "gpt-5-codex": {
+            contextWindow: 1000000,
+            contextWindowPinned: true,
+            maxContextWindow: 1000000
+          }
+        },
+        models: ["gpt-5-codex"],
+        name: "Codex API",
+        type: "openai_responses"
+      }
+    ]
+  }, "Codex API/gpt-5-codex");
+
+  assert.equal(model.context_window, 1000000);
+  assert.equal(model.max_context_window, 1000000);
 });
 
 test("codex catalog falls back to local Codex model cache metadata", () => {
@@ -386,10 +481,10 @@ test("codex catalog falls back to local Codex model cache metadata", () => {
     }, "Codex API/gpt-5-codex");
 
     assert.deepEqual(model.additional_speed_tiers, [{ id: "fast", label: "Fast" }]);
-    assert.equal(model.context_window, 256000);
+    assert.equal(model.context_window, 272000);
     assert.equal(model.default_reasoning_level, "high");
     assert.equal(model.effective_context_window_percent, 92);
-    assert.equal(model.max_context_window, 256000);
+    assert.equal(model.max_context_window, 300000);
     assert.deepEqual(model.service_tiers, [{ id: "auto" }]);
     assert.deepEqual(model.supported_reasoning_levels.map((level) => level.effort), ["low", "high"]);
   } finally {
@@ -460,7 +555,7 @@ test("codex catalog keeps freeform apply_patch when provider advertises Response
   assert.equal(model.apply_patch_tool_type, "freeform");
 });
 
-test("codex catalog enables apply_patch bridge for non-GPT models when Codex built-in route enables it", () => {
+test("codex catalog enables apply_patch bridge for non-GPT models with legacy global Codex route enabled", () => {
   const model = catalogModelFor({
     Providers: [
       { name: "openrouter", type: "openai_chat_completions", models: ["google/gemini-2.5-pro"] }
@@ -478,7 +573,7 @@ test("codex catalog enables apply_patch bridge for non-GPT models when Codex bui
   assert.equal(model.apply_patch_tool_type, "freeform");
 });
 
-test("codex catalog automatically enables apply_patch bridge for non-GPT models when the Codex built-in route is off", () => {
+test("codex catalog keeps apply_patch bridge for non-GPT models with legacy global Codex route disabled", () => {
   const model = catalogModelFor({
     Providers: [
       { name: "openrouter", type: "openai_chat_completions", models: ["google/gemini-2.5-pro"] }

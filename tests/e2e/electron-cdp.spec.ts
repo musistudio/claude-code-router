@@ -1,7 +1,7 @@
 import { chromium, expect, test, type Browser, type Page } from "@playwright/test";
 import { spawn, spawnSync, type ChildProcessByStdio } from "node:child_process";
 import electronModule from "electron";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -141,6 +141,114 @@ test("starts the managed gateway from IPC without runtime config JSON", async ()
   await current.mainPage.evaluate(() => window.ccr?.stopGateway());
 
   expect(readGatewayRuntimeMarker(path.join(configDir, "config.sqlite"))).toBeUndefined();
+});
+
+test("applies Workbuddy profiles through the desktop bridge", async () => {
+  const current = requireRuntime();
+  const profileId = "workbuddy-e2e";
+  const result = await current.mainPage.evaluate(async (input) => {
+    const config = await window.ccr?.getConfig();
+    if (!config) {
+      throw new Error("Config bridge is unavailable.");
+    }
+    config.APIKEYS = [];
+    config.Providers = [{
+      api_base_url: "http://127.0.0.1:9/v1",
+      api_key: "e2e-provider-key",
+      id: "workbuddy-e2e-provider",
+      models: ["gpt-5-codex"],
+      name: "Workbuddy E2E Provider",
+      type: "openai_responses"
+    }];
+    config.preferredProvider = "Workbuddy E2E Provider";
+    config.gateway.enabled = false;
+    config.profile = {
+      ...config.profile,
+      enabled: true,
+      profiles: [{
+        agent: "workbuddy",
+        cliMiddleware: true,
+        codexCliPath: "",
+        codexHome: "",
+        configFile: "~/.workbuddy/config.toml",
+        configFormat: "separate_profile_files",
+        enabled: true,
+        env: {},
+        id: input.profileId,
+        managedCompact: false,
+        model: "Workbuddy E2E Provider/gpt-5-codex",
+        name: "Workbuddy E2E",
+        providerId: "claude-code-router",
+        providerName: "Claude Code Router",
+        showAllSessions: true,
+        scope: "ccr",
+        surface: "app"
+      }]
+    };
+
+    const saved = await window.ccr?.saveConfig(config, { applyProfile: false });
+    const applyResult = await window.ccr?.applyProfile();
+    return { applyResult, saved };
+  }, { profileId });
+
+  expect(result.saved?.profile.profiles).toHaveLength(1);
+  expect(result.saved?.profile.profiles[0]?.agent).toBe("workbuddy");
+  expect(result.saved?.profile.profiles[0]?.showAllSessions).toBe(false);
+  expect(result.saved?.profile.profiles[0]?.surface).toBe("app");
+
+  const workbuddyStatus = result.applyResult?.clients.find((client) => client.client === "workbuddy");
+  expect(workbuddyStatus?.ok, workbuddyStatus?.message).toBe(true);
+
+  const configDir = path.join(current.testHome, ".claude-code-router");
+  const profileHome = path.join(configDir, "profiles", profileId, "workbuddy");
+  const configFile = path.join(profileHome, "config.toml");
+  const launcherFile = path.join(
+    configDir,
+    "bin",
+    process.platform === "win32"
+      ? `ccr-codex-cli-stdio-${profileId}.cmd`
+      : `ccr-codex-cli-stdio-${profileId}`
+  );
+  expect(workbuddyStatus?.path).toBe(configFile);
+
+  const toml = readFileSync(configFile, "utf8");
+  expect(toml).toContain('model_provider = "claude-code-router"');
+  expect(toml).toContain('model = "Workbuddy E2E Provider/gpt-5-codex"');
+  expect(toml).toContain(`model_catalog_json = "${path.join(profileHome, "ccr-model-catalog.json")}"`);
+  expect(toml).toContain(`base_url = "http://${host}:${current.gatewayPort}/v1"`);
+  expect(toml).toContain('wire_api = "responses"');
+  expect(toml).not.toContain("show_all_sessions = true");
+
+  const workbuddyModelsFile = path.join(profileHome, "models.json");
+  expect(existsSync(workbuddyModelsFile)).toBe(true);
+  const workbuddyModels = JSON.parse(readFileSync(workbuddyModelsFile, "utf8"));
+  expect(workbuddyModels.availableModels).toEqual(["Workbuddy E2E Provider/gpt-5-codex"]);
+  expect(workbuddyModels.models).toHaveLength(1);
+  expect(workbuddyModels.models[0]).toMatchObject({
+    apiKey: "${CCR_PROFILE_API_KEY}",
+    id: "Workbuddy E2E Provider/gpt-5-codex",
+    supportsToolCall: true,
+    tags: ["chat", "custom"],
+    url: `http://${host}:${current.gatewayPort}/v1`,
+    vendor: "Workbuddy E2E Provider"
+  });
+
+  const launcher = readFileSync(launcherFile, "utf8");
+  expect(launcher).toContain(profileHome);
+  expect(launcher).toContain("WORKBUDDY_HOME");
+  expect(launcher).toContain("WORKBUDDY_CONFIG_DIR");
+  expect(launcher).toContain("CODEBUDDY_CONFIG_DIR");
+  expect(launcher).toContain("CCR_REAL_CODEX_CLI_PATH");
+  expect(launcher).toContain("codebuddy");
+
+  const virtualAuthFile = workbuddyVirtualAuthFile(profileHome);
+  expect(existsSync(virtualAuthFile)).toBe(true);
+  const virtualSession = JSON.parse(readFileSync(virtualAuthFile, "utf8"));
+  expect(virtualSession.auth.accessToken).toBe("ccr-local-profile");
+  expect(virtualSession.auth.domain).toBe("www.workbuddy.ai");
+  expect(virtualSession.account.uid).toBe("ccr-local-profile");
+  expect(virtualSession.accounts).toHaveLength(1);
+  expect(virtualSession.allAccounts).toHaveLength(1);
 });
 
 async function startElectronOverCdp(): Promise<ElectronCdpRuntime> {
@@ -305,6 +413,16 @@ function readSqliteRows<Row>(file: string, query: string): Row[] {
     process.stdout.write(JSON.stringify(rows));
   `, file, query);
   return JSON.parse(output || "[]") as Row[];
+}
+
+function workbuddyVirtualAuthFile(profileHome: string): string {
+  const virtualHome = path.join(profileHome, ".claude-code-router", "workbuddy-app-home");
+  const sharedAuthSegments = process.platform === "darwin"
+    ? ["Library", "Application Support", "CodeBuddyExtension", "Data", "Public", "auth"]
+    : process.platform === "win32"
+      ? ["AppData", "Local", "CodeBuddyExtension", "Data", "Public", "auth"]
+      : [".local", "share", "CodeBuddyExtension", "Data", "Public", "auth"];
+  return path.join(virtualHome, ...sharedAuthSegments, "workbuddy-desktop-ai.info");
 }
 
 function runElectronNode(script: string, file: string, query = ""): string {

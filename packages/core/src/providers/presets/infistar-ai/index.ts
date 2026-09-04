@@ -12,5 +12,5 @@ export const infistarAiProviderPreset: ProviderPreset = {
   ],
   id: "infistar-ai",
   name: "无限星河",
-  websiteUrl: "https://infistar.ai/register?aff=CCRCCR&ref_source=link"
+  websiteUrl: "https://www.infistar.cc/register?aff=CCRCCR&ref_source=link"
 };

@@ -13,6 +13,15 @@ export const replayableArchiveProtocols: GatewayProviderProtocol[] = [
   "openai_responses"
 ];
 
+const compactOutputTokenLimitKeys = [
+  "max_completion_tokens",
+  "maxCompletionTokens",
+  "max_output_tokens",
+  "maxOutputTokens",
+  "max_tokens",
+  "maxTokens"
+];
+
 export function parseArchiveBody(body: Buffer | undefined): JsonObject | undefined {
   if (!body?.length) {
     return undefined;
@@ -59,6 +68,10 @@ function appendTask(
     removeCodexCompactionTriggers(next);
   }
 
+  if (options.compactHandoff && replaceClaudeCodeAutoCompactPrompt(next, protocol, task)) {
+    return Buffer.from(`${JSON.stringify(next)}\n`, "utf8");
+  }
+
   if (protocol === "openai_responses") {
     if (Array.isArray(next.input)) {
       next.input = [
@@ -98,10 +111,22 @@ export function compactHandoffTask(input: {
   const footer = archiveHandoffFooter(input);
   return [
     "CCR compact handoff task:",
-    "You are the previous-context agent. Produce a concise handoff for a successor agent that will start with a fresh context.",
-    "Preserve the current goal, user constraints, decisions, changed files, completed verification, unresolved problems, and the exact next action.",
-    "Do not continue the task and do not call tools. Do not invent details.",
-    "End the handoff with the following archive access block exactly as written:",
+    "You are the previous-context agent. Produce a concise, action-oriented handoff for a successor agent that will start with a fresh context.",
+    "Do not solve new work. Do not call tools. Do not invent details. Use only the conversation and tool results already in context.",
+    "Do not expand scope: do not propose broad refactors, exhaustive new test suites, documentation work, or extra validation unless the user explicitly requested it or a failing check already requires it.",
+    "Keep the handoff under 1200 words unless an exact failing error needs more space.",
+    "",
+    "Write the handoff with these sections, in this order:",
+    "1. Current objective and status: restate the user's original goal, current branch/deliverable, and whether work is blocked, passing local checks, or unfinished.",
+    "2. Exact remaining blocker: include the latest failing command/test/error if any. If none is known, say none known.",
+    "3. Original acceptance points that still matter: at most 8 bullets copied from explicit user requirements or failing checks. Preserve public API/runtime-shape requirements literally, especially signatures, exports, named fields like TypeName(a, b), callback/event behavior, ordering, and error semantics. Do not invent extra goals.",
+    "4. Work completed (descriptive, not authoritative): changed files and important APIs/classes/functions added or modified. Mark uncertain implementation choices as current implementation details, not requirements.",
+    "5. Verification performed: exact commands/tests run and pass/fail results.",
+    "6. Exact next action: one to three smallest steps. If a blocker exists, fix that first. If local checks pass, do one focused review against the original acceptance points, including public runtime API shape (constructability, isinstance/class checks, attribute vs mapping access, exports), then finish the requested deliverable.",
+    "",
+    "Important: the successor must treat original user requirements and failing checks as higher authority than implementation details in this handoff. If they conflict, revise the implementation instead of preserving the summarized choice.",
+    "If a required detail is important but too large to include, name it explicitly and say that the successor must query archived history before acting on it.",
+    "Include the following archive access block exactly as written:",
     "",
     footer
   ].join("\n");
@@ -186,6 +211,50 @@ function hasClaudeCodeAutoCompactPrompt(body: JsonObject): boolean {
     String(message.role ?? "") === "user" &&
     collectText(message.content).some(isClaudeCodeAutoCompactPromptText)
   );
+}
+
+function replaceClaudeCodeAutoCompactPrompt(
+  body: JsonObject,
+  protocol: GatewayProviderProtocol,
+  task: string
+): boolean {
+  if (protocol !== "anthropic_messages" && protocol !== "openai_chat_completions") {
+    return false;
+  }
+  const messages = Array.isArray(body.messages) ? [...body.messages] : undefined;
+  if (!messages) {
+    return false;
+  }
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (
+      !isRecord(message) ||
+      String(message.role ?? "") !== "user" ||
+      !collectText(message.content).some(isClaudeCodeAutoCompactPromptText)
+    ) {
+      continue;
+    }
+    const nextMessage = cloneJsonObject(message);
+    nextMessage.content = protocol === "anthropic_messages"
+      ? [{ text: claudeCodeCompactHandoffTask(task), type: "text" }]
+      : claudeCodeCompactHandoffTask(task);
+    messages[index] = nextMessage;
+    body.messages = messages;
+    return true;
+  }
+  return false;
+}
+
+function claudeCodeCompactHandoffTask(task: string): string {
+  return [
+    "CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.",
+    "",
+    "Your response must be plain text: an <analysis> block followed by a <summary> block.",
+    "Keep <analysis> brief: identify what the continuation summary must preserve, but do not solve the task.",
+    "Put the CCR handoff in <summary> and follow this task exactly:",
+    "",
+    task
+  ].join("\n");
 }
 
 function isClaudeCodeAutoCompactPromptText(text: string): boolean {
@@ -369,6 +438,7 @@ function assertAppendableTurn(body: JsonObject, protocol: GatewayProviderProtoco
 function sanitizeCompactHandoffRequest(body: JsonObject, protocol: GatewayProviderProtocol): void {
   removeCompactSignals(body);
   removeKeys(body, [
+    ...compactOutputTokenLimitKeys,
     "response_format",
     "responseFormat",
     "stop",
@@ -385,7 +455,6 @@ function sanitizeCompactHandoffRequest(body: JsonObject, protocol: GatewayProvid
       "tools"
     ]);
     normalizeOpenAiResponsesTextFormat(body);
-    raiseMinimumNumericField(body, ["max_output_tokens", "maxOutputTokens", "max_tokens", "maxTokens"], 2048);
     return;
   }
 
@@ -399,7 +468,6 @@ function sanitizeCompactHandoffRequest(body: JsonObject, protocol: GatewayProvid
     "toolChoice",
     "tools"
   ]);
-  raiseMinimumNumericField(body, ["max_tokens", "maxTokens"], 2048);
 }
 
 function removeCompactSignals(body: JsonObject): void {
@@ -465,14 +533,6 @@ function normalizeOpenAiResponsesTextFormat(body: JsonObject): void {
 function removeKeys(body: JsonObject, keys: string[]): void {
   for (const key of keys) {
     delete body[key];
-  }
-}
-
-function raiseMinimumNumericField(body: JsonObject, keys: string[], minimum: number): void {
-  for (const key of keys) {
-    if (typeof body[key] === "number" && Number.isFinite(body[key]) && body[key] < minimum) {
-      body[key] = minimum;
-    }
   }
 }
 

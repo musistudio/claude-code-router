@@ -1,7 +1,9 @@
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { randomUUID } from "node:crypto";
+import { closeSync, copyFileSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { StringDecoder } from "node:string_decoder";
-import { REQUEST_LOGS_DB_FILE } from "@ccr/core/config/constants";
+import { REQUEST_LOG_BODIES_DIR, REQUEST_LOGS_DB_FILE } from "@ccr/core/config/constants";
+import { decodeClaudeAppGatewayRouteId } from "@ccr/core/agents/claude-app/gateway-routes";
 import {
   estimateUsageCostUsd,
   estimateUsageCostUsdFromLoadedCatalog,
@@ -20,6 +22,10 @@ import { requestLogRequestedModel, requestLogResponseModel } from "@ccr/core/obs
 import { isSensitiveRequestLogHeaderName } from "@ccr/core/observability/sensitive-headers";
 import type {
   AgentAnalysisAgentRow,
+  AgentAnalysisConversationItem,
+  AgentAnalysisConversationMessage,
+  AgentAnalysisConversationRole,
+  AgentAnalysisConversationTurn,
   AgentAnalysisFilter,
   AgentAnalysisRequestRow,
   AgentAnalysisSessionDetail,
@@ -44,6 +50,9 @@ import type {
   GatewayProviderProtocol,
   ProviderModelPricing,
   RequestLogBody,
+  RequestLogBodyChunk,
+  RequestLogBodyChunkRequest,
+  RequestLogBodySide,
   RequestLogDetailRequest,
   RequestLogEntry,
   RequestLogFilterOptions,
@@ -146,6 +155,7 @@ export type RequestLogRawTraceUpdateInput = {
   path?: string;
   provider?: string;
   requestBodyContentType?: string;
+  requestBodyRef?: string;
   requestBodySizeBytes?: number;
   requestBodyText?: string;
   requestBodyTruncated?: boolean;
@@ -153,6 +163,7 @@ export type RequestLogRawTraceUpdateInput = {
   requestId: string;
   isStream?: boolean;
   responseBodyContentType?: string;
+  responseBodyRef?: string;
   responseBodySizeBytes?: number;
   responseBodyText?: string;
   responseBodyTruncated?: boolean;
@@ -240,7 +251,10 @@ type StoredRequestLogEntry = {
 type AnalyzedAgentRequest = AgentAnalysisRequestRow & {
   client: string;
   completedAt: string;
+  conversation?: AgentAnalysisConversationTurn;
   endedAtMs: number;
+  requestBody: RequestLogBody;
+  responseBody?: RequestLogBody;
   startedAtMs: number;
   toolCalls: AgentToolCallDetail[];
   toolResults: AgentToolResultDetail[];
@@ -248,6 +262,7 @@ type AnalyzedAgentRequest = AgentAnalysisRequestRow & {
 
 type AgentLogDetails = {
   agent: AgentKind;
+  conversationMessages?: AgentConversationMessages;
   routeReason?: string;
   sessionId: string;
   subagentModel?: string;
@@ -278,6 +293,22 @@ type AgentToolResultDetail = {
   result?: AgentAnalysisTracePayloadPreview;
 };
 
+type AgentToolResultSource = {
+  id: number;
+  requestId: string;
+};
+
+type AgentToolResultLookup = {
+  byId: Map<string, AgentToolResultDetail>;
+  ordered: AgentToolResultDetail[];
+};
+
+type AgentConversationMessages = {
+  assistant?: AgentAnalysisConversationMessage;
+  messages?: AgentAnalysisConversationItem[];
+  user?: AgentAnalysisConversationMessage;
+};
+
 type StreamedToolCallInput = {
   fragments: string[];
   id: string;
@@ -298,8 +329,9 @@ type ToolCallStreamState = {
 };
 
 const maxBodyBytes = maxRequestLogBodyBytes;
+const requestLogInlineBodyBytes = 160 * 1024;
+const requestLogBodyChunkMaxBytes = 1024 * 1024;
 const maxAgentAnalysisRows = 5000;
-const maxAgentSessionDetailRequests = 250;
 const maxTracePayloadPreviewChars = 1600;
 const maxPendingRawTraceEntries = 200;
 const maxPendingRawTraceEntryBytes = 2 * 1024 * 1024;
@@ -325,7 +357,9 @@ const terminalSseResponseStatuses = new Set([
 ]);
 const requestLogBodyMetadataSelect = `
             '' AS request_body_text,
-            '' AS response_body_text
+            '' AS response_body_text,
+            request_body_ref,
+            response_body_ref
 `;
 const emptyAgentAnalysisTotals: AgentAnalysisTotals = {
   avgDurationMs: 0,
@@ -364,7 +398,12 @@ export class RequestLogStore {
   private revision = 0;
   private analysisCache?: AgentAnalysisCacheEntry;
 
-  constructor(private readonly dbFile: string) {}
+  constructor(
+    private readonly dbFile: string,
+    private readonly bodyDir = dbFile === REQUEST_LOGS_DB_FILE
+      ? REQUEST_LOG_BODIES_DIR
+      : join(dirname(dbFile), "request-log-bodies")
+  ) {}
 
   async initialize(): Promise<void> {
     await this.getDatabase();
@@ -403,6 +442,9 @@ export class RequestLogStore {
           if (requestId) {
             const pending = this.takePendingRawTraceUpdate(database, requestId);
             if (pending) {
+              if (command.input.captureBody === false) {
+                deleteRequestLogBodyRefs(this.bodyDir, bodyRefsFromRawTraceInput(pending));
+              }
               const pendingInput = command.input.captureBody === false
                 ? suppressRequestLogRawTraceBodies(pending)
                 : pending;
@@ -418,11 +460,12 @@ export class RequestLogStore {
         if (bundleId && hasProcessedRawTraceBundle(database, bundleId)) {
           continue;
         }
-        const applied = await this.updateFromRawTrace(command.input);
+        const rawTraceInput = this.prepareRawTraceInput(command.input, command.rawTraceFiles);
+        const applied = await this.updateFromRawTrace(rawTraceInput);
         if (bundleId && applied) {
-          rememberProcessedRawTraceBundle(database, bundleId, command.input.requestId);
+          rememberProcessedRawTraceBundle(database, bundleId, rawTraceInput.requestId);
         } else if (!applied) {
-          this.storePendingRawTraceUpdate(database, command.input);
+          this.storePendingRawTraceUpdate(database, rawTraceInput);
         }
       }
       database.exec("COMMIT");
@@ -513,14 +556,25 @@ export class RequestLogStore {
     const responseError = normalizeFilterValue(input.error) ??
       detectSseError(responseBodyText, headerValue(responseHeaders, "content-type"));
     const bodyUsage = extractUsageFromBody(responseBodyText);
-    const usage: UsageSnapshot = normalizeUsageInputTokens(mergeUsageSnapshots(extractUsageFromBillingHeaders(input.responseHeaders), bodyUsage), {
-      path: input.path,
-      providerProtocol: input.providerProtocol,
-      usageHint: bodyUsage
-    }) ?? {};
-    const route = splitRouteSelector(input.fallbackModel);
+    // Each source carries its own cache-inclusion convention; normalize before
+    // merging (see UsageConventionSource).
+    const usage: UsageSnapshot = mergeUsageSnapshots(
+      normalizeUsageInputTokens(extractUsageFromBillingHeaders(input.responseHeaders), {
+        path: input.path,
+        providerProtocol: input.providerProtocol,
+        source: "providerBilling"
+      }),
+      normalizeUsageInputTokens(bodyUsage, {
+        path: input.path,
+        source: "responseBody"
+      })
+    ) ?? {};
+    const route = splitRequestLogRouteSelector(input.fallbackModel);
     const bodyModel = requestLogRequestedModel(input.requestBody, input.path);
     const requestModel = normalizeFilterValue(input.model) ?? bodyModel;
+    const requestModelForStorage = requestLogStorageModel(requestModel);
+    const usageRoute = decodedClaudeAppGatewayRouteParts(usage.model);
+    const usageModelForStorage = usageRoute?.model ?? normalizeFilterValue(usage.model);
     const requestedModel = normalizeFilterValue(input.requestedModel) ?? bodyModel ?? "";
     const resolvedModel = normalizeFilterValue(input.resolvedModel) ??
       normalizeFilterValue(input.model) ??
@@ -535,7 +589,8 @@ export class RequestLogStore {
       normalizeFilterValue(input.providerName) ??
       readResponseHeader(input.responseHeaders, "x-gateway-target-provider-name") ??
       readResponseHeader(input.responseHeaders, "x-gateway-target-provider") ??
-      route.provider;
+      route.provider ??
+      usageRoute?.provider;
     const inputTokens = normalizeCount(usage.inputTokens);
     const outputTokens = normalizeCount(usage.outputTokens);
     const reasoningTokens = normalizeCount(usage.reasoningTokens);
@@ -546,7 +601,7 @@ export class RequestLogStore {
     const totalTokens =
       normalizeCount(usage.totalTokens) ||
       inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens;
-    const model = normalizeLabel(usage.model ?? route.model ?? requestModel ?? input.fallbackModel, "unknown");
+    const model = normalizeLabel(usageModelForStorage ?? route.model ?? requestModelForStorage ?? input.fallbackModel, "unknown");
     const providerName = normalizeLabel(provider, "unknown");
     // CCR credential IDs are structured metadata, but their header names also
     // match the fail-closed secret classifier. Extract them before sanitizing;
@@ -568,7 +623,8 @@ export class RequestLogStore {
       : await estimateUsageCostUsd(costInput);
     const capturedRequestBody = bodyFromBuffer(
       input.requestBody,
-      headerValue(requestHeaders, "content-type")
+      headerValue(requestHeaders, "content-type"),
+      { bodyDir: this.bodyDir, side: "request" }
     );
     const requestBody: RequestLogBody = {
       ...capturedRequestBody,
@@ -579,7 +635,9 @@ export class RequestLogStore {
       responseBodyText,
       headerValue(responseHeaders, "content-type"),
       Boolean(input.responseBodyTruncated),
-      input.responseBodySizeBytes
+      input.responseBodySizeBytes,
+      undefined,
+      { bodyDir: this.bodyDir, side: "response" }
     );
     const isStream = inferRequestLogIsStream({
       path: input.path,
@@ -631,13 +689,15 @@ export class RequestLogStore {
         request_body_content_type,
         request_body_size_bytes,
         request_body_truncated,
+        request_body_ref,
         response_body_text,
         response_body_encoding,
         response_body_content_type,
         response_body_size_bytes,
         response_body_truncated,
+        response_body_ref,
         error
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     let inserted = false;
@@ -682,11 +742,13 @@ export class RequestLogStore {
         requestBody.contentType ?? "",
         requestBody.sizeBytes,
         requestBody.truncated ? 1 : 0,
+        requestBody.bodyRef ?? "",
         responseBody.text,
         responseBody.encoding,
         responseBody.contentType ?? "",
         responseBody.sizeBytes,
         responseBody.truncated ? 1 : 0,
+        responseBody.bodyRef ?? "",
         responseError ?? ""
       );
       if (result.changes === 0) return;
@@ -769,6 +831,9 @@ export class RequestLogStore {
       rawInput,
       finalSuccessful
     );
+    if (captureResolution.bodiesSuppressed) {
+      deleteRequestLogBodyRefs(this.bodyDir, bodyRefsFromRawTraceInput(rawInput));
+    }
     const input = captureResolution.input;
     const existingUsageContext = readRequestLogUsageContext(database, requestId);
 
@@ -785,7 +850,9 @@ export class RequestLogStore {
     const url = normalizeFilterValue(input.url);
     const path = normalizeFilterValue(input.path) ?? pathFromUrl(url);
     const usagePath = path ?? existingUsageContext.path;
-    const modelFromTrace = normalizeFilterValue(input.model);
+    const rawModelFromTrace = normalizeFilterValue(input.model);
+    const modelFromTrace = requestLogStorageModel(rawModelFromTrace);
+    const resolvedModelFromTrace = requestLogStorageModelSelector(rawModelFromTrace);
     const responseModelFromTrace = rawInput.responseBodyText === undefined
       ? undefined
       : requestLogResponseModel(rawInput.responseBodyText);
@@ -806,7 +873,7 @@ export class RequestLogStore {
     pushValue("url", url);
     pushValue("provider", providerFromTrace);
     pushValue("model", modelFromTrace);
-    pushValue("resolved_model", modelFromTrace);
+    pushValue("resolved_model", resolvedModelFromTrace);
     pushValue("response_model", responseModelFromTrace);
     // The gateway's terminal failure is authoritative, even when it has only
     // an HTTP error status and no error string. A final-attempt raw failure may
@@ -832,10 +899,20 @@ export class RequestLogStore {
       const bodyUsage = input.responseBodyText === undefined
         ? undefined
         : extractUsageFromBody(input.responseBodyText);
-      const usage: UsageSnapshot = normalizeUsageInputTokens<UsageSnapshot>(mergeUsageSnapshots(extractUsageFromBillingHeaders(responseHeaders), bodyUsage), {
-        path: usagePath,
-        usageHint: bodyUsage
-      }) ?? {};
+      // As in record(), each source is normalized under its own convention.
+      // Raw-trace updates carry no provider protocol — it is not part of the
+      // gateway's raw-trace sync contract — so the billing headers fall back to
+      // the request path, which is only a proxy for the upstream's convention.
+      const usage: UsageSnapshot = mergeUsageSnapshots(
+        normalizeUsageInputTokens(extractUsageFromBillingHeaders(responseHeaders), {
+          path: usagePath,
+          source: "providerBilling"
+        }),
+        normalizeUsageInputTokens<UsageSnapshot>(bodyUsage, {
+          path: usagePath,
+          source: "responseBody"
+        })
+      ) ?? {};
       if (hasUsageNumbers(usage)) {
         const inputTokens = normalizeCount(usage.inputTokens);
         const outputTokens = normalizeCount(usage.outputTokens);
@@ -847,7 +924,7 @@ export class RequestLogStore {
         const totalTokens =
           normalizeCount(usage.totalTokens) ||
           inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens;
-        const model = normalizeLabel(usage.model ?? modelFromTrace ?? existingUsageContext.model, "unknown");
+        const model = normalizeLabel(requestLogStorageModel(usage.model) ?? modelFromTrace ?? existingUsageContext.model, "unknown");
         const provider = normalizeLabel(providerFromTrace ?? existingUsageContext.provider, "unknown");
         const costInput = {
           cacheReadTokens,
@@ -901,27 +978,33 @@ export class RequestLogStore {
         url
       }) ? 1 : 0);
     }
-    if (input.requestBodyText !== undefined && (
-      captureResolution.bodiesSuppressed || input.requestBodyText.length > 0 || !existingOutcome.hasRequestBody
+    const shouldApplyRequestBody = input.requestBodyText !== undefined ||
+      Boolean(input.requestBodyRef && (!input.requestBodyTruncated || !existingOutcome.hasRequestBody));
+    if (shouldApplyRequestBody && (
+      captureResolution.bodiesSuppressed || Boolean(input.requestBodyRef) || (input.requestBodyText?.length ?? 0) > 0 || !existingOutcome.hasRequestBody
     )) {
       const requestBody = bodyFromText(
-        input.requestBodyText,
+        input.requestBodyText ?? "",
         input.requestBodyContentType ?? headerValue(mergedRequestHeaders ?? {}, "content-type"),
         Boolean(input.requestBodyTruncated),
         input.requestBodySizeBytes,
-        rawTraceHardMaxBodyBytes
+        rawTraceHardMaxBodyBytes,
+        { bodyDir: this.bodyDir, bodyRef: input.requestBodyRef, side: "request" }
       );
       pushBodyValues(sets, params, "request", requestBody);
     }
-    if (input.responseBodyText !== undefined && (
-      captureResolution.bodiesSuppressed || input.responseBodyText.length > 0 || !existingOutcome.hasResponseBody
+    const shouldApplyResponseBody = input.responseBodyText !== undefined ||
+      Boolean(input.responseBodyRef && (!input.responseBodyTruncated || !existingOutcome.hasResponseBody));
+    if (shouldApplyResponseBody && (
+      captureResolution.bodiesSuppressed || Boolean(input.responseBodyRef) || (input.responseBodyText?.length ?? 0) > 0 || !existingOutcome.hasResponseBody
     )) {
       const responseBody = bodyFromText(
-        input.responseBodyText,
+        input.responseBodyText ?? "",
         responseBodyContentType,
         Boolean(input.responseBodyTruncated),
         input.responseBodySizeBytes,
-        rawTraceHardMaxBodyBytes
+        rawTraceHardMaxBodyBytes,
+        { bodyDir: this.bodyDir, bodyRef: input.responseBodyRef, side: "response" }
       );
       pushBodyValues(sets, params, "response", responseBody);
     }
@@ -1029,6 +1112,75 @@ export class RequestLogStore {
     return entry;
   }
 
+  async getBodyChunk(request: RequestLogBodyChunkRequest): Promise<RequestLogBodyChunk | undefined> {
+    const database = await this.getDatabase();
+    const requestLogId = normalizeCount(request.id);
+    const side = request.side === "response" ? "response" : "request";
+    if (requestLogId <= 0) {
+      return undefined;
+    }
+
+    const row = queryRows(
+      database,
+      `
+        SELECT
+          ${side}_body_text AS body_text,
+          ${side}_body_encoding AS body_encoding,
+          ${side}_body_content_type AS body_content_type,
+          ${side}_body_size_bytes AS body_size_bytes,
+          ${side}_body_truncated AS body_truncated,
+          ${side}_body_ref AS body_ref
+        FROM request_logs
+        WHERE rowid = ?
+        LIMIT 1
+      `,
+      [requestLogId]
+    )[0];
+    if (!row) {
+      return undefined;
+    }
+
+    const offset = clampInteger(request.offset, 0, Number.MAX_SAFE_INTEGER, 0);
+    const length = clampInteger(request.length, 1, requestLogBodyChunkMaxBytes, requestLogBodyChunkMaxBytes);
+    const encoding = String(row.body_encoding ?? "utf8") === "base64" ? "base64" : "utf8";
+    const contentType = normalizeFilterValue(String(row.body_content_type ?? ""));
+    const sizeBytes = normalizeCount(row.body_size_bytes);
+    const truncated = normalizeCount(row.body_truncated) === 1;
+    const bodyRef = normalizeFilterValue(String(row.body_ref ?? ""));
+
+    if (bodyRef) {
+      const filePath = requestLogBodyPath(this.bodyDir, bodyRef);
+      if (filePath && existsSync(filePath)) {
+        return readRequestLogBodyChunkFromFile({
+          bodyRef,
+          contentType,
+          encoding,
+          filePath,
+          length,
+          offset,
+          sizeBytes,
+          truncated
+        });
+      }
+    }
+
+    const text = String(row.body_text ?? "");
+    const visible = text.slice(offset, offset + length);
+    const nextOffset = offset + visible.length;
+    return {
+      ...(bodyRef ? { bodyRef } : {}),
+      contentType,
+      encoding,
+      eof: nextOffset >= text.length,
+      length: visible.length,
+      ...(nextOffset < text.length ? { nextOffset } : {}),
+      offset,
+      sizeBytes: Math.max(sizeBytes, text.length),
+      text: visible,
+      truncated
+    };
+  }
+
   async analyze(filter: AgentAnalysisFilter = {}): Promise<AgentAnalysisSnapshot> {
     const database = await this.getDatabase();
     this.pruneOldRequestLogs(database);
@@ -1044,6 +1196,7 @@ export class RequestLogStore {
     const since = getAgentAnalysisSince(range, now);
     const requestedAgent = normalizeAgentFilter(filter.agent);
     const analyzed: AnalyzedAgentRequest[] = [];
+    let requestScanTruncated = false;
     let scannedRequestCount = 0;
     const rows = iterateRows(
       database,
@@ -1083,11 +1236,13 @@ export class RequestLogStore {
             request_body_content_type,
             request_body_size_bytes,
             request_body_truncated,
+            request_body_ref,
             response_body_text,
             response_body_encoding,
             response_body_content_type,
             response_body_size_bytes,
             response_body_truncated,
+            response_body_ref,
             error
           FROM request_logs
           WHERE source_usage_id IS NULL
@@ -1096,10 +1251,14 @@ export class RequestLogStore {
           ORDER BY created_at DESC, id DESC
           LIMIT ?
         `,
-        ["%/count_tokens%", since.toISOString(), maxAgentAnalysisRows]
+        ["%/count_tokens%", since.toISOString(), maxAgentAnalysisRows + 1]
     );
     // Consume and compact each body before advancing so the query never retains all body text at once.
     for (const row of rows) {
+      if (scannedRequestCount >= maxAgentAnalysisRows) {
+        requestScanTruncated = true;
+        continue;
+      }
       scannedRequestCount += 1;
       const request = toAnalyzedAgentRequest(toRequestLogEntry(row));
       if (requestedAgent === "all" || request.agent === requestedAgent) {
@@ -1114,7 +1273,7 @@ export class RequestLogStore {
       ? applyRequestConcurrency(sessionScopedRequests)
       : requests;
     const selectedSession = sessionScopedRequests
-      ? buildAgentSessionDetail(analysisRequests)
+      ? buildAgentSessionDetail(analysisRequests, this.bodyDir)
       : undefined;
 
     const snapshot: AgentAnalysisSnapshot = {
@@ -1127,6 +1286,8 @@ export class RequestLogStore {
       range,
       recentRequests: analysisRequests.slice(-50).reverse().map(stripAnalysisInternals),
       routes: buildAgentRouteRows(analysisRequests),
+      requestScanLimit: maxAgentAnalysisRows,
+      requestScanTruncated,
       scannedRequestCount,
       ...(selectedSession ? { selectedSession } : {}),
       sessions: buildAgentSessionRows(requests),
@@ -1153,7 +1314,7 @@ export class RequestLogStore {
       return emptyTracePayloadResult();
     }
 
-    const body = request.part === "tool-input" ? entry.responseBody : entry.requestBody;
+    const body = hydrateRequestLogBodyFromRef(this.bodyDir, request.part === "tool-input" ? entry.responseBody : entry.requestBody);
     if (!body || body.encoding !== "utf8") {
       return emptyTracePayloadResult(Boolean(body?.truncated));
     }
@@ -1240,11 +1401,13 @@ export class RequestLogStore {
         request_body_content_type TEXT NOT NULL DEFAULT '',
         request_body_size_bytes INTEGER NOT NULL DEFAULT 0,
         request_body_truncated INTEGER NOT NULL DEFAULT 0,
+        request_body_ref TEXT NOT NULL DEFAULT '',
         response_body_text TEXT NOT NULL DEFAULT '',
         response_body_encoding TEXT NOT NULL DEFAULT 'utf8',
         response_body_content_type TEXT NOT NULL DEFAULT '',
         response_body_size_bytes INTEGER NOT NULL DEFAULT 0,
         response_body_truncated INTEGER NOT NULL DEFAULT 0,
+        response_body_ref TEXT NOT NULL DEFAULT '',
         error TEXT NOT NULL DEFAULT ''
       );
 
@@ -1335,9 +1498,23 @@ export class RequestLogStore {
       return;
     }
 
+    const refs = queryRows(
+      database,
+      `
+        SELECT request_body_ref, response_body_ref
+        FROM request_logs
+        WHERE source_usage_id IS NULL AND created_at < ?
+      `,
+      [cutoff]
+    ).flatMap((row) => [
+      normalizeFilterValue(String(row.request_body_ref ?? "")),
+      normalizeFilterValue(String(row.response_body_ref ?? ""))
+    ]).filter((value): value is string => Boolean(value));
+
     database.prepare(
       "DELETE FROM request_logs WHERE source_usage_id IS NULL AND created_at < ?",
     ).run(cutoff);
+    deleteRequestLogBodyRefs(this.bodyDir, refs);
     this.lastRetentionCleanupDay = dayKey;
   }
 
@@ -1356,7 +1533,7 @@ export class RequestLogStore {
           update_json = excluded.update_json
       `).run(requestId, now, serialized.bytes, serialized.json);
     }
-    prunePendingRawTraceUpdates(database, now);
+    prunePendingRawTraceUpdates(database, now, this.bodyDir);
   }
 
   private takePendingRawTraceUpdate(database: SqlDatabase, requestId: string): RequestLogRawTraceUpdateInput | undefined {
@@ -1369,6 +1546,49 @@ export class RequestLogStore {
     database.prepare("DELETE FROM request_log_pending_updates WHERE request_id = ?").run(requestId);
     const parsed = parseJson(String(row.update_json ?? ""));
     return isRecord(parsed) ? parsed as RequestLogRawTraceUpdateInput : undefined;
+  }
+
+  private prepareRawTraceInput(
+    input: RequestLogRawTraceUpdateInput,
+    rawTraceFiles?: RequestLogRawTraceFiles
+  ): RequestLogRawTraceUpdateInput {
+    const next: RequestLogRawTraceUpdateInput = { ...input };
+    const requestBody = storeRawTraceBodyFile(this.bodyDir, rawTraceFiles?.requestBody);
+    if (requestBody) {
+      next.requestBodyRef = requestBody.bodyRef;
+      if (!requestBody.truncated) next.requestBodyText ??= requestBody.previewText;
+      next.requestBodyContentType ??= requestBody.contentType;
+      next.requestBodySizeBytes = Math.max(normalizeCount(next.requestBodySizeBytes), requestBody.sizeBytes);
+      next.requestBodyTruncated = Boolean(next.requestBodyTruncated) || requestBody.truncated;
+    }
+    const responseBody = storeRawTraceBodyFile(this.bodyDir, rawTraceFiles?.responseBody);
+    if (responseBody) {
+      next.responseBodyRef = responseBody.bodyRef;
+      if (!responseBody.truncated) next.responseBodyText ??= responseBody.previewText;
+      next.responseBodyContentType ??= responseBody.contentType;
+      next.responseBodySizeBytes = Math.max(normalizeCount(next.responseBodySizeBytes), responseBody.sizeBytes);
+      next.responseBodyTruncated = Boolean(next.responseBodyTruncated) || responseBody.truncated;
+    }
+    return this.prepareRawTraceTextBodies(next);
+  }
+
+  private prepareRawTraceTextBodies(input: RequestLogRawTraceUpdateInput): RequestLogRawTraceUpdateInput {
+    const next: RequestLogRawTraceUpdateInput = { ...input };
+    if (!next.requestBodyRef && next.requestBodyText !== undefined) {
+      const stored = storeBodyBuffer(this.bodyDir, Buffer.from(next.requestBodyText), next.requestBodyRef);
+      if (stored) {
+        next.requestBodyRef = stored.bodyRef;
+        next.requestBodySizeBytes = Math.max(Buffer.byteLength(next.requestBodyText), normalizeCount(next.requestBodySizeBytes));
+      }
+    }
+    if (!next.responseBodyRef && next.responseBodyText !== undefined) {
+      const stored = storeBodyBuffer(this.bodyDir, Buffer.from(next.responseBodyText), next.responseBodyRef);
+      if (stored) {
+        next.responseBodyRef = stored.bodyRef;
+        next.responseBodySizeBytes = Math.max(Buffer.byteLength(next.responseBodyText), normalizeCount(next.responseBodySizeBytes));
+      }
+    }
+    return next;
   }
 }
 
@@ -1416,6 +1636,15 @@ export async function getRequestLogDetail(request: RequestLogDetailRequest): Pro
   }
 }
 
+export async function getRequestLogBodyChunk(request: RequestLogBodyChunkRequest): Promise<RequestLogBodyChunk | undefined> {
+  try {
+    return await requestLogRuntime.getBodyChunk(request);
+  } catch (error) {
+    console.warn(`[request-log] Failed to read request log body chunk: ${formatError(error)}`);
+    throw error;
+  }
+}
+
 export async function getAgentAnalysis(filter?: AgentAnalysisFilter): Promise<AgentAnalysisSnapshot> {
   try {
     return await requestLogRuntime.analyze(filter);
@@ -1458,6 +1687,7 @@ function toAnalyzedAgentRequest(entry: StoredRequestLogEntry): AnalyzedAgentRequ
     client: entry.client,
     completedAt: entry.completedAt,
     concurrentRequests: 1,
+    ...(details.conversationMessages ? { conversation: buildAgentConversationTurn(entry, details) } : {}),
     costUsd: entry.costUsd,
     createdAt: entry.createdAt,
     durationMs: entry.durationMs,
@@ -1471,11 +1701,13 @@ function toAnalyzedAgentRequest(entry: StoredRequestLogEntry): AnalyzedAgentRequ
     outputTokens: entry.outputTokens,
     path: entry.path,
     provider: entry.provider,
+    requestBody: bodyMetaForAnalysis(entry.requestBody) ?? emptyBody(),
     requestId: entry.requestId,
     routeReason: details.routeReason,
     sessionId: details.sessionId,
     startedAtMs,
     statusCode: entry.statusCode,
+    responseBody: bodyMetaForAnalysis(entry.responseBody),
     subagentModel: details.subagentModel,
     toolCallCount: details.tools.length,
     toolCalls: details.toolCalls,
@@ -1503,10 +1735,12 @@ function extractAgentLogDetails(entry: StoredRequestLogEntry): AgentLogDetails {
   const subagentModel = extractSubagentModel(entry, requestPayloads, routeReason, routedModel);
   const agent = inferAgentKind(entry, requestPayloads, responsePayloads);
   const toolCalls = extractToolCalls(responsePayloads);
-  const toolResults = extractToolResults(requestPayloads, entry);
+  const toolResults = extractToolResults([...requestPayloads, ...responsePayloads], entry);
+  const conversationMessages = extractConversationMessages(entry, requestPayloads, responsePayloads, toolCalls);
 
   return {
     agent,
+    conversationMessages,
     routeReason,
     sessionId: extractAgentSessionId(entry, requestPayloads, agent),
     subagentModel,
@@ -1514,6 +1748,26 @@ function extractAgentLogDetails(entry: StoredRequestLogEntry): AgentLogDetails {
     toolResults,
     tools: toolCalls.map((tool) => tool.name),
     userAgent: readAgentUserAgent(entry.requestHeaders)
+  };
+}
+
+function buildAgentConversationTurn(
+  entry: StoredRequestLogEntry,
+  details: AgentLogDetails
+): AgentAnalysisConversationTurn {
+  return {
+    agent: details.agent,
+    ...(details.conversationMessages?.assistant ? { assistant: details.conversationMessages.assistant } : {}),
+    createdAt: entry.createdAt,
+    durationMs: entry.durationMs,
+    id: entry.id,
+    ...(details.conversationMessages?.messages ? { messages: details.conversationMessages.messages } : {}),
+    model: entry.model,
+    provider: entry.provider,
+    requestId: entry.requestId,
+    sessionId: details.sessionId,
+    statusCode: entry.statusCode,
+    ...(details.conversationMessages?.user ? { user: details.conversationMessages.user } : {})
   };
 }
 
@@ -1652,6 +1906,14 @@ function inferAgentFromText(value: string, options: AgentTextSignalOptions = {})
     return "kilo";
   }
   if (
+    normalized.includes("workbuddy") ||
+    normalized.includes("work-buddy") ||
+    normalized.includes("work buddy") ||
+    /(^|[^a-z0-9])workbuddy([/_\s-]|$)/.test(normalized)
+  ) {
+    return "workbuddy";
+  }
+  if (
     normalized.includes("openai-codex") ||
     normalized.includes("codex_cli") ||
     normalized.includes("codex-cli") ||
@@ -1727,6 +1989,16 @@ function readAgentSessionHeader(headers: Record<string, string | string[]>, agen
     "x-z-code-session-id",
     "z-code-session-id"
   ];
+  const workbuddyHeaders = [
+    "x-workbuddy-session-id",
+    "workbuddy-session-id",
+    "x-workbuddy-conversation-id",
+    "workbuddy-conversation-id",
+    "x-workbuddy-thread-id",
+    "workbuddy-thread-id",
+    "x-work-buddy-session-id",
+    "work-buddy-session-id"
+  ];
   const piHeaders = [
     "x-pi-session-id",
     "pi-session-id",
@@ -1737,6 +2009,8 @@ function readAgentSessionHeader(headers: Record<string, string | string[]>, agen
   ];
   const orderedHeaders = agent === "zcode"
     ? [...zcodeHeaders, ...codexHeaders, ...commonHeaders, ...claudeCodeHeaders]
+    : agent === "workbuddy"
+      ? [...workbuddyHeaders, ...codexHeaders, ...commonHeaders, ...claudeCodeHeaders]
     : agent === "pi"
       ? [...piHeaders, ...commonHeaders, ...codexHeaders, ...claudeCodeHeaders]
     : agent === "codex"
@@ -1882,13 +2156,65 @@ function extractSubagentModel(
   }
 
   for (const payload of requestPayloads) {
-    const match = stringifyForSearch(payload).match(/<CCR-SUBAGENT-MODEL>(.*?)<\/CCR-SUBAGENT-MODEL>/s);
-    if (match?.[1]?.trim()) {
-      return match[1].trim();
+    const model = extractPayloadSubagentModel(payload);
+    if (model) {
+      return model;
     }
   }
 
   return undefined;
+}
+
+function extractPayloadSubagentModel(payload: unknown): string | undefined {
+  if (!isRecord(payload)) {
+    return undefined;
+  }
+
+  const systemModel = extractSubagentModelFromContent(payload.system);
+  if (systemModel) {
+    return systemModel;
+  }
+
+  if (!Array.isArray(payload.messages)) {
+    return undefined;
+  }
+  for (const message of payload.messages.slice(0, 2)) {
+    if (!isRecord(message) || message.role !== "user") {
+      continue;
+    }
+    const model = extractSubagentModelFromContent(message.content);
+    if (model) {
+      return model;
+    }
+  }
+  return undefined;
+}
+
+function extractSubagentModelFromContent(content: unknown): string | undefined {
+  if (typeof content === "string") {
+    return extractSubagentModelFromText(content);
+  }
+  if (!Array.isArray(content)) {
+    return undefined;
+  }
+  for (const block of content) {
+    const text = typeof block === "string"
+      ? block
+      : isRecord(block) && typeof block.text === "string"
+        ? block.text
+        : undefined;
+    const model = text ? extractSubagentModelFromText(text) : undefined;
+    if (model) {
+      return model;
+    }
+  }
+  return undefined;
+}
+
+function extractSubagentModelFromText(text: string): string | undefined {
+  const match = text.match(/<CCR-SUBAGENT-MODEL>(.*?)<\/CCR-SUBAGENT-MODEL>/s);
+  const model = match?.[1]?.trim();
+  return model && model.toLowerCase() !== "provider/model" ? model : undefined;
 }
 
 function parseLogBodyPayloads(body: RequestLogBody | undefined): unknown[] {
@@ -1902,6 +2228,503 @@ function parseLogBodyPayloads(body: RequestLogBody | undefined): unknown[] {
   }
 
   return parseStreamPayloads(body.text);
+}
+
+function extractConversationMessages(
+  entry: StoredRequestLogEntry,
+  requestPayloads: unknown[],
+  responsePayloads: unknown[],
+  toolCalls: AgentToolCallDetail[]
+): AgentConversationMessages | undefined {
+  const userText = latestUserText(requestPayloads);
+  const assistantText = assistantTextFromPayloads(responsePayloads) ?? toolCallConversationText(toolCalls);
+  const user = conversationMessagePreview(userText, entry.requestBody);
+  const assistant = conversationMessagePreview(assistantText, entry.responseBody);
+  const messages = conversationItemsFromPayloads(entry, requestPayloads, assistantText);
+  if (!user && !assistant && messages.length === 0) {
+    return undefined;
+  }
+  return {
+    ...(assistant ? { assistant } : {}),
+    ...(messages.length > 0 ? { messages } : {}),
+    ...(user ? { user } : {})
+  };
+}
+
+function latestUserText(payloads: unknown[]): string | undefined {
+  const candidates = payloads.flatMap(userTextCandidates);
+  for (let index = candidates.length - 1; index >= 0; index -= 1) {
+    const candidate = normalizeConversationText(candidates[index]);
+    if (candidate) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+function userTextCandidates(payload: unknown): string[] {
+  if (!isRecord(payload)) {
+    return [];
+  }
+
+  const candidates: string[] = [];
+  if (Array.isArray(payload.messages)) {
+    for (const message of payload.messages) {
+      if (!isRecord(message) || asString(message.role) !== "user") {
+        continue;
+      }
+      const text = contentText(message.content ?? message.text);
+      if (text) candidates.push(text);
+    }
+  }
+
+  if (typeof payload.input === "string") {
+    candidates.push(payload.input);
+  } else if (Array.isArray(payload.input)) {
+    for (const item of payload.input) {
+      if (typeof item === "string") {
+        candidates.push(item);
+      } else if (isRecord(item) && asString(item.role) === "user") {
+        const text = contentText(item.content ?? item.text ?? item.input);
+        if (text) candidates.push(text);
+      }
+    }
+  }
+
+  if (Array.isArray(payload.contents)) {
+    candidates.push(...geminiContentTexts(payload.contents, "user"));
+  }
+
+  const prompt = asString(payload.prompt);
+  if (prompt) {
+    candidates.push(prompt);
+  }
+  return candidates;
+}
+
+function conversationItemsFromPayloads(
+  entry: StoredRequestLogEntry,
+  requestPayloads: unknown[],
+  assistantText: string | undefined
+): AgentAnalysisConversationItem[] {
+  const items: AgentAnalysisConversationItem[] = [];
+
+  requestPayloads.forEach((payload, payloadIndex) => {
+    items.push(...requestConversationItems(payload, entry.requestBody, `request:${payloadIndex}`));
+  });
+
+  if (items.length === 0) {
+    const latestUser = latestUserText(requestPayloads);
+    const user = conversationItemPreview("user", latestUser, entry.requestBody, "request:fallback:user");
+    if (user) {
+      items.push(user);
+    }
+  }
+
+  const assistant = conversationItemPreview("assistant", assistantText, entry.responseBody, "response:assistant");
+  if (assistant) {
+    items.push(assistant);
+  }
+
+  return dedupeConversationItems(items);
+}
+
+function requestConversationItems(
+  payload: unknown,
+  body: RequestLogBody | undefined,
+  idPrefix: string
+): AgentAnalysisConversationItem[] {
+  if (!isRecord(payload)) {
+    return [];
+  }
+
+  const items: AgentAnalysisConversationItem[] = [];
+  const systemText = contentText(payload.system ?? payload.system_prompt ?? payload.systemPrompt ?? payload.instructions);
+  const system = conversationItemPreview("system", systemText, body, `${idPrefix}:system`);
+  if (system) {
+    items.push(system);
+  }
+
+  if (Array.isArray(payload.messages)) {
+    payload.messages.forEach((message, index) => {
+      const item = conversationItemFromMessage(message, body, `${idPrefix}:messages:${index}`);
+      if (item) {
+        items.push(item);
+      }
+    });
+  }
+
+  if (Array.isArray(payload.input)) {
+    payload.input.forEach((message, index) => {
+      const item = conversationItemFromMessage(message, body, `${idPrefix}:input:${index}`);
+      if (item) {
+        items.push(item);
+      }
+    });
+  } else if (typeof payload.input === "string") {
+    const item = conversationItemPreview("user", payload.input, body, `${idPrefix}:input`);
+    if (item) {
+      items.push(item);
+    }
+  }
+
+  if (Array.isArray(payload.contents)) {
+    payload.contents.forEach((message, index) => {
+      const item = conversationItemFromGeminiContent(message, body, `${idPrefix}:contents:${index}`);
+      if (item) {
+        items.push(item);
+      }
+    });
+  }
+
+  const prompt = asString(payload.prompt);
+  if (prompt) {
+    const item = conversationItemPreview("user", prompt, body, `${idPrefix}:prompt`);
+    if (item) {
+      items.push(item);
+    }
+  }
+
+  return items;
+}
+
+function conversationItemFromMessage(
+  value: unknown,
+  body: RequestLogBody | undefined,
+  id: string
+): AgentAnalysisConversationItem | undefined {
+  if (typeof value === "string") {
+    return conversationItemPreview("user", value, body, id);
+  }
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const role = normalizeConversationRole(asString(value.role) ?? asString(value.type));
+  const content = contentText(value.content ?? value.text ?? value.input ?? value.output);
+  return conversationItemPreview(conversationRoleForContent(role, content), content, body, id);
+}
+
+function conversationItemFromGeminiContent(
+  value: unknown,
+  body: RequestLogBody | undefined,
+  id: string
+): AgentAnalysisConversationItem | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const role = normalizeConversationRole(asString(value.role));
+  const content = contentText(value.parts ?? value.content ?? value.text);
+  return conversationItemPreview(conversationRoleForContent(role, content), content, body, id);
+}
+
+function conversationItemPreview(
+  role: AgentAnalysisConversationRole,
+  value: string | undefined,
+  body: RequestLogBody | undefined,
+  id: string
+): AgentAnalysisConversationItem | undefined {
+  const normalized = normalizeConversationText(value);
+  if (!normalized) {
+    return undefined;
+  }
+  return {
+    content: normalized,
+    id,
+    role,
+    sourcePreview: Boolean(body?.preview),
+    sourceTruncated: Boolean(body?.truncated),
+    truncated: false
+  };
+}
+
+function normalizeConversationRole(value: string | undefined): AgentAnalysisConversationRole {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "assistant" || normalized === "model") return "assistant";
+  if (normalized === "developer") return "developer";
+  if (normalized === "system") return "system";
+  if (normalized === "tool" || normalized === "function" || normalized === "function_call_output" || normalized === "tool_result") return "tool";
+  if (normalized === "context" || normalized === "system-reminder") return "context";
+  return "user";
+}
+
+function conversationRoleForContent(role: AgentAnalysisConversationRole, content: string | undefined): AgentAnalysisConversationRole {
+  if (role !== "user") {
+    return role;
+  }
+  const normalized = content?.trim().toLowerCase() ?? "";
+  if (
+    normalized.startsWith("<system-reminder>") ||
+    normalized.startsWith("current runtime context.") ||
+    normalized.startsWith("this snapshot supersedes earlier runtime-context snapshots.")
+  ) {
+    return "context";
+  }
+  return role;
+}
+
+function dedupeConversationItems(items: AgentAnalysisConversationItem[]): AgentAnalysisConversationItem[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = `${item.role}\n${item.content}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function assistantTextFromPayloads(payloads: unknown[]): string | undefined {
+  let streamed = "";
+  const fullTexts: string[] = [];
+  for (const payload of payloads) {
+    streamed += assistantStreamText(payload);
+    fullTexts.push(...assistantFullTextCandidates(payload));
+  }
+
+  const streamedText = normalizeConversationText(streamed);
+  if (streamedText) {
+    return streamedText;
+  }
+  return normalizeConversationText(fullTexts.join("\n\n")) || undefined;
+}
+
+function assistantStreamText(payload: unknown): string {
+  if (Array.isArray(payload)) {
+    return payload.map(assistantStreamText).join("");
+  }
+  if (!isRecord(payload)) {
+    return "";
+  }
+
+  const chunks: string[] = [];
+  const type = asString(payload.type);
+  const delta = isRecord(payload.delta) ? payload.delta : undefined;
+  if ((type === "content_block_start" || type === "content_block_delta") && delta) {
+    const text = asString(delta.text) || asString(delta.partial_json);
+    if (text && asString(delta.type) !== "input_json_delta") {
+      chunks.push(text);
+    }
+  }
+  if (type === "content_block_start" && isRecord(payload.content_block)) {
+    const text = contentText(payload.content_block);
+    if (text) chunks.push(text);
+  }
+  if (
+    type === "response.output_text.delta" ||
+    type === "response.refusal.delta" ||
+    type === "response.output_text.done" ||
+    type === "response.refusal.done"
+  ) {
+    const text = asString(payload.delta) || asString(payload.text);
+    if (text) chunks.push(text);
+  }
+  if (type === "response.content_part.done" && isRecord(payload.part)) {
+    const text = contentText(payload.part);
+    if (text) chunks.push(text);
+  }
+  if (type === "response.output_item.done" && isRecord(payload.item)) {
+    chunks.push(...assistantFullTextCandidates(payload.item));
+  }
+
+  if (Array.isArray(payload.choices)) {
+    for (const choice of payload.choices) {
+      if (!isRecord(choice)) continue;
+      const choiceDelta = isRecord(choice.delta) ? choice.delta : undefined;
+      const text = contentText(choiceDelta?.content ?? choiceDelta?.text);
+      if (text) chunks.push(text);
+    }
+  }
+  return chunks.join("");
+}
+
+function assistantFullTextCandidates(payload: unknown): string[] {
+  if (Array.isArray(payload)) {
+    return payload.flatMap(assistantFullTextCandidates);
+  }
+  if (!isRecord(payload)) {
+    return [];
+  }
+
+  const candidates: string[] = [];
+  const payloadType = asString(payload.type);
+  const outputText = asString(payload.output_text);
+  if (outputText) {
+    candidates.push(outputText);
+    return candidates;
+  }
+  if (payloadType === "response.output_text.done" || payloadType === "response.refusal.done") {
+    const text = asString(payload.text);
+    if (text) candidates.push(text);
+  }
+
+  if (Array.isArray(payload.choices)) {
+    for (const choice of payload.choices) {
+      if (!isRecord(choice)) continue;
+      const message = isRecord(choice.message) ? choice.message : undefined;
+      const text = contentText(message?.content ?? message?.text);
+      if (text) candidates.push(text);
+    }
+  }
+
+  const message = isRecord(payload.message) ? payload.message : undefined;
+  if (message && (asString(message.role) === "assistant" || message.content !== undefined || message.text !== undefined)) {
+    const text = contentText(message.content ?? message.text);
+    if (text) candidates.push(text);
+  }
+
+  const role = asString(payload.role);
+  if (role === "assistant") {
+    const text = contentText(payload.content ?? payload.text);
+    if (text) candidates.push(text);
+  } else if (payload.content !== undefined && !Array.isArray(payload.messages)) {
+    const text = contentText(payload.content);
+    if (text) candidates.push(text);
+  }
+
+  if (Array.isArray(payload.output)) {
+    for (const item of payload.output) {
+      if (!isRecord(item)) continue;
+      const itemType = asString(item.type);
+      const itemRole = asString(item.role);
+      if (itemType === "message" || itemRole === "assistant") {
+        const text = contentText(item.content ?? item.text);
+        if (text) candidates.push(text);
+      } else if (itemType === "output_text") {
+        const text = contentText(item.text ?? item.content);
+        if (text) candidates.push(text);
+      }
+    }
+  }
+
+  if (isRecord(payload.response)) {
+    const responseText = asString(payload.response.output_text);
+    if (responseText) {
+      candidates.push(responseText);
+    } else {
+      candidates.push(...assistantFullTextCandidates(payload.response));
+    }
+  }
+
+  if (isRecord(payload.part)) {
+    const text = contentText(payload.part);
+    if (text) candidates.push(text);
+  }
+
+  if (isRecord(payload.item)) {
+    candidates.push(...assistantFullTextCandidates(payload.item));
+  }
+
+  if (Array.isArray(payload.candidates)) {
+    for (const candidate of payload.candidates) {
+      if (!isRecord(candidate)) continue;
+      const content = isRecord(candidate.content) ? candidate.content : undefined;
+      const text = contentText(content?.parts ?? content?.content ?? content);
+      if (text) candidates.push(text);
+    }
+  }
+
+  return candidates;
+}
+
+function geminiContentTexts(contents: unknown[], role: "model" | "user"): string[] {
+  const texts: string[] = [];
+  for (const content of contents) {
+    if (!isRecord(content) || asString(content.role) !== role) {
+      continue;
+    }
+    const text = contentText(content.parts ?? content.content ?? content.text);
+    if (text) texts.push(text);
+  }
+  return texts;
+}
+
+function contentText(value: unknown): string | undefined {
+  const parts: string[] = [];
+  collectContentText(value, parts);
+  return normalizeConversationText(parts.join("\n"));
+}
+
+function collectContentText(value: unknown, parts: string[]): void {
+  if (typeof value === "string") {
+    parts.push(value);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectContentText(item, parts);
+    }
+    return;
+  }
+  if (!isRecord(value)) {
+    return;
+  }
+
+  const type = asString(value.type)?.toLowerCase() ?? "";
+  if (type === "tool_result" || type === "function_call_output" || type === "tool_call_output") {
+    return;
+  }
+  if (type.includes("image")) {
+    parts.push("[image]");
+    return;
+  }
+  if (type.includes("audio")) {
+    parts.push("[audio]");
+    return;
+  }
+  if (isRecord(value.inline_data) || isRecord(value.inlineData)) {
+    parts.push("[media]");
+    return;
+  }
+
+  const text =
+    asString(value.text) ??
+    asString(value.input_text) ??
+    asString(value.output_text);
+  if (text) {
+    parts.push(text);
+    return;
+  }
+  if (value.content !== undefined) {
+    collectContentText(value.content, parts);
+    return;
+  }
+  if (Array.isArray(value.parts)) {
+    collectContentText(value.parts, parts);
+  }
+}
+
+function toolCallConversationText(toolCalls: AgentToolCallDetail[]): string | undefined {
+  if (toolCalls.length === 0) {
+    return undefined;
+  }
+  return toolCalls.map((tool) => {
+    const input = tool.input?.preview.trim();
+    return input ? `Tool call: ${tool.name}\n${input}` : `Tool call: ${tool.name}`;
+  }).join("\n\n");
+}
+
+function conversationMessagePreview(
+  value: string | undefined,
+  body: RequestLogBody | undefined
+): AgentAnalysisConversationMessage | undefined {
+  const normalized = normalizeConversationText(value);
+  if (!normalized) {
+    return undefined;
+  }
+  return {
+    content: normalized,
+    sourcePreview: Boolean(body?.preview),
+    sourceTruncated: Boolean(body?.truncated),
+    truncated: false
+  };
+}
+
+function normalizeConversationText(value: string | undefined): string {
+  return (value ?? "")
+    .replace(/\r\n/g, "\n")
+    .trim();
 }
 
 function extractToolCalls(payloads: unknown[]): AgentToolCallDetail[] {
@@ -2121,7 +2944,7 @@ function remapStreamedToolCall(state: ToolCallStreamState, index: string, id: st
   state.calls.delete(previousId);
 }
 
-function extractToolResults(payloads: unknown[], entry: StoredRequestLogEntry): AgentToolResultDetail[] {
+function extractToolResults(payloads: unknown[], entry: AgentToolResultSource): AgentToolResultDetail[] {
   const results = new Map<string, AgentToolResultDetail>();
   for (const payload of payloads) {
     collectToolResults(payload, entry, results);
@@ -2131,7 +2954,7 @@ function extractToolResults(payloads: unknown[], entry: StoredRequestLogEntry): 
 
 function collectToolResults(
   value: unknown,
-  entry: StoredRequestLogEntry,
+  entry: AgentToolResultSource,
   results: Map<string, AgentToolResultDetail>
 ): void {
   if (Array.isArray(value)) {
@@ -2152,23 +2975,35 @@ function collectToolResults(
     asString(value.call_id) ||
     asString(value.id);
   const looksLikeToolResult =
-    type === "tool_result" ||
-    type === "function_call_output" ||
-    type === "tool_call_output" ||
+    isToolResultPayloadType(type) ||
     (role === "tool" && Boolean(value.tool_call_id));
 
-  if (looksLikeToolResult && id) {
-    results.set(id, {
-      id,
-      requestId: entry.requestId,
-      requestLogId: entry.id,
-      result: payloadPreview(value.content ?? value.output ?? value.result ?? value.text)
-    });
+  if (looksLikeToolResult) {
+    const result = payloadPreview(value.content ?? value.output ?? value.result ?? value.text);
+    if (result) {
+      const key = id || `tool-result:${results.size}`;
+      results.set(key, {
+        id: key,
+        requestId: entry.requestId,
+        requestLogId: entry.id,
+        result
+      });
+    }
   }
 
   for (const item of Object.values(value)) {
     collectToolResults(item, entry, results);
   }
+}
+
+function isToolResultPayloadType(value: string | undefined): boolean {
+  const type = value?.trim().toLowerCase();
+  return (
+    type === "tool_result" ||
+    type === "function_call_output" ||
+    type === "tool_call_output" ||
+    type === "custom_tool_call_output"
+  );
 }
 
 function payloadPreview(value: unknown): AgentAnalysisTracePayloadPreview | undefined {
@@ -2296,7 +3131,7 @@ function findToolResultPayload(payloads: unknown[], callId: string | undefined):
   if (callId && results.has(callId)) {
     return { found: true, value: results.get(callId) };
   }
-  if (!callId && results.size === 1) {
+  if (results.size === 1) {
     return { found: true, value: Array.from(results.values())[0] };
   }
   return { found: false };
@@ -2321,13 +3156,14 @@ function collectToolResultPayloads(value: unknown, results: Map<string, unknown>
     asString(value.call_id) ||
     asString(value.id);
   const looksLikeToolResult =
-    type === "tool_result" ||
-    type === "function_call_output" ||
-    type === "tool_call_output" ||
+    isToolResultPayloadType(type) ||
     (role === "tool" && Boolean(value.tool_call_id));
 
-  if (looksLikeToolResult && id) {
-    results.set(id, value.content ?? value.output ?? value.result ?? value.text);
+  if (looksLikeToolResult) {
+    const result = value.content ?? value.output ?? value.result ?? value.text;
+    if (result !== undefined) {
+      results.set(id || `tool-result:${results.size}`, result);
+    }
   }
 
   for (const item of Object.values(value)) {
@@ -2531,28 +3367,85 @@ function selectAgentSessionRequests(
 }
 
 function buildAgentSessionDetail(
-  sessionRequests: AnalyzedAgentRequest[]
+  sessionRequests: AnalyzedAgentRequest[],
+  bodyDir?: string
 ): AgentAnalysisSessionDetail | undefined {
   if (sessionRequests.length === 0) {
     return undefined;
   }
+  const extraToolResults = bodyDir
+    ? collectSessionToolResultsFromFullBodies(sessionRequests, bodyDir)
+    : [];
 
   return {
+    conversation: buildAgentConversationTurns(sessionRequests),
     endpoints: buildAgentEndpointRows(sessionRequests),
     errors: buildAgentErrorRows(sessionRequests),
     models: buildAgentSessionModelRows(sessionRequests),
-    requests: sessionRequests.slice(-maxAgentSessionDetailRequests).reverse().map(stripAnalysisInternals),
+    requests: [...sessionRequests].reverse().map(stripAnalysisInternals),
     routes: buildAgentRouteRows(sessionRequests),
     session: buildAgentSessionRow(sessionRequests),
     statusCodes: buildStatusCodeCounts(sessionRequests),
     subagents: buildAgentSubagentRows(sessionRequests),
     tools: buildAgentToolRows(sessionRequests),
     totals: buildAgentAnalysisTotals(sessionRequests),
-    trace: buildAgentTrace(sessionRequests)
+    trace: buildAgentTrace(sessionRequests, extraToolResults)
   };
 }
 
-function buildAgentTrace(requests: AnalyzedAgentRequest[]): AgentAnalysisTrace {
+function collectSessionToolResultsFromFullBodies(
+  requests: AnalyzedAgentRequest[],
+  bodyDir: string
+): AgentToolResultDetail[] {
+  const neededCallIds = new Set(
+    requests.flatMap((request) => request.toolCalls.map((tool) => tool.id).filter((id): id is string => Boolean(id)))
+  );
+  if (neededCallIds.size === 0) {
+    return [];
+  }
+
+  const results = new Map<string, AgentToolResultDetail>();
+  const orderedRequests = [...requests]
+    .filter((request) => Boolean(request.requestBody.bodyRef))
+    .sort((a, b) => b.startedAtMs - a.startedAtMs || b.id - a.id);
+
+  for (const request of orderedRequests) {
+    const body = hydrateRequestLogBodyFromRef(bodyDir, request.requestBody);
+    if (!body || body === request.requestBody || body.encoding !== "utf8") {
+      continue;
+    }
+
+    const payloads = parseLogBodyPayloads(body);
+    const extracted = extractToolResults(payloads, {
+      id: request.id,
+      requestId: request.requestId
+    });
+    for (const result of extracted) {
+      const existing = results.get(result.id);
+      if (!existing || (!existing.result && result.result)) {
+        results.set(result.id, result);
+      }
+      neededCallIds.delete(result.id);
+    }
+    if (neededCallIds.size === 0) {
+      break;
+    }
+  }
+
+  return Array.from(results.values());
+}
+
+function buildAgentConversationTurns(requests: AnalyzedAgentRequest[]): AgentAnalysisConversationTurn[] {
+  return [...requests]
+    .sort((a, b) => a.startedAtMs - b.startedAtMs || a.id - b.id)
+    .map((request) => request.conversation)
+    .filter((turn): turn is AgentAnalysisConversationTurn => Boolean(turn));
+}
+
+function buildAgentTrace(
+  requests: AnalyzedAgentRequest[],
+  extraToolResults: AgentToolResultDetail[] = []
+): AgentAnalysisTrace {
   const ordered = [...requests].sort((a, b) => a.startedAtMs - b.startedAtMs || a.id - b.id);
   const first = ordered[0];
   const sessionId = first.sessionId;
@@ -2561,13 +3454,15 @@ function buildAgentTrace(requests: AnalyzedAgentRequest[]): AgentAnalysisTrace {
   const durationMs = Math.max(0, endMs - startMs);
   const totals = buildAgentAnalysisTotals(ordered);
   const rootRunId = `agent:${first.agent}:${sessionId}`;
-  const toolResults = buildToolResultMap(ordered);
+  const toolResults = buildToolResultLookup(ordered, extraToolResults);
+  let toolCallSequenceIndex = 0;
   const runs: AgentAnalysisTraceRun[] = [
     {
       agent: first.agent,
       cacheReadTokens: totals.cacheReadTokens,
       cacheWriteTokens: totals.cacheWriteTokens,
       concurrentRequests: totals.maxConcurrentRequests,
+      costUsd: totals.costUsd,
       depth: 0,
       durationMs,
       endedAt: isoFromMs(endMs),
@@ -2579,7 +3474,11 @@ function buildAgentTrace(requests: AnalyzedAgentRequest[]): AgentAnalysisTrace {
       outputTokens: totals.outputTokens,
       sessionId,
       startedAt: isoFromMs(startMs),
-      status: totals.errorCount > 0 ? "error" : "success",
+      status: totals.errorCount === 0
+        ? "success"
+        : totals.errorCount === totals.requestCount
+          ? "error"
+          : "partial",
       totalTokens: totals.totalTokens
     }
   ];
@@ -2602,7 +3501,7 @@ function buildAgentTrace(requests: AnalyzedAgentRequest[]): AgentAnalysisTrace {
       depth += 1;
     }
 
-    if (request.routeReason && !isInlineModelRouteReason(request.routeReason)) {
+    if (shouldCreateRouteTraceRun(request.routeReason)) {
       const run = requestTraceRun({
         depth,
         kind: "route",
@@ -2633,8 +3532,9 @@ function buildAgentTrace(requests: AnalyzedAgentRequest[]): AgentAnalysisTrace {
         parentId: llmRun.id,
         request,
         startMs,
-        tool: toolDetailForCall(toolCall, toolResults)
+        tool: toolDetailForCall(toolCall, toolResults, toolCallSequenceIndex)
       }));
+      toolCallSequenceIndex += 1;
     });
   }
 
@@ -2656,25 +3556,41 @@ function buildAgentTrace(requests: AnalyzedAgentRequest[]): AgentAnalysisTrace {
   };
 }
 
-function isInlineModelRouteReason(value: string | undefined): boolean {
-  return value?.trim().toLowerCase() === "inline-model";
+function shouldCreateRouteTraceRun(value: string | undefined): boolean {
+  const normalized = value?.trim().toLowerCase();
+  return Boolean(normalized && normalized !== "default" && normalized !== "inline-model");
 }
 
-function buildToolResultMap(requests: AnalyzedAgentRequest[]): Map<string, AgentToolResultDetail> {
-  const results = new Map<string, AgentToolResultDetail>();
-  for (const request of requests) {
-    for (const result of request.toolResults) {
-      results.set(result.id, result);
+function buildToolResultLookup(
+  requests: AnalyzedAgentRequest[],
+  extraResults: AgentToolResultDetail[] = []
+): AgentToolResultLookup {
+  const byId = new Map<string, AgentToolResultDetail>();
+  const ordered: AgentToolResultDetail[] = [];
+  const seenOrderedResults = new Set<string>();
+  const allResults = [
+    ...requests.flatMap((request) => request.toolResults),
+    ...extraResults
+  ];
+  for (const result of allResults) {
+    byId.set(result.id, result);
+    const orderedKey = result.id.startsWith("tool-result:")
+      ? `${result.result?.kind ?? "empty"}:${result.result?.preview ?? ""}`
+      : result.id;
+    if (!seenOrderedResults.has(orderedKey)) {
+      seenOrderedResults.add(orderedKey);
+      ordered.push(result);
     }
   }
-  return results;
+  return { byId, ordered };
 }
 
 function toolDetailForCall(
   call: AgentToolCallDetail,
-  results: Map<string, AgentToolResultDetail>
+  results: AgentToolResultLookup,
+  sequenceIndex: number
 ): AgentAnalysisTraceToolDetail {
-  const result = call.id ? results.get(call.id) : undefined;
+  const result = (call.id ? results.byId.get(call.id) : undefined) ?? results.ordered[sequenceIndex];
   return {
     callId: call.id,
     input: call.input,
@@ -2704,6 +3620,7 @@ function requestTraceRun({
     cacheReadTokens: request.cacheReadTokens,
     cacheWriteTokens: request.cacheWriteTokens,
     concurrentRequests: request.concurrentRequests,
+    costUsd: request.costUsd,
     depth,
     durationMs: request.durationMs,
     endedAt: isoFromMs(request.endedAtMs),
@@ -2984,7 +3901,10 @@ function maxConcurrentRequests(requests: AnalyzedAgentRequest[]): number {
 function stripAnalysisInternals(request: AnalyzedAgentRequest): AgentAnalysisRequestRow {
   const {
     completedAt: _completedAt,
+    conversation: _conversation,
     endedAtMs: _endedAtMs,
+    requestBody: _requestBody,
+    responseBody: _responseBody,
     startedAtMs: _startedAtMs,
     toolCalls: _toolCalls,
     toolResults: _toolResults,
@@ -3092,11 +4012,11 @@ function normalizeAgentAnalysisRange(value: UsageStatsRange | undefined): UsageS
 }
 
 function normalizeAgentFilter(value: AgentAnalysisFilter["agent"] | undefined): AgentKind | "all" {
-  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "kilo" || value === "opencode" || value === "pi" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "kilo" || value === "opencode" || value === "pi" || value === "workbuddy" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
 }
 
 function normalizeSessionAgentFilter(value: AgentAnalysisFilter["sessionAgent"] | undefined): AgentKind | undefined {
-  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "kilo" || value === "opencode" || value === "pi" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : undefined;
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "kilo" || value === "opencode" || value === "pi" || value === "workbuddy" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : undefined;
 }
 
 function agentDisplayName(agent: AgentKind): string {
@@ -3123,6 +4043,9 @@ function agentDisplayName(agent: AgentKind): string {
   }
   if (agent === "pi") {
     return "Pi";
+  }
+  if (agent === "workbuddy") {
+    return "Workbuddy";
   }
   if (agent === "zcode") {
     return "ZCode";
@@ -3356,11 +4279,13 @@ function ensureRequestLogSchema(database: SqlDatabase): void {
   addColumn("request_body_content_type", "TEXT NOT NULL DEFAULT ''");
   addColumn("request_body_size_bytes", "INTEGER NOT NULL DEFAULT 0");
   addColumn("request_body_truncated", "INTEGER NOT NULL DEFAULT 0");
+  addColumn("request_body_ref", "TEXT NOT NULL DEFAULT ''");
   addColumn("response_body_text", "TEXT NOT NULL DEFAULT ''");
   addColumn("response_body_encoding", "TEXT NOT NULL DEFAULT 'utf8'");
   addColumn("response_body_content_type", "TEXT NOT NULL DEFAULT ''");
   addColumn("response_body_size_bytes", "INTEGER NOT NULL DEFAULT 0");
   addColumn("response_body_truncated", "INTEGER NOT NULL DEFAULT 0");
+  addColumn("response_body_ref", "TEXT NOT NULL DEFAULT ''");
   addColumn("error", "TEXT NOT NULL DEFAULT ''");
 
   if (needsModelSummaryMigration) {
@@ -3952,11 +4877,13 @@ function readRequestLogById(database: SqlDatabase, id: number): StoredRequestLog
         request_body_content_type,
         request_body_size_bytes,
         request_body_truncated,
+        request_body_ref,
         response_body_text,
         response_body_encoding,
         response_body_content_type,
         response_body_size_bytes,
         response_body_truncated,
+        response_body_ref,
         error
       FROM request_logs
       WHERE rowid = ?
@@ -4030,12 +4957,45 @@ function bodyFromRow(row: Record<string, SqlValue>, prefix: "request" | "respons
 
   const encoding = String(row[`${prefix}_body_encoding`] ?? "utf8") === "base64" ? "base64" : "utf8";
   const contentType = normalizeFilterValue(String(row[`${prefix}_body_content_type`] ?? ""));
+  const bodyRef = normalizeFilterValue(String(row[`${prefix}_body_ref`] ?? ""));
   return {
+    ...(bodyRef ? { bodyRef, preview: true } : {}),
     contentType,
     encoding,
     sizeBytes,
     text,
     truncated: normalizeCount(row[`${prefix}_body_truncated`]) === 1
+  };
+}
+
+function hydrateRequestLogBodyFromRef(bodyDir: string, body: RequestLogBody | undefined): RequestLogBody | undefined {
+  if (!body?.bodyRef || body.encoding !== "utf8") {
+    return body;
+  }
+  const filePath = requestLogBodyPath(bodyDir, body.bodyRef);
+  if (!filePath || !existsSync(filePath)) {
+    return body;
+  }
+  const buffer = readFileSync(filePath);
+  return {
+    ...body,
+    preview: false,
+    sizeBytes: Math.max(body.sizeBytes, buffer.byteLength),
+    text: new StringDecoder("utf8").write(buffer)
+  };
+}
+
+function bodyMetaForAnalysis(body: RequestLogBody | undefined): RequestLogBody | undefined {
+  if (!body) {
+    return undefined;
+  }
+  return {
+    ...(body.bodyRef ? { bodyRef: body.bodyRef, preview: true } : {}),
+    contentType: body.contentType,
+    encoding: body.encoding,
+    sizeBytes: body.sizeBytes,
+    text: "",
+    truncated: body.truncated
   };
 }
 
@@ -4087,17 +5047,35 @@ function readDistinctValues(database: SqlDatabase, column: "credential_id" | "mo
     .filter(Boolean);
 }
 
-function bodyFromBuffer(buffer: Buffer, contentType?: string): RequestLogBody {
+type RequestLogBodyStorageOptions = {
+  bodyDir: string;
+  bodyRef?: string;
+  side: RequestLogBodySide;
+};
+
+function bodyFromBuffer(
+  buffer: Buffer,
+  contentType?: string,
+  storage?: RequestLogBodyStorageOptions
+): RequestLogBody {
   const compacted = compactBase64ImagePayloads(buffer);
   const exceedsCaptureLimit = compacted.buffer.byteLength > maxBodyBytes;
   const data = exceedsCaptureLimit ? compacted.buffer.subarray(0, maxBodyBytes) : compacted.buffer;
   const textLike = isTextLikeContentType(contentType);
+  const stored = textLike && storage
+    ? storeBodyBuffer(storage.bodyDir, buffer, storage.bodyRef, compacted.buffer)
+    : undefined;
+  const text = textLike
+    ? stored?.previewText ?? data.toString("utf8")
+    : data.toString("base64");
+  const truncated = !stored && (compacted.compacted || exceedsCaptureLimit);
   return {
+    ...(stored ? { bodyRef: stored.bodyRef, preview: true } : {}),
     contentType,
     encoding: textLike ? "utf8" : "base64",
     sizeBytes: buffer.byteLength,
-    text: textLike ? data.toString("utf8") : data.toString("base64"),
-    truncated: compacted.compacted || exceedsCaptureLimit
+    text,
+    truncated
   };
 }
 
@@ -4106,20 +5084,29 @@ function bodyFromText(
   contentType?: string,
   alreadyTruncated = false,
   originalSizeBytes?: number,
-  captureLimitBytes = maxBodyBytes
+  captureLimitBytes = maxBodyBytes,
+  storage?: RequestLogBodyStorageOptions
 ): RequestLogBody {
   const buffer = Buffer.from(text);
   const sizeBytes = Math.max(buffer.byteLength, normalizeCount(originalSizeBytes));
   const compacted = compactBase64ImagePayloads(buffer);
-  const truncated = alreadyTruncated || compacted.compacted || buffer.byteLength < sizeBytes ||
-    compacted.buffer.byteLength > captureLimitBytes;
   const exceedsCaptureLimit = compacted.buffer.byteLength > captureLimitBytes;
   const data = exceedsCaptureLimit ? compacted.buffer.subarray(0, captureLimitBytes) : compacted.buffer;
+  const stored = storage
+    ? storeBodyBuffer(storage.bodyDir, buffer, storage.bodyRef, compacted.buffer)
+    : undefined;
+  const truncated = alreadyTruncated || (!stored && (
+    compacted.compacted ||
+    buffer.byteLength < sizeBytes ||
+    exceedsCaptureLimit
+  ));
+  const bodyText = stored?.previewText ?? (exceedsCaptureLimit ? new StringDecoder("utf8").write(data) : data.toString("utf8"));
   return {
+    ...(stored ? { bodyRef: stored.bodyRef, preview: true } : {}),
     contentType,
     encoding: "utf8",
     sizeBytes,
-    text: exceedsCaptureLimit ? new StringDecoder("utf8").write(data) : data.toString("utf8"),
+    text: bodyText,
     truncated
   };
 }
@@ -4140,6 +5127,231 @@ function pushBodyValues(
   params.push(body.sizeBytes);
   sets.push(`${prefix}_body_truncated = ?`);
   params.push(body.truncated ? 1 : 0);
+  sets.push(`${prefix}_body_ref = ?`);
+  params.push(body.bodyRef ?? "");
+}
+
+type StoredRequestLogBodyFile = {
+  bodyRef: string;
+  contentType?: string;
+  previewText: string;
+  sizeBytes: number;
+  truncated: boolean;
+};
+
+function storeRawTraceBodyFile(
+  bodyDir: string,
+  file: RequestLogRawTraceFile | undefined
+): StoredRequestLogBodyFile | undefined {
+  if (!file || file.sizeBytes <= 0 || !existsSync(file.filePath)) {
+    return undefined;
+  }
+  const bodyRef = createRequestLogBodyRef();
+  const target = requestLogBodyPath(bodyDir, bodyRef, true);
+  if (!target) {
+    return undefined;
+  }
+  copyFileSync(file.filePath, target);
+  const storedBytes = statSync(target).size;
+  const sizeBytes = Math.max(file.sizeBytes, storedBytes);
+  return {
+    bodyRef,
+    contentType: file.contentType,
+    previewText: readRequestLogBodyPreview(target),
+    sizeBytes,
+    truncated: Boolean(file.truncated) || storedBytes < sizeBytes
+  };
+}
+
+function storeBodyBuffer(
+  bodyDir: string,
+  buffer: Buffer,
+  existingBodyRef?: string,
+  previewBuffer = buffer
+): { bodyRef: string; previewText: string } | undefined {
+  const shouldStore = Boolean(existingBodyRef) || buffer.byteLength > requestLogInlineBodyBytes;
+  if (!shouldStore) {
+    return undefined;
+  }
+  const bodyRef = normalizeBodyRef(existingBodyRef) ?? createRequestLogBodyRef();
+  const target = requestLogBodyPath(bodyDir, bodyRef, true);
+  if (!target) {
+    return undefined;
+  }
+  if (existingBodyRef && existsSync(target)) {
+    return {
+      bodyRef,
+      previewText: previewBuffer.byteLength > 0
+        ? createRequestLogBodyPreviewText(previewBuffer)
+        : readRequestLogBodyPreview(target)
+    };
+  }
+  if (!existingBodyRef || !existsSync(target)) {
+    writeFileSync(target, buffer);
+  }
+  return {
+    bodyRef,
+    previewText: createRequestLogBodyPreviewText(buffer)
+  };
+}
+
+function readRequestLogBodyChunkFromFile({
+  bodyRef,
+  contentType,
+  encoding,
+  filePath,
+  length,
+  offset,
+  sizeBytes,
+  truncated
+}: {
+  bodyRef: string;
+  contentType?: string;
+  encoding: "base64" | "utf8";
+  filePath: string;
+  length: number;
+  offset: number;
+  sizeBytes: number;
+  truncated: boolean;
+}): RequestLogBodyChunk {
+  const descriptor = openSync(filePath, "r");
+  try {
+    const storedBytes = fstatSync(descriptor).size;
+    const boundedOffset = Math.max(0, Math.min(offset, storedBytes));
+    const readLength = Math.max(0, Math.min(
+      encoding === "utf8" ? Math.max(length, 4) : length,
+      storedBytes - boundedOffset
+    ));
+    const buffer = Buffer.allocUnsafe(readLength);
+    let bytesRead = 0;
+    while (bytesRead < readLength) {
+      const count = readSync(descriptor, buffer, bytesRead, readLength - bytesRead, boundedOffset + bytesRead);
+      if (count === 0) break;
+      bytesRead += count;
+    }
+    const data = bytesRead === buffer.byteLength ? buffer : buffer.subarray(0, bytesRead);
+    const safeLength = encoding === "utf8" && boundedOffset + data.byteLength < storedBytes
+      ? validUtf8PrefixLength(data)
+      : data.byteLength;
+    const safeData = safeLength > 0 ? data.subarray(0, safeLength) : data;
+    const nextOffset = boundedOffset + safeData.byteLength;
+    return {
+      bodyRef,
+      contentType,
+      encoding,
+      eof: nextOffset >= storedBytes,
+      length: safeData.byteLength,
+      ...(nextOffset < storedBytes ? { nextOffset } : {}),
+      offset: boundedOffset,
+      sizeBytes: Math.max(sizeBytes, storedBytes),
+      text: encoding === "base64" ? safeData.toString("base64") : new StringDecoder("utf8").write(safeData),
+      truncated
+    };
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+function validUtf8PrefixLength(buffer: Buffer): number {
+  if (buffer.byteLength === 0) return 0;
+  let leadIndex = buffer.byteLength - 1;
+  while (leadIndex >= 0 && (buffer[leadIndex] & 0xc0) === 0x80) {
+    leadIndex -= 1;
+  }
+  if (leadIndex < 0) return 0;
+  const lead = buffer[leadIndex];
+  if ((lead & 0x80) === 0) return buffer.byteLength;
+  const continuationBytes = buffer.byteLength - leadIndex - 1;
+  const expectedContinuationBytes = (lead & 0xe0) === 0xc0
+    ? 1
+    : (lead & 0xf0) === 0xe0
+      ? 2
+      : (lead & 0xf8) === 0xf0
+        ? 3
+        : 0;
+  if (expectedContinuationBytes === 0) return leadIndex;
+  return continuationBytes >= expectedContinuationBytes ? buffer.byteLength : leadIndex;
+}
+
+function readRequestLogBodyPreview(filePath: string): string {
+  const descriptor = openSync(filePath, "r");
+  try {
+    const size = fstatSync(descriptor).size;
+    if (size <= requestLogInlineBodyBytes) {
+      const buffer = Buffer.allocUnsafe(size);
+      readSync(descriptor, buffer, 0, size, 0);
+      return new StringDecoder("utf8").write(buffer);
+    }
+    const headBytes = Math.floor(requestLogInlineBodyBytes * 0.65);
+    const tailBytes = requestLogInlineBodyBytes - headBytes;
+    const head = Buffer.allocUnsafe(headBytes);
+    const tail = Buffer.allocUnsafe(tailBytes);
+    const headRead = readSync(descriptor, head, 0, headBytes, 0);
+    const tailRead = readSync(descriptor, tail, 0, tailBytes, Math.max(0, size - tailBytes));
+    return createRequestLogPreviewFromParts(
+      head.subarray(0, headRead),
+      tail.subarray(0, tailRead),
+      Math.max(0, size - headRead - tailRead)
+    );
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+function createRequestLogBodyPreviewText(buffer: Buffer): string {
+  if (buffer.byteLength <= requestLogInlineBodyBytes) {
+    return new StringDecoder("utf8").write(buffer);
+  }
+  const headBytes = Math.floor(requestLogInlineBodyBytes * 0.65);
+  const tailBytes = requestLogInlineBodyBytes - headBytes;
+  return createRequestLogPreviewFromParts(
+    buffer.subarray(0, headBytes),
+    buffer.subarray(Math.max(0, buffer.byteLength - tailBytes)),
+    Math.max(0, buffer.byteLength - headBytes - tailBytes)
+  );
+}
+
+function createRequestLogPreviewFromParts(head: Buffer, tail: Buffer, omittedBytes: number): string {
+  return [
+    new StringDecoder("utf8").write(head),
+    "",
+    `... ${omittedBytes} bytes omitted from preview ...`,
+    "",
+    new StringDecoder("utf8").write(tail)
+  ].join("\n");
+}
+
+function createRequestLogBodyRef(): string {
+  return randomUUID();
+}
+
+function requestLogBodyPath(bodyDir: string, bodyRef: string, createDirectory = false): string | undefined {
+  const normalized = normalizeBodyRef(bodyRef);
+  if (!normalized) {
+    return undefined;
+  }
+  const shard = normalized.slice(0, 2);
+  const directory = join(bodyDir, shard);
+  if (createDirectory) {
+    mkdirSync(directory, { recursive: true });
+  }
+  return join(directory, normalized);
+}
+
+function normalizeBodyRef(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  if (!normalized || !/^[A-Za-z0-9._-]+$/.test(normalized)) {
+    return undefined;
+  }
+  return normalized;
+}
+
+function deleteRequestLogBodyRefs(bodyDir: string, refs: string[]): void {
+  for (const ref of refs) {
+    const filePath = requestLogBodyPath(bodyDir, ref);
+    if (!filePath) continue;
+    rmSync(filePath, { force: true });
+  }
 }
 
 function isTextLikeContentType(contentType: string | undefined): boolean {
@@ -4196,6 +5408,8 @@ function readRequestLogStoredOutcome(database: SqlDatabase, requestId: string): 
         gateway_status_code,
         length(request_body_text) AS request_body_chars,
         length(response_body_text) AS response_body_chars,
+        request_body_ref,
+        response_body_ref,
         ok,
         status_code
       FROM request_logs
@@ -4210,8 +5424,8 @@ function readRequestLogStoredOutcome(database: SqlDatabase, requestId: string): 
     gatewayError: String(row?.gateway_error ?? ""),
     gatewayOk: normalizeCount(row?.gateway_ok) === 1,
     gatewayStatusCode: normalizeCount(row?.gateway_status_code),
-    hasRequestBody: normalizeCount(row?.request_body_chars) > 0,
-    hasResponseBody: normalizeCount(row?.response_body_chars) > 0,
+    hasRequestBody: normalizeCount(row?.request_body_chars) > 0 || Boolean(normalizeFilterValue(String(row?.request_body_ref ?? ""))),
+    hasResponseBody: normalizeCount(row?.response_body_chars) > 0 || Boolean(normalizeFilterValue(String(row?.response_body_ref ?? ""))),
     ok: normalizeCount(row?.ok) === 1,
     statusCode: normalizeCount(row?.status_code)
   };
@@ -4263,12 +5477,14 @@ function withBoundedRawTraceBodyTexts(
     ...(requestBodyText === undefined ? {} : {
       requestBodySizeBytes: Math.max(requestBytes, normalizeCount(input.requestBodySizeBytes)),
       requestBodyText,
-      requestBodyTruncated: Boolean(input.requestBodyTruncated) || Buffer.byteLength(requestBodyText) < requestBytes
+      requestBodyTruncated: Boolean(input.requestBodyTruncated) ||
+        (!input.requestBodyRef && Buffer.byteLength(requestBodyText) < requestBytes)
     }),
     ...(responseBodyText === undefined ? {} : {
       responseBodySizeBytes: Math.max(responseBytes, normalizeCount(input.responseBodySizeBytes)),
       responseBodyText,
-      responseBodyTruncated: Boolean(input.responseBodyTruncated) || Buffer.byteLength(responseBodyText) < responseBytes
+      responseBodyTruncated: Boolean(input.responseBodyTruncated) ||
+        (!input.responseBodyRef && Buffer.byteLength(responseBodyText) < responseBytes)
     })
   };
 }
@@ -4293,14 +5509,14 @@ function withoutRawTraceBodyTexts(input: RequestLogRawTraceUpdateInput): Request
         Buffer.byteLength(requestBodyText),
         normalizeCount(input.requestBodySizeBytes)
       ),
-      requestBodyTruncated: true
+      requestBodyTruncated: Boolean(input.requestBodyTruncated) || !input.requestBodyRef
     }),
     ...(responseBodyText === undefined ? {} : {
       responseBodySizeBytes: Math.max(
         Buffer.byteLength(responseBodyText),
         normalizeCount(input.responseBodySizeBytes)
       ),
-      responseBodyTruncated: true
+      responseBodyTruncated: Boolean(input.responseBodyTruncated) || !input.responseBodyRef
     })
   };
 }
@@ -4309,13 +5525,19 @@ function rawTraceHasBodyText(input: RequestLogRawTraceUpdateInput): boolean {
   return input.requestBodyText !== undefined || input.responseBodyText !== undefined;
 }
 
-function prunePendingRawTraceUpdates(database: SqlDatabase, now: number): void {
+function prunePendingRawTraceUpdates(database: SqlDatabase, now: number, bodyDir?: string): void {
+  const expiredRows = queryRows(
+    database,
+    "SELECT update_json FROM request_log_pending_updates WHERE received_at < ?",
+    [now - pendingRawTraceTtlMs]
+  );
+  if (bodyDir) deleteRequestLogBodyRefs(bodyDir, bodyRefsFromPendingRawTraceRows(expiredRows));
   database.prepare("DELETE FROM request_log_pending_updates WHERE received_at < ?")
     .run(now - pendingRawTraceTtlMs);
   const rows = queryRows(
     database,
     `
-      SELECT request_id, update_bytes
+      SELECT request_id, update_bytes, update_json
       FROM request_log_pending_updates
       ORDER BY received_at DESC, request_id DESC
     `
@@ -4327,12 +5549,28 @@ function prunePendingRawTraceUpdates(database: SqlDatabase, now: number): void {
     const bytes = normalizeCount(row.update_bytes);
     if (retainedEntries >= maxPendingRawTraceEntries ||
       retainedBytes + bytes > maxPendingRawTraceTotalBytes) {
+      if (bodyDir) deleteRequestLogBodyRefs(bodyDir, bodyRefsFromPendingRawTraceRows([row]));
       remove.run(String(row.request_id ?? ""));
       continue;
     }
     retainedEntries += 1;
     retainedBytes += bytes;
   }
+}
+
+function bodyRefsFromPendingRawTraceRows(rows: Record<string, SqlValue>[]): string[] {
+  return rows.flatMap((row) => {
+    const parsed = parseJson(String(row.update_json ?? ""));
+    if (!isRecord(parsed)) return [];
+    return bodyRefsFromRawTraceInput(parsed as RequestLogRawTraceUpdateInput);
+  });
+}
+
+function bodyRefsFromRawTraceInput(input: RequestLogRawTraceUpdateInput): string[] {
+  return [
+    normalizeFilterValue(String(input.requestBodyRef ?? "")),
+    normalizeFilterValue(String(input.responseBodyRef ?? ""))
+  ].filter((value): value is string => Boolean(value));
 }
 
 function readRequestHeadersForRequestId(database: SqlDatabase, requestId: string): Record<string, string | string[]> {
@@ -4926,6 +6164,23 @@ function parseJson(value: string): unknown | undefined {
   } catch {
     return undefined;
   }
+}
+
+function decodedClaudeAppGatewayRouteParts(value: string | undefined): { model?: string; provider?: string } | undefined {
+  const decoded = decodeClaudeAppGatewayRouteId(value ?? "");
+  return decoded ? splitRouteSelector(decoded) : undefined;
+}
+
+function requestLogStorageModel(value: string | undefined): string | undefined {
+  return decodedClaudeAppGatewayRouteParts(value)?.model ?? normalizeFilterValue(value);
+}
+
+function requestLogStorageModelSelector(value: string | undefined): string | undefined {
+  return normalizeFilterValue(decodeClaudeAppGatewayRouteId(value ?? "") ?? value);
+}
+
+function splitRequestLogRouteSelector(value: string | undefined): { model?: string; provider?: string } {
+  return splitRouteSelector(decodeClaudeAppGatewayRouteId(value ?? "") ?? value);
 }
 
 function splitRouteSelector(value: string | undefined): { model?: string; provider?: string } {

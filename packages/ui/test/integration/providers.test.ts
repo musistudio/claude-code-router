@@ -7,10 +7,12 @@ import { geminiProviderPreset } from "@ccr/core/providers/presets/gemini/index.t
 import { minimaxChinaProviderPreset } from "@ccr/core/providers/presets/minimax/index.ts";
 import { moonshotGlobalProviderPreset } from "@ccr/core/providers/presets/moonshot/index.ts";
 import { qiniuAiProviderPreset } from "@ccr/core/providers/presets/qiniu-ai/index.ts";
-import { AddProviderDialog, AddProviderForm, ProvidersView, uniqueProviderProbeProtocolRows } from "@ccr/ui/pages/home/components/providers.tsx";
+import { xiaomiMimoProviderPreset } from "@ccr/core/providers/presets/xiaomi/index.ts";
+import { AddProviderDialog, AddProviderForm, ProviderConnectivityCheckDialog, ProvidersView, uniqueProviderProbeProtocolRows } from "@ccr/ui/pages/home/components/providers.tsx";
 import {
   applyProviderProbeResult,
   createProviderConfigFromDeepLink,
+  createProviderAccountDraftFromConfig,
   createProviderCredentialDraft,
   createProviderDraft,
   createProviderDraftFromProvider,
@@ -25,7 +27,12 @@ import {
   providerConnectivityProviderPlugins,
   providerDisplayIcon,
   providerAccountConnectorsTextWithNewApiUserBalanceTemplate,
+  providerAutoFetchKnownModelsForSave,
+  parseProviderAccountDraft,
+  parseProviderExtraJsonDraft,
+  providerBrowserConnectorFromDraft,
   providerGlobalBaseUrlForProbe,
+  providerManualFieldsForSave,
   providerPresetIconUrls,
   providerProtocolOptions,
   providerProbeCandidates,
@@ -140,6 +147,96 @@ test("provider save keeps explicit secondary media origins when the base URL is 
   );
 });
 
+test("provider save keeps hand-written fields the dialog cannot edit", () => {
+  const existing = {
+    api_base_url: "https://example.test/v1",
+    api_key: "sk-old",
+    billing: { currency: "USD" },
+    extraBody: { default: { reasoning_effort: "high" } },
+    extraHeaders: { "x-tenant": "acme" },
+    models: ["model-a"],
+    name: "example",
+    provider: "openai",
+    transformer: { use: ["openrouter"] },
+    type: "openai_chat_completions"
+  };
+
+  // extraBody and extraHeaders are absent on purpose: the Advanced settings
+  // section edits them, so they round-trip through the draft instead.
+  assert.deepEqual(providerManualFieldsForSave(existing), {
+    billing: existing.billing,
+    provider: existing.provider,
+    transformer: existing.transformer
+  });
+});
+
+test("provider draft round-trips the advanced JSON boxes", () => {
+  const provider = {
+    api_base_url: "https://example.test/v1",
+    // Raw ai-gateway shape: "default" plus top-level model-name keys (the
+    // normalized byModel form is internal to ai-gateway and never saved).
+    extraBody: { default: { reasoning_effort: "low" }, "model-a": { reasoning_effort: "high" } },
+    extraHeaders: { "x-tenant": "acme" },
+    models: ["model-a"],
+    name: "example"
+  };
+
+  const draft = createProviderDraftFromProvider(provider);
+
+  assert.deepEqual(parseProviderExtraJsonDraft(draft.extraBodyText, "extraBody"), provider.extraBody);
+  assert.deepEqual(parseProviderExtraJsonDraft(draft.extraHeadersText, "extraHeaders"), provider.extraHeaders);
+});
+
+test("provider draft leaves the advanced JSON boxes empty when unset", () => {
+  const draft = createProviderDraftFromProvider({ models: ["model-a"], name: "example" });
+
+  assert.equal(draft.extraBodyText, "");
+  assert.equal(draft.extraHeadersText, "");
+  assert.equal(parseProviderExtraJsonDraft(draft.extraBodyText, "extraBody"), undefined);
+  assert.equal(parseProviderExtraJsonDraft(draft.extraHeadersText, "extraHeaders"), undefined);
+});
+
+test("advanced JSON boxes reject malformed input instead of saving it", () => {
+  assert.equal(
+    parseProviderExtraJsonDraft("{ not json", "extraBody"),
+    "Extra request body JSON is invalid."
+  );
+  assert.equal(
+    parseProviderExtraJsonDraft("[1, 2]", "extraBody"),
+    "Extra request body must be a JSON object."
+  );
+  assert.equal(
+    parseProviderExtraJsonDraft("\"x-tenant\"", "extraHeaders"),
+    "Extra request headers must be a JSON object."
+  );
+  assert.equal(parseProviderExtraJsonDraft("   \n  ", "extraBody"), undefined);
+});
+
+test("provider save drops legacy credential aliases so the edited values win", () => {
+  const existing = {
+    apiKey: "sk-legacy",
+    apikey: "sk-legacy",
+    baseUrl: "https://legacy.test/v1",
+    baseurl: "https://legacy.test/v1",
+    models: ["model-a"],
+    name: "example"
+  };
+
+  const preserved = providerManualFieldsForSave(existing) as Record<string, unknown>;
+
+  for (const alias of ["apiKey", "apikey", "baseUrl", "baseurl"]) {
+    assert.equal(alias in preserved, false, `${alias} must not survive a dialog save`);
+  }
+});
+
+test("provider save does not invent keys the provider never had", () => {
+  assert.deepEqual(providerManualFieldsForSave(undefined), {});
+  assert.deepEqual(
+    providerManualFieldsForSave({ models: ["model-a"], name: "example" }),
+    {}
+  );
+});
+
 test("provider probe result drops unavailable selected protocols", () => {
   const draft = {
     ...createProviderDraft([]),
@@ -193,6 +290,8 @@ test("provider probe result keeps only supported selected protocols", () => {
 test("provider draft restores manual protocol detection mode", () => {
   const draft = createProviderDraftFromProvider({
     api_base_url: "https://local.example/v1",
+    autoFetchModels: true,
+    autoFetchKnownModels: ["custom-model", "excluded-model"],
     capabilities: [{
       baseUrl: "https://local.example/v1",
       source: "preset",
@@ -205,7 +304,71 @@ test("provider draft restores manual protocol detection mode", () => {
   });
 
   assert.equal(draft.protocolDetectionMode, "manual");
+  assert.equal(draft.autoFetchModels, true);
+  assert.deepEqual(draft.autoFetchKnownModels, ["custom-model", "excluded-model"]);
   assert.deepEqual(draft.selectedProtocols, ["openai_chat_completions"]);
+});
+
+test("provider auto fetch known model baseline preserves excluded and removed models", () => {
+  assert.deepEqual(providerAutoFetchKnownModelsForSave({
+    currentModels: ["alpha"],
+    detectedModels: ["alpha", "beta"],
+    existingProvider: undefined,
+    nextBaseUrl: "https://api.provider.test/v1"
+  }), ["alpha", "beta"]);
+
+  assert.deepEqual(providerAutoFetchKnownModelsForSave({
+    currentModels: ["alpha", "gamma"],
+    detectedModels: ["alpha", "beta", "gamma"],
+    existingProvider: {
+      api_base_url: "https://api.provider.test/v1",
+      autoFetchKnownModels: ["alpha", "beta"],
+      models: ["alpha", "beta"],
+      name: "Provider"
+    },
+    nextBaseUrl: "https://api.provider.test/v1"
+  }), ["alpha", "beta", "gamma"]);
+
+  assert.deepEqual(providerAutoFetchKnownModelsForSave({
+    currentModels: ["alpha", "beta"],
+    detectedModels: ["alpha", "beta"],
+    existingProvider: undefined,
+    nextBaseUrl: "https://api.provider.test/v1"
+  }), ["alpha", "beta"]);
+
+  assert.equal(providerAutoFetchKnownModelsForSave({
+    currentModels: ["alpha", "beta"],
+    existingProvider: undefined,
+    nextBaseUrl: "https://api.provider.test/v1"
+  }), undefined);
+});
+
+test("AddProviderForm renders auto model refresh in advanced settings", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    autoFetchModels: true,
+    baseUrl: "https://local.example/v1",
+    modelsText: "custom-model",
+    name: "Local OpenAI",
+    selectedProtocols: ["openai_chat_completions" as const]
+  };
+  const html = renderToStaticMarkup(
+    React.createElement(AddProviderForm, {
+      activeStep: "verify",
+      draft,
+      error: "",
+      mode: "edit",
+      onChange: () => undefined,
+      probeLoading: false,
+      providers: []
+    })
+  );
+
+  assert.match(html, /Auto fetch latest models/);
+  assert.match(html, /aria-label="Auto fetch latest models"/);
+  assert.match(html, /data-ui-tooltip-trigger/);
+  assert.match(html, /aria-label="Poll the provider models endpoint every 10 minutes and add newly discovered models automatically\."/);
+  assert.match(html, /aria-checked="true"/);
 });
 
 test("edit provider dialog keeps advanced settings collapsed by default", () => {
@@ -569,6 +732,68 @@ test("AddProviderForm renders a two-column model picker", () => {
   assert.doesNotMatch(html, /Select models/);
 });
 
+test("AddProviderForm renders provider model refresh control when available", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    apiKey: "sk-test",
+    baseUrl: "https://api.example/v1",
+    name: "Example",
+    presetId: customProviderPresetId
+  };
+  const probe = {
+    capabilities: [],
+    detectedProtocol: "openai_chat_completions" as const,
+    models: ["model-a", "model-b"],
+    normalizedBaseUrl: "https://api.example/v1",
+    protocols: []
+  };
+  const html = renderToStaticMarkup(
+    React.createElement(AddProviderForm, {
+      activeStep: "models",
+      draft,
+      error: "",
+      mode: "edit",
+      onChange: () => undefined,
+      onRefreshModels: async () => undefined,
+      probe,
+      probeLoading: false,
+      providers: []
+    })
+  );
+  const loadingHtml = renderToStaticMarkup(
+    React.createElement(AddProviderForm, {
+      activeStep: "models",
+      draft,
+      error: "",
+      mode: "edit",
+      onChange: () => undefined,
+      onRefreshModels: async () => undefined,
+      probe,
+      probeLoading: true,
+      providers: []
+    })
+  );
+  const withoutRefreshHtml = renderToStaticMarkup(
+    React.createElement(AddProviderForm, {
+      activeStep: "models",
+      draft,
+      error: "",
+      mode: "edit",
+      onChange: () => undefined,
+      probe,
+      probeLoading: false,
+      providers: []
+    })
+  );
+
+  assert.match(html, /aria-label="Refresh provider models"/);
+  assert.match(html, /title="Refresh provider models"/);
+  assert.match(html, /lucide-refresh-cw/);
+  assert.match(loadingHtml, /aria-label="Refreshing provider models"[^>]*disabled/);
+  assert.match(loadingHtml, /lucide-refresh-cw[^"]*animate-spin/);
+  assert.doesNotMatch(withoutRefreshHtml, /Refresh provider models/);
+});
+
 test("AddProviderForm keeps edit model lists scrollable without blocking dialog scroll chaining", () => {
   const draft = {
     ...createProviderDraft([]),
@@ -627,9 +852,66 @@ test("AddProviderForm shows skeleton rows while provider models load", () => {
   assert.match(html, /aria-busy="true"/);
   assert.match(html, /Loading provider models/);
   assert.match(html, /provider-skeleton-shimmer/);
-  assert.doesNotMatch(html, /Custom model/);
-  assert.doesNotMatch(html, /No models added/);
   assert.doesNotMatch(html, /No provider models/);
+  // The added-models panel holds local draft state, so it keeps rendering its real contents and
+  // controls while the provider catalog probe is still running.
+  assert.match(html, /Custom model/);
+  assert.match(html, /No models added/);
+});
+
+test("AddProviderForm explains an empty provider catalog once the probe settles", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    apiKey: "sk-test",
+    baseUrl: "https://api.example/v1",
+    name: "Example",
+    presetId: customProviderPresetId
+  };
+  const html = renderToStaticMarkup(
+    React.createElement(AddProviderForm, {
+      activeStep: "models",
+      draft,
+      error: "",
+      mode: "add",
+      onChange: () => undefined,
+      probeLoading: false,
+      providers: []
+    })
+  );
+
+  assert.match(html, /No provider models/);
+  assert.match(html, /Add model IDs with Custom model/);
+});
+
+test("connectivity check confirmation warns about spending provider credits", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(ProviderConnectivityCheckDialog, {
+      connectivityLoading: false,
+      models: ["example-model", "example-model-mini"],
+      onCheck: async () => ({ failed: [], passed: [], results: [] }),
+      onClose: () => undefined
+    })
+  );
+
+  assert.match(html, /This check sends real model requests with your provider API key and may consume account balance\./);
+  assert.match(html, /Models to check/);
+  assert.match(html, /example-model-mini/);
+  assert.match(html, /Start check/);
+});
+
+test("AddProviderForm marks the provider error banner as an alert", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(AddProviderForm, {
+      draft: createProviderDraft([]),
+      error: "Invalid API key.",
+      mode: "add",
+      onChange: () => undefined,
+      probeLoading: false,
+      providers: []
+    })
+  );
+
+  assert.match(html, /role="alert"[^>]*>[\s\S]*Invalid API key\./);
 });
 
 test("provider connectivity API key follows selected credential mode", () => {
@@ -804,6 +1086,95 @@ test("provider probe result applies detected New API key quota account connector
   assert.equal(connectors[0].mapping.meters[0].id, "new_api_key_quota");
   assert.equal(connectors[0].mapping.meters[0].kind, "quota");
   assert.equal(connectors[0].mapping.meters[0].remaining, "$.data.total_available");
+});
+
+test("browser account draft creates webcontent-json connector", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    accountEnabled: true,
+    accountMode: "browser" as const,
+    accountRefreshIntervalMs: "300000",
+    usageBalanceRemainingPath: "$.balance.remaining",
+    usageBrowserCredentials: "omit" as const,
+    usageBrowserHeaderTemplates: [
+      {
+        id: "header-template-auth",
+        key: "authorization",
+        value: "Bearer ${localStorage.accessToken}"
+      }
+    ],
+    usageBrowserLoginUrl: "https://vendor.example.com/login",
+    usageBrowserRequestOrigin: "https://vendor.example.com",
+    usageBrowserTimeoutMs: "12000",
+    usageRequestUrl: "https://api.vendor.example.com/account"
+  };
+
+  const connector = providerBrowserConnectorFromDraft(draft);
+  assert.notEqual(typeof connector, "string");
+  if (typeof connector === "string") {
+    return;
+  }
+  assert.equal(connector.type, "webcontent-json");
+  assert.equal(connector.browser?.credentials, "omit");
+  assert.equal(connector.browser?.headerTemplates?.authorization, "Bearer ${localStorage.accessToken}");
+  assert.equal(connector.browser?.loginUrl, "https://vendor.example.com/login");
+  assert.equal(connector.browser?.requestOrigin, "https://vendor.example.com");
+  assert.equal(connector.browser?.partition, "built-in-browser");
+  assert.equal(connector.browser?.timeoutMs, 12000);
+  assert.equal(connector.mapping.meters[0].remaining, "$.balance.remaining");
+
+  const account = parseProviderAccountDraft(draft);
+  assert.notEqual(typeof account, "string");
+  if (!account || typeof account === "string") {
+    assert.fail("Expected browser account config.");
+  }
+  assert.equal(account?.connectors?.[0]?.type, "webcontent-json");
+});
+
+test("webcontent-json account config opens as browser draft", () => {
+  const draft = createProviderAccountDraftFromConfig({
+    connectors: [
+      {
+        browser: {
+          credentials: "omit",
+          headerTemplates: {
+            authorization: "Bearer ${localStorage.accessToken}"
+          },
+          loginUrl: "https://vendor.example.com/login",
+          requestOrigin: "https://vendor.example.com",
+          timeoutMs: 15000
+        },
+        endpoint: "https://api.vendor.example.com/account",
+        mapping: {
+          meters: [
+            {
+              id: "balance",
+              kind: "balance",
+              label: "Balance",
+              remaining: "$.balance.remaining",
+              unit: "USD"
+            }
+          ],
+          message: "$.message"
+        },
+        type: "webcontent-json"
+      }
+    ],
+    enabled: true,
+    refreshIntervalMs: 300000
+  });
+
+  assert.equal(draft.accountEnabled, true);
+  assert.equal(draft.accountMode, "browser");
+  assert.equal(draft.usageRequestUrl, "https://api.vendor.example.com/account");
+  assert.equal(draft.usageBrowserCredentials, "omit");
+  assert.equal(draft.usageBrowserHeaderTemplates[0]?.key, "authorization");
+  assert.equal(draft.usageBrowserHeaderTemplates[0]?.value, "Bearer ${localStorage.accessToken}");
+  assert.equal(draft.usageBrowserLoginUrl, "https://vendor.example.com/login");
+  assert.equal(draft.usageBrowserRequestOrigin, "https://vendor.example.com");
+  assert.equal(draft.usageBrowserTimeoutMs, "15000");
+  assert.equal(draft.usageBalanceRemainingPath, "$.balance.remaining");
+  assert.equal(draft.usageMessagePath, "$.message");
 });
 
 test("provider probe keeps anthropic prefix on the protocol capability", () => {
@@ -1050,7 +1421,7 @@ test("provider deep link config saves anthropic probe prefix as capability URL",
 });
 
 test("provider display icon prefers custom icons and falls back to preset icons", () => {
-  setProviderPresets([geminiProviderPreset, minimaxChinaProviderPreset]);
+  setProviderPresets([geminiProviderPreset, minimaxChinaProviderPreset, xiaomiMimoProviderPreset]);
 
   assert.equal(
     providerDisplayIcon({
@@ -1080,6 +1451,18 @@ test("provider display icon prefers custom icons and falls back to preset icons"
     }),
     providerPresetIconUrls["minimax-cn"]
   );
+  assert.equal(
+    providerDisplayIcon({
+      api_base_url: "https://api.xiaomimimo.com/v1",
+      models: [],
+      name: "Xiaomi MiMo",
+      type: "openai_responses"
+    }),
+    providerPresetIconUrls.xiaomi
+  );
+  assert.equal(providerPresetIconUrls["xiaomi-token-plan-cn"], providerPresetIconUrls.xiaomi);
+  assert.equal(providerPresetIconUrls["xiaomi-token-plan-sgp"], providerPresetIconUrls.xiaomi);
+  assert.equal(providerPresetIconUrls["xiaomi-token-plan-ams"], providerPresetIconUrls.xiaomi);
   assert.equal(
     providerDisplayIcon({
       api_base_url: "https://cli-chat-proxy.grok.com/v1",

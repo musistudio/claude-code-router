@@ -1,6 +1,6 @@
 {
   "name": "@claude-code-router/core",
-  "version": "3.0.17",
+  "version": "3.0.22",
   "private": true,
   "description": "Claude Code Router core gateway, routing, provider, and storage services.",
   "main": "dist/main/server.js",
@@ -16,11 +16,11 @@
     "test:integration": "node ../../build/test.mjs core --scope integration && node ../../build/run-tests.mjs core"
   },
   "dependencies": {
-    "@the-next-ai/ai-gateway": "^1.0.14",
+    "@the-next-ai/ai-gateway": "^1.0.18",
     "@the-next-ai/bot-gateway-sdk": "^0.1.0",
     "better-sqlite3": "^12.11.1",
     "node-forge": "^1.4.0",
-    "pm2": "^6.0.13",
-    "undici": "^7.27.2"
+    "pm2": "^7.0.3",
+    "undici": "^7.29.0"
   }
 }

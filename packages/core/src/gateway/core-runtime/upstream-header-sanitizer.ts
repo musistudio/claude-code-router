@@ -1,3 +1,8 @@
+import { applyResponsesSessionAffinity } from "@ccr/core/gateway/core-runtime/responses-session-affinity";
+import type { ResponsesSessionAffinityInput } from "@ccr/core/gateway/core-runtime/responses-session-affinity";
+import { applyResponsesToolStrictness } from "@ccr/core/gateway/core-runtime/responses-tool-strictness";
+import type { ResponsesToolStrictnessInput } from "@ccr/core/gateway/core-runtime/responses-tool-strictness";
+
 type UpstreamRequest = {
   body: unknown;
   bodyEncoding?: "bytes" | "form" | "json" | "none" | "text";
@@ -194,6 +199,22 @@ export function createGatewayPlugin() {
             headers: mergeUpstreamProviderHeaders(input.request?.headers, input.upstreamRequest.headers),
             url: rewriteUpstreamProviderUrl(input.upstreamRequest.url, input.targetProviderConfig, input.config)
           }
+        };
+      }
+    }, {
+      key: "ccr-responses-session-affinity",
+      transformRequest(input: ResponsesSessionAffinityInput) {
+        return {
+          ok: true as const,
+          value: applyResponsesSessionAffinity(input)
+        };
+      }
+    }, {
+      key: "ccr-responses-tool-strictness",
+      transformRequest(input: ResponsesToolStrictnessInput) {
+        return {
+          ok: true as const,
+          value: applyResponsesToolStrictness(input)
         };
       }
     }]

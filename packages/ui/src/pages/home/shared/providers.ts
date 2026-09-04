@@ -5,6 +5,7 @@ import openCodeLogoUrl from "@/assets/agent-logos/opencode.ico";
 import zcodeLogoUrl from "@/assets/agent-logos/zcode.png";
 import moonshotProviderIconUrl from "@/assets/provider-icons/moonshot.ico";
 import {
+  ROUTER_SCRIPT_API_VERSION,
   ROUTER_SCRIPT_MAX_TIMEOUT_MS
 } from "@ccr/core/contracts/app";
 import type {
@@ -19,7 +20,9 @@ import type {
   ProviderAccountConfig,
   ProviderAccountConnectorConfig,
   ProviderAccountHttpJsonConnectorConfig,
+  ProviderAccountMappedMeterConfig,
   ProviderAccountStandardConnectorConfig,
+  ProviderAccountWebContentJsonConnectorConfig,
   ProviderCredentialConfig,
   ProviderDeepLinkPayload,
   ProviderModelMetadata,
@@ -420,6 +423,40 @@ export function routingRewriteFromDraftRow(row: RoutingRewriteDraftRow): RouterR
   };
 }
 
+export function routingRuleFromDraft(
+  draft: AddRoutingRuleDraft,
+  existingRules: RouterRule[],
+  existingRule?: RouterRule
+): RouterRule {
+  const commonRule = {
+    enabled: draft.enabled,
+    fallback: normalizeRouterFallbackConfig(draft.fallback),
+    id: existingRule?.id ?? uniqueRoutingRuleId(existingRules),
+    name: draft.name.trim()
+  };
+  return draft.type === "script"
+    ? {
+        ...commonRule,
+        script: {
+          apiVersion: ROUTER_SCRIPT_API_VERSION,
+          file: draft.scriptFile.trim(),
+          language: "javascript" as const,
+          timeoutMs: Number(draft.scriptTimeoutMs)
+        },
+        type: "script"
+      }
+    : {
+        ...commonRule,
+        condition: {
+          left: buildRouterConditionPath(draft.conditionSource, draft.conditionField),
+          operator: draft.conditionOperator,
+          right: draft.conditionRight.trim()
+        },
+        rewrites: draft.rewrites.map(routingRewriteFromDraftRow),
+        type: "condition"
+      };
+}
+
 function normalizeRouterModelRewrite(rewrite: RouterRuleRewrite): RouterRuleRewrite {
   return isModelRewriteKey(rewrite.key) && rewrite.value
     ? { ...rewrite, value: normalizeProviderModelSelector(rewrite.value) }
@@ -601,11 +638,15 @@ export function createProviderDraftFromDeepLinkPayload(
   return {
     ...accountDraft,
     apiKey: payload.apiKey?.trim() || "",
+    autoFetchModels: false,
+    autoFetchKnownModels: [],
     baseUrl,
     capabilities: payload.capabilities ?? [],
     catalogModelMetadata: undefined,
     credentialMode: "apiKey",
     credentials: [],
+    extraBodyText: "",
+    extraHeadersText: "",
     icon: payload.icon?.trim() || "",
     modelDescriptions: modelDescriptionsForModels(payload.modelDescriptions, models),
     modelDisplayNames: modelDisplayNamesForModels(
@@ -697,11 +738,15 @@ export function createProviderDraft(providers: GatewayProviderConfig[]): AddProv
   return {
     ...accountDraft,
     apiKey: "",
+    autoFetchModels: false,
+    autoFetchKnownModels: [],
     baseUrl: "",
     capabilities: [],
     catalogModelMetadata: undefined,
     credentialMode: "apiKey",
     credentials: [],
+    extraBodyText: "",
+    extraHeadersText: "",
     icon: "",
     modelDescriptions: undefined,
     modelDisplayNames: undefined,
@@ -727,11 +772,15 @@ export function createProviderDraftFromProvider(provider: GatewayProviderConfig)
   return {
     ...accountDraft,
     apiKey: providerApiKey(provider),
+    autoFetchModels: Boolean(provider.autoFetchModels),
+    autoFetchKnownModels: mergeProviderModelLists(provider.autoFetchKnownModels ?? []),
     baseUrl,
     capabilities: provider.capabilities ?? [],
     catalogModelMetadata: undefined,
     credentialMode: providerDraftHasReadyCredentialPool({ credentials }) ? "pool" : "apiKey",
     credentials,
+    extraBodyText: providerExtraJsonDraftText(provider.extraBody),
+    extraHeadersText: providerExtraJsonDraftText(provider.extraHeaders),
     icon: provider.icon ?? "",
     modelDescriptions: modelDescriptionsForModels(provider.modelDescriptions, provider.models),
     modelDisplayNames: modelDisplayNamesForModels(
@@ -1052,7 +1101,19 @@ export function parseProviderAccountDraft(draft: AddProviderDraft): GatewayProvi
     };
   }
 
-  if (draft.accountMode === "http-json" || draft.usageRequestUrl.trim()) {
+  if (draft.accountMode === "browser") {
+    const connector = providerBrowserConnectorFromDraft(draft);
+    if (typeof connector === "string") {
+      return connector;
+    }
+    return {
+      connectors: [connector],
+      enabled: true,
+      refreshIntervalMs: refreshIntervalMs && refreshIntervalMs > 0 ? refreshIntervalMs : undefined
+    };
+  }
+
+  if (draft.accountMode === "http-json") {
     const connector = providerHttpJsonConnectorFromDraft(draft);
     if (typeof connector === "string") {
       return connector;
@@ -1095,6 +1156,11 @@ export function createDefaultProviderAccountDraft(): Pick<
   | "usageBalanceRemainingPath"
   | "usageBalanceUnit"
   | "usageBalanceUsedPath"
+  | "usageBrowserCredentials"
+  | "usageBrowserHeaderTemplates"
+  | "usageBrowserLoginUrl"
+  | "usageBrowserRequestOrigin"
+  | "usageBrowserTimeoutMs"
   | "usageMessagePath"
   | "usageRequestBodyText"
   | "usageRequestHeaders"
@@ -1115,6 +1181,11 @@ export function createDefaultProviderAccountDraft(): Pick<
     usageBalanceRemainingPath: "",
     usageBalanceUnit: "USD",
     usageBalanceUsedPath: "",
+    usageBrowserCredentials: "omit",
+    usageBrowserHeaderTemplates: [],
+    usageBrowserLoginUrl: "",
+    usageBrowserRequestOrigin: "",
+    usageBrowserTimeoutMs: "",
     usageMessagePath: "",
     usageRequestBodyText: "",
     usageRequestHeaders: [],
@@ -1138,7 +1209,11 @@ export function createProviderAccountDraftFromConfig(account: ProviderAccountCon
   const httpJsonConnector = connectors.length === 1 && connectors[0]?.type === "http-json"
     ? connectors[0] as ProviderAccountHttpJsonConnectorConfig
     : undefined;
-  if (!httpJsonConnector) {
+  const browserConnector = connectors.length === 1 && connectors[0]?.type === "webcontent-json"
+    ? connectors[0] as ProviderAccountWebContentJsonConnectorConfig
+    : undefined;
+  const jsonConnector = httpJsonConnector ?? browserConnector;
+  if (!jsonConnector) {
     return {
       ...base,
       accountConnectorsText: JSON.stringify(connectors, null, 2),
@@ -1147,7 +1222,7 @@ export function createProviderAccountDraftFromConfig(account: ProviderAccountCon
       accountRefreshIntervalMs: account.refreshIntervalMs ? String(account.refreshIntervalMs) : ""
     };
   }
-  if (httpJsonConnector.parser) {
+  if (jsonConnector.parser || flatDraftDropsMeters(jsonConnector.mapping.meters)) {
     return {
       ...base,
       accountConnectorsText: JSON.stringify(connectors, null, 2),
@@ -1157,27 +1232,33 @@ export function createProviderAccountDraftFromConfig(account: ProviderAccountCon
     };
   }
 
-  const balanceMeter = httpJsonConnector.mapping.meters.find((meter) => meter.kind === "balance" || meter.id === "balance");
-  const subscriptionMeter = httpJsonConnector.mapping.meters.find((meter) =>
+  const balanceMeter = jsonConnector.mapping.meters.find((meter) => meter.kind === "balance" || meter.id === "balance");
+  const subscriptionMeter = jsonConnector.mapping.meters.find((meter) =>
     meter.kind === "subscription" || meter.id === "subscription" || meter.kind === "quota" || meter.kind === "tokens" || meter.kind === "time_window"
   );
+  const browser = browserConnector?.browser;
 
   return {
     ...base,
     accountConnectorsText: JSON.stringify(connectors, null, 2),
     accountEnabled: account.enabled === true,
-    accountMode: "http-json",
+    accountMode: browserConnector ? "browser" : "http-json",
     accountRefreshIntervalMs: account.refreshIntervalMs ? String(account.refreshIntervalMs) : "",
     usageBalanceLimitPath: stringValue(balanceMeter?.limit) || "",
     usageBalanceRemainingPath: stringValue(balanceMeter?.remaining) || "",
     usageBalanceUnit: stringValue(balanceMeter?.unit) || "USD",
     usageBalanceUsedPath: stringValue(balanceMeter?.used) || "",
-    usageMessagePath: httpJsonConnector.mapping.message ?? "",
-    usageRequestBodyText: httpJsonConnector.body === undefined ? "" : formatEditableJson(httpJsonConnector.body),
-    usageRequestHeaders: keyValueRowsFromRecord(httpJsonConnector.headers ?? {}),
-    usageRequestMethod: httpJsonConnector.method === "POST" ? "POST" : "GET",
-    usageRequestUrl: httpJsonConnector.endpoint,
-    usageStatusPath: httpJsonConnector.mapping.status ?? "",
+    usageBrowserCredentials: browserCredentialsDraftValue(browser?.credentials, browser?.headerTemplates),
+    usageBrowserHeaderTemplates: keyValueRowsFromRecord(browser?.headerTemplates ?? {}),
+    usageBrowserLoginUrl: browser?.loginUrl ?? "",
+    usageBrowserRequestOrigin: browser?.requestOrigin ?? "",
+    usageBrowserTimeoutMs: browser?.timeoutMs ? String(browser.timeoutMs) : "",
+    usageMessagePath: mappedStringDraftValue(jsonConnector.mapping.message),
+    usageRequestBodyText: jsonConnector.body === undefined ? "" : formatEditableJson(jsonConnector.body),
+    usageRequestHeaders: keyValueRowsFromRecord(jsonConnector.headers ?? {}),
+    usageRequestMethod: jsonConnector.method === "POST" ? "POST" : "GET",
+    usageRequestUrl: jsonConnector.endpoint,
+    usageStatusPath: mappedStringDraftValue(jsonConnector.mapping.status),
     usageSubscriptionLimitPath: stringValue(subscriptionMeter?.limit) || "",
     usageSubscriptionRemainingPath: stringValue(subscriptionMeter?.remaining) || "",
     usageSubscriptionResetPath: stringValue(subscriptionMeter?.resetAt) || "",
@@ -1185,7 +1266,41 @@ export function createProviderAccountDraftFromConfig(account: ProviderAccountCon
   };
 }
 
-export function providerHttpJsonConnectorFromDraft(draft: AddProviderDraft, options: { requireMeters?: boolean } = { requireMeters: true }): ProviderAccountHttpJsonConnectorConfig | string {
+function isBalanceDraftMeter(meter: ProviderAccountMappedMeterConfig): boolean {
+  return meter.kind === "balance" || meter.id === "balance";
+}
+
+function isSubscriptionDraftMeter(meter: ProviderAccountMappedMeterConfig): boolean {
+  return meter.kind === "subscription" || meter.id === "subscription" || meter.kind === "quota" || meter.kind === "tokens" || meter.kind === "time_window";
+}
+
+function flatDraftDropsMeters(meters: ProviderAccountMappedMeterConfig[]): boolean {
+  const balanceMeters = meters.filter(isBalanceDraftMeter);
+  const subscriptionMeters = meters.filter((meter) => !isBalanceDraftMeter(meter) && isSubscriptionDraftMeter(meter));
+  return balanceMeters.length > 1
+    || subscriptionMeters.length > 1
+    || balanceMeters.length + subscriptionMeters.length !== meters.length;
+}
+
+function mappedStringDraftValue(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) {
+    return value.find((item) => stringValue(item)) ?? "";
+  }
+  return stringValue(value) || "";
+}
+
+type ProviderJsonConnectorDraftParts = {
+  body?: unknown;
+  endpoint: string;
+  headers: Record<string, string>;
+  mapping: ProviderAccountHttpJsonConnectorConfig["mapping"];
+  method: "GET" | "POST";
+};
+
+function providerJsonConnectorDraftPartsFromDraft(
+  draft: AddProviderDraft,
+  options: { requireMeters?: boolean } = { requireMeters: true }
+): ProviderJsonConnectorDraftParts | string {
   const endpoint = draft.usageRequestUrl.trim();
   if (!endpoint) {
     return "Usage request URL is required.";
@@ -1239,7 +1354,6 @@ export function providerHttpJsonConnectorFromDraft(draft: AddProviderDraft, opti
   }
 
   return {
-    auth: "provider-api-key",
     ...(body !== undefined ? { body } : {}),
     endpoint,
     headers: recordFromKeyValueRows(draft.usageRequestHeaders),
@@ -1248,9 +1362,65 @@ export function providerHttpJsonConnectorFromDraft(draft: AddProviderDraft, opti
       meters,
       ...(draft.usageStatusPath.trim() ? { status: draft.usageStatusPath.trim() } : {})
     },
-    method: draft.usageRequestMethod,
+    method: draft.usageRequestMethod
+  };
+}
+
+export function providerHttpJsonConnectorFromDraft(draft: AddProviderDraft, options: { requireMeters?: boolean } = { requireMeters: true }): ProviderAccountHttpJsonConnectorConfig | string {
+  const parts = providerJsonConnectorDraftPartsFromDraft(draft, options);
+  if (typeof parts === "string") {
+    return parts;
+  }
+
+  return {
+    auth: "provider-api-key",
+    ...parts,
     type: "http-json"
   };
+}
+
+export function providerBrowserConnectorFromDraft(draft: AddProviderDraft, options: { requireMeters?: boolean } = { requireMeters: true }): ProviderAccountWebContentJsonConnectorConfig | string {
+  const parts = providerJsonConnectorDraftPartsFromDraft(draft, options);
+  if (typeof parts === "string") {
+    return parts;
+  }
+
+  const loginUrl = draft.usageBrowserLoginUrl.trim();
+  if (loginUrl && !/^https?:\/\//i.test(loginUrl)) {
+    return "Browser login URL must use http or https.";
+  }
+  const requestOrigin = draft.usageBrowserRequestOrigin.trim();
+  if (requestOrigin && !/^https?:\/\//i.test(requestOrigin)) {
+    return "Browser storage origin must use http or https.";
+  }
+  if (!validateKeyValueRows(draft.usageBrowserHeaderTemplates)) {
+    return "Browser header template rows require keys.";
+  }
+
+  const headerTemplates = recordFromKeyValueRows(draft.usageBrowserHeaderTemplates);
+  const timeoutMs = positiveInteger(draft.usageBrowserTimeoutMs);
+  return {
+    ...parts,
+    browser: {
+      credentials: draft.usageBrowserCredentials,
+      ...(Object.keys(headerTemplates).length > 0 ? { headerTemplates } : {}),
+      ...(loginUrl ? { loginUrl } : {}),
+      partition: "built-in-browser",
+      ...(requestOrigin ? { requestOrigin } : {}),
+      ...(timeoutMs && timeoutMs > 0 ? { timeoutMs } : {})
+    },
+    type: "webcontent-json"
+  };
+}
+
+function browserCredentialsDraftValue(
+  credentials: unknown,
+  headerTemplates: Record<string, string> | undefined
+): AddProviderDraft["usageBrowserCredentials"] {
+  if (credentials === "include" || credentials === "omit" || credentials === "same-origin") {
+    return credentials;
+  }
+  return headerTemplates && Object.keys(headerTemplates).length > 0 ? "omit" : "include";
 }
 
 export type ProviderApiKeyTargetSafetyInput = {
@@ -1492,6 +1662,31 @@ export function providerAccountConnectorExample(): string {
       }
     },
     {
+      type: "webcontent-json",
+      endpoint: "https://api.vendor.example.com/account/usage",
+      browser: {
+        credentials: "omit",
+        headerTemplates: {
+          authorization: "Bearer ${localStorage.accessToken}"
+        },
+        loginUrl: "https://vendor.example.com/login",
+        partition: "built-in-browser",
+        requestOrigin: "https://vendor.example.com",
+        timeoutMs: 15000
+      },
+      mapping: {
+        meters: [
+          {
+            id: "browser_balance",
+            label: "Browser balance",
+            kind: "balance",
+            unit: "USD",
+            remaining: "$.balance"
+          }
+        ]
+      }
+    },
+    {
       type: "plugin",
       pluginId: "vendor-plugin",
       connectorId: "account"
@@ -1650,16 +1845,20 @@ export async function probeProviderCandidates(
   apiKey: string,
   models: string[],
   options: {
+    forceRefresh?: boolean;
     mode?: "connectivity" | "models" | "protocols";
+    providerPlugins?: unknown[];
     protocols?: GatewayProviderProtocol[];
   } = {}
 ): Promise<ProviderProbeCandidateResult | undefined> {
   const mode = options.mode ?? "protocols";
   return await window.ccr?.probeProviderCandidates({
-    apiKey: mode === "connectivity" || mode === "models" ? apiKey : undefined,
+    apiKey: apiKey || undefined,
     candidates,
+    forceRefresh: options.forceRefresh,
     mode,
     models: mode === "connectivity" ? models : [],
+    providerPlugins: options.providerPlugins,
     protocols: options.protocols
   });
 }
@@ -1798,6 +1997,92 @@ export function providerCapabilitiesForSave(
     currentCapabilities,
     ...(preserveExisting ? [preservedCapabilities] : [])
   );
+}
+
+export type ProviderManualFields = Pick<
+  GatewayProviderConfig,
+  "billing" | "provider" | "transformer"
+>;
+
+/**
+ * Provider fields the setup dialog cannot edit.
+ *
+ * Saving rebuilds the provider from the dialog draft, so a field the form does
+ * not know about is dropped unless it is carried over explicitly. These fields
+ * only ever come from a hand-written config, and losing them is silent: the
+ * provider keeps working, just without the billing metadata or transformers it
+ * was configured with.
+ *
+ * `extraBody` and `extraHeaders` are not listed here — the Advanced settings
+ * section edits them, so they round-trip through the draft instead.
+ *
+ * The legacy `apiKey` / `apikey` / `baseUrl` / `baseurl` aliases are deliberately
+ * not carried over — the form writes the canonical `api_key` / `api_base_url`,
+ * and a stale alias would shadow the value the user just typed.
+ */
+export function providerManualFieldsForSave(
+  existingProvider: GatewayProviderConfig | undefined
+): ProviderManualFields {
+  if (!existingProvider) {
+    return {};
+  }
+  const preserved: ProviderManualFields = {
+    billing: existingProvider.billing,
+    provider: existingProvider.provider,
+    transformer: existingProvider.transformer
+  };
+  // Keep the saved provider free of keys it never had, so an unrelated edit does
+  // not show up as a config change.
+  for (const field of Object.keys(preserved) as Array<keyof ProviderManualFields>) {
+    if (preserved[field] === undefined) {
+      delete preserved[field];
+    }
+  }
+  return preserved;
+}
+
+export type ProviderExtraJsonField = "extraBody" | "extraHeaders";
+
+const providerExtraJsonInvalidMessages: Record<ProviderExtraJsonField, string> = {
+  extraBody: "Extra request body JSON is invalid.",
+  extraHeaders: "Extra request headers JSON is invalid."
+};
+
+const providerExtraJsonShapeMessages: Record<ProviderExtraJsonField, string> = {
+  extraBody: "Extra request body must be a JSON object.",
+  extraHeaders: "Extra request headers must be a JSON object."
+};
+
+export function providerExtraJsonDraftText(value: unknown): string {
+  if (value === undefined || value === null) {
+    return "";
+  }
+  return JSON.stringify(value, null, 2);
+}
+
+/**
+ * Parses one of the Advanced settings JSON boxes.
+ *
+ * Returns the parsed object, `undefined` when the box is empty, or an error
+ * message string the caller surfaces the same way as the other draft issues.
+ */
+export function parseProviderExtraJsonDraft(
+  text: string,
+  field: ProviderExtraJsonField
+): Record<string, unknown> | undefined | string {
+  if (!text.trim()) {
+    return undefined;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return providerExtraJsonInvalidMessages[field];
+  }
+  if (!isPlainRecord(parsed)) {
+    return providerExtraJsonShapeMessages[field];
+  }
+  return parsed;
 }
 
 export function providerGlobalBaseUrlForProbe(
@@ -1953,7 +2238,15 @@ export function mergeModelMetadata(
       if (!model || !metadata || typeof metadata !== "object") {
         continue;
       }
-      merged[model] = metadata;
+      const pinned = merged[model]?.contextWindowPinned ? merged[model] : undefined;
+      merged[model] = pinned
+        ? {
+            ...metadata,
+            contextWindow: pinned.contextWindow,
+            contextWindowPinned: true,
+            maxContextWindow: pinned.maxContextWindow
+          }
+        : metadata;
     }
   }
   return Object.keys(merged).length > 0 ? merged : undefined;
@@ -1998,6 +2291,43 @@ export function providerModelDisplayName(provider: GatewayProviderConfig, model:
 
 export function providerModelDisplayTitle(provider: GatewayProviderConfig, model: string): string {
   return providerModelDisplayName(provider, model);
+}
+
+export function providerAutoFetchKnownModelsForSave({
+  currentModels,
+  detectedModels = [],
+  draftKnownModels = [],
+  existingProvider,
+  nextBaseUrl
+}: {
+  currentModels: string[];
+  detectedModels?: string[];
+  draftKnownModels?: string[];
+  existingProvider?: GatewayProviderConfig;
+  nextBaseUrl: string;
+}): string[] | undefined {
+  const current = mergeProviderModelLists(currentModels);
+  const matchedExistingProvider = existingProvider && providerModelSourceMatches(existingProvider, nextBaseUrl)
+    ? existingProvider
+    : undefined;
+  const existingKnown = matchedExistingProvider
+    ? mergeProviderModelLists(matchedExistingProvider.autoFetchKnownModels ?? [], matchedExistingProvider.models)
+    : [];
+  const draftKnown = matchedExistingProvider ? mergeProviderModelLists(draftKnownModels) : [];
+  const detected = mergeProviderModelLists(detectedModels);
+  const known = mergeProviderModelLists(existingKnown, draftKnown, detected, current);
+  const currentKeys = new Set(current.map((model) => model.toLowerCase()));
+  const hasKnownModelsOutsideCurrentSelection = known.some((model) => !currentKeys.has(model.toLowerCase()));
+  const hasObservedCatalogBaseline = detected.length > 0;
+  const hasExistingBaseline = existingKnown.length > 0 || draftKnown.length > 0;
+
+  return hasKnownModelsOutsideCurrentSelection || hasObservedCatalogBaseline || hasExistingBaseline ? known : undefined;
+}
+
+function providerModelSourceMatches(provider: GatewayProviderConfig, nextBaseUrl: string): boolean {
+  const currentBaseUrl = normalizeProviderBaseUrl(providerBaseUrl(provider)).toLowerCase();
+  const nextNormalizedBaseUrl = normalizeProviderBaseUrl(nextBaseUrl).toLowerCase();
+  return Boolean(currentBaseUrl && nextNormalizedBaseUrl && currentBaseUrl === nextNormalizedBaseUrl);
 }
 
 export function pickRecommendedProviderModels(models: string[], protocol?: GatewayProviderProtocol): string[] {

@@ -154,9 +154,9 @@ async function callTool(params: unknown, service: MediaService): Promise<JsonVal
   if (!binding) throw new Error(`Unknown media tool: ${params.name}`);
   let result: unknown;
   switch (binding.operation) {
-    case "image-generate": result = await service.imageGenerate(args, binding.modelSelector); break;
-    case "image-edit": result = await service.imageEdit(args, binding.modelSelector); break;
-    case "video-generate": result = service.videoStart(args, binding.modelSelector); break;
+    case "image-generate": result = await service.imageGenerate(args, binding); break;
+    case "image-edit": result = await service.imageEdit(args, binding); break;
+    case "video-generate": result = service.videoStart(args, binding); break;
     case "job-get": result = service.getJob(requiredJobId(args)); break;
     case "job-cancel": result = service.cancelJob(requiredJobId(args)); break;
     case "capabilities": result = service.capabilities(); break;

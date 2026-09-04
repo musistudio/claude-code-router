@@ -27,6 +27,7 @@ const testProjects = {
     runtimeEntryPoints: {
       "runtime/fusion-vision-mcp": path.join(packageRoots.core, "mcp", "fusion-vision-mcp.ts"),
       "runtime/gateway-bootstrap": path.join(packageRoots.core, "gateway", "core-runtime", "gateway-bootstrap.ts"),
+      "runtime/local-agent-auth-provider-hook": path.join(packageRoots.core, "gateway", "core-runtime", "local-agent-auth-provider-hook.ts"),
       "runtime/media-tools-proxy-mcp": path.join(packageRoots.core, "mcp", "media-tools-proxy-mcp.ts"),
       "runtime/request-log-worker": path.join(packageRoots.core, "observability", "request-log-worker.ts"),
       "runtime/route-script-worker": path.join(packageRoots.core, "routing", "route-script-worker.ts"),

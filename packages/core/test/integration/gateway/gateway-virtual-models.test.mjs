@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { PassThrough, Readable } from "node:stream";
 import test from "node:test";
+import { createHostedWebSearchProtocolContext } from "@ccr/core/gateway/features/hosted-web-search/index.ts";
 import {
   fusionFallbackToolDefinitions,
   fusionWebSearchToolNameForRequest,
@@ -35,7 +36,7 @@ test("gateway config rewrites Fusion fixed base and vision models to core provid
           { baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4", type: "anthropic_messages" }
         ],
         credentials: [{ apiKey: "test-key", id: "test-1" }],
-        models: ["glm-5.2", "glm-5v-turbo"],
+        models: ["glm-5.2", "glm-4.5-air", "glm-5v-turbo"],
         name: providerName,
         type: "openai_chat_completions"
       }
@@ -61,7 +62,9 @@ test("gateway config rewrites Fusion fixed base and vision models to core provid
       materialization: { enabled: true, includeInGatewayModels: true },
       metadata: {
         fusionVision: {
+          fallbackModels: [`${providerName}/glm-4.5-air`],
           modelSelector: `${providerName}/glm-5v-turbo`,
+          retryCount: 2,
           toolName: "vision_understand_glm_fusion"
         }
       },
@@ -79,6 +82,11 @@ test("gateway config rewrites Fusion fixed base and vision models to core provid
     profile.metadata.fusionVision.modelSelector,
     /^provider-zhipu-ai-china---coding-plan-[a-f0-9]{10}::openai_chat_completions::cred:test-1\/glm-5v-turbo$/
   );
+  assert.match(
+    profile.metadata.fusionVision.fallbackModels[0],
+    /^provider-zhipu-ai-china---coding-plan-[a-f0-9]{10}::openai_chat_completions::cred:test-1\/glm-4\.5-air$/
+  );
+  assert.equal(profile.metadata.fusionVision.retryCount, 2);
   assert.equal(profile.execution.maxToolCalls, Number.MAX_SAFE_INTEGER);
   assert.equal(profile.execution.maxTurns, Number.MAX_SAFE_INTEGER);
   assert.equal(profiles[0].baseModel.fixedModel, `${providerName}/glm-5.2`);
@@ -195,7 +203,9 @@ test("issue 1480 Fusion vision config injects core auth token into MCP gateway r
         materialization: { enabled: true, includeInGatewayModels: true },
         metadata: {
           fusionVision: {
+            fallbackModels: [`${providerName}/glm-4.5-air`],
             modelSelector: `${providerName}/glm-5v-turbo`,
+            retryCount: 1,
             toolName: "vision_understand_glm_5_2v"
           }
         },
@@ -231,6 +241,51 @@ test("issue 1480 Fusion vision config injects core auth token into MCP gateway r
     server.env.VISION_MODEL,
     /^provider-zhipu-ai-china---coding-plan-[a-f0-9]{10}::openai_chat_completions::cred:test-1\/glm-5v-turbo$/
   );
+  assert.equal(server.env.VISION_RETRY_COUNT, "1");
+  const fallbackModels = JSON.parse(server.env.VISION_FALLBACK_MODELS_JSON);
+  assert.equal(fallbackModels.length, 1);
+  assert.match(
+    fallbackModels[0],
+    /^provider-zhipu-ai-china---coding-plan-[a-f0-9]{10}::openai_chat_completions::cred:test-1\/glm-4\.5-air$/
+  );
+});
+
+test("gateway config injects Fusion vision media_ref tool instructions", () => {
+  const profiles = [
+    {
+      baseModel: { fixedModel: "Text/base-model", mode: "fixed" },
+      displayName: "Vision Fusion",
+      enabled: true,
+      execution: {
+        clientToolsPolicy: "allow",
+        matchMultimodal: true,
+        maxToolCalls: 8,
+        maxTurns: 6,
+        mode: "tool_loop",
+        streamMode: "optimistic"
+      },
+      id: "vision-fusion",
+      key: "vision-fusion",
+      match: { exactAliases: ["vision-fusion"], prefixes: [], suffixes: [] },
+      materialization: { enabled: true, includeInGatewayModels: true },
+      metadata: {
+        fusionVision: { modelSelector: "Vision/vision-model", toolName: "vision_understand_vision" }
+      },
+      tools: [{ name: "vision_understand_vision", visibility: "internal" }]
+    }
+  ];
+
+  const [profile] = normalizeCoreGatewayVirtualModelProfiles(profiles, {
+    Providers: [],
+    Router: { fallback: { mode: "off", models: [], retryCount: 0 } },
+    gateway: {}
+  });
+
+  assert.match(profile.instructions.append, /call the vision_understand_vision function tool before answering visual questions/);
+  assert.match(profile.instructions.append, /Use imageUrl or images\[\]\.url for refs listed as url/);
+  assert.match(profile.instructions.append, /Use imageBase64 or images\[\]\.base64 for refs listed as base64/);
+  assert.match(profile.instructions.append, /original media URL or base64 payload/);
+  assert.match(profile.instructions.append, /Do not search the filesystem for the media_ref/);
 });
 
 test("gateway config does not inject core auth token into external Fusion vision MCP runtime", async () => {
@@ -502,6 +557,51 @@ test("gateway resolves normalized Fusion web search tool names for Anthropic pro
   };
 
   assert.equal(fusionWebSearchToolNameForRequest(config, "Fusion/kimisearch"), "fusion_2_web_search");
+});
+
+test("gateway resolves Claude discovery aliases before hosted web search matching", () => {
+  const config = {
+    Providers: [],
+    Router: { fallback: { mode: "off", models: [], retryCount: 0 } },
+    gateway: {},
+    virtualModelProfiles: [
+      {
+        displayName: "Kimisearch",
+        enabled: true,
+        execution: {
+          clientToolsPolicy: "allow",
+          matchWebSearch: true,
+          maxToolCalls: 8,
+          maxTurns: 6,
+          mode: "tool_loop",
+          streamMode: "optimistic"
+        },
+        id: "fusion-2",
+        key: "kimisearch",
+        match: { exactAliases: ["kimisearch", "Fusion/kimisearch"], prefixes: [], suffixes: [] },
+        materialization: { enabled: true, includeInGatewayModels: true },
+        metadata: {
+          fusionWebSearch: { provider: "browser", toolName: "web_search_fusion_2" }
+        },
+        tools: [{ name: "web_search_fusion_2", visibility: "internal" }]
+      }
+    ]
+  };
+  const context = createHostedWebSearchProtocolContext({
+    body: Buffer.from(JSON.stringify({
+      messages: [{ content: "weather", role: "user" }],
+      model: "claude-Fusion/kimisearch",
+      tools: [{ name: "web_search", type: "web_search_20250305" }]
+    })),
+    config,
+    method: "POST",
+    path: "/v1/messages",
+    requestId: "request-1",
+    routedModel: "claude-Fusion/kimisearch",
+    sinceMs: 0
+  });
+
+  assert.equal(context?.toolName, "fusion_2_web_search");
 });
 
 test("gateway does not route hosted web search through an unrelated Fusion search profile", () => {

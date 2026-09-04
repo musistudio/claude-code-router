@@ -323,13 +323,14 @@ test("RequestLogRuntime persists unmatched raw trace updates across worker resta
   }
 });
 
-test("RequestLogStore retains a bounded prefix for oversized unmatched raw trace bodies", async () => {
+test("RequestLogStore stores oversized unmatched raw trace bodies in sidecar storage", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-pending-entry-budget-test-"));
   const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
   try {
+    const body = "s".repeat(3 * 1024 * 1024);
     await store.writeBatch([{
       input: {
-        requestBodyText: "s".repeat(3 * 1024 * 1024),
+        requestBodyText: body,
         requestId: "oversized-pending-raw"
       },
       kind: "raw-trace-update",
@@ -344,25 +345,29 @@ test("RequestLogStore retains a bounded prefix for oversized unmatched raw trace
 
     const page = await store.list({ pageSize: 25 });
     const detail = await store.getDetail({ id: page.items[0].id });
-    assert.match(detail.requestBody.text, /^s+$/);
-    assert.equal(Buffer.byteLength(detail.requestBody.text), 512 * 1024);
-    assert.equal(detail.requestBody.sizeBytes, 3 * 1024 * 1024);
-    assert.equal(detail.requestBody.truncated, true);
+    assert.ok(detail.requestBody.bodyRef);
+    assert.equal(detail.requestBody.preview, true);
+    assert.match(detail.requestBody.text, /bytes omitted from preview/);
+    assert.equal(detail.requestBody.sizeBytes, Buffer.byteLength(body));
+    assert.equal(detail.requestBody.truncated, false);
+    assert.equal(await readStoredBodyText(store, page.items[0].id, "request"), body);
   } finally {
     await store.close();
     rmSync(dir, { force: true, recursive: true });
   }
 });
 
-test("RequestLogStore bounds unmatched request and response bodies independently", async () => {
+test("RequestLogStore stores unmatched request and response bodies independently", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-pending-body-budget-test-"));
   const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
   try {
+    const requestBody = "q".repeat(3 * 1024 * 1024);
+    const responseBody = "p".repeat(3 * 1024 * 1024);
     await store.writeBatch([{
       input: {
-        requestBodyText: "q".repeat(3 * 1024 * 1024),
+        requestBodyText: requestBody,
         requestId: "oversized-pending-pair",
-        responseBodyText: "p".repeat(3 * 1024 * 1024)
+        responseBodyText: responseBody
       },
       kind: "raw-trace-update",
       sequence: 1
@@ -376,12 +381,14 @@ test("RequestLogStore bounds unmatched request and response bodies independently
 
     const page = await store.list({ pageSize: 25 });
     const detail = await store.getDetail({ id: page.items[0].id });
-    assert.equal(Buffer.byteLength(detail.requestBody.text), 512 * 1024);
-    assert.equal(Buffer.byteLength(detail.responseBody.text), 512 * 1024);
-    assert.equal(detail.requestBody.sizeBytes, 3 * 1024 * 1024);
-    assert.equal(detail.responseBody.sizeBytes, 3 * 1024 * 1024);
-    assert.equal(detail.requestBody.truncated, true);
-    assert.equal(detail.responseBody.truncated, true);
+    assert.ok(detail.requestBody.bodyRef);
+    assert.ok(detail.responseBody.bodyRef);
+    assert.equal(detail.requestBody.sizeBytes, Buffer.byteLength(requestBody));
+    assert.equal(detail.responseBody.sizeBytes, Buffer.byteLength(responseBody));
+    assert.equal(detail.requestBody.truncated, false);
+    assert.equal(detail.responseBody.truncated, false);
+    assert.equal(await readStoredBodyText(store, page.items[0].id, "request"), requestBody);
+    assert.equal(await readStoredBodyText(store, page.items[0].id, "response"), responseBody);
   } finally {
     await store.close();
     rmSync(dir, { force: true, recursive: true });
@@ -423,7 +430,9 @@ test("RequestLogStore enforces a total byte budget for unmatched raw trace rows"
     const oldest = await store.getDetail({ id: oldestEntry.id });
     const newest = await store.getDetail({ id: newestEntry.id });
     assert.match(oldest.requestBody.text, /worker-model/);
-    assert.match(newest.requestBody.text, /^(?:17)+$/);
+    assert.ok(newest.requestBody.bodyRef);
+    assert.match(newest.requestBody.text, /bytes omitted from preview/);
+    assert.match(await readStoredBodyText(store, newestEntry.id, "request"), /^(?:17)+$/);
   } finally {
     await store.close();
     rmSync(dir, { force: true, recursive: true });
@@ -460,7 +469,8 @@ test("RequestLogRuntime preserves original response sizes when normal body captu
     assert.equal(metadataEntry.resolvedModel, "resolved-model");
     assert.equal(metadataEntry.responseModel, "response-model");
     assert.equal(truncated.responseBody.sizeBytes, Buffer.byteLength(fullResponse));
-    assert.equal(Buffer.byteLength(truncated.responseBody.text), 512 * 1024);
+    assert.ok(truncated.responseBody.bodyRef);
+    assert.equal(Buffer.byteLength(await readStoredBodyText(runtime, truncatedEntry.id, "response")), 512 * 1024);
     assert.equal(truncated.responseBody.truncated, true);
     assert.equal(metadata.responseBody.sizeBytes, Buffer.byteLength("exists"));
     assert.equal(metadata.responseBody.text, "");
@@ -586,7 +596,7 @@ test("RequestLogRuntime keeps the record body-removal policy for later file-back
   }
 });
 
-test("RequestLogRuntime retains inline raw trace bodies below the default safety limit", async () => {
+test("RequestLogRuntime stores large inline raw trace bodies in sidecar storage", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-runtime-raw-body-test-"));
   const runtime = createRuntime(dir);
   try {
@@ -604,7 +614,9 @@ test("RequestLogRuntime retains inline raw trace bodies below the default safety
     const page = await runtime.list({ pageSize: 25 });
     const detail = await runtime.getDetail({ id: page.items[0].id });
     assert.equal(detail.responseBody.sizeBytes, Buffer.byteLength(body));
-    assert.equal(detail.responseBody.text.length, body.length);
+    assert.ok(detail.responseBody.bodyRef);
+    assert.match(detail.responseBody.text, /bytes omitted from preview/);
+    assert.equal(await readStoredBodyText(runtime, page.items[0].id, "response"), body);
     assert.equal(detail.responseBody.truncated, false);
   } finally {
     await runtime.close({ timeoutMs: 5_000 });
@@ -612,7 +624,7 @@ test("RequestLogRuntime retains inline raw trace bodies below the default safety
   }
 });
 
-test("RequestLogRuntime bounds file-backed raw bodies and cleans bundles only after ACK", async () => {
+test("RequestLogRuntime stores file-backed raw bodies and cleans bundles only after ACK", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-runtime-raw-file-test-"));
   const spoolDir = path.join(dir, "raw-trace-spool");
   const bundleDir = path.join(spoolDir, "bundle");
@@ -643,8 +655,10 @@ test("RequestLogRuntime bounds file-backed raw bodies and cleans bundles only af
     const page = await runtime.list({ pageSize: 25 });
     const detail = await runtime.getDetail({ id: page.items[0].id });
     assert.equal(detail.responseBody.sizeBytes, Buffer.byteLength(body));
-    assert.equal(detail.responseBody.text.length, 256 * 1024);
-    assert.equal(detail.responseBody.truncated, true);
+    assert.ok(detail.responseBody.bodyRef);
+    assert.match(detail.responseBody.text, /bytes omitted from preview/);
+    assert.equal(await readStoredBodyText(runtime, page.items[0].id, "response"), body);
+    assert.equal(detail.responseBody.truncated, false);
   } finally {
     await runtime.close({ timeoutMs: 5_000 });
     rmSync(dir, { force: true, recursive: true });
@@ -685,8 +699,11 @@ test("RequestLogRuntime compacts Base64 images while reading file-backed raw tra
     const detail = await runtime.getDetail({ id: page.items[0].id });
     const captured = JSON.parse(detail.requestBody.text);
     assert.equal(detail.requestBody.sizeBytes, Buffer.byteLength(body));
-    assert.equal(detail.requestBody.truncated, true);
+    assert.ok(detail.requestBody.bodyRef);
+    assert.equal(detail.requestBody.truncated, false);
     assert.match(captured.image_url.url, /^data:image\/jpeg;base64,\[base64 image omitted from log;/);
+    const fullBody = JSON.parse(await readStoredBodyText(runtime, page.items[0].id, "request"));
+    assert.equal(fullBody.image_url.url, `data:image/jpeg;base64,${"A".repeat(512 * 1024)}`);
     assert.equal(existsSync(bundleDir), false);
   } finally {
     await runtime.close({ timeoutMs: 5_000 });
@@ -1619,6 +1636,20 @@ function createRuntime(dir, options = {}) {
     ...options,
     workerFile
   });
+}
+
+async function readStoredBodyText(source, id, side) {
+  let offset = 0;
+  const chunks = [];
+  while (true) {
+    const chunk = await source.getBodyChunk({ id, length: 512 * 1024, offset, side });
+    assert.ok(chunk, `expected ${side} body chunk at offset ${offset}`);
+    chunks.push(chunk.text);
+    if (chunk.eof) break;
+    assert.ok(chunk.nextOffset > offset);
+    offset = chunk.nextOffset;
+  }
+  return chunks.join("");
 }
 
 function createRecord(requestId) {

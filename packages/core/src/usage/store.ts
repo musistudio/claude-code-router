@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { decodeClaudeAppGatewayRouteId } from "@ccr/core/agents/claude-app/gateway-routes";
 import { REQUEST_LOGS_DB_FILE, USAGE_DB_FILE } from "@ccr/core/config/constants";
 import { estimateUsageCostUsd, providerModelPricingForUsage } from "@ccr/core/models/pricing-service";
 import { createBetterSqliteDatabase, type BetterSqliteDatabase } from "@ccr/core/storage/sqlite-native";
@@ -214,6 +215,52 @@ export class UsageStore {
       costSource
     );
     usageEvents.emit("recorded");
+  }
+
+  async recordCapture(input: UsageCaptureInput): Promise<void> {
+    const headersUsage = extractUsageFromBillingHeaders(input.responseHeaders);
+    const bodyUsage = extractUsageFromBody(input.bodyText);
+    // Normalize each source under its own convention before merging them: on a
+    // translated response the billing headers and the body state input tokens
+    // differently, and one shared rule is wrong for one of them.
+    const usage = mergeUsageSnapshots(
+      normalizeUsageInputTokens(headersUsage, {
+        path: input.path,
+        providerProtocol: input.providerProtocol,
+        source: "providerBilling"
+      }),
+      normalizeUsageInputTokens(bodyUsage, {
+        path: input.path,
+        source: "responseBody"
+      })
+    );
+    const fallbackAttribution = resolveUsageModelAttribution(input.config, input.fallbackModel);
+    const responseAttribution = resolveUsageResponseModelAttribution(input.config, bodyUsage?.model);
+    const route = splitRouteSelector(input.fallbackModel);
+    const provider =
+      input.providerName ??
+      readHeader(input.responseHeaders, "x-gateway-target-provider-name") ??
+      readHeader(input.responseHeaders, "x-gateway-target-provider") ??
+      responseAttribution.provider ??
+      fallbackAttribution.provider ??
+      route.provider;
+    const model = responseAttribution.model ?? fallbackAttribution.model ?? route.model ?? input.fallbackModel;
+
+    await this.record({
+      durationMs: input.durationMs,
+      method: input.method,
+      logicalModel: fallbackAttribution.logicalModel ?? input.fallbackModel,
+      model,
+      modelIsRouteSelector: false,
+      path: input.path,
+      client: input.client,
+      provider,
+      pricing: providerModelPricingForUsage(input.config, provider, model),
+      credentialId: readCredentialId(input.responseHeaders),
+      requestId: input.requestId,
+      statusCode: input.statusCode,
+      usage
+    });
   }
 
   async hasRequestId(requestId: string): Promise<boolean> {
@@ -469,47 +516,22 @@ export async function getUsageTotalsSince(since: Date, filter?: UsageStatsFilter
 
 export async function recordGatewayUsageCapture(input: UsageCaptureInput): Promise<void> {
   try {
-    const headersUsage = extractUsageFromBillingHeaders(input.responseHeaders);
-    const bodyUsage = extractUsageFromBody(input.bodyText);
-    const usage = normalizeUsageInputTokens(mergeUsageSnapshots(headersUsage, bodyUsage), {
-      path: input.path,
-      providerProtocol: input.providerProtocol,
-      usageHint: bodyUsage
-    });
-    const fallbackAttribution = resolveUsageModelAttribution(input.config, input.fallbackModel);
-    const responseAttribution = resolveUsageModelAttribution(
-      input.config,
-      bodyUsage?.model,
-      { physicalModel: true }
-    );
-    const route = splitRouteSelector(input.fallbackModel);
-    const provider =
-      input.providerName ??
-      readHeader(input.responseHeaders, "x-gateway-target-provider-name") ??
-      readHeader(input.responseHeaders, "x-gateway-target-provider") ??
-      responseAttribution.provider ??
-      fallbackAttribution.provider ??
-      route.provider;
-    const model = responseAttribution.model ?? fallbackAttribution.model ?? route.model ?? input.fallbackModel;
-
-    await usageStore.record({
-      durationMs: input.durationMs,
-      method: input.method,
-      logicalModel: fallbackAttribution.logicalModel ?? input.fallbackModel,
-      model,
-      modelIsRouteSelector: false,
-      path: input.path,
-      client: input.client,
-      provider,
-      pricing: providerModelPricingForUsage(input.config, provider, model),
-      credentialId: readCredentialId(input.responseHeaders),
-      requestId: input.requestId,
-      statusCode: input.statusCode,
-      usage
-    });
+    await usageStore.recordCapture(input);
   } catch (error) {
     console.warn(`[usage] Failed to record usage: ${formatError(error)}`);
   }
+}
+
+function resolveUsageResponseModelAttribution(
+  config: Pick<AppConfig, "Providers" | "virtualModelProfiles"> | undefined,
+  model: string | undefined
+) {
+  const decodedClaudeRouteModel = model ? decodeClaudeAppGatewayRouteId(model) : undefined;
+  if (decodedClaudeRouteModel) {
+    const attribution = resolveUsageModelAttribution(config, decodedClaudeRouteModel);
+    return !config || attribution.provider ? attribution : {};
+  }
+  return resolveUsageModelAttribution(config, model, { physicalModel: true });
 }
 
 function buildUsageWhereClause(

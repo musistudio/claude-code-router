@@ -5,22 +5,23 @@ import {
   compareProviderAccountSnapshots, copyTextToClipboard, createDefaultProviderAccountDraft, createModelCatalogItems, createProviderAccountDraftFromConfig, createProviderCredentialDraft,
   customProviderPresetId, defaultProviderAccountConfigForPreset, Dialog, DialogBody, DialogContent, DialogFooter,
   DialogHeader, DialogTitle, ExternalLink, Eye, EyeOff, Field, findProviderPreset, formatProviderAccountMeterValue, GatewayProviderConfig,
-  GatewayProviderProbeResult, getProviderPresets, Globe, inferProviderNameFromBaseUrl, Info, Input, KeyValueRowsControl, Label,
+  GatewayProviderProbeResult, getProviderPresets, Globe, inferProviderNameFromBaseUrl, Info, Input, KeyRound, KeyValueRowsControl, Label,
   Layers3, LoaderCircle, localAgentProviderIconUrls, mergeProviderModelLists, modelCatalogItemMatchesQuery, motion,
   Pencil, Plus, PopoverContent, primaryProviderAccountMeter, primaryProviderPresetEndpoint,
   providerAccountConnectorApiKeySafetyIssue, providerAccountConnectorExample, ProviderAccountDraftMode, providerAccountModeOptions, ProviderAccountSnapshot,
   providerAccountConnectorsTextWithNewApiUserBalanceTemplate, providerAccountSnapshotCredentialLabel, providerAccountSnapshotLabel, ProviderAccountTestPath,
   ProviderAccountTestResult, providerBaseUrl, providerCapabilitiesSummary, ProviderCredentialDraft, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerDraftSafetyIssue, providerCredentialDraftPatchFromJson, providerHttpJsonConnectorFromDraft,
+  providerBrowserConnectorFromDraft, providerBrowserCredentialsOptions,
   ProviderConnectivityCheckReport, providerCapabilityBaseUrlForProtocol, providerConnectivityApiKeyFromDraft, providerDeepLinkDisplayIcon, providerDraftHasReadyCredentialPool, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerProbeHasSupportedProtocol,
   providerDisplayIcon, providerGlobalBaseUrlForProbe, providerModelDisplayName, providerModelDisplayTitle, providerProtocolOptions, providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
-  resolveProviderDeepLinkPreset, ShieldCheck, splitLines, Switch, Tabs, TabsList, TabsTrigger, Textarea, Toggle, translatedProviderProtocolLabel, translateOptions,
+  RefreshCw, resolveProviderDeepLinkPreset, ShieldCheck, splitLines, Switch, Tabs, TabsList, TabsTrigger, Textarea, Toggle, translatedProviderProtocolLabel, translateOptions,
   translateProbeProtocolMessage, Trash2, uniqueProviderName, uniqueProviderProtocols, useAppErrorText, useAppText, useEffect, useLayoutEffect, useMemo,
   useRef, useState, X, isGatewayProviderEnabled, isPlainRecord
 } from "../shared/index";
 import { PopoverPortal } from "@/components/ui/popover";
-import { TooltipPortal } from "@/components/ui/tooltip";
+import { Tooltip, TooltipPortal } from "@/components/ui/tooltip";
 import { providerUrlWithDefaultScheme } from "@ccr/core/providers/url";
-import type { LocalAgentProviderCandidate } from "@ccr/core/contracts/app";
+import type { ChromeLoginImportJob, LocalAgentProviderCandidate, OpenRouterProviderCatalogItem, OpenRouterProviderCatalogRequest, ProviderAccountHttpJsonConnectorConfig, ProviderAccountWebContentJsonConnectorConfig } from "@ccr/core/contracts/app";
 import type { ReactNode } from "react";
 
 const useClientLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
@@ -1827,14 +1828,14 @@ function ProviderConnectionStatusRow({
   return (
     <div className={cn(
       "flex min-w-0 items-start gap-2 rounded-md border bg-background px-3 py-2",
-      state === "success" && "border-emerald-200",
-      state === "warning" && "border-amber-200",
+      state === "success" && "border-emerald-500/30",
+      state === "warning" && "border-amber-500/30",
       state === "pending" && "border-border"
     )}>
       <span className={cn(
         "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full",
-        state === "success" && "bg-emerald-50 text-emerald-700",
-        state === "warning" && "bg-amber-50 text-amber-700",
+        state === "success" && "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+        state === "warning" && "bg-amber-500/10 text-amber-700 dark:text-amber-300",
         state === "pending" && "bg-muted text-muted-foreground"
       )}>
         {loading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : state === "success" ? <Check className="h-3.5 w-3.5" /> : <Info className="h-3.5 w-3.5" />}
@@ -1957,6 +1958,7 @@ export function AddProviderForm({
   mode,
   onCheck,
   onChange,
+  onRefreshModels,
   onIconDetectingChange,
   onSelectStep,
   probe,
@@ -1974,6 +1976,7 @@ export function AddProviderForm({
   mode: "add" | "edit";
   onCheck?: () => Promise<unknown>;
   onChange: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
+  onRefreshModels?: () => Promise<unknown>;
   onIconDetectingChange?: (detecting: boolean) => void;
   onSelectStep?: (step: ProviderSetupStepId) => void;
   probe?: GatewayProviderProbeResult;
@@ -1982,7 +1985,7 @@ export function AddProviderForm({
   providers: GatewayProviderConfig[];
 }) {
   const t = useAppText();
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(() => Boolean(draft.autoFetchModels));
   const [iconDetecting, setIconDetecting] = useState(false);
   const [autoDetectInfoPosition, setAutoDetectInfoPosition] = useState<{ left: number; top: number }>();
   const [protocolProbeDetails, setProtocolProbeDetails] = useState<ProviderProtocolProbeDetailsState>();
@@ -2349,7 +2352,15 @@ export function AddProviderForm({
                 metadata={draft.modelMetadata}
                 onMetadataChange={(modelMetadata) => onChange({ modelMetadata })}
                 onQueryChange={(modelSearch) => onChange({ modelSearch })}
+                onRefresh={onRefreshModels}
                 onSelectedChange={updateConfiguredModels}
+                openRouterDiscountRouting={draft.presetId === "openrouter"}
+                openRouterProviderCatalogRequest={draft.presetId === "openrouter"
+                  ? {
+                    apiKey: providerConnectivityApiKeyFromDraft(draft),
+                    baseUrl: draft.baseUrl
+                  }
+                  : undefined}
                 query={draft.modelSearch}
                 selected={configuredModels}
               />
@@ -2390,124 +2401,166 @@ export function AddProviderForm({
               {advancedOpen ? (
                 <AnimatedDisclosure className="sm:col-span-2" key="provider-advanced">
                   <div className="grid grid-cols-1 gap-3 rounded-md border border-border bg-muted/20 p-3 sm:grid-cols-2">
-                <div className="sm:col-span-2 flex min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-background px-3 py-2 text-[12px] font-semibold">
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <span className="min-w-0 truncate">{t("Auto detect protocols")}</span>
-                    <button
-                      aria-label={t("Auto detect protocols info")}
-                      aria-pressed={Boolean(autoDetectInfoPosition)}
-                      className={cn(
-                        "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30",
-                        autoDetectInfoPosition && "bg-muted text-foreground"
-                      )}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        toggleAutoDetectInfo(event.currentTarget);
-                      }}
-                      onMouseDown={(event) => event.stopPropagation()}
-                      title={t("Auto detect protocols info")}
-                      type="button"
-                    >
-                      <Info className="h-3.5 w-3.5" aria-hidden="true" />
-                    </button>
-                  </span>
-                  <Switch
-                    aria-label={t("Auto detect protocols")}
-                    checked={!manualProtocolDetection}
-                    onCheckedChange={updateAutoProtocolDetection}
-                  />
-                </div>
-                <ProviderUsageSettings
-                  customEndpoint={customEndpoint}
-                  draft={draft}
-                  onChange={onChange}
-                  probe={probe}
-                />
-                <Field className="sm:col-span-2" label={t("Protocol details")}>
-                  <div className="max-h-[128px] overflow-auto rounded-md border border-border bg-background p-2">
-                    {manualProtocolDetection ? (
-                      <div className="space-y-1.5">
-                        {providerProtocolOptions.map((option) => {
-                          const protocol = option.value;
-                          const checked = draft.selectedProtocols.includes(protocol);
-                          return (
-                            <div className="grid grid-cols-[20px_minmax(118px,1fr)_minmax(88px,max-content)] items-center gap-2 text-[11px]" key={protocol}>
-                              <Checkbox
-                                aria-label={`${t("Add")} ${translatedProviderProtocolLabel(protocol, t)}`}
-                                checked={checked}
-                                onCheckedChange={() => {
-                                  onChange({
-                                    selectedProtocols: checked
-                                      ? draft.selectedProtocols.filter((selected) => selected !== protocol)
-                                      : uniqueProviderProtocols([...draft.selectedProtocols, protocol])
-                                  });
-                                }}
-                              />
-                              <span className="truncate font-medium">{translatedProviderProtocolLabel(protocol, t)}</span>
-                              <span className={cn("inline-flex min-w-0 items-center justify-end", checked ? "text-foreground" : "text-muted-foreground")}>
-                                <span className="truncate">{checked ? t("Selected") : ""}</span>
-                              </span>
-                            </div>
-                          );
-                        })}
+                    <div className="sm:col-span-2 flex min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-background px-3 py-2 text-[12px] font-semibold">
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="min-w-0 truncate">{t("Auto fetch latest models")}</span>
+                        <Tooltip
+                          aria-label={t("Poll the provider models endpoint every 10 minutes and add newly discovered models automatically.")}
+                          className="h-5 w-5 items-center justify-center rounded-full text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+                          content={t("Poll the provider models endpoint every 10 minutes and add newly discovered models automatically.")}
+                          contentClassName="w-[260px] max-w-[calc(100vw-64px)] whitespace-normal px-2.5 py-2 text-left font-medium leading-4"
+                          side="right"
+                          tabIndex={0}
+                        >
+                          <Info className="h-3.5 w-3.5" aria-hidden="true" />
+                        </Tooltip>
+                      </span>
+                      <Switch
+                        aria-label={t("Auto fetch latest models")}
+                        checked={draft.autoFetchModels}
+                        onCheckedChange={(autoFetchModels) => onChange({ autoFetchModels })}
+                      />
+                    </div>
+                    <div className="sm:col-span-2 flex min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-background px-3 py-2 text-[12px] font-semibold">
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="min-w-0 truncate">{t("Auto detect protocols")}</span>
+                        <button
+                          aria-label={t("Auto detect protocols info")}
+                          aria-pressed={Boolean(autoDetectInfoPosition)}
+                          className={cn(
+                            "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30",
+                            autoDetectInfoPosition && "bg-muted text-foreground"
+                          )}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            toggleAutoDetectInfo(event.currentTarget);
+                          }}
+                          onMouseDown={(event) => event.stopPropagation()}
+                          title={t("Auto detect protocols info")}
+                          type="button"
+                        >
+                          <Info className="h-3.5 w-3.5" aria-hidden="true" />
+                        </button>
+                      </span>
+                      <Switch
+                        aria-label={t("Auto detect protocols")}
+                        checked={!manualProtocolDetection}
+                        onCheckedChange={updateAutoProtocolDetection}
+                      />
+                    </div>
+                    <ProviderUsageSettings
+                      customEndpoint={customEndpoint}
+                      draft={draft}
+                      onChange={onChange}
+                      probe={probe}
+                    />
+                    <Field className="sm:col-span-2" label={t("Extra request body")} requirement="optional" requirementLabel={t("Optional")}>
+                      <Textarea
+                        className="min-h-[92px] font-mono text-[11px]"
+                        onChange={(event) => onChange({ extraBodyText: event.target.value })}
+                        placeholder={`{\n  "default": { "reasoning_effort": "high" }\n}`}
+                        value={draft.extraBodyText}
+                      />
+                      <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                        {t("Merged into every upstream request for this provider. Use \"default\" for all models, or a model name as the key to target one.")}
                       </div>
-                    ) : protocolProbeRows.length ? (
-                      <div className="space-y-1.5">
-                        {protocolProbeRows.map((item) => {
-                          const available = item.supported;
-                          const selectableProtocol = selectableProtocols.find((protocol) => protocol === item.protocol);
-                          const selectable = item.supported && Boolean(selectableProtocol);
-                          const checked = Boolean(selectableProtocol && draft.selectedProtocols.includes(selectableProtocol));
-                          const itemKey = `${item.protocol}-${item.endpoint}`;
-                          return (
-                            <div className="grid grid-cols-[20px_minmax(118px,1fr)_minmax(88px,max-content)] items-center gap-2 text-[11px]" key={itemKey}>
-                              <Checkbox
-                                aria-label={`${t("Add")} ${translatedProviderProtocolLabel(item.protocol, t)}`}
-                                checked={checked}
-                                disabled={!selectable}
-                                onCheckedChange={() => {
-                                  if (!selectableProtocol) {
-                                    return;
-                                  }
-                                  onChange({
-                                    selectedProtocols: checked
-                                      ? draft.selectedProtocols.filter((protocol) => protocol !== selectableProtocol)
-                                      : uniqueProviderProtocols([...draft.selectedProtocols, selectableProtocol])
-                                  });
-                                }}
-                              />
-                              <span className="truncate font-medium">{translatedProviderProtocolLabel(item.protocol, t)}</span>
-                              <span className={cn("inline-flex min-w-0 items-center justify-end gap-1.5", available ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground")}>
-                                <span className="truncate">{available ? t("Available") : t("Unavailable")}</span>
-                                <button
-                                  aria-label={t("Protocol detection details")}
-                                  aria-pressed={protocolProbeDetails?.key === itemKey}
-                                  className={cn(
-                                    "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30",
-                                    protocolProbeDetails?.key === itemKey && "bg-muted text-foreground"
-                                  )}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    toggleProtocolProbeDetails(itemKey, item, event.currentTarget);
-                                  }}
-                                  onMouseDown={(event) => event.stopPropagation()}
-                                  title={t("Protocol detection details")}
-                                  type="button"
-                                >
-                                  <Info className="h-3.5 w-3.5" aria-hidden="true" />
-                                </button>
-                              </span>
-                            </div>
-                          );
-                        })}
+                    </Field>
+                    <Field className="sm:col-span-2" label={t("Extra request headers")} requirement="optional" requirementLabel={t("Optional")}>
+                      <Textarea
+                        className="min-h-[68px] font-mono text-[11px]"
+                        onChange={(event) => onChange({ extraHeadersText: event.target.value })}
+                        placeholder={`{\n  "x-tenant": "acme"\n}`}
+                        value={draft.extraHeadersText}
+                      />
+                      <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                        {t("Sent with every upstream request for this provider, alongside the API key header.")}
                       </div>
-                    ) : (
-                      <div className="text-[11px] text-muted-foreground">
-                        <span>{t("No protocol detection yet")}</span>
+                    </Field>
+                    <Field className="sm:col-span-2" label={t("Protocol details")}>
+                      <div className="max-h-[128px] overflow-auto rounded-md border border-border bg-background p-2">
+                        {manualProtocolDetection ? (
+                          <div className="space-y-1.5">
+                            {providerProtocolOptions.map((option) => {
+                              const protocol = option.value;
+                              const checked = draft.selectedProtocols.includes(protocol);
+                              return (
+                                <div className="grid grid-cols-[20px_minmax(118px,1fr)_minmax(88px,max-content)] items-center gap-2 text-[11px]" key={protocol}>
+                                  <Checkbox
+                                    aria-label={`${t("Add")} ${translatedProviderProtocolLabel(protocol, t)}`}
+                                    checked={checked}
+                                    onCheckedChange={() => {
+                                      onChange({
+                                        selectedProtocols: checked
+                                          ? draft.selectedProtocols.filter((selected) => selected !== protocol)
+                                          : uniqueProviderProtocols([...draft.selectedProtocols, protocol])
+                                      });
+                                    }}
+                                  />
+                                  <span className="truncate font-medium">{translatedProviderProtocolLabel(protocol, t)}</span>
+                                  <span className={cn("inline-flex min-w-0 items-center justify-end", checked ? "text-foreground" : "text-muted-foreground")}>
+                                    <span className="truncate">{checked ? t("Selected") : ""}</span>
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : protocolProbeRows.length ? (
+                          <div className="space-y-1.5">
+                            {protocolProbeRows.map((item) => {
+                              const available = item.supported;
+                              const selectableProtocol = selectableProtocols.find((protocol) => protocol === item.protocol);
+                              const selectable = item.supported && Boolean(selectableProtocol);
+                              const checked = Boolean(selectableProtocol && draft.selectedProtocols.includes(selectableProtocol));
+                              const itemKey = `${item.protocol}-${item.endpoint}`;
+                              return (
+                                <div className="grid grid-cols-[20px_minmax(118px,1fr)_minmax(88px,max-content)] items-center gap-2 text-[11px]" key={itemKey}>
+                                  <Checkbox
+                                    aria-label={`${t("Add")} ${translatedProviderProtocolLabel(item.protocol, t)}`}
+                                    checked={checked}
+                                    disabled={!selectable}
+                                    onCheckedChange={() => {
+                                      if (!selectableProtocol) {
+                                        return;
+                                      }
+                                      onChange({
+                                        selectedProtocols: checked
+                                          ? draft.selectedProtocols.filter((protocol) => protocol !== selectableProtocol)
+                                          : uniqueProviderProtocols([...draft.selectedProtocols, selectableProtocol])
+                                      });
+                                    }}
+                                  />
+                                  <span className="truncate font-medium">{translatedProviderProtocolLabel(item.protocol, t)}</span>
+                                  <span className={cn("inline-flex min-w-0 items-center justify-end gap-1.5", available ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground")}>
+                                    <span className="truncate">{available ? t("Available") : t("Unavailable")}</span>
+                                    <button
+                                      aria-label={t("Protocol detection details")}
+                                      aria-pressed={protocolProbeDetails?.key === itemKey}
+                                      className={cn(
+                                        "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30",
+                                        protocolProbeDetails?.key === itemKey && "bg-muted text-foreground"
+                                      )}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        toggleProtocolProbeDetails(itemKey, item, event.currentTarget);
+                                      }}
+                                      onMouseDown={(event) => event.stopPropagation()}
+                                      title={t("Protocol detection details")}
+                                      type="button"
+                                    >
+                                      <Info className="h-3.5 w-3.5" aria-hidden="true" />
+                                    </button>
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="text-[11px] text-muted-foreground">
+                            <span>{t("No protocol detection yet")}</span>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                </Field>
+                    </Field>
                   </div>
                 </AnimatedDisclosure>
               ) : null}
@@ -2532,7 +2585,7 @@ export function AddProviderForm({
         </div>
       </div>
 
-      {error ? <div className="mt-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive"><CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>{error}</span></div> : null}
+      {error ? <div className="mt-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive" role="alert"><CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>{error}</span></div> : null}
     </>
   );
 }
@@ -2839,10 +2892,14 @@ function ProviderUsageSettings({
   const [testLoading, setTestLoading] = useState(false);
   const [testResult, setTestResult] = useState<ProviderAccountTestResult>();
   const [testError, setTestError] = useState("");
+  const [chromeImportJob, setChromeImportJob] = useState<ChromeLoginImportJob>();
+  const [chromeImportLoading, setChromeImportLoading] = useState(false);
+  const [chromeImportMessage, setChromeImportMessage] = useState("");
   const [newApiUserId, setNewApiUserId] = useState("");
   const modeOptions = translateOptions(providerAccountModeOptions, t);
   const globalBaseUrl = providerGlobalBaseUrlForProbe(draft.baseUrl, probe, draft.selectedProtocols);
   const usageApiKey = providerConnectivityApiKeyFromDraft(draft);
+  const isJsonUsageMode = draft.accountMode === "http-json" || draft.accountMode === "browser";
   const showNewApiUserBalanceTemplate = probe?.detectedProvider === "new-api" ||
     draft.accountConnectorsText.includes("new-api-key-usage") ||
     draft.accountConnectorsText.includes("new-api-user-self");
@@ -2850,14 +2907,37 @@ function ProviderUsageSettings({
   useEffect(() => {
     setTestResult(undefined);
     setTestError("");
-  }, [draft.accountMode, draft.usageRequestUrl, draft.usageRequestMethod]);
+  }, [draft.accountConnectorsText, draft.accountMode, draft.usageBrowserCredentials, draft.usageBrowserHeaderTemplates, draft.usageBrowserLoginUrl, draft.usageBrowserRequestOrigin, draft.usageRequestUrl, draft.usageRequestMethod]);
+
+  useEffect(() => {
+    setChromeImportJob(undefined);
+    setChromeImportMessage("");
+  }, [draft.accountMode, draft.usageBrowserLoginUrl, draft.usageBrowserRequestOrigin, draft.usageRequestUrl]);
+
+  useEffect(() => {
+    if (!chromeImportJob || chromeImportJob.status !== "pending" || !window.ccr?.getChromeLoginImport) {
+      return;
+    }
+    const interval = window.setInterval(() => {
+      void window.ccr?.getChromeLoginImport?.(chromeImportJob.id).then((job) => {
+        if (job) {
+          setChromeImportJob(job);
+        }
+      });
+    }, 2000);
+    return () => window.clearInterval(interval);
+  }, [chromeImportJob]);
 
   async function testUsageRequest() {
     if (!window.ccr?.testProviderAccountConnector) {
       setTestError(t("Request failed."));
       return;
     }
-    const connector = providerHttpJsonConnectorFromDraft(draft, { requireMeters: false });
+    const connector = draft.accountMode === "raw"
+      ? providerRawAccountTestConnector(draft.accountConnectorsText)
+      : draft.accountMode === "browser"
+        ? providerBrowserConnectorFromDraft(draft, { requireMeters: false })
+        : providerHttpJsonConnectorFromDraft(draft, { requireMeters: false });
     if (typeof connector === "string") {
       setTestError(formatError(new Error(connector)));
       return;
@@ -2877,7 +2957,7 @@ function ProviderUsageSettings({
     setTestError("");
     try {
       const result = await window.ccr.testProviderAccountConnector({
-        apiKey: usageApiKey,
+        apiKey: connector.type === "http-json" ? usageApiKey : undefined,
         baseUrl: draft.baseUrl.trim(),
         connector,
         providerName: draft.name.trim()
@@ -2889,6 +2969,62 @@ function ProviderUsageSettings({
     } finally {
       setTestLoading(false);
     }
+  }
+
+  async function openBrowserLogin() {
+    if (!window.ccr?.openBuiltInBrowser) {
+      setTestError(t("Built-in browser is unavailable."));
+      return;
+    }
+    const targetUrl = browserLoginTargetUrl(draft);
+    if (!targetUrl) {
+      setTestError(t("Browser login URL or usage request URL is required."));
+      return;
+    }
+    setTestError("");
+    try {
+      await window.ccr.openBuiltInBrowser(targetUrl);
+    } catch (error) {
+      setTestError(formatError(error));
+    }
+  }
+
+  async function startChromeImportFromBrowserConfig() {
+    if (!window.ccr?.startChromeLoginImport) {
+      setTestError(t("Chrome login import is unavailable."));
+      return;
+    }
+    const domains = browserChromeImportDomains(draft);
+    if (domains.length === 0) {
+      setTestError(t("Browser login URL or usage request URL is required."));
+      return;
+    }
+    setChromeImportLoading(true);
+    setChromeImportMessage("");
+    setTestError("");
+    try {
+      const job = await window.ccr.startChromeLoginImport({
+        domains,
+        openConfirmationPage: true,
+        target: "browser"
+      });
+      setChromeImportJob(job);
+      setChromeImportMessage(t("Chrome import started. If the page did not open in Chrome, copy the extension import URL into the Chrome extension popup."));
+    } catch (error) {
+      setChromeImportJob(undefined);
+      setTestError(formatError(error));
+    } finally {
+      setChromeImportLoading(false);
+    }
+  }
+
+  async function copyChromeImportUrl(kind: "confirm" | "import") {
+    const url = kind === "confirm" ? chromeImportJob?.confirmUrl : chromeImportJob?.importUrl;
+    if (!url) {
+      return;
+    }
+    await copyTextToClipboard(url);
+    setChromeImportMessage(t(kind === "confirm" ? "Confirmation page URL copied." : "Extension import URL copied."));
   }
 
   function selectPath(target: ProviderUsageFieldTarget, path: string) {
@@ -2943,7 +3079,7 @@ function ProviderUsageSettings({
             </div>
           ) : null}
 
-          {draft.accountMode === "http-json" ? (
+          {isJsonUsageMode ? (
             <div className="sm:col-span-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label={t("Method")}>
                 <SelectControl
@@ -2959,6 +3095,92 @@ function ProviderUsageSettings({
                   onChange={(event) => onChange({ usageRequestUrl: event.target.value })}
                 />
               </Field>
+              {draft.accountMode === "browser" ? (
+                <>
+                  <div className="sm:col-span-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-[11px] leading-4 text-muted-foreground">
+                    {t("Browser request uses CCR Desktop's built-in browser login state. Sign in in the in-app browser before testing.")}
+                  </div>
+                  <Field className="sm:col-span-2" label={t("Browser login URL")}>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+                      <Input
+                        placeholder="https://vendor.example.com/login"
+                        value={draft.usageBrowserLoginUrl}
+                        onChange={(event) => onChange({ usageBrowserLoginUrl: event.target.value })}
+                      />
+                      <Button size="sm" type="button" variant="outline" onClick={() => void openBrowserLogin()}>
+                        <KeyRound className="h-3.5 w-3.5" />
+                        {t("Open login browser")}
+                      </Button>
+                      <Button disabled={chromeImportLoading} size="sm" type="button" variant="outline" onClick={() => void startChromeImportFromBrowserConfig()}>
+                        {chromeImportLoading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <KeyRound className="h-3.5 w-3.5" />}
+                        {t("Import from Chrome")}
+                      </Button>
+                    </div>
+                  </Field>
+                  <Field label={t("Browser storage origin")}>
+                    <Input
+                      placeholder={browserEndpointOrigin(draft.usageBrowserLoginUrl) || browserEndpointOrigin(draft.usageRequestUrl) || "https://vendor.example.com"}
+                      value={draft.usageBrowserRequestOrigin}
+                      onChange={(event) => onChange({ usageBrowserRequestOrigin: event.target.value })}
+                    />
+                    <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                      {t("Origin used to read browser storage before fetching the usage URL.")}
+                    </div>
+                  </Field>
+                  <Field label={t("Fetch credentials")}>
+                    <SelectControl
+                      onChange={(usageBrowserCredentials) => onChange({ usageBrowserCredentials: usageBrowserCredentials as AddProviderDraft["usageBrowserCredentials"] })}
+                      options={translateOptions(providerBrowserCredentialsOptions, t)}
+                      value={draft.usageBrowserCredentials}
+                    />
+                    <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                      {t("Use omit for token headers when the API returns Access-Control-Allow-Origin: *.")}
+                    </div>
+                  </Field>
+                  <Field label={t("Browser timeout ms")}>
+                    <Input
+                      min={1000}
+                      placeholder="15000"
+                      type="number"
+                      value={draft.usageBrowserTimeoutMs}
+                      onChange={(event) => onChange({ usageBrowserTimeoutMs: event.target.value })}
+                    />
+                  </Field>
+                  <Field className="sm:col-span-2" label={t("Browser header templates")}>
+                    <KeyValueRowsControl
+                      addLabel={t("Add browser header template")}
+                      rows={draft.usageBrowserHeaderTemplates}
+                      onChange={(usageBrowserHeaderTemplates) => onChange({ usageBrowserHeaderTemplates })}
+                    />
+                    <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                      {t("Use ${localStorage.token} or ${sessionStorage.token} in values.")}
+                    </div>
+                  </Field>
+                  {chromeImportJob || chromeImportMessage ? (
+                    <div className="sm:col-span-2 rounded-md border border-border bg-muted/20 px-3 py-2">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        {chromeImportJob ? <Badge variant={chromeImportJob.status === "completed" ? "success" : "outline"}>{t("Chrome import")} · {chromeImportJob.status}</Badge> : null}
+                        {chromeImportJob?.result ? (
+                          <span className="text-[11px] text-muted-foreground">
+                            {chromeImportJob.result.imported} {t("imported")}, {chromeImportJob.result.skipped} {t("skipped")}
+                          </span>
+                        ) : null}
+                        {chromeImportJob?.status === "pending" ? (
+                          <>
+                            <Button size="sm" type="button" variant="outline" onClick={() => void copyChromeImportUrl("import")}>
+                              {t("Copy import URL")}
+                            </Button>
+                            <Button size="sm" type="button" variant="outline" onClick={() => void copyChromeImportUrl("confirm")}>
+                              {t("Copy page URL")}
+                            </Button>
+                          </>
+                        ) : null}
+                      </div>
+                      {chromeImportMessage ? <div className="mt-1 text-[11px] leading-4 text-muted-foreground">{chromeImportMessage}</div> : null}
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
               <Field className="sm:col-span-2" label={t("Headers")}>
                 <KeyValueRowsControl
                   addLabel={t("Add header")}
@@ -3011,7 +3233,7 @@ function ProviderUsageSettings({
                   <AnimatedIconSwap iconKey={testLoading ? "testing" : "check"}>
                     {testLoading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
                   </AnimatedIconSwap>
-                  {t("Test usage request")}
+                  {t(draft.accountMode === "browser" ? "Test browser request" : "Test usage request")}
                 </Button>
                 {testResult ? <Badge variant={testResult.meters.length > 0 ? "success" : "outline"}>{testResult.meters.length} {t("meters")}</Badge> : null}
               </div>
@@ -3031,7 +3253,7 @@ function ProviderUsageSettings({
                   onChange={(event) => onChange({ accountConnectorsText: event.target.value })}
                 />
                 <div className="flex min-w-0 items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                  <span className="min-w-0 truncate">{t("Supports standard, http-json, plugin, and local-estimate connectors.")}</span>
+                  <span className="min-w-0 truncate">{t("Supports standard, http-json, webcontent-json, plugin, and local-estimate connectors.")}</span>
                   <button
                     className="shrink-0 text-primary hover:underline"
                     type="button"
@@ -3056,6 +3278,18 @@ function ProviderUsageSettings({
                   </Button>
                 </div>
               ) : null}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button disabled={testLoading} onClick={() => void testUsageRequest()} size="sm" type="button" variant="outline">
+                  <AnimatedIconSwap iconKey={testLoading ? "testing" : "check"}>
+                    {testLoading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                  </AnimatedIconSwap>
+                  {t("Test first JSON connector")}
+                </Button>
+                {testResult ? <Badge variant={testResult.meters.length > 0 ? "success" : "outline"}>{testResult.meters.length} {t("meters")}</Badge> : null}
+              </div>
+              {testResult ? (
+                <ProviderUsageTestResultPanel result={testResult} onSelectPath={() => undefined} />
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -3069,6 +3303,91 @@ function ProviderUsageSettings({
       ) : null}
     </div>
   );
+}
+
+function providerRawAccountTestConnector(
+  connectorsText: string
+): ProviderAccountHttpJsonConnectorConfig | ProviderAccountWebContentJsonConnectorConfig | string {
+  let connectors: unknown;
+  try {
+    connectors = JSON.parse(connectorsText.trim() || "[]");
+  } catch (error) {
+    return `Account connectors JSON is invalid: ${error instanceof Error ? error.message : String(error)}`;
+  }
+  if (!Array.isArray(connectors)) {
+    return "Account connectors must be a JSON array.";
+  }
+  const connector = connectors.find((item) =>
+    isPlainRecord(item) && (item.type === "http-json" || item.type === "webcontent-json")
+  );
+  if (!isPlainRecord(connector)) {
+    return "Add an http-json or webcontent-json connector to test.";
+  }
+  if (connector.type === "webcontent-json") {
+    return {
+      ...(connector as ProviderAccountWebContentJsonConnectorConfig),
+      method: connector.method === "POST" ? "POST" : "GET",
+      type: "webcontent-json"
+    };
+  }
+  return {
+    ...(connector as ProviderAccountHttpJsonConnectorConfig),
+    auth: connector.auth === "provider-api-key-raw" || connector.auth === "none" ? connector.auth : "provider-api-key",
+    method: connector.method === "POST" ? "POST" : "GET",
+    type: "http-json"
+  };
+}
+
+function browserLoginTargetUrl(draft: AddProviderDraft): string {
+  return [
+    draft.usageBrowserLoginUrl,
+    draft.usageBrowserRequestOrigin,
+    browserEndpointOrigin(draft.usageRequestUrl),
+    draft.usageRequestUrl
+  ].map((item) => item.trim()).find(isHttpBrowserUrl) ?? "";
+}
+
+function browserChromeImportDomains(draft: AddProviderDraft): string[] {
+  return [...new Set([
+    draft.usageBrowserLoginUrl,
+    draft.usageBrowserRequestOrigin,
+    draft.usageRequestUrl
+  ].flatMap(browserImportDomainCandidates).filter(Boolean))];
+}
+
+function browserImportDomainCandidates(value: string): string[] {
+  try {
+    const host = new URL(value.trim()).hostname.toLowerCase();
+    if (!host || host === "localhost" || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host) || host.includes(":")) {
+      return host ? [host] : [];
+    }
+    const parts = host.split(".");
+    const candidates = [host];
+    if (parts.length > 2) {
+      candidates.push(parts.slice(-2).join("."));
+    }
+    return candidates;
+  } catch {
+    return [];
+  }
+}
+
+function browserEndpointOrigin(endpoint: string): string {
+  try {
+    const url = new URL(endpoint.trim());
+    return url.protocol === "http:" || url.protocol === "https:" ? url.origin : "";
+  } catch {
+    return "";
+  }
+}
+
+function isHttpBrowserUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 function ProviderUsageTestResultPanel({
@@ -3146,6 +3465,7 @@ export function AddProviderDialog({
   onCheck,
   onChange,
   onClose,
+  onRefreshModels,
   onSubmit,
   probe,
   probeLoading,
@@ -3164,6 +3484,7 @@ export function AddProviderDialog({
   onCheck?: (models: string[]) => Promise<ProviderConnectivityCheckReport>;
   onChange: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
   onClose: () => void;
+  onRefreshModels?: () => Promise<unknown>;
   onSubmit: () => Promise<boolean>;
   probe?: GatewayProviderProbeResult;
   probeLoading: boolean;
@@ -3174,11 +3495,8 @@ export function AddProviderDialog({
 }) {
   const t = useAppText();
   const [checkConfirmOpen, setCheckConfirmOpen] = useState(false);
-  const [checkConfirmBusy, setCheckConfirmBusy] = useState(false);
   const [iconDetecting, setIconDetecting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [checkModelSelection, setCheckModelSelection] = useState<string[]>([]);
-  const [checkResult, setCheckResult] = useState<ProviderConnectivityCheckReport>();
   const [activeStep, setActiveStep] = useState<ProviderSetupStepId>("provider");
   const checkModels = mergeProviderModelLists(draft.selectedModels, splitLines(draft.modelsText));
   const submitLoading = probeLoading || connectivityLoading || iconDetecting || submitting;
@@ -3247,33 +3565,6 @@ export function AddProviderDialog({
     setActiveStep(nextStep);
   }
 
-  function openCheckConfirm() {
-    setCheckModelSelection(checkModels);
-    setCheckResult(undefined);
-    setCheckConfirmOpen(true);
-  }
-
-  async function confirmCheck() {
-    if (!onCheck) {
-      return;
-    }
-    setCheckConfirmBusy(true);
-    try {
-      setCheckResult(await onCheck(checkModelSelection));
-    } finally {
-      setCheckConfirmBusy(false);
-    }
-  }
-
-  function toggleCheckModel(model: string) {
-    setCheckModelSelection((current) =>
-      current.includes(model)
-        ? current.filter((item) => item !== model)
-        : mergeProviderModelLists(current, [model])
-    );
-    setCheckResult(undefined);
-  }
-
   async function submit() {
     if (submitDisabled) {
       return;
@@ -3329,9 +3620,10 @@ export function AddProviderDialog({
               hideSetupProgress={!wizardMode}
               importProvider={importProvider}
               mode={mode}
-              onCheck={onCheck ? async () => openCheckConfirm() : undefined}
+              onCheck={onCheck ? async () => setCheckConfirmOpen(true) : undefined}
               onChange={onChange}
               onIconDetectingChange={setIconDetecting}
+              onRefreshModels={onRefreshModels}
               onSelectStep={wizardMode ? selectSetupStep : undefined}
               probe={probe}
               probeLoading={probeLoading}
@@ -3366,88 +3658,138 @@ export function AddProviderDialog({
         </DialogContent>
       </Dialog>
 
-      {checkConfirmOpen ? (
-        <Dialog className="z-[110]" onOpenChange={(open) => !open && !checkConfirmBusy && setCheckConfirmOpen(false)}>
-          <DialogContent className="max-w-[520px]">
-            <DialogHeader>
-              <div className="min-w-0">
-                <DialogTitle>{t("Check Connection")}</DialogTitle>
-              </div>
-              <Button
-                aria-label={t("Close dialog")}
-                disabled={checkConfirmBusy}
-                onClick={() => setCheckConfirmOpen(false)}
-                size="iconSm"
-                title={t("Close")}
-                type="button"
-                variant="ghost"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </DialogHeader>
-            <DialogBody>
-              <div className="space-y-3">
-                <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2.5">
-                  <div className="flex items-start gap-2 text-[12px] font-medium text-amber-900 dark:text-amber-100">
-                    <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    <span>{t("This check sends real model requests with your provider API key and may consume account balance.")}</span>
-                  </div>
-                  <div className="mt-2 text-[11px] leading-4 text-muted-foreground">
-                    {t("Generated output is limited to 1 token for connectivity checks.")}
-                  </div>
-                </div>
-
-                <div className="rounded-md border border-border bg-background p-2">
-                  <div className="mb-2 flex min-w-0 flex-wrap items-center justify-between gap-2">
-                    <div className="min-w-0 truncate text-[12px] font-semibold">{t("Models to check")}</div>
-                    <div className="flex shrink-0 gap-1">
-                      <Button className="h-6 px-1.5 text-[10px]" disabled={checkConfirmBusy || connectivityLoading || checkModels.length === 0} onClick={() => { setCheckModelSelection(checkModels); setCheckResult(undefined); }} type="button" variant="outline">
-                        {t("All")}
-                      </Button>
-                      <Button className="h-6 px-1.5 text-[10px]" disabled={checkConfirmBusy || connectivityLoading || checkModelSelection.length === 0} onClick={() => { setCheckModelSelection([]); setCheckResult(undefined); }} type="button" variant="outline">
-                        {t("Clear")}
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="max-h-[180px] overflow-auto">
-                    <div className="grid grid-cols-1 gap-2">
-                      {checkModels.map((model) => {
-                        const checked = checkModelSelection.includes(model);
-                        return (
-                          <Label
-                            className={cn(
-                              "flex min-h-8 min-w-0 cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-2 py-1.5 text-left text-[12px] transition-colors hover:bg-muted",
-                              checked && "border-primary bg-accent"
-                            )}
-                            key={model}
-                          >
-                            <Checkbox checked={checked} disabled={checkConfirmBusy || connectivityLoading} onCheckedChange={() => toggleCheckModel(model)} />
-                            <span className="min-w-0 flex-1 truncate font-mono text-[11px]" title={model}>{model}</span>
-                          </Label>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                {checkResult ? <ProviderConnectivityResultPanel result={checkResult} /> : null}
-              </div>
-            </DialogBody>
-            <DialogFooter>
-              <Button disabled={checkConfirmBusy} onClick={() => setCheckConfirmOpen(false)} type="button" variant="outline">
-                {checkResult ? t("Close") : t("Cancel")}
-              </Button>
-              <Button disabled={checkConfirmBusy || connectivityLoading || checkModelSelection.length === 0} onClick={() => void confirmCheck()} type="button">
-                <AnimatedIconSwap iconKey={checkConfirmBusy || connectivityLoading ? "checking" : "start"}>
-                  {checkConfirmBusy || connectivityLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                </AnimatedIconSwap>
-                {t("Start check")}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+      {checkConfirmOpen && onCheck ? (
+        <ProviderConnectivityCheckDialog
+          connectivityLoading={connectivityLoading}
+          models={checkModels}
+          onCheck={onCheck}
+          onClose={() => setCheckConfirmOpen(false)}
+        />
       ) : null}
     </>
+  );
+}
+
+/**
+ * Confirmation step for the connectivity check. The check spends real provider credits, so every
+ * surface that offers "Check Connection" — the add/edit dialog and the onboarding wizard — must go
+ * through this dialog rather than calling onCheck directly.
+ */
+export function ProviderConnectivityCheckDialog({
+  connectivityLoading,
+  models,
+  onCheck,
+  onClose
+}: {
+  connectivityLoading: boolean;
+  models: string[];
+  onCheck: (models: string[]) => Promise<ProviderConnectivityCheckReport>;
+  onClose: () => void;
+}) {
+  const t = useAppText();
+  const [busy, setBusy] = useState(false);
+  const [selection, setSelection] = useState<string[]>(() => mergeProviderModelLists(models));
+  const [result, setResult] = useState<ProviderConnectivityCheckReport>();
+  const running = busy || connectivityLoading;
+
+  async function confirmCheck() {
+    setBusy(true);
+    try {
+      setResult(await onCheck(selection));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function toggleCheckModel(model: string) {
+    setSelection((current) =>
+      current.includes(model)
+        ? current.filter((item) => item !== model)
+        : mergeProviderModelLists(current, [model])
+    );
+    setResult(undefined);
+  }
+
+  return (
+    <Dialog className="z-[110]" onOpenChange={(open) => !open && !busy && onClose()}>
+      <DialogContent className="max-w-[520px]">
+        <DialogHeader>
+          <div className="min-w-0">
+            <DialogTitle>{t("Check Connection")}</DialogTitle>
+          </div>
+          <Button
+            aria-label={t("Close dialog")}
+            disabled={busy}
+            onClick={onClose}
+            size="iconSm"
+            title={t("Close")}
+            type="button"
+            variant="ghost"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </DialogHeader>
+        <DialogBody>
+          <div className="space-y-3">
+            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2.5">
+              <div className="flex items-start gap-2 text-[12px] font-medium text-amber-900 dark:text-amber-100">
+                <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>{t("This check sends real model requests with your provider API key and may consume account balance.")}</span>
+              </div>
+              <div className="mt-2 text-[11px] leading-4 text-muted-foreground">
+                {t("Generated output is limited to 1 token for connectivity checks.")}
+              </div>
+            </div>
+
+            <div className="rounded-md border border-border bg-background p-2">
+              <div className="mb-2 flex min-w-0 flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0 truncate text-[12px] font-semibold">{t("Models to check")}</div>
+                <div className="flex shrink-0 gap-1">
+                  <Button className="h-6 px-1.5 text-[10px]" disabled={running || models.length === 0} onClick={() => { setSelection(mergeProviderModelLists(models)); setResult(undefined); }} type="button" variant="outline">
+                    {t("All")}
+                  </Button>
+                  <Button className="h-6 px-1.5 text-[10px]" disabled={running || selection.length === 0} onClick={() => { setSelection([]); setResult(undefined); }} type="button" variant="outline">
+                    {t("Clear")}
+                  </Button>
+                </div>
+              </div>
+              <div className="max-h-[180px] overflow-auto">
+                <div className="grid grid-cols-1 gap-2">
+                  {models.map((model) => {
+                    const checked = selection.includes(model);
+                    return (
+                      <Label
+                        className={cn(
+                          "flex min-h-8 min-w-0 cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-2 py-1.5 text-left text-[12px] transition-colors hover:bg-muted",
+                          checked && "border-primary bg-accent"
+                        )}
+                        key={model}
+                      >
+                        <Checkbox checked={checked} disabled={running} onCheckedChange={() => toggleCheckModel(model)} />
+                        <span className="min-w-0 flex-1 truncate font-mono text-[11px]" title={model}>{model}</span>
+                      </Label>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {result ? <ProviderConnectivityResultPanel result={result} /> : null}
+          </div>
+        </DialogBody>
+        <DialogFooter>
+          <Button disabled={busy} onClick={onClose} type="button" variant="outline">
+            {result ? t("Close") : t("Cancel")}
+          </Button>
+          <Button disabled={running || selection.length === 0} onClick={() => void confirmCheck()} type="button">
+            <AnimatedIconSwap iconKey={running ? "checking" : "start"}>
+              {running ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+            </AnimatedIconSwap>
+            {t("Start check")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -3552,7 +3894,10 @@ function ProviderModelPicker({
   metadata,
   onMetadataChange,
   onQueryChange,
+  onRefresh,
   onSelectedChange,
+  openRouterDiscountRouting = false,
+  openRouterProviderCatalogRequest,
   query,
   selected
 }: {
@@ -3563,7 +3908,10 @@ function ProviderModelPicker({
   metadata?: NonNullable<AddProviderDraft["modelMetadata"]>;
   onMetadataChange: (value: AddProviderDraft["modelMetadata"]) => void;
   onQueryChange: (value: string) => void;
+  onRefresh?: () => void | Promise<unknown>;
   onSelectedChange: (value: string[]) => void;
+  openRouterDiscountRouting?: boolean;
+  openRouterProviderCatalogRequest?: OpenRouterProviderCatalogRequest;
   query: string;
   selected: string[];
 }) {
@@ -3593,6 +3941,7 @@ function ProviderModelPicker({
   const customModelControlGap = 8;
   const customModelEditorWidth = Math.max(customModelButtonWidth, addedControlsWidth);
   const returningSearchWidth = Math.max(0, customModelEditorWidth - customModelButtonWidth - customModelControlGap);
+  const refreshLabel = loading ? t("Refreshing provider models") : t("Refresh provider models");
 
   function addCatalogModel(model: string) {
     if (selectedModelSet.has(model)) {
@@ -3646,7 +3995,7 @@ function ProviderModelPicker({
       observer?.disconnect();
       window.removeEventListener("resize", updateWidth);
     };
-  }, [loading]);
+  }, []);
 
   useEffect(() => {
     if (!customModelEditing) {
@@ -3664,28 +4013,46 @@ function ProviderModelPicker({
             <div className="truncate text-[12px] font-semibold">{t("Provider models")}</div>
             <div className="truncate text-[11px] text-muted-foreground">{t("Models detected from this provider")}</div>
           </div>
-          <Badge variant="outline">{loading ? <LoaderCircle className="h-3 w-3 animate-spin" /> : catalog.length}</Badge>
-        </div>
-        {!loading ? (
-          <div className="border-b border-border p-2">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                aria-label={t("Search provider models")}
-                className="pl-8"
-                onChange={(event) => onQueryChange(event.target.value)}
-                placeholder={t("Search provider models")}
-                value={query}
-              />
-            </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {onRefresh ? (
+              <Button
+                aria-label={refreshLabel}
+                className="h-6 w-6"
+                disabled={loading}
+                onClick={() => void onRefresh()}
+                size="iconSm"
+                title={refreshLabel}
+                type="button"
+                variant="ghost"
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+              </Button>
+            ) : null}
+            <Badge variant="outline">{loading ? <LoaderCircle className="h-3 w-3 animate-spin" /> : catalog.length}</Badge>
           </div>
-        ) : null}
+        </div>
+        <div className="border-b border-border p-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              aria-label={t("Search provider models")}
+              className="pl-8"
+              disabled={loading}
+              onChange={(event) => onQueryChange(event.target.value)}
+              placeholder={t("Search provider models")}
+              value={query}
+            />
+          </div>
+        </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
           {loading ? (
             <ProviderModelListSkeleton />
           ) : visibleCatalogModels.length === 0 ? (
             <div className="rounded-md border border-dashed border-border bg-muted/20 px-3 py-8 text-center text-[12px] text-muted-foreground">
-              {catalog.length === 0 ? t("No provider models") : t("No matching models")}
+              <div>{catalog.length === 0 ? t("No provider models") : t("No matching models")}</div>
+              {catalog.length === 0 ? (
+                <div className="mt-1 text-[11px] leading-4">{t("This provider did not return a model list. Add model IDs with Custom model.")}</div>
+              ) : null}
             </div>
           ) : (
             <div className="space-y-1.5">
@@ -3738,10 +4105,9 @@ function ProviderModelPicker({
           </div>
           <Badge variant={selectedModels.length > 0 ? "secondary" : "outline"}>{selectedModels.length}</Badge>
         </div>
-        {!loading ? (
-          <div className="border-b border-border p-2">
-            <div className="relative h-9 min-w-0" ref={addedControlsRef}>
-              <AnimatePresence initial={false} mode="wait">
+        <div className="border-b border-border p-2">
+          <div className="relative h-9 min-w-0" ref={addedControlsRef}>
+            <AnimatePresence initial={false} mode="wait">
                 {customModelEditing ? (
                 <motion.div
                   animate={{ opacity: 1, width: customModelEditorWidth }}
@@ -3869,33 +4235,393 @@ function ProviderModelPicker({
                   </button>
                 </motion.div>
                 )}
-              </AnimatePresence>
-            </div>
+            </AnimatePresence>
           </div>
-        ) : null}
+        </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
-          {loading ? (
-            <ProviderModelListSkeleton compact />
-          ) : (
-            <ModelMetadataEditor
-              defaults={defaults}
-              displayNames={displayNames}
-              emptyLabel={selectedModels.length === 0 ? t("No models added") : t("No matching models")}
-              header={false}
-              metadata={metadata}
-              models={visibleAddedModels}
-              onChange={onMetadataChange}
-              onRemoveModel={removeModel}
-              sourceModels={catalog}
-            />
-          )}
+          <ModelMetadataEditor
+            defaults={defaults}
+            displayNames={displayNames}
+            emptyLabel={selectedModels.length === 0 ? t("No models added") : t("No matching models")}
+            header={false}
+            metadata={metadata}
+            models={visibleAddedModels}
+            onChange={onMetadataChange}
+            onRemoveModel={removeModel}
+            openRouterDiscountRouting={openRouterDiscountRouting}
+            openRouterProviderCatalogRequest={openRouterProviderCatalogRequest}
+            sourceModels={catalog}
+          />
         </div>
       </section>
     </div>
   );
 }
 
-function ProviderModelListSkeleton({ compact = false }: { compact?: boolean }) {
+function OpenRouterProviderBlacklistSelect({
+  onChange,
+  request,
+  value
+}: {
+  onChange: (value: string[]) => void;
+  request?: OpenRouterProviderCatalogRequest;
+  value: string[];
+}) {
+  const t = useAppText();
+  const formatError = useAppErrorText();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [providers, setProviders] = useState<OpenRouterProviderCatalogItem[]>([]);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [popoverLayout, setPopoverLayout] = useState<{
+    left: number;
+    listHeight: number;
+    maxHeight: number;
+    offset: number;
+    placement: "above" | "below";
+    width: number;
+  }>();
+  const panelRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const selectedValues = normalizeOpenRouterProviderValues(value);
+  const selectedSet = new Set(selectedValues);
+  const options = useMemo(() => openRouterProviderOptions(providers, selectedValues), [providers, selectedValues.join("\n")]);
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredOptions = normalizedQuery
+    ? options.filter((option) => openRouterProviderOptionMatchesQuery(option, normalizedQuery))
+    : options;
+  const label = selectedValues.length === 0
+    ? t("No providers blocked")
+    : `${selectedValues.length} ${t("blocked")}`;
+  const requestKey = `${request?.baseUrl ?? ""}\n${request?.apiKey ?? ""}\n${request?.model ?? ""}`;
+
+  useEffect(() => {
+    setProviders([]);
+    setError("");
+    setLoading(false);
+  }, [requestKey]);
+
+  useClientLayoutEffect(() => {
+    if (!open) {
+      setPopoverLayout(undefined);
+      return;
+    }
+
+    function updatePopoverLayout() {
+      const root = rootRef.current;
+      if (!root) {
+        return;
+      }
+      const anchor = root.getBoundingClientRect();
+      const margin = 12;
+      const gap = 6;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const availableWidth = Math.max(240, viewportWidth - margin * 2);
+      const width = Math.min(Math.max(anchor.width, 280), availableWidth);
+      const left = Math.min(Math.max(margin, anchor.left), viewportWidth - margin - width);
+      const below = Math.max(0, viewportHeight - anchor.bottom - margin - gap);
+      const above = Math.max(0, anchor.top - margin - gap);
+      const placement = below < 280 && above > below ? "above" : "below";
+      const availableHeight = Math.max(144, placement === "above" ? above : below);
+      const maxHeight = Math.min(360, availableHeight);
+      const listHeight = Math.max(120, Math.min(260, maxHeight - 82));
+
+      setPopoverLayout({
+        left,
+        listHeight,
+        maxHeight,
+        offset: placement === "above" ? viewportHeight - anchor.top + gap : anchor.bottom + gap,
+        placement,
+        width
+      });
+    }
+
+    updatePopoverLayout();
+    window.addEventListener("resize", updatePopoverLayout);
+    window.addEventListener("scroll", updatePopoverLayout, true);
+    return () => {
+      window.removeEventListener("resize", updatePopoverLayout);
+      window.removeEventListener("scroll", updatePopoverLayout, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    void loadProviders(false);
+  }, [open, requestKey]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const focusTimer = window.setTimeout(() => inputRef.current?.focus(), 0);
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!rootRef.current?.contains(target) && !panelRef.current?.contains(target)) {
+        setOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  function toggleProvider(slug: string) {
+    const normalized = normalizeOpenRouterProviderValue(slug);
+    if (!normalized) {
+      return;
+    }
+    const next = selectedSet.has(normalized)
+      ? selectedValues.filter((item) => item !== normalized)
+      : [...selectedValues, normalized].sort((left, right) => left.localeCompare(right));
+    onChange(next);
+  }
+
+  async function loadProviders(force = false) {
+    if (!window.ccr?.getOpenRouterProviderCatalog) {
+      return;
+    }
+    if (!force && (providers.length > 0 || loading)) {
+      return;
+    }
+    if (!request?.model?.trim()) {
+      setError(t("Select a model to load its OpenRouter providers."));
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const result = await window.ccr.getOpenRouterProviderCatalog(request);
+      setProviders(result.providers);
+    } catch (errorValue) {
+      setProviders([]);
+      setError(formatError(errorValue));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <Label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Provider blacklist")}</Label>
+        {selectedValues.length > 0 ? (
+          <Button className="h-6 px-2 text-[10px]" onClick={() => onChange([])} type="button" variant="ghost">
+            {t("Clear blacklist")}
+          </Button>
+        ) : null}
+      </div>
+      <div className="relative min-w-0" ref={rootRef}>
+        <button
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          className={cn(
+            "flex h-9 w-full min-w-0 items-center gap-2 rounded-md border border-input bg-background px-2.5 text-left text-[12px] outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring/25",
+            open && "border-ring/35 bg-muted/30"
+          )}
+          onClick={() => {
+            setQuery("");
+            setOpen((current) => !current);
+          }}
+          type="button"
+        >
+          <span className="min-w-0 flex-1 truncate">{label}</span>
+          {loading ? <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" /> : null}
+          <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
+        </button>
+        <PopoverPortal open={open}>
+          <AnimatedPopover
+            className="fixed z-[150]"
+            placement={popoverLayout?.placement ?? "below"}
+            style={popoverLayout
+              ? {
+                left: `${popoverLayout.left}px`,
+                maxHeight: `${popoverLayout.maxHeight}px`,
+                width: `${popoverLayout.width}px`,
+                ...(popoverLayout.placement === "above"
+                  ? { bottom: `${popoverLayout.offset}px` }
+                  : { top: `${popoverLayout.offset}px` })
+              }
+              : undefined}
+          >
+            <PopoverContent className="w-full overflow-hidden p-1" ref={panelRef}>
+              <div className="mb-1 flex items-center gap-1">
+                <div className="relative min-w-0 flex-1">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    aria-label={t("Search providers")}
+                    className="h-8 pl-8"
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder={t("Search providers")}
+                    ref={inputRef}
+                    value={query}
+                  />
+                </div>
+                <Button
+                  aria-label={t("Refresh providers")}
+                  className="h-8 w-8 shrink-0"
+                  disabled={loading}
+                  onClick={() => void loadProviders(true)}
+                  size="iconSm"
+                  title={t("Refresh providers")}
+                  type="button"
+                  variant="ghost"
+                >
+                  <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+                </Button>
+              </div>
+              {error ? (
+                <div className="mb-1 rounded-md border border-amber-500/30 bg-amber-500/5 px-2 py-1.5 text-[11px] leading-4 text-amber-700 dark:text-amber-300">
+                  {error}
+                </div>
+              ) : null}
+              <div className="overflow-auto" role="listbox" style={{ maxHeight: `${popoverLayout?.listHeight ?? 240}px` }}>
+                {loading && options.length === 0 ? (
+                  <div className="flex items-center justify-center gap-2 px-2 py-6 text-[12px] text-muted-foreground">
+                    <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                    <span>{t("Loading providers")}</span>
+                  </div>
+                ) : filteredOptions.length > 0 ? (
+                  filteredOptions.map((option) => {
+                    const checked = selectedSet.has(option.slug);
+                    const metricText = openRouterProviderMetricText(option, t);
+                    return (
+                      <button
+                        aria-selected={checked}
+                        className={cn(
+                          "flex min-h-9 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 py-1.5 text-left text-[12px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
+                          checked ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
+                        )}
+                        key={option.slug}
+                        onClick={() => toggleProvider(option.slug)}
+                        role="option"
+                        type="button"
+                      >
+                        <Checkbox checked={checked} readOnly tabIndex={-1} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-medium">{option.name}</span>
+                          {metricText ? <span className="block truncate text-[10px] text-muted-foreground">{metricText}</span> : null}
+                        </span>
+                        {checked ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="px-2 py-6 text-center text-[12px] text-muted-foreground">{t("No providers found")}</div>
+                )}
+              </div>
+            </PopoverContent>
+          </AnimatedPopover>
+        </PopoverPortal>
+      </div>
+      <div className="text-[10px] leading-4 text-muted-foreground/75">{t("Excluded OpenRouter providers will be skipped by discount routing and OpenRouter fallbacks.")}</div>
+    </div>
+  );
+}
+
+function openRouterProviderOptions(
+  providers: OpenRouterProviderCatalogItem[],
+  selectedValues: string[]
+): OpenRouterProviderCatalogItem[] {
+  const bySlug = new Map<string, OpenRouterProviderCatalogItem>();
+  for (const provider of providers) {
+    const slug = normalizeOpenRouterProviderValue(provider.slug);
+    if (slug) {
+      bySlug.set(slug, { ...provider, name: provider.name || slug, slug });
+    }
+  }
+  for (const value of selectedValues) {
+    if (!bySlug.has(value)) {
+      bySlug.set(value, { name: value, slug: value });
+    }
+  }
+  return [...bySlug.values()].sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function openRouterProviderOptionMatchesQuery(option: OpenRouterProviderCatalogItem, query: string): boolean {
+  return option.name.toLowerCase().includes(query) ||
+    option.slug.toLowerCase().includes(query) ||
+    (option.quantizations ?? []).some((value) => value.toLowerCase().includes(query));
+}
+
+function openRouterProviderMetricText(option: OpenRouterProviderCatalogItem, t: (key: string) => string): string {
+  const parts = [
+    formatOpenRouterQuantizations(option.quantizations, t),
+    formatOpenRouterUptime(option.uptimePercent, t),
+    formatOpenRouterTokens(option.tokensYesterday, t)
+  ].filter(Boolean);
+  return parts.join(" · ");
+}
+
+function formatOpenRouterQuantizations(values: string[] | undefined, t: (key: string) => string): string {
+  const quantizations = [...new Map((values ?? [])
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .map((value) => [value.toLowerCase(), value])).values()]
+    .sort((left, right) => left.localeCompare(right));
+  return quantizations.length > 0 ? `${t("Quantization")} ${quantizations.join(", ")}` : "";
+}
+
+function formatOpenRouterUptime(value: number | undefined, t: (key: string) => string): string {
+  if (value === undefined || !Number.isFinite(value)) {
+    return "";
+  }
+  const percent = value <= 1 ? value * 100 : value;
+  return `${t("Uptime")} ${percent.toLocaleString(undefined, {
+    maximumFractionDigits: percent >= 99 ? 2 : 1,
+    minimumFractionDigits: 0
+  })}%`;
+}
+
+function formatOpenRouterTokens(value: number | undefined, t: (key: string) => string): string {
+  if (value === undefined || !Number.isFinite(value) || value < 0) {
+    return "";
+  }
+  return `${t("Yesterday")} ${formatCompactNumber(value)} ${t("tokens")}`;
+}
+
+function formatCompactNumber(value: number): string {
+  return value.toLocaleString(undefined, {
+    maximumFractionDigits: value >= 1_000 ? 1 : 0,
+    notation: value >= 10_000 ? "compact" : "standard"
+  });
+}
+
+function normalizeOpenRouterProviderValues(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const normalized = normalizeOpenRouterProviderValue(value);
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    result.push(normalized);
+  }
+  return result;
+}
+
+function normalizeOpenRouterProviderValue(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function ProviderModelListSkeleton() {
   const t = useAppText();
 
   return (
@@ -3910,7 +4636,7 @@ function ProviderModelListSkeleton({ compact = false }: { compact?: boolean }) {
               "provider-skeleton-shimmer h-3 rounded-full",
               index % 3 === 0 ? "w-7/12" : index % 3 === 1 ? "w-9/12" : "w-5/12"
             )} />
-            {!compact && index % 2 === 0 ? <div className="provider-skeleton-shimmer h-2 w-4/12 rounded-full" /> : null}
+            {index % 2 === 0 ? <div className="provider-skeleton-shimmer h-2 w-4/12 rounded-full" /> : null}
           </div>
           <div className="provider-skeleton-shimmer h-4 w-4 shrink-0 rounded-full" />
         </div>
@@ -3937,6 +4663,8 @@ function ModelMetadataEditor({
   models,
   onChange,
   onRemoveModel,
+  openRouterDiscountRouting = false,
+  openRouterProviderCatalogRequest,
   sourceModels
 }: {
   className?: string;
@@ -3948,6 +4676,8 @@ function ModelMetadataEditor({
   models: string[];
   onChange: (value: AddProviderDraft["modelMetadata"]) => void;
   onRemoveModel?: (model: string) => void;
+  openRouterDiscountRouting?: boolean;
+  openRouterProviderCatalogRequest?: OpenRouterProviderCatalogRequest;
   sourceModels?: string[];
 }) {
   const t = useAppText();
@@ -3983,9 +4713,11 @@ function ModelMetadataEditor({
       const parsed = optionalPositiveInteger(rawValue);
       if (parsed === undefined) {
         delete next.contextWindow;
+        delete next.contextWindowPinned;
         delete next.maxContextWindow;
       } else {
         next.contextWindow = parsed;
+        next.contextWindowPinned = true;
         next.maxContextWindow = parsed;
       }
       return next;
@@ -3996,6 +4728,7 @@ function ModelMetadataEditor({
     updateMetadata(model, (current) => {
       const next = { ...current };
       delete next.contextWindow;
+      delete next.contextWindowPinned;
       delete next.maxContextWindow;
       return next;
     });
@@ -4059,6 +4792,21 @@ function ModelMetadataEditor({
     });
   }
 
+  function updateFastMode(model: string, checked: boolean) {
+    updateMetadata(model, (current) => ({
+      ...current,
+      supportsFastMode: checked
+    }));
+  }
+
+  function resetFastMode(model: string) {
+    updateMetadata(model, (current) => {
+      const next = { ...current };
+      delete next.supportsFastMode;
+      return next;
+    });
+  }
+
   function updateCapability(model: string, key: CapabilityKey, checked: boolean) {
     updateMetadata(model, (current) => ({
       ...current,
@@ -4077,6 +4825,36 @@ function ModelMetadataEditor({
     });
   }
 
+  function updateOpenRouterDiscountRouting(model: string, checked: boolean) {
+    updateMetadata(model, (current) => {
+      const next = { ...current };
+      if (checked) {
+        next.openRouterDiscountRouting = {
+          ...(current.openRouterDiscountRouting ?? {}),
+          enabled: true
+        };
+      } else {
+        delete next.openRouterDiscountRouting;
+      }
+      return next;
+    });
+  }
+
+  function updateOpenRouterProviderBlacklist(model: string, providerBlacklist: string[]) {
+    updateMetadata(model, (current) => {
+      const routing = { ...(current.openRouterDiscountRouting ?? {}), enabled: true };
+      if (providerBlacklist.length > 0) {
+        routing.providerBlacklist = providerBlacklist;
+      } else {
+        delete routing.providerBlacklist;
+      }
+      return {
+        ...current,
+        openRouterDiscountRouting: routing
+      };
+    });
+  }
+
   function toggleExpanded(model: string) {
     setExpandedModels((current) => {
       const next = new Set(current);
@@ -4091,7 +4869,7 @@ function ModelMetadataEditor({
       {header ? (
         <div className="flex min-w-0 items-center justify-between gap-2">
           <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Model settings")}</span>
-          <span className="shrink-0 text-[11px] leading-4 text-muted-foreground/75">{t("Context, pricing, reasoning, web search, and image")}</span>
+          <span className="shrink-0 text-[11px] leading-4 text-muted-foreground/75">{t("Context, pricing, reasoning, Fast Mode, web search, and image")}</span>
         </div>
       ) : null}
       <div className="space-y-2">
@@ -4118,6 +4896,8 @@ function ModelMetadataEditor({
             modelMetadata?.maxContextWindow ||
             modelMetadata?.pricing ||
             modelMetadata?.capabilities ||
+            modelMetadata?.openRouterDiscountRouting ||
+            modelMetadata?.supportsFastMode !== undefined ||
             modelMetadata?.supportedReasoningLevels !== undefined ||
             modelMetadata?.supportsReasoningSummaries !== undefined
           );
@@ -4160,8 +4940,29 @@ function ModelMetadataEditor({
                 <div className="space-y-3 border-t border-border/60 p-3">
                   <div className="flex min-w-0 items-center justify-between gap-2">
                     <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Model settings")}</span>
-                    <span className="shrink-0 text-[11px] leading-4 text-muted-foreground/75">{t("Context, pricing, reasoning, web search, and image")}</span>
+                    <span className="shrink-0 text-[11px] leading-4 text-muted-foreground/75">{t("Context, pricing, reasoning, Fast Mode, web search, and image")}</span>
                   </div>
+                  {openRouterDiscountRouting ? (
+                    <div className="space-y-2">
+                      <Label className="flex min-w-0 items-center gap-2 text-[12px] font-medium">
+                        <Checkbox
+                          checked={modelMetadata?.openRouterDiscountRouting?.enabled ?? false}
+                          onCheckedChange={(checked) => updateOpenRouterDiscountRouting(model, checked)}
+                        />
+                        <span>{t("OpenRouter discount routing")}</span>
+                      </Label>
+                      <div className="text-[10px] leading-4 text-muted-foreground/75">{t("Automatically choose the cheapest live OpenRouter provider endpoint when savings exceed estimated cache loss.")}</div>
+                      {modelMetadata?.openRouterDiscountRouting?.enabled ? (
+                        <OpenRouterProviderBlacklistSelect
+                          onChange={(providerBlacklist) => updateOpenRouterProviderBlacklist(model, providerBlacklist)}
+                          request={openRouterProviderCatalogRequest
+                            ? { ...openRouterProviderCatalogRequest, model }
+                            : undefined}
+                          value={modelMetadata.openRouterDiscountRouting.providerBlacklist ?? []}
+                        />
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div className="space-y-2">
                     <div className="flex min-w-0 items-center justify-between gap-2">
                       <Label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Context window (tokens)")}</Label>
@@ -4219,6 +5020,23 @@ function ModelMetadataEditor({
                       ))}
                     </div>
                     <div className="text-[10px] leading-4 text-muted-foreground/75">{t("Select every reasoning effort supported by this model.")}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <Label className="flex min-w-0 items-center gap-2 text-[12px] font-medium">
+                        <Checkbox
+                          checked={modelMetadata?.supportsFastMode ?? modelDefaults?.supportsFastMode ?? false}
+                          onCheckedChange={(checked) => updateFastMode(model, checked)}
+                        />
+                        <span>{t("Fast Mode")}</span>
+                      </Label>
+                      {modelMetadata?.supportsFastMode !== undefined ? (
+                        <Button className="h-6 px-2 text-[10px]" onClick={() => resetFastMode(model)} type="button" variant="ghost">
+                          {t("Use preset")}
+                        </Button>
+                      ) : null}
+                    </div>
+                    <div className="text-[10px] leading-4 text-muted-foreground/75">{t("Declare whether Codex app should expose the Speed control for this model.")}</div>
                   </div>
                   <div className="space-y-2">
                     <div className="flex min-w-0 items-center justify-between gap-2">

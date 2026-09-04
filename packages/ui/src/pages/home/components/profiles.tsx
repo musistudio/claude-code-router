@@ -1,17 +1,19 @@
 import {
-  AddProfileDraft, AgentLogo, AnimatedIconSwap, AnimatedPopover, AnimatePresence, AppConfig, Badge, BotGatewaySavedConfig, botGatewaySavedConfigLabel, BotHandoffScanTarget, Button,
+  AddProfileDraft, AddRoutingRuleDraft, AgentLogo, AnimatedIconSwap, AnimatedPopover, AnimatePresence, AppConfig, Badge, BotGatewaySavedConfig, botGatewaySavedConfigLabel, BotHandoffScanTarget, Button,
   Card, CardContent, CardHeader, CardTitle, Check, ChevronDown, CircleAlert, Copy,
+  createRoutingRuleDraft, createRoutingRuleDraftFromRule,
   cn, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader,
   DialogTitle, Field, GatewayProviderConfig, Info, Input, KeyValueRowsControl, LoaderCircle, motion,
   normalizeProfileScope, normalizeProfileSurface, Pencil, Plus, PopoverContent,
   profileAgentLabel, profileAgentOptions, ProfileConfig, type ProfileAgentOption, profileModelProviderOptions, profileOpenSurfaces, profileScopeLabel, profileScopeOptions, profileSummaryItems, profileSurfaceLabel, profileSurfaceOptions,
   Play, Power, RefreshCw, Select, SelectControl, Terminal, Toggle, translateOptions, Trash2, useAppErrorText, useAppText, useLayoutEffect, type ProfileOpenSurface, type ProfileRuntimeStatus, type ReactDragEvent, type ReactNode, type VirtualModelProfileConfig,
-  copyTextToClipboard, validateProfileEnvRows,
+  copyTextToClipboard, formatRouterRuleCondition, formatRouterRuleTarget, isRoutingRuleDraftSubmittable, normalizeProviderModelSelector, routerRuleTypeLabel, routingRuleFromDraft, type RouterRule, uniqueStrings, validateProfileEnvRows,
   useCallback, useEffect, useMemo, useRef, useState, X
 } from "../shared/index";
 import { PopoverPortal } from "@/components/ui/popover";
 import { Tooltip } from "@/components/ui/tooltip";
 import { ModelMultiSelector, ModelSelector } from "./model-selector";
+import { AddRoutingRuleDialog } from "./routing";
 
 const useClientLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
@@ -708,6 +710,14 @@ export function AddProfileForm({
     [providers, virtualModelProfiles]
   );
   const availableModelCount = modelProviderOptions.reduce((count, provider) => count + provider.models.length, 0);
+  const allAllowedModelValues = useMemo(
+    () => profileAllowedModelValues(modelProviderOptions),
+    [modelProviderOptions]
+  );
+  const hasExplicitAllowedModelSelection = draft.availableModels.length > 0;
+  const allowedModelSelectorValue = draft.availableModels.length > 0
+    ? draft.availableModels
+    : allAllowedModelValues;
   const modelPlaceholder = firstProfileModelPlaceholder(modelProviderOptions);
   const validation = profileDraftValidation(draft, botConfigs, availableModelCount);
   const isClaudeDesignProfile = draft.agent === "claude-design";
@@ -715,15 +725,14 @@ export function AddProfileForm({
   const optionalFieldLabel = t("Optional");
   const requiredFieldLabel = t("Required");
   const advancedIssueCount = [
-    validation.providerId,
-    validation.providerName,
+    validation.allowedModels,
     validation.bot,
     validation.handoff,
     validation.env
   ].filter(Boolean).length;
   const advancedSummary = advancedIssueCount > 0
     ? t("Advanced settings need attention")
-    : t("Paths, bot, compact, and env");
+    : t("Models, paths, routing, bot, compact, and env");
   const handleAppPathDrop = useCallback((event: ReactDragEvent<HTMLElement>) => {
     if (!showAppPathField) {
       return;
@@ -790,7 +799,7 @@ export function AddProfileForm({
                     scope: "ccr",
                     surface: "app"
                   }
-              : agent === "zcode"
+              : agent === "workbuddy" || agent === "zcode"
                   ? { agent, surface: "app" }
                   : { agent })}
             value={draft.agent}
@@ -827,7 +836,7 @@ export function AddProfileForm({
                   });
             }}
             options={translateOptions(
-              draft.agent === "zcode" || draft.agent === "claude-design"
+              draft.agent === "workbuddy" || draft.agent === "zcode" || draft.agent === "claude-design"
                 ? profileSurfaceOptions.filter((option) => option.value === "app")
                 : draft.agent === "grok" || draft.agent === "kimi" || draft.agent === "pi" || draft.agent === "kilo"
                     ? profileSurfaceOptions.filter((option) => option.value === "cli")
@@ -914,31 +923,14 @@ export function AddProfileForm({
                 providers={providers}
                 value={draft.model}
                 virtualModelProfiles={virtualModelProfiles}
-                onChange={(model) => onChange({
-                  availableModels: model && !draft.availableModels.includes(model)
-                    ? [model, ...draft.availableModels]
-                    : draft.availableModels,
-                  model
-                })}
+                onChange={(model) => onChange({ model })}
               />
               {validation.kimiModel ? <ProfileFieldHint>{t(validation.kimiModel)}</ProfileFieldHint> : null}
-            </Field>
-            <Field className="sm:col-span-2" label={t("Allowed models")} requirement="required" requirementLabel={requiredFieldLabel}>
-              <ModelMultiSelector
-                providers={providers}
-                value={draft.availableModels}
-                virtualModelProfiles={virtualModelProfiles}
-                onChange={(availableModels) => onChange({
-                  availableModels,
-                  model: availableModels.includes(draft.model) ? draft.model : availableModels[0] ?? ""
-                })}
-              />
-              {validation.kimiAvailableModels ? <ProfileFieldHint>{t(validation.kimiAvailableModels)}</ProfileFieldHint> : null}
             </Field>
           </>
         ) : draft.agent === "claude-design" ? null : (
           <>
-            <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : draft.agent === "opencode" ? "OpenCode model" : draft.agent === "kilo" ? "Kilo model" : "Codex model")} requirement="optional" requirementLabel={optionalFieldLabel}>
+            <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : draft.agent === "opencode" ? "OpenCode model" : draft.agent === "kilo" ? "Kilo model" : draft.agent === "workbuddy" ? "Workbuddy model" : "Codex model")} requirement="optional" requirementLabel={optionalFieldLabel}>
               <ModelSelector
                 placeholder={modelPlaceholder}
                 providers={providers}
@@ -952,7 +944,10 @@ export function AddProfileForm({
         {showAdvancedSettings ? (
           <div className="sm:col-span-2">
             <button
-              className="flex min-h-9 w-full min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2 text-left outline-none transition-colors hover:bg-muted/35 focus-visible:ring-2 focus-visible:ring-ring/25"
+              className={cn(
+                "flex min-h-9 w-full min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2 text-left outline-none transition-colors hover:bg-muted/35 focus-visible:ring-2 focus-visible:ring-ring/25",
+                advancedOpen && "rounded-b-none"
+              )}
               onClick={() => setAdvancedOpen((current) => !current)}
               type="button"
             >
@@ -976,38 +971,37 @@ export function AddProfileForm({
                   initial={{ height: 0, opacity: 0 }}
                   transition={{ duration: 0.16 }}
                 >
-                  <div className="mt-3 grid grid-cols-1 gap-3 rounded-md border border-border bg-background/60 p-3 sm:grid-cols-2">
-                    {showAppPathField && appPathLabel ? (
-                      <Field className="sm:col-span-2" label={t(appPathLabel)} requirement="optional" requirementLabel={optionalFieldLabel}>
-                        <div className={cn(
-                          "rounded-md border border-border bg-background p-1 transition-colors",
-                          appPathDragActive ? "border-primary bg-primary/5" : "border-border"
-                        )}>
-                          <Input
-                            placeholder={t("Drop the app here or paste the executable path")}
-                            value={draft.appPath}
-                            onChange={(event) => onChange({ appPath: event.target.value })}
-                          />
-                        </div>
-                      </Field>
+                  <div className="grid grid-cols-1 gap-3 rounded-b-md border border-t-0 border-border bg-background/60 p-3 sm:grid-cols-2">
+                    {draft.agent === "claude-code" || draft.agent === "codex" ? (
+                      <ProfileEnhancedRouteSetting draft={draft} onChange={onChange} />
                     ) : null}
-                    {draft.agent !== "claude-code" && draft.agent !== "grok" && draft.agent !== "kimi" && draft.agent !== "pi" ? (
-                      <>
-                        <Field label={t("Provider ID")} requirement="required" requirementLabel={requiredFieldLabel}>
-                          <Input value={draft.providerId} onChange={(event) => onChange({ providerId: event.target.value })} />
-                          {validation.providerId ? <ProfileFieldHint>{t(validation.providerId)}</ProfileFieldHint> : null}
-                        </Field>
-                        <Field label={t("Provider name")} requirement="required" requirementLabel={requiredFieldLabel}>
-                          <Input value={draft.providerName} onChange={(event) => onChange({ providerName: event.target.value })} />
-                          {validation.providerName ? <ProfileFieldHint>{t(validation.providerName)}</ProfileFieldHint> : null}
-                        </Field>
-                        {draft.agent !== "zcode" && draft.agent !== "opencode" && draft.agent !== "kilo" ? (
-                          <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
-                            <span className="text-[12px] font-medium">{t("Show all sessions")}</span>
-                            <Toggle checked={draft.showAllSessions} onChange={(showAllSessions) => onChange({ showAllSessions })} />
-                          </div>
-                        ) : null}
-                      </>
+                    <ProfileRoutingSettings
+                      draft={draft}
+                      onChange={onChange}
+                      providers={providers}
+                    />
+                    <Field className="sm:col-span-2" label={t("Allowed model list")} requirement="optional" requirementLabel={optionalFieldLabel}>
+                      <ModelMultiSelector
+                        providers={providers}
+                        hasExplicitSelection={hasExplicitAllowedModelSelection}
+                        requiredValues={draft.model.trim() ? [draft.model] : []}
+                        value={allowedModelSelectorValue}
+                        virtualModelProfiles={virtualModelProfiles}
+                        onChange={(availableModels) => {
+                          const nextAvailableModels = normalizeAllowedModelSelection(availableModels, allAllowedModelValues);
+                          onChange({
+                            availableModels: nextAvailableModels,
+                            model: nextAvailableModels.length === 0 || nextAvailableModels.includes(draft.model) ? draft.model : nextAvailableModels[0] ?? ""
+                          });
+                        }}
+                      />
+                      {validation.allowedModels ? <ProfileFieldHint>{t(validation.allowedModels)}</ProfileFieldHint> : null}
+                    </Field>
+                    {draft.agent === "codex" ? (
+                      <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
+                        <span className="text-[12px] font-medium">{t("Show all sessions")}</span>
+                        <Toggle checked={draft.showAllSessions} onChange={(showAllSessions) => onChange({ showAllSessions })} />
+                      </div>
                     ) : null}
                     {draft.agent === "claude-code" || draft.agent === "codex" ? (
                       <div className="sm:col-span-2">
@@ -1024,6 +1018,16 @@ export function AddProfileForm({
                         {validation.bot ? <ProfileFieldHint>{t(validation.bot)}</ProfileFieldHint> : null}
                         {validation.handoff ? <ProfileFieldHint>{t(validation.handoff)}</ProfileFieldHint> : null}
                       </div>
+                    ) : null}
+                    {showAppPathField && appPathLabel ? (
+                      <Field className="sm:col-span-2" label={t(appPathLabel)} requirement="optional" requirementLabel={optionalFieldLabel}>
+                        <Input
+                          className={appPathDragActive ? "border-primary bg-primary/5" : undefined}
+                          placeholder={t("Drop the app here or paste the executable path")}
+                          value={draft.appPath}
+                          onChange={(event) => onChange({ appPath: event.target.value })}
+                        />
+                      </Field>
                     ) : null}
                     <Field className="sm:col-span-2" label={t("Environment variables")} requirement="optional" requirementLabel={optionalFieldLabel}>
                       <KeyValueRowsControl
@@ -1055,6 +1059,199 @@ export function AddProfileForm({
   );
 }
 
+function ProfileRoutingSettings({
+  draft,
+  onChange,
+  providers
+}: {
+  draft: AddProfileDraft;
+  onChange: (patch: Partial<AddProfileDraft>) => void;
+  providers: GatewayProviderConfig[];
+}) {
+  const t = useAppText();
+  const [ruleDialog, setRuleDialog] = useState<{ draft: AddRoutingRuleDraft; index?: number }>();
+  const canSubmitRule = ruleDialog ? isRoutingRuleDraftSubmittable(ruleDialog.draft) : false;
+
+  function openAddRuleDialog() {
+    setRuleDialog({
+      draft: createRoutingRuleDraft()
+    });
+  }
+
+  function openEditRuleDialog(index: number) {
+    const rule = draft.routingRules[index];
+    if (!rule) {
+      return;
+    }
+    setRuleDialog({
+      draft: createProfileRoutingRuleDraftFromRule(rule),
+      index
+    });
+  }
+
+  function updateRuleDialog(patch: Partial<AddRoutingRuleDraft>) {
+    setRuleDialog((current) => current ? { ...current, draft: { ...current.draft, ...patch } } : current);
+  }
+
+  function submitRuleDialog() {
+    if (!ruleDialog || !canSubmitRule) {
+      return;
+    }
+    const rule = routingRuleFromDraft(
+      ruleDialog.draft,
+      draft.routingRules,
+      ruleDialog.index === undefined ? undefined : draft.routingRules[ruleDialog.index]
+    );
+    const routingRules = ruleDialog.index === undefined
+      ? [...draft.routingRules, rule]
+      : draft.routingRules.map((item, index) => index === ruleDialog.index ? rule : item);
+    onChange({
+      routingEnabled: true,
+      routingRules
+    });
+    setRuleDialog(undefined);
+  }
+
+  function removeRule(index: number) {
+    onChange({
+      routingRules: draft.routingRules.filter((_, ruleIndex) => ruleIndex !== index)
+    });
+  }
+
+  return (
+    <div className="sm:col-span-2 rounded-md border border-border bg-muted/20 p-3">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[12px] font-semibold">{t("Profile routing")}</div>
+          {draft.routingEnabled ? (
+            <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+              {`${draft.routingRules.length} ${t(draft.routingRules.length === 1 ? "route" : "routes")}`}
+            </div>
+          ) : null}
+        </div>
+        <Toggle
+          checked={draft.routingEnabled}
+          onChange={(routingEnabled) => onChange({ routingEnabled })}
+        />
+      </div>
+      {draft.routingEnabled ? (
+        <div className="mt-3 grid grid-cols-1 gap-3 border-t border-border/70 pt-3">
+          <div className="rounded-md border border-border bg-background p-3">
+            <div className="flex min-w-0 items-center justify-between gap-3">
+              <span className="text-[12px] font-medium">{t("Profile routes")}</span>
+              <Button onClick={openAddRuleDialog} size="sm" type="button" variant="outline">
+                <Plus className="h-3.5 w-3.5" />
+                {t("Add")}
+              </Button>
+            </div>
+            <div className="mt-3 space-y-2 border-t border-border/70 pt-3">
+              {draft.routingRules.length === 0 ? (
+                <div className="rounded-md border border-dashed border-border bg-muted/20 px-3 py-2 text-[12px] text-muted-foreground">
+                  {t("No routing rules configured")}
+                </div>
+              ) : draft.routingRules.map((rule, index) => (
+                <div className="grid min-w-0 grid-cols-[1fr_auto] gap-2 rounded-md border border-border px-3 py-2" key={`${rule.id}-${index}`}>
+                  <button
+                    className="min-w-0 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
+                    onClick={() => openEditRuleDialog(index)}
+                    type="button"
+                  >
+                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                      <span className="truncate text-[12px] font-semibold">{rule.name || t("Unnamed")}</span>
+                      <Badge variant={rule.enabled ? "success" : "outline"}>{t(rule.enabled ? "Enabled" : "Disabled")}</Badge>
+                      <Badge variant="outline">{t(routerRuleTypeLabel(rule.type))}</Badge>
+                    </div>
+                    <div className="mt-1 min-w-0 truncate text-[11px] text-muted-foreground" title={formatRouterRuleCondition(rule)}>
+                      {formatRouterRuleCondition(rule)}
+                    </div>
+                    <div className="mt-0.5 min-w-0 truncate font-mono text-[11px] text-muted-foreground" title={formatRouterRuleTarget(rule)}>
+                      {formatRouterRuleTarget(rule)}
+                    </div>
+                  </button>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button aria-label={t("Edit")} onClick={() => openEditRuleDialog(index)} size="iconSm" title={t("Edit")} type="button" variant="ghost">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button aria-label={t("Remove")} onClick={() => removeRule(index)} size="iconSm" title={t("Remove")} type="button" variant="ghost">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {ruleDialog ? (
+        <AddRoutingRuleDialog
+          canSubmit={canSubmitRule}
+          draft={ruleDialog.draft}
+          mode={ruleDialog.index === undefined ? "add" : "edit"}
+          onChange={updateRuleDialog}
+          onClose={() => setRuleDialog(undefined)}
+          onSubmit={submitRuleDialog}
+          allowedRuleTypes={["condition"]}
+          providers={providers}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function ProfileEnhancedRouteSetting({
+  draft,
+  onChange
+}: {
+  draft: AddProfileDraft;
+  onChange: (patch: Partial<AddProfileDraft>) => void;
+}) {
+  const t = useAppText();
+  const enhancedRouteDescription = draft.agent === "codex"
+    ? t("Enhanced route description Codex")
+    : t("Enhanced route description Claude Code");
+
+  return (
+    <div className="sm:col-span-2 rounded-md border border-border bg-muted/20 p-3">
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="text-[12px] font-semibold">{t("Enhanced route")}</span>
+          <Tooltip
+            aria-label={enhancedRouteDescription}
+            className="h-5 w-5 items-center justify-center rounded-full text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+            content={enhancedRouteDescription}
+            contentClassName="w-[260px] max-w-[calc(100vw-64px)] whitespace-normal px-2.5 py-2 text-left font-medium leading-4"
+            side="right"
+            tabIndex={0}
+          >
+            <button
+              aria-label={enhancedRouteDescription}
+              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
+              type="button"
+            >
+              <Info className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          </Tooltip>
+        </span>
+        <Toggle
+          checked={draft.routingEnhancedRoute}
+          onChange={(routingEnhancedRoute) => onChange({ routingEnhancedRoute })}
+        />
+      </div>
+    </div>
+  );
+}
+
+function createProfileRoutingRuleDraftFromRule(rule: RouterRule): AddRoutingRuleDraft {
+  const draft = createRoutingRuleDraftFromRule(rule);
+  return draft.type === "condition"
+    ? draft
+    : {
+        ...createRoutingRuleDraft(),
+        enabled: rule.enabled,
+        name: rule.name
+      };
+}
+
 function ProfileFieldHint({ children }: { children: ReactNode }) {
   return <div className="text-[11px] leading-4 text-amber-700 dark:text-amber-300">{children}</div>;
 }
@@ -1065,12 +1262,26 @@ function firstProfileModelPlaceholder(providers: ReturnType<typeof profileModelP
   return provider && model ? `${provider.name}/${model}` : "";
 }
 
+function profileAllowedModelValues(providers: ReturnType<typeof profileModelProviderOptions>): string[] {
+  return uniqueStrings(providers.flatMap((provider) =>
+    provider.models.map((model) => normalizeProviderModelSelector(`${provider.name}/${model}`))
+  ).filter(Boolean));
+}
+
+function normalizeAllowedModelSelection(value: string[], allValues: string[]): string[] {
+  const selected = uniqueStrings(value.map(normalizeProviderModelSelector).filter(Boolean));
+  const allSelected = allValues.length > 0 &&
+    selected.length === allValues.length &&
+    selected.every((model) => allValues.includes(model));
+  return allSelected ? [] : selected;
+}
+
 function profileDraftValidation(
   draft: AddProfileDraft,
   botConfigs: BotGatewaySavedConfig[],
   availableModelCount: number
-): Partial<Record<"bot" | "defaultModel" | "env" | "handoff" | "kimiAvailableModels" | "kimiModel" | "models" | "name" | "providerId" | "providerName", string>> {
-  const issues: Partial<Record<"bot" | "defaultModel" | "env" | "handoff" | "kimiAvailableModels" | "kimiModel" | "models" | "name" | "providerId" | "providerName", string>> = {};
+): Partial<Record<"allowedModels" | "bot" | "defaultModel" | "env" | "handoff" | "kimiModel" | "models" | "name", string>> {
+  const issues: Partial<Record<"allowedModels" | "bot" | "defaultModel" | "env" | "handoff" | "kimiModel" | "models" | "name", string>> = {};
   if (!draft.name.trim()) {
     issues.name = "Profile name is required.";
   }
@@ -1080,20 +1291,12 @@ function profileDraftValidation(
   if (draft.agent === "claude-code" && !draft.model.trim()) {
     issues.defaultModel = "Default model is required.";
   }
+  if (draft.availableModels.length > 0 && !draft.model.trim()) {
+    issues.allowedModels = "Default model is required when allowed model list is set.";
+  }
   if (draft.agent === "kimi") {
     if (!draft.model.trim()) {
       issues.kimiModel = "Kimi model is required.";
-    }
-    if (draft.availableModels.length === 0) {
-      issues.kimiAvailableModels = "Select at least one allowed model.";
-    }
-  }
-  if (draft.agent !== "claude-code" && draft.agent !== "grok" && draft.agent !== "kimi" && draft.agent !== "pi" && draft.agent !== "claude-design") {
-    if (!draft.providerId.trim()) {
-      issues.providerId = "Provider ID is required.";
-    }
-    if (!draft.providerName.trim()) {
-      issues.providerName = "Provider name is required.";
     }
   }
   if (draft.surface !== "cli" && draft.botEnabled && !botConfigs.some((config) => config.id === draft.botConfigId.trim())) {
@@ -1113,15 +1316,9 @@ function profileNumberDraftValid(value: string, min: number, max: number): boole
   return Number.isFinite(numeric) && numeric >= min && numeric <= max;
 }
 
-function profileAppPathLabel(agent: ProfileConfig["agent"]): "CLAUDE_APP_PATH" | "CHATGPT_APP_PATH" | "OPENCODE_APP_PATH" | undefined {
-  if (agent === "claude-code") {
-    return "CLAUDE_APP_PATH";
-  }
-  if (agent === "codex") {
-    return "CHATGPT_APP_PATH";
-  }
-  if (agent === "opencode") {
-    return "OPENCODE_APP_PATH";
+function profileAppPathLabel(agent: ProfileConfig["agent"]): "APP_PATH" | undefined {
+  if (agent === "claude-code" || agent === "codex" || agent === "opencode" || agent === "workbuddy") {
+    return "APP_PATH";
   }
   return undefined;
 }
