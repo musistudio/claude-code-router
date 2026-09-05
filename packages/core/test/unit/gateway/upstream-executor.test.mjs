@@ -474,3 +474,195 @@ test("model-chain fallback rebuilds every protocol attempt from the canonical re
     globalThis.fetch = originalFetch;
   }
 });
+
+
+// ---------------------------------------------------------------------------
+// In-stream failures delivered inside an HTTP 200.
+//
+// OpenRouter and Anthropic commit `200 text/event-stream` response headers
+// before they know whether the upstream provider will accept the request. When
+// it does not, the failure can only be expressed in the body, as the first SSE
+// frame. Status-code-based fallback never sees it, so without a peek the
+// gateway forwards a "successful" 200 whose body is one error frame and the
+// client reports an empty or malformed response with no retry.
+// ---------------------------------------------------------------------------
+
+const streamErrorConfig = {
+  Providers: [
+    {
+      capabilities: [{ baseUrl: "https://stream-primary.example", type: "anthropic_messages" }],
+      id: "stream-primary",
+      models: ["primary-model"],
+      name: "Stream Primary"
+    },
+    {
+      capabilities: [{ baseUrl: "https://stream-recovery.example", type: "anthropic_messages" }],
+      id: "stream-recovery",
+      models: ["recovery-model"],
+      name: "Stream Recovery"
+    }
+  ],
+  Router: { fallback: { mode: "off", models: [], retryCount: 0 }, rules: [] },
+  virtualModelProfiles: []
+};
+
+const streamChainFallback = {
+  mode: "model-chain",
+  models: ["Stream Recovery/recovery-model"],
+  retryCount: 0
+};
+
+// Byte-for-byte the frame OpenRouter emits when the upstream provider rejects a
+// request that has already been answered with 200 headers.
+const providerErrorFrame =
+  'event: error\ndata: {"type":"error","error":{"type":"rate_limit_error","message":"Provider returned error"}}\n\n';
+
+const healthyFirstFrame = 'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1"}}\n\n';
+
+function sseResponse(body) {
+  return new Response(body, {
+    headers: { "content-type": "text/event-stream" },
+    status: 200
+  });
+}
+
+// Emits each string as its own network chunk so frames that straddle a chunk
+// boundary are exercised rather than assumed away.
+function sseChunkedResponse(chunks) {
+  const encoder = new TextEncoder();
+  return sseResponse(new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) {
+        controller.enqueue(encoder.encode(chunk));
+      }
+      controller.close();
+    }
+  }));
+}
+
+async function runStreamAttempt({ fallback, responses }) {
+  const captured = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, init) => {
+    const index = captured.length;
+    captured.push(JSON.parse(init.body));
+    return responses[index]();
+  };
+
+  try {
+    const result = await fetchUpstreamWithFallback({
+      body: Buffer.from(JSON.stringify({
+        messages: [{ content: "hello", role: "user" }],
+        model: "Stream Primary/primary-model",
+        stream: true
+      })),
+      config: streamErrorConfig,
+      coreAuthToken: "core-token",
+      fallback,
+      headers: {},
+      method: "POST",
+      path: "/v1/messages",
+      routedModel: "Stream Primary/primary-model",
+      upstreamUrl: "http://127.0.0.1:3456/v1/messages"
+    });
+    return { captured, result };
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+test("an SSE error frame inside HTTP 200 hands the attempt to the fallback chain", async () => {
+  const { captured, result } = await runStreamAttempt({
+    fallback: streamChainFallback,
+    responses: [
+      () => sseResponse(providerErrorFrame),
+      () => sseResponse(healthyFirstFrame)
+    ]
+  });
+
+  assert.equal(captured.length, 2, "an error frame must not be accepted as a successful attempt");
+  assert.deepEqual(captured.map((body) => body.model), ["primary-model", "recovery-model"]);
+  assert.equal(result.response.status, 200);
+  assert.equal(result.failedAttempts.length, 1);
+  assert.equal(result.failedAttempts[0].statusCode, 529);
+  assert.match(result.failedAttempts[0].error ?? "", /Provider returned error/);
+  assert.equal(await result.response.text(), healthyFirstFrame);
+});
+
+test("a healthy stream is forwarded byte-for-byte across chunk boundaries", async () => {
+  // The first frame is deliberately split mid-JSON: a peek that decodes without
+  // buffering the remainder would corrupt or drop the payload here.
+  const chunks = [
+    'event: message_start\ndata: {"type":"message_st',
+    'art","message":{"id":"msg_1"}}\n\n',
+    'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"text":"hi"}}\n\n',
+    'event: message_stop\ndata: {"type":"message_stop"}\n\n'
+  ];
+
+  const { captured, result } = await runStreamAttempt({
+    fallback: streamChainFallback,
+    responses: [() => sseChunkedResponse(chunks)]
+  });
+
+  assert.equal(captured.length, 1, "a healthy stream must not trigger a fallback attempt");
+  assert.equal(result.response.status, 200);
+  assert.equal(await result.response.text(), chunks.join(""));
+});
+
+test("keepalive frames ahead of the first real event are not read as a failure", async () => {
+  const chunks = [
+    ": keepalive\n\n",
+    'event: ping\ndata: {"type":"ping"}\n\n',
+    healthyFirstFrame
+  ];
+
+  const { captured, result } = await runStreamAttempt({
+    fallback: streamChainFallback,
+    responses: [() => sseChunkedResponse(chunks)]
+  });
+
+  assert.equal(captured.length, 1);
+  assert.equal(await result.response.text(), chunks.join(""));
+});
+
+test("an empty HTTP 200 stream body is treated as a failed attempt", async () => {
+  const { captured, result } = await runStreamAttempt({
+    fallback: streamChainFallback,
+    responses: [
+      () => sseResponse(""),
+      () => sseResponse(healthyFirstFrame)
+    ]
+  });
+
+  assert.equal(captured.length, 2, "a 200 with no body at all is the original bug report");
+  assert.equal(result.failedAttempts.length, 1);
+  assert.equal(result.failedAttempts[0].statusCode, 529);
+  assert.equal(await result.response.text(), healthyFirstFrame);
+});
+
+test("without a fallback target the in-stream error surfaces as a retryable 529", async () => {
+  const { captured, result } = await runStreamAttempt({
+    fallback: { mode: "off", models: [], retryCount: 0 },
+    responses: [() => sseResponse(providerErrorFrame)]
+  });
+
+  assert.equal(captured.length, 1);
+  assert.equal(
+    result.response.status,
+    529,
+    "a 200 carrying only an error frame must not reach the client as a success"
+  );
+  // The upstream explanation is preserved so the client reports the real cause.
+  assert.equal(await result.response.text(), providerErrorFrame);
+});
+
+test("detectStreamErrors=false forwards the error frame verbatim", async () => {
+  const { captured, result } = await runStreamAttempt({
+    fallback: { ...streamChainFallback, detectStreamErrors: false },
+    responses: [() => sseResponse(providerErrorFrame)]
+  });
+
+  assert.equal(captured.length, 1, "detection is opt-out; no fallback attempt may be made");
+  assert.equal(result.response.status, 200);
+  assert.equal(await result.response.text(), providerErrorFrame);
+});

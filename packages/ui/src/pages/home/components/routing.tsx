@@ -284,6 +284,19 @@ export function RouterFallbackControl({
           </div>
         ) : null}
       </div>
+      <div className="mt-3 flex items-center gap-2">
+        <Toggle
+          ariaLabel={t("Detect in-stream errors")}
+          checked={fallback.detectStreamErrors !== false}
+          onChange={(detectStreamErrors) => updateFallbackPatch({ detectStreamErrors })}
+        />
+        <div className="min-w-0">
+          <div className="text-[12px] font-medium">{t("Detect in-stream errors")}</div>
+          <div className="text-[11px] text-muted-foreground">
+            {t("Treat a provider error sent inside a 200 stream as a failed attempt")}
+          </div>
+        </div>
+      </div>
       {fallback.mode === "model-chain" ? (
         <div className="mt-3 flex min-w-0 flex-wrap gap-2">
           {fallback.models.length === 0 ? (

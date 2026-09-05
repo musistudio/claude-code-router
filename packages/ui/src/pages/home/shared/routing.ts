@@ -84,6 +84,10 @@ export function normalizeRouterFallbackConfig(value: Partial<RouterFallbackConfi
     : [];
 
   return {
+    // Absent in configs written before in-stream error detection existed. Those
+    // default to enabled so the fix applies without a migration; opting out is
+    // an explicit false.
+    detectStreamErrors: typeof record.detectStreamErrors === "boolean" ? record.detectStreamErrors : true,
     mode,
     models,
     retryCount: Number.isFinite(retryCount) ? retryCount : fallbackConfig.Router.fallback.retryCount

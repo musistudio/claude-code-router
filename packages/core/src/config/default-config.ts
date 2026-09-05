@@ -42,6 +42,7 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions = {}): A
         }
       },
       fallback: {
+        detectStreamErrors: true,
         mode: "off",
         models: [],
         retryCount: 1
