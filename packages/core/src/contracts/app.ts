@@ -739,6 +739,12 @@ export type RouterFallbackMode = "off" | "retry" | "model-chain";
 export const ROUTER_FALLBACK_MAX_RETRY_COUNT = 9999;
 
 export type RouterFallbackConfig = {
+  // Some providers commit `200 text/event-stream` headers before they know the
+  // upstream rejected the request, then report the failure in the first SSE
+  // frame. Status-code-based fallback cannot see that. When enabled (the
+  // default) the executor peeks the first frame and treats such a response as a
+  // failed attempt. Set false to forward those bodies to the client untouched.
+  detectStreamErrors?: boolean;
   mode: RouterFallbackMode;
   models: string[];
   retryCount: number;

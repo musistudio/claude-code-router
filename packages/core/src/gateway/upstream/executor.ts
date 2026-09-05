@@ -22,6 +22,7 @@ import { retryDelayAfterNetworkError, retryDelayAfterStatus, shouldFallbackAfter
 import { claudeCodeOauthBetaHeader, claudeCodeOauthRequiredBeta, UpstreamRequestError } from "@ccr/core/gateway/internal/shared";
 import type { ApiKeyLimitUsage, ProviderCredentialRoutingTarget, UpstreamAttempt, UpstreamFailedAttempt, UpstreamFetchResult } from "@ccr/core/gateway/internal/shared";
 import type { RouteTraceObserver } from "@ccr/core/observability/route-trace";
+import { detectSseError } from "@ccr/core/observability/request-log-store";
 
 const providerCredentialSpilloverThreshold = 0.8;
 const openRouterDiscountModelHeader = "x-ccr-openrouter-discount-model";
@@ -467,12 +468,18 @@ export async function fetchUpstreamWithFallback(input: {
     releaseJsonObject(input.body);
 
     try {
-      const response = await fetchWithSystemProxy(attemptUrl, {
+      const fetched = await fetchWithSystemProxy(attemptUrl, {
         body: shouldSendBody(input.method) ? attempt.body?.toString("utf8") : undefined,
         headers: upstreamHeaders,
         method: input.method,
         signal: input.signal
       });
+
+      // A provider that already committed `200 text/event-stream` headers can
+      // only report a late failure inside the body. Judge the attempt on the
+      // first frame that actually arrived rather than on the status line alone;
+      // the peek restates such a response as 529 so the machinery below reacts.
+      const { response, streamError } = await peekUpstreamStreamFailure(fetched, input.fallback, input.signal);
 
       if (hasNextAttempt && shouldFallbackAfterStatus(response.status, fallbackMode)) {
         const delayMs = retryDelayAfterStatus(response.headers, failedAttempts.length);
@@ -482,7 +489,7 @@ export async function fetchUpstreamWithFallback(input: {
           kind: "outcome",
           name: "upstream.attempt.outcome",
           outcome: {
-            fallbackReason: `http:${response.status}`,
+            fallbackReason: streamError === undefined ? `http:${response.status}` : `stream-error:${streamError}`,
             retryDelayMs: delayMs,
             statusCode: response.status
           },
@@ -498,6 +505,7 @@ export async function fetchUpstreamWithFallback(input: {
           credentialChain: attempt.credentialChain,
           credentialIds: attempt.credentialIds,
           delayMs,
+          ...(streamError === undefined ? {} : { error: streamError }),
           model: attempt.model,
           statusCode: response.status
         });
@@ -1163,6 +1171,207 @@ function isRouteTraceChange(value: RequestRouteTraceChange | undefined): value i
   return Boolean(value);
 }
 
+
+// Status assigned to a 2xx response whose body turned out to carry a provider
+// failure. 529 already classifies as a server error, so both `retry` and
+// `model-chain` react to it without special-casing the failure classifier, and
+// a client left without a fallback target still receives a retryable status
+// instead of a success it cannot parse.
+const IN_STREAM_FAILURE_STATUS = 529;
+
+// Ceiling on the bytes buffered while looking for the first real event. A
+// provider that sends headers and then stalls must not hold the attempt open,
+// so past this the response is forwarded unjudged.
+const STREAM_PEEK_MAX_BYTES = 64 * 1024;
+
+type PeekedUpstreamResponse = {
+  response: Response;
+  streamError?: string;
+};
+
+type SsePrefixVerdict =
+  | { kind: "content" }
+  | { kind: "error"; message: string }
+  | { kind: "pending" };
+
+/**
+ * Reads just far enough into a streaming response to tell a real answer from a
+ * failure frame, then hands back a response that still replays every byte read.
+ *
+ * Returns the original response untouched when detection is disabled, when the
+ * status already conveys the outcome, or when the payload is not an event
+ * stream. When the first meaningful frame is a provider error — or the stream
+ * ends without producing one — the returned response carries
+ * `IN_STREAM_FAILURE_STATUS` and `streamError` explains why.
+ */
+async function peekUpstreamStreamFailure(
+  response: Response,
+  fallback: RouterFallbackConfig,
+  signal?: AbortSignal
+): Promise<PeekedUpstreamResponse> {
+  const contentType = response.headers.get("content-type") ?? undefined;
+  if (fallback.detectStreamErrors === false || response.status >= 400 || !looksLikeSseContentType(contentType)) {
+    return { response };
+  }
+  if (!response.body) {
+    return {
+      response: inStreamFailureResponse(response, new Uint8Array(0)),
+      streamError: "upstream returned an empty stream"
+    };
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder("utf8");
+  const buffered: Uint8Array[] = [];
+  let bufferedBytes = 0;
+  let prefix = "";
+  let streamError: string | undefined;
+  let settled = false;
+
+  try {
+    while (!settled) {
+      const { done, value } = await reader.read();
+      if (done) {
+        // The stream closed before a complete event. An empty body is the
+        // failure clients report as a malformed response; a partial-but-present
+        // frame is forwarded rather than second-guessed.
+        const trailing = prefix + decoder.decode();
+        const trailingError = detectSseError(trailing, contentType);
+        if (trailingError !== undefined) {
+          streamError = trailingError;
+        } else if (trailing.trim().length === 0) {
+          streamError = "upstream returned an empty stream";
+        }
+        break;
+      }
+      if (value) {
+        buffered.push(value);
+        bufferedBytes += value.byteLength;
+        prefix += decoder.decode(value, { stream: true });
+      }
+
+      const verdict = classifySsePrefix(prefix, contentType);
+      if (verdict.kind === "error") {
+        streamError = verdict.message;
+        settled = true;
+      } else if (verdict.kind === "content" || bufferedBytes >= STREAM_PEEK_MAX_BYTES) {
+        settled = true;
+      }
+    }
+  } catch (error) {
+    // An aborted request is the caller's decision, not an upstream failure, so
+    // it must not be recycled into a fallback attempt.
+    if (signal?.aborted) {
+      throw error;
+    }
+    streamError = formatError(error);
+  }
+
+  if (streamError !== undefined) {
+    await reader.cancel().catch(() => undefined);
+    return { response: inStreamFailureResponse(response, concatChunks(buffered)), streamError };
+  }
+  return { response: responseWithReplayedStream(response, buffered, reader) };
+}
+
+/**
+ * Verdict for the bytes read so far: `pending` while only comments and
+ * keepalives have arrived, `content` once a real event completed intact, and
+ * `error` when that first real event is a provider failure.
+ */
+function classifySsePrefix(prefix: string, contentType: string | undefined): SsePrefixVerdict {
+  const normalized = prefix.replaceAll("\r\n", "\n");
+  let searchFrom = 0;
+  for (;;) {
+    const boundary = normalized.indexOf("\n\n", searchFrom);
+    if (boundary === -1) {
+      return { kind: "pending" };
+    }
+    const block = normalized.slice(searchFrom, boundary);
+    searchFrom = boundary + 2;
+    if (isSseKeepaliveBlock(block)) {
+      continue;
+    }
+    const message = detectSseError(`${block}\n\n`, contentType);
+    return message === undefined ? { kind: "content" } : { kind: "error", message };
+  }
+}
+
+// Comment lines (`: ...`) and ping events carry no verdict about the request.
+function isSseKeepaliveBlock(block: string): boolean {
+  const lines = block.split("\n").map((line) => line.trim()).filter((line) => line.length > 0);
+  if (lines.length === 0) {
+    return true;
+  }
+  if (lines.every((line) => line.startsWith(":"))) {
+    return true;
+  }
+  const eventLine = lines.find((line) => line.toLowerCase().startsWith("event:"));
+  return eventLine !== undefined && eventLine.slice("event:".length).trim().toLowerCase() === "ping";
+}
+
+function looksLikeSseContentType(contentType: string | undefined): boolean {
+  return (contentType ?? "").toLowerCase().includes("text/event-stream");
+}
+
+// Rebuilds a response that replays the peeked bytes before the untouched
+// remainder, so consumers see the stream exactly as the upstream sent it.
+function responseWithReplayedStream(
+  source: Response,
+  buffered: Uint8Array[],
+  reader: ReadableStreamDefaultReader<Uint8Array>
+): Response {
+  const body = new ReadableStream<Uint8Array>({
+    cancel(reason) {
+      return reader.cancel(reason);
+    },
+    async pull(controller) {
+      const { done, value } = await reader.read();
+      if (done) {
+        controller.close();
+        return;
+      }
+      controller.enqueue(value);
+    },
+    start(controller) {
+      for (const chunk of buffered) {
+        controller.enqueue(chunk);
+      }
+    }
+  });
+  return new Response(body, {
+    headers: peekedResponseHeaders(source),
+    status: source.status,
+    statusText: source.statusText
+  });
+}
+
+function inStreamFailureResponse(source: Response, body: Uint8Array): Response {
+  // `BodyInit` does not accept a generic `Uint8Array`, so hand over a compacted
+  // copy of just these bytes as an ArrayBuffer.
+  return new Response(body.slice().buffer, {
+    headers: peekedResponseHeaders(source),
+    status: IN_STREAM_FAILURE_STATUS
+  });
+}
+
+// The body is re-emitted from buffered chunks, so any length the upstream
+// declared no longer describes what will actually be written.
+function peekedResponseHeaders(source: Response): Headers {
+  const headers = new Headers(source.headers);
+  headers.delete("content-length");
+  return headers;
+}
+
+function concatChunks(chunks: Uint8Array[]): Uint8Array {
+  const merged = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.byteLength, 0));
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return merged;
+}
 
 async function drainResponseBody(response: Response): Promise<void> {
   try {

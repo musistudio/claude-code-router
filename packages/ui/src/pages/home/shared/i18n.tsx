@@ -1089,6 +1089,8 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Default target model": "默认目标模型",
       "Default failure handling": "默认故障处理",
       "Default on failure": "默认失败处理",
+      "Detect in-stream errors": "检测流内错误",
+      "Treat a provider error sent inside a 200 stream as a failed attempt": "将 200 流中返回的供应商错误视为失败尝试",
       "Description": "描述",
       "CCR scanned this computer for Claude Code, Codex, Grok CLI, OpenCode CLI, and ZCode login states. Click Import to add one as a gateway provider.": "CCR 已扫描本机的 Claude Code、Codex、Grok CLI、OpenCode CLI 和 ZCode 登录态。点击导入即可添加为网关供应商。",
       "CCR is checking this provider. Wait for the check to finish before continuing.": "CCR 正在检查这个供应商，请等待检查结束后再继续。",
