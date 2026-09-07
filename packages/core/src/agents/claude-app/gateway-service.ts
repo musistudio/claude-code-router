@@ -227,7 +227,7 @@ export function restoreClaudeAppGatewayConfig(): void {
   }
 
   const paths = getClaudeAppGatewayPaths();
-  restoreFileSnapshot(paths.rootConfigFile, backup.rootConfigFile);
+  restoreClaudeAppRootDeploymentMode(paths.rootConfigFile, backup.rootConfigFile);
   restoreFileSnapshot(paths.metaFile, backup.metaFile);
   // Keep the generated library entry file on restore. Claude App writes user
   // settings (chatTabEnabled, coworkEgressAllowedHosts, ...) into the applied
@@ -441,6 +441,34 @@ function restoreFileSnapshot(file: string, snapshot: ClaudeAppGatewayFileSnapsho
   } catch {
     // File permissions are best-effort across platforms.
   }
+}
+
+// Revert only the takeover-owned key instead of rolling the whole file back to
+// the startup snapshot — Claude App writes user preferences (e.g.
+// bypassPermissionsGateByAccount) into this file while the gateway runs, and a
+// full snapshot restore discards them when CCR quits.
+function restoreClaudeAppRootDeploymentMode(rootConfigFile: string, snapshot: ClaudeAppGatewayFileSnapshot): void {
+  const current = readJsonRecord(rootConfigFile);
+  if (!current) {
+    restoreFileSnapshot(rootConfigFile, snapshot);
+    return;
+  }
+  let previous: Record<string, unknown> | undefined;
+  if (snapshot.exists && snapshot.content) {
+    try {
+      const parsed: unknown = JSON.parse(snapshot.content);
+      previous = isPlainRecord(parsed) ? parsed : undefined;
+    } catch {
+      previous = undefined;
+    }
+  }
+  const next: Record<string, unknown> = { ...current };
+  if (previous?.deploymentMode !== undefined) {
+    next.deploymentMode = previous.deploymentMode;
+  } else {
+    delete next.deploymentMode;
+  }
+  writeJsonFile(rootConfigFile, next);
 }
 
 function gatewayEndpoint(config: AppConfig): string {
