@@ -229,7 +229,11 @@ export function restoreClaudeAppGatewayConfig(): void {
   const paths = getClaudeAppGatewayPaths();
   restoreFileSnapshot(paths.rootConfigFile, backup.rootConfigFile);
   restoreFileSnapshot(paths.metaFile, backup.metaFile);
-  restoreFileSnapshot(paths.configLibraryFile, backup.configLibraryFile);
+  // Keep the generated library entry file on restore. Claude App writes user
+  // settings (chatTabEnabled, coworkEgressAllowedHosts, ...) into the applied
+  // entry, and the backup snapshot marks this file as absent, so restoring it
+  // deletes the entry — and every user field in it — on every gateway restart.
+  // Switching appliedId away in the meta file is enough to deactivate it.
   rmSync(CLAUDE_APP_GATEWAY_BACKUP_FILE, { force: true });
 }
 
