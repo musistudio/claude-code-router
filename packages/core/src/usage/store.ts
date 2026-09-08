@@ -8,7 +8,7 @@ import { REQUEST_LOGS_DB_FILE, USAGE_DB_FILE } from "@ccr/core/config/constants"
 import { estimateUsageCostUsd, providerModelPricingForUsage } from "@ccr/core/models/pricing-service";
 import { createBetterSqliteDatabase, type BetterSqliteDatabase } from "@ccr/core/storage/sqlite-native";
 import { normalizeUsageInputTokens } from "@ccr/core/usage/normalization";
-import { resolveUsageModelAttribution } from "@ccr/core/usage/model-attribution";
+import { isKnownProviderSelector, resolveUsageModelAttribution } from "@ccr/core/usage/model-attribution";
 import type {
   AppConfig,
   GatewayProviderProtocol,
@@ -530,6 +530,18 @@ function resolveUsageResponseModelAttribution(
   if (decodedClaudeRouteModel) {
     const attribution = resolveUsageModelAttribution(config, decodedClaudeRouteModel);
     return !config || attribution.provider ? attribution : {};
+  }
+  if (config && model && isKnownProviderSelector(config, model)) {
+    // The gateway rewrites the response model back to the selector the client
+    // requested, so a "provider/model" string here is a client-visible route
+    // selector, not the physical model. Attribute through the selector so
+    // per-model stats aggregate on the bare model name the provider is
+    // configured with; physical echoes (unknown provider or no slash) still
+    // fall through and are kept verbatim.
+    const attribution = resolveUsageModelAttribution(config, model);
+    if (attribution.provider) {
+      return attribution;
+    }
   }
   return resolveUsageModelAttribution(config, model, { physicalModel: true });
 }
