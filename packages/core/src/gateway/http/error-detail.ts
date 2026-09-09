@@ -9,14 +9,22 @@
  * the generic "All target providers failed." line.
  *
  * The helpers here append a compact per-attempt summary to `error.message` so
- * single-field clients can surface the root cause directly.
+ * single-field clients can surface the root cause directly. An attempt's own
+ * `message` is often itself a generic wrapper ("Upstream request failed.");
+ * the real upstream cause then lives in `error.attempts[].details` — either as
+ * structured fields (`message` + `code`/`type`, Anthropic-style) or as an SSE
+ * error frame (`details.raw`, provider-style). When the attempt message is
+ * generic, the summary falls back to extracting the cause from `details`.
  */
 
 const attemptMessageLimit = 200;
 const attemptCountLimit = 8;
 const attemptSummarySpacing = " | ";
 
+const genericAttemptMessages = new Set(["upstream request failed", "upstream request failed."]);
+
 export type AggregateErrorAttempt = {
+  details?: unknown;
   message?: unknown;
   stage?: unknown;
   status?: unknown;
@@ -83,14 +91,84 @@ function formatAttemptSummaries(attempts: unknown[]): string | undefined {
 function formatAttemptSummary(attempt: AggregateErrorAttempt): string | undefined {
   const stage = primitiveLabel(attempt.stage);
   const status = primitiveLabel(attempt.status);
-  const message = typeof attempt.message === "string" && attempt.message.trim()
-    ? attempt.message.trim().slice(0, attemptMessageLimit)
-    : undefined;
+  const message = attemptSummaryMessage(attempt);
   if (!stage && !status && !message) {
     return undefined;
   }
   const label = [stage, status].filter(Boolean).join("|");
   return label ? `[${label}] ${message ?? ""}`.trim() : (message ?? "");
+}
+
+/**
+ * The message rendered for one attempt: the attempt's own message unless it is
+ * a generic wrapper, in which case the upstream cause is extracted from
+ * `attempt.details` (structured fields or an SSE error frame) when available.
+ */
+function attemptSummaryMessage(attempt: AggregateErrorAttempt): string | undefined {
+  const message = typeof attempt.message === "string" && attempt.message.trim()
+    ? attempt.message.trim().slice(0, attemptMessageLimit)
+    : undefined;
+  if (message && !isGenericAttemptMessage(message)) {
+    return message;
+  }
+  const detailed = extractAttemptDetailMessage(attempt.details);
+  return detailed ?? message;
+}
+
+function isGenericAttemptMessage(message: string): boolean {
+  return genericAttemptMessages.has(message.trim().toLowerCase());
+}
+
+function extractAttemptDetailMessage(details: unknown): string | undefined {
+  if (typeof details !== "object" || details === null || Array.isArray(details)) {
+    return undefined;
+  }
+  const record = details as Record<string, unknown>;
+  const direct = describeDetailError(record);
+  if (direct) {
+    return direct;
+  }
+  const raw = record.raw;
+  if (typeof raw === "string" && raw.trim()) {
+    const parsed = parseSseErrorPayload(raw);
+    const fromStream = parsed ? describeDetailError(parsed) : undefined;
+    return fromStream ?? raw.trim().slice(0, attemptMessageLimit);
+  }
+  return undefined;
+}
+
+function describeDetailError(record: Record<string, unknown>): string | undefined {
+  const message = typeof record.message === "string" ? record.message.trim() : "";
+  const code = primitiveLabel(record.code) ?? primitiveLabel(record.type);
+  if (message && code) {
+    return `${code}: ${message}`.slice(0, attemptMessageLimit);
+  }
+  if (message) {
+    return message.slice(0, attemptMessageLimit);
+  }
+  return code;
+}
+
+function parseSseErrorPayload(raw: string): Record<string, unknown> | undefined {
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) {
+      continue;
+    }
+    const body = trimmed.slice("data:".length).trim();
+    if (!body || body === "[DONE]") {
+      continue;
+    }
+    try {
+      const parsed: unknown = JSON.parse(body);
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return undefined;
 }
 
 function primitiveLabel(value: unknown): string | undefined {

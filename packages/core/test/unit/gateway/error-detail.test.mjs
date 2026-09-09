@@ -105,6 +105,115 @@ test("appendAggregateErrorAttemptSummary tolerates non-primitive attempt fields"
   assert.equal(appendAggregateErrorAttemptSummary(JSON.stringify(unusablePayload)), undefined);
 });
 
+test("appendAggregateErrorAttemptSummary extracts structured detail causes for generic attempt messages", () => {
+  const payload = {
+    error: {
+      attempts: [
+        {
+          details: { code: "InvalidParameter", message: "messages.content.type 参数非法，取值范围 ['text']", request_id: "abc" },
+          message: "Upstream request failed.",
+          stage: "upstream_response",
+          status: 400
+        },
+        {
+          details: { code: null, message: "invalid api-key", param: null, type: "authentication_error" },
+          message: "Upstream request failed.",
+          stage: "upstream_response",
+          status: 403
+        }
+      ],
+      message: "All target providers failed."
+    }
+  };
+  const enriched = appendAggregateErrorAttemptSummary(JSON.stringify(payload));
+  assert.ok(enriched);
+  assert.equal(
+    JSON.parse(enriched).error.message,
+    "All target providers failed. "
+      + "[upstream_response|400] InvalidParameter: messages.content.type 参数非法，取值范围 ['text'] "
+      + "| [upstream_response|403] authentication_error: invalid api-key"
+  );
+});
+
+test("appendAggregateErrorAttemptSummary extracts causes from SSE error frames in details.raw", () => {
+  const payload = {
+    error: {
+      attempts: [
+        {
+          details: { raw: 'event:error\ndata:{"code":"InvalidParameter","message":"messages.content.type 参数非法，取值范围 [\'text\']","request_id":"f956-1"}\n\n' },
+          message: "Upstream request failed.",
+          stage: "upstream_response",
+          status: 400
+        }
+      ],
+      message: "All target providers failed."
+    }
+  };
+  const enriched = appendAggregateErrorAttemptSummary(JSON.stringify(payload));
+  assert.ok(enriched);
+  assert.equal(
+    JSON.parse(enriched).error.message,
+    "All target providers failed. "
+      + "[upstream_response|400] InvalidParameter: messages.content.type 参数非法，取值范围 ['text']"
+  );
+
+  // unparsable raw frames fall back to the trimmed raw text
+  const rawTextPayload = {
+    error: {
+      attempts: [
+        { details: { raw: "  opaque upstream text  " }, message: "Upstream request failed.", stage: "upstream", status: 500 }
+      ],
+      message: "All target providers failed."
+    }
+  };
+  const rawEnriched = appendAggregateErrorAttemptSummary(JSON.stringify(rawTextPayload));
+  assert.ok(rawEnriched);
+  assert.equal(
+    JSON.parse(rawEnriched).error.message,
+    "All target providers failed. [upstream|500] opaque upstream text"
+  );
+});
+
+test("appendAggregateErrorAttemptSummary keeps specific attempt messages over details", () => {
+  const payload = {
+    error: {
+      attempts: [
+        {
+          details: { message: "inner detail that must not win" },
+          message: "upstream status 429: Throttling: Request rate increased too quickly.",
+          stage: "upstream",
+          status: 429
+        }
+      ],
+      message: "All target providers failed."
+    }
+  };
+  const enriched = appendAggregateErrorAttemptSummary(JSON.stringify(payload));
+  assert.ok(enriched);
+  assert.equal(
+    JSON.parse(enriched).error.message,
+    "All target providers failed. [upstream|429] upstream status 429: Throttling: Request rate increased too quickly."
+  );
+});
+
+test("appendAggregateErrorAttemptSummary falls back to the generic message when details carry nothing usable", () => {
+  const payload = {
+    error: {
+      attempts: [
+        { details: { request_id: "abc" }, message: "Upstream request failed.", stage: "upstream", status: 502 },
+        { details: "plain string", message: "Upstream request failed.", stage: "upstream", status: 502 }
+      ],
+      message: "All target providers failed."
+    }
+  };
+  const enriched = appendAggregateErrorAttemptSummary(JSON.stringify(payload));
+  assert.ok(enriched);
+  assert.equal(
+    JSON.parse(enriched).error.message,
+    "All target providers failed. [upstream|502] Upstream request failed. | [upstream|502] Upstream request failed."
+  );
+});
+
 test("shouldBufferAggregateErrorBody requires bounded JSON bodies", () => {
   const headers = (entries) => new Headers(entries);
   assert.equal(shouldBufferAggregateErrorBody(headers([["content-type", "application/json"], ["content-length", "120"]])), true);
