@@ -34,6 +34,18 @@ test("every service command exposes its package-owned command help", () => {
   }
 });
 
+test("built CLI accepts --daemon on service commands", () => {
+  for (const args of [
+    ["start", "--daemon", "--help"],
+    ["ui", "--daemon", "--help"],
+    ["serve", "--daemon", "--help"]
+  ]) {
+    const result = runCli(args);
+    assert.equal(result.status, 0, `${args.join(" ")}: ${result.stderr}`);
+    assert.match(result.stdout, /--daemon/, args.join(" "));
+  }
+});
+
 test("built CLI rejects missing, out-of-range, and unknown service options", () => {
   const cases = [
     [["serve", "--host"], /--host requires a value/],
