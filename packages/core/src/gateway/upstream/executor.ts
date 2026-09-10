@@ -817,15 +817,102 @@ function usageAwareOpenAiChatAttemptBody(input: {
 }
 
 
-function stripUnsupportedOpenAiRequestParameters(body: Buffer | undefined): Buffer | undefined {
+export function stripUnsupportedOpenAiRequestParameters(body: Buffer | undefined): Buffer | undefined {
   const parsedBody = parseJsonObjectSafe(body);
-  if (!parsedBody || (!("thinking" in parsedBody) && !("reasoning_split" in parsedBody))) {
+  if (!parsedBody) {
     return body;
   }
   const next = { ...parsedBody };
-  delete next.thinking;
-  delete next.reasoning_split;
-  return serializeJsonBody(next);
+  let changed = false;
+  if ("thinking" in next || "reasoning_split" in next) {
+    delete next.thinking;
+    delete next.reasoning_split;
+    changed = true;
+  }
+  if (stripThinkingContentBlocks(next.messages)) {
+    changed = true;
+  }
+  if (stripResponsesReasoningContent(next.input)) {
+    changed = true;
+  }
+  return changed ? serializeJsonBody(next) : body;
+}
+
+/**
+ * OpenAI Responses upstreams reject a `reasoning` input item whose `content` array is
+ * non-empty (HTTP 400 array_above_max_length, e.g. Codex API). Remove `content` from each
+ * `type === "reasoning"` item in the Responses `input` array, drop empty `summary: []`, and
+ * drop the item entirely if nothing accepted by the endpoint remains. Returns true when any
+ * item was modified or removed. Non-array input (string input, chat-style bodies) is left
+ * untouched.
+ */
+function stripResponsesReasoningContent(input: unknown): boolean {
+  if (!Array.isArray(input)) {
+    return false;
+  }
+  let changed = false;
+  const kept: unknown[] = [];
+  for (const item of input) {
+    if (!isRecord(item) || stringValue(item.type) !== "reasoning") {
+      kept.push(item);
+      continue;
+    }
+    let itemChanged = false;
+    if ("content" in item) {
+      delete item.content;
+      itemChanged = true;
+    }
+    if (Array.isArray(item.summary) && item.summary.length === 0) {
+      delete item.summary;
+      itemChanged = true;
+    }
+    if ("summary" in item || "encrypted_content" in item) {
+      kept.push(item);
+    } else {
+      itemChanged = true; // nothing accepted remains; drop the item
+    }
+    changed = changed || itemChanged;
+  }
+  if (kept.length !== input.length) {
+    input.length = 0;
+    input.push(...kept);
+    changed = true;
+  }
+  return changed;
+}
+
+/**
+ * OpenAI chat/responses upstreams reject Anthropic `thinking` content blocks in message
+ * history (HTTP 400). Remove them in place from each message's content array. Returns true
+ * when any block was removed. Non-array content (string content, already-OpenAI bodies) is
+ * left untouched.
+ */
+function stripThinkingContentBlocks(messages: unknown): boolean {
+  if (!Array.isArray(messages)) {
+    return false;
+  }
+  let changed = false;
+  for (const message of messages) {
+    if (!isRecord(message)) {
+      continue;
+    }
+    const content = message.content;
+    if (!Array.isArray(content)) {
+      continue;
+    }
+    const filtered = content.filter((block) => {
+      if (!isRecord(block)) {
+        return true;
+      }
+      const type = stringValue(block.type);
+      return type !== "thinking" && type !== "redacted_thinking";
+    });
+    if (filtered.length !== content.length) {
+      message.content = filtered;
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 
