@@ -349,10 +349,14 @@ function readOpenCodeCredential(providerId: OpenCodeProviderId): OpenCodeCredent
     }
   }
 
-  const environmentApiKey = process.env[providerId === "opencode-go" ? "OPENCODE_GO_API_KEY" : "OPENCODE_API_KEY"]?.trim();
-  if (environmentApiKey) {
-    const environmentName = providerId === "opencode-go" ? "OPENCODE_GO_API_KEY" : "OPENCODE_API_KEY";
-    return { apiKey: environmentApiKey, hasCredential: true, sourceFile: `env:${environmentName}` };
+  const environmentNames = providerId === "opencode-go"
+    ? ["OPENCODE_GO_API_KEY", "OPENCODE_API_KEY"]
+    : ["OPENCODE_API_KEY"];
+  for (const environmentName of environmentNames) {
+    const environmentApiKey = process.env[environmentName]?.trim();
+    if (environmentApiKey) {
+      return { apiKey: environmentApiKey, hasCredential: true, sourceFile: `env:${environmentName}` };
+    }
   }
 
   return configuredApiKeyPresent

@@ -360,6 +360,9 @@ async function resolveGatewayProviderProbe(request: GatewayProviderProbeRequest)
   const resolvedModelProbe = openCodeProtocolModels
     ? { ...modelProbe, models: modelProbe.models.filter((model) => openCodeProtocolModels.includes(model)) }
     : modelProbe;
+  const resolvedOpenCodeProtocolModelMap = openCodeProtocolModelMap
+    ? intersectProtocolModels(openCodeProtocolModelMap, resolvedModelProbe.models)
+    : undefined;
   const models = (mode === "connectivity" || mode === "models") && resolvedModelProbe.models.length > 0
     ? resolvedModelProbe.models
     : typedModels;
@@ -382,9 +385,22 @@ async function resolveGatewayProviderProbe(request: GatewayProviderProbeRequest)
     modelSource: resolvedModelProbe.source,
     models: resolvedModelProbe.models,
     normalizedBaseUrl,
-    ...(openCodeProtocolModelMap ? { protocolModels: openCodeProtocolModelMap } : {}),
+    ...(resolvedOpenCodeProtocolModelMap ? { protocolModels: resolvedOpenCodeProtocolModelMap } : {}),
     protocols: protocolResults
   };
+}
+
+function intersectProtocolModels(
+  protocolModels: Partial<Record<GatewayProviderCapabilityProtocol, string[]>>,
+  discoveredModels: string[]
+): Partial<Record<GatewayProviderCapabilityProtocol, string[]>> {
+  const discovered = new Set(discoveredModels);
+  return Object.fromEntries(
+    Object.entries(protocolModels).map(([protocol, models]) => [
+      protocol,
+      (models ?? []).filter((model) => discovered.has(model))
+    ])
+  );
 }
 
 function providerProbeCacheKey(request: GatewayProviderProbeRequest): string {

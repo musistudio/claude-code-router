@@ -64,7 +64,7 @@ Kimi CLI 导入会读取本机 Kimi 配置（默认 `~/.kimi-code/config.toml`�
 
 OpenCode 导入会同时读取本机认证文件、OpenCode 配置和模型目录缓存。CCR 会把目录中的 `opencode` 与 `opencode-go` 供应商 ID 视为不同服务，因此即使两边存在同名模型，也不会把 Go 套餐误导入为 Zen。
 
-每个供应商 ID 的凭据解析顺序为：OpenCode 配置（`provider.opencode` 或 `provider.opencode-go` 的 `options.apiKey`，支持 `{env:VAR}` 与 `{file:path}` 引用）、`OPENCODE_AUTH_CONTENT`、OpenCode 的 `auth.json`，最后是环境变量 `OPENCODE_API_KEY`（Zen）与 `OPENCODE_GO_API_KEY`（Go）。
+每个供应商 ID 的凭据解析顺序为：OpenCode 配置（`provider.opencode` 或 `provider.opencode-go` 的 `options.apiKey`，支持 `{env:VAR}` 与 `{file:path}` 引用）、`OPENCODE_AUTH_CONTENT`、OpenCode 的 `auth.json`，最后是环境变量。`OPENCODE_API_KEY` 与 OpenCode 的目录行为一致，同时适用于 Zen 和 Go；CCR 也接受 `OPENCODE_GO_API_KEY` 作为 Go 专用覆盖值。
 
 导入后：
 

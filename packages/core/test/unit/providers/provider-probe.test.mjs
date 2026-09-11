@@ -901,7 +901,9 @@ test("OpenCode Go model discovery only returns models for the requested protocol
       api: "https://opencode.ai/zen/go/v1",
       models: {
         "go-chat": { name: "Go Chat", provider: { npm: "@ai-sdk/openai-compatible" } },
-        "go-responses": { name: "Go Responses", provider: { npm: "@ai-sdk/openai" } }
+        "go-responses": { name: "Go Responses", provider: { npm: "@ai-sdk/openai" } },
+        "stale-chat": { name: "Stale Chat", provider: { npm: "@ai-sdk/openai-compatible" } },
+        "stale-responses": { name: "Stale Responses", provider: { npm: "@ai-sdk/openai" } }
       },
       name: "OpenCode Go",
       npm: "@ai-sdk/openai-compatible"

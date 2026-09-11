@@ -64,7 +64,7 @@ If CCR detects login traces but no usable OAuth token, the import entry shows wh
 
 OpenCode import reads the local authentication file together with OpenCode's config and cached model catalog. CCR treats the catalog provider IDs `opencode` and `opencode-go` as separate services, so overlapping model names do not cause a Go subscription to be imported as Zen.
 
-Credentials resolve in this order per provider ID: OpenCode config (`provider.opencode` or `provider.opencode-go` `options.apiKey`, with `{env:VAR}` and `{file:path}` references), `OPENCODE_AUTH_CONTENT`, OpenCode's `auth.json`, then the environment variables `OPENCODE_API_KEY` (Zen) and `OPENCODE_GO_API_KEY` (Go).
+Credentials resolve in this order per provider ID: OpenCode config (`provider.opencode` or `provider.opencode-go` `options.apiKey`, with `{env:VAR}` and `{file:path}` references), `OPENCODE_AUTH_CONTENT`, OpenCode's `auth.json`, then environment variables. `OPENCODE_API_KEY` follows OpenCode's catalog behavior and applies to both Zen and Go; CCR also accepts `OPENCODE_GO_API_KEY` as a Go-specific override.
 
 After import:
 

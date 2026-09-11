@@ -268,6 +268,41 @@ test("OpenCode Go can be discovered from configured provider metadata", async ()
   });
 });
 
+test("OpenCode Go accepts the shared catalog API key with a Go-specific override", async () => {
+  await withOpenCodeHome(async (home) => {
+    writeOpenCodeCatalog(home, {
+      "opencode-go": {
+        api: "https://opencode.ai/zen/go/v1",
+        env: ["OPENCODE_API_KEY"],
+        models: {
+          "go-chat": {
+            name: "Go Chat",
+            provider: { npm: "@ai-sdk/openai-compatible" }
+          }
+        },
+        name: "OpenCode Go",
+        npm: "@ai-sdk/openai-compatible"
+      }
+    });
+    process.env.OPENCODE_API_KEY = "shared-opencode-key";
+
+    const sharedCandidate = candidateForId(opencodeCandidates(), "opencode-go-api-openai-chat-completions");
+    assert.equal(sharedCandidate.sourceFile, "env:OPENCODE_API_KEY");
+    assert.equal(
+      importOpenCodeProvider(sharedCandidate, []).providerPlugins[0].auth.headers.authorization,
+      "Bearer shared-opencode-key"
+    );
+
+    process.env.OPENCODE_GO_API_KEY = "go-specific-key";
+    const overrideCandidate = candidateForId(opencodeCandidates(), "opencode-go-api-openai-chat-completions");
+    assert.equal(overrideCandidate.sourceFile, "env:OPENCODE_GO_API_KEY");
+    assert.equal(
+      importOpenCodeProvider(overrideCandidate, []).providerPlugins[0].auth.headers.authorization,
+      "Bearer go-specific-key"
+    );
+  });
+});
+
 test("OpenCode local provider resolves API keys from OpenCode JSONC config", async () => {
   await withOpenCodeHome(async (home) => {
     process.env.CCR_OPENCODE_TEST_KEY = "configured-opencode-key";
