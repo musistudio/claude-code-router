@@ -3,14 +3,17 @@ import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import type {
+  GatewayProviderConfig,
   LocalAgentProviderCandidate,
   LocalAgentProviderImportResult,
   ProviderAccountConfig,
+  ProviderAccountConnectorConfig,
   ProviderAccountMappingConfig
 } from "@ccr/core/contracts/app";
 import {
   bearerAuthPlugin,
   isRecord,
+  localAgentProviderApiKey,
   missingCandidate,
   providerInternalNamePlaceholder,
   providerPayload,
@@ -20,6 +23,7 @@ import {
   uniqueStrings,
   type OAuthTokenSet
 } from "@ccr/core/agents/local-providers/shared";
+import { normalizeProviderBaseUrl } from "@ccr/core/providers/url";
 
 const claudeDefaultModels = ["claude-sonnet-5"];
 const claudeCodeKeychainServiceBase = "Claude Code-credentials";
@@ -59,6 +63,17 @@ const claudeCodeAccountMapping: ProviderAccountMappingConfig = {
     percentLimitMapping("claude_oauth_apps_quota", "OAuth apps quota", "$.seven_day_oauth_apps", "weekly"),
     percentLimitMapping("claude_opus_quota", "Opus quota", "$.seven_day_opus", "weekly"),
     percentLimitMapping("claude_sonnet_quota", "Sonnet quota", "$.seven_day_sonnet", "weekly"),
+    {
+      id: "claude_fable_quota",
+      kind: "quota",
+      label: "Fable quota",
+      limit: 100,
+      remaining: "100 - $.limits[?(@.kind == \"weekly_scoped\" && @.scope.model.display_name == \"Fable\")].percent",
+      resetAt: "$.limits[?(@.kind == \"weekly_scoped\" && @.scope.model.display_name == \"Fable\")].resets_at",
+      unit: "%",
+      used: "$.limits[?(@.kind == \"weekly_scoped\" && @.scope.model.display_name == \"Fable\")].percent",
+      window: "weekly"
+    },
     {
       id: "claude_extra_usage",
       kind: "quota",
@@ -165,7 +180,7 @@ export function importClaudeCodeProvider(candidate: LocalAgentProviderCandidate,
   };
 }
 
-function claudeCodeProviderAccountConfig(): ProviderAccountConfig {
+export function claudeCodeProviderAccountConfig(): ProviderAccountConfig {
   return {
     connectors: [
       {
@@ -181,6 +196,53 @@ function claudeCodeProviderAccountConfig(): ProviderAccountConfig {
     ],
     enabled: true
   };
+}
+
+export function normalizeClaudeCodeProviderAccountConfig(provider: GatewayProviderConfig): GatewayProviderConfig {
+  if (!isLocalClaudeCodeProvider(provider) || !shouldUseCurrentClaudeCodeAccountConfig(provider.account)) {
+    return provider;
+  }
+  const account = claudeCodeProviderAccountConfig();
+  return {
+    ...provider,
+    account: {
+      ...account,
+      refreshIntervalMs: provider.account?.refreshIntervalMs ?? account.refreshIntervalMs
+    }
+  };
+}
+
+function isLocalClaudeCodeProvider(provider: GatewayProviderConfig): boolean {
+  return (
+    providerApiKey(provider) === localAgentProviderApiKey &&
+    normalizeProviderBaseUrl(providerBaseUrl(provider)) === normalizeProviderBaseUrl("https://api.anthropic.com")
+  );
+}
+
+function shouldUseCurrentClaudeCodeAccountConfig(account: ProviderAccountConfig | undefined): boolean {
+  if (account?.enabled === false) {
+    return false;
+  }
+  const connectors = account?.connectors ?? [];
+  if (connectors.length === 0) {
+    return true;
+  }
+  return connectors.every(isClaudeCodeAccountConnector);
+}
+
+function isClaudeCodeAccountConnector(connector: ProviderAccountConnectorConfig): boolean {
+  if (connector.type !== "http-json") {
+    return false;
+  }
+  return /^https:\/\/api\.anthropic\.com\/api\/oauth\/usage$/i.test(connector.endpoint.trim());
+}
+
+function providerApiKey(provider: GatewayProviderConfig): string {
+  return provider.api_key || provider.apiKey || provider.apikey || "";
+}
+
+function providerBaseUrl(provider: GatewayProviderConfig): string {
+  return provider.api_base_url || provider.baseUrl || provider.baseurl || "";
 }
 
 export function readClaudeCodeOauth(): OAuthTokenSet | undefined {

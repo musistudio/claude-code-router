@@ -1356,7 +1356,7 @@ function mappedMeterFromPayload(
   const limit = readMappedNumber(config.limit, payload);
   const remaining = readMappedNumber(config.remaining, payload);
   const used = readMappedNumber(config.used, payload);
-  if (limit === undefined && remaining === undefined && used === undefined) {
+  if (remaining === undefined && used === undefined) {
     return undefined;
   }
   return normalizeMeter({
@@ -1380,7 +1380,59 @@ function mappedMetersFromPayload(
   const meters = connector.mapping.meters
     .map((meter) => mappedMeterFromPayload(meter, payload, source))
     .filter((meter): meter is ProviderAccountMeter => Boolean(meter));
-  return attachCodexRateLimitResetCreditDetails(meters, payload);
+  return dropUnresolvedScopedMeters(attachCodexRateLimitResetCreditDetails(meters, payload), payload);
+}
+
+function dropUnresolvedScopedMeters(meters: ProviderAccountMeter[], payload: unknown): ProviderAccountMeter[] {
+  const scopedModelNames = new Set(
+    scopedMeterModelNames(meters)
+      .map((name) => [...jsonPathKeyAlternates(name), name.trim()])
+      .flat()
+      .filter(Boolean)
+  );
+  if (scopedModelNames.size === 0) {
+    return meters;
+  }
+  const models = scopedUsageModelNames(payload);
+  const present = new Set(models.flatMap((name) => [...jsonPathKeyAlternates(name), name.trim()].filter(Boolean)));
+  return meters.filter((meter) => {
+    const modelName = scopedMeterModelName(meter);
+    return !modelName || present.has(modelName);
+  });
+}
+
+function scopedMeterModelNames(meters: ProviderAccountMeter[]): string[] {
+  const names: string[] = [];
+  for (const meter of meters) {
+    const modelName = scopedMeterModelName(meter);
+    if (modelName) {
+      names.push(modelName);
+    }
+  }
+  return names;
+}
+
+function scopedMeterModelName(meter: ProviderAccountMeter): string | undefined {
+  return /^claude_(opus|sonnet|fable)_quota$/.exec(meter.id)?.[1];
+}
+
+function scopedUsageModelNames(payload: unknown): string[] {
+  if (!isRecord(payload) || !Array.isArray(payload.limits)) {
+    return [];
+  }
+  const names: string[] = [];
+  for (const item of payload.limits) {
+    if (!isRecord(item) || item.kind !== "weekly_scoped") {
+      continue;
+    }
+    const scope = isRecord(item.scope) ? item.scope : undefined;
+    const model = isRecord(scope?.model) ? scope.model : undefined;
+    const displayName = typeof model?.display_name === "string" ? model.display_name.trim() : "";
+    if (displayName) {
+      names.push(displayName);
+    }
+  }
+  return names;
 }
 
 function normalizeMeter(value: unknown, source: ProviderAccountConnectorSource): ProviderAccountMeter | undefined {
