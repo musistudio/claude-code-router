@@ -51,9 +51,11 @@ export function providerPayload(
   candidate: LocalAgentProviderCandidate,
   name: string,
   baseUrl: string,
-  account?: ProviderAccountConfig
+  account?: ProviderAccountConfig,
+  options?: { preserveAllModels?: boolean }
 ): ProviderDeepLinkPayload {
-  const models = uniqueStrings(candidate.models).slice(0, 24);
+  const candidateModels = uniqueStrings(candidate.models);
+  const models = options?.preserveAllModels ? candidateModels : candidateModels.slice(0, 24);
   return {
     account,
     apiKey: localAgentProviderApiKey,

@@ -890,6 +890,57 @@ test("New API user self parser returns user balance", () => {
   }]);
 });
 
+test("OpenCode Go model discovery only returns models for the requested protocol", async (t) => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "ccr-probe-opencode-"));
+  const previousHome = process.env.CCR_INTERNAL_HOME_DIR;
+  const previousFetch = globalThis.fetch;
+  process.env.CCR_INTERNAL_HOME_DIR = home;
+  fs.mkdirSync(path.join(home, ".cache", "opencode"), { recursive: true });
+  fs.writeFileSync(path.join(home, ".cache", "opencode", "models.json"), JSON.stringify({
+    "opencode-go": {
+      api: "https://opencode.ai/zen/go/v1",
+      models: {
+        "go-chat": { name: "Go Chat", provider: { npm: "@ai-sdk/openai-compatible" } },
+        "go-responses": { name: "Go Responses", provider: { npm: "@ai-sdk/openai" } }
+      },
+      name: "OpenCode Go",
+      npm: "@ai-sdk/openai-compatible"
+    }
+  }));
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    data: [{ id: "go-chat" }, { id: "go-responses" }]
+  }), { headers: { "content-type": "application/json" }, status: 200 });
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+    if (previousHome === undefined) {
+      delete process.env.CCR_INTERNAL_HOME_DIR;
+    } else {
+      process.env.CCR_INTERNAL_HOME_DIR = previousHome;
+    }
+    fs.rmSync(home, { force: true, recursive: true });
+  });
+
+  const probe = await probeGatewayProvider({
+    baseUrl: "https://opencode.ai/zen/go/v1",
+    forceRefresh: true,
+    mode: "models",
+    protocols: ["openai_responses", "openai_chat_completions"]
+  });
+  assert.deepEqual(probe.models, ["go-chat", "go-responses"]);
+  assert.deepEqual(probe.protocolModels, {
+    openai_chat_completions: ["go-chat"],
+    openai_responses: ["go-responses"]
+  });
+
+  const normalizedProbe = await probeGatewayProvider({
+    baseUrl: "https://opencode.ai/zen/go",
+    forceRefresh: true,
+    mode: "models",
+    protocols: ["openai_responses"]
+  });
+  assert.deepEqual(normalizedProbe.models, ["go-responses"]);
+});
+
 function jwt(payload) {
   return [
     base64url({ alg: "none", typ: "JWT" }),

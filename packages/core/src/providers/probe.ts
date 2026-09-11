@@ -13,6 +13,7 @@ import type {
   GatewayProviderProtocol
 } from "@ccr/core/contracts/app";
 import { codexDefaultBaseUrl, readCodexAuth } from "@ccr/core/agents/local-providers/codex";
+import { opencodeCatalogProtocolModelMap, opencodeCatalogProtocolModels } from "@ccr/core/agents/local-providers/opencode";
 import { localAgentProviderApiKey } from "@ccr/core/agents/local-providers/shared";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue } from "@ccr/core/providers/presets/index";
 import { getProviderCatalogModels } from "@ccr/core/providers/model-catalog";
@@ -350,13 +351,22 @@ async function resolveGatewayProviderProbe(request: GatewayProviderProbeRequest)
   const modelProbe = mode !== "models" || request.skipModelDiscovery
     ? { models: [] }
     : await probeModels(parsed, request.apiKey, protocols, request.providerPlugins ?? []);
-  const models = (mode === "connectivity" || mode === "models") && modelProbe.models.length > 0
-    ? modelProbe.models
+  const openCodeProtocolModels = modelProbe.models.length > 0
+    ? opencodeCatalogProtocolModels(request.baseUrl, protocols)
+    : undefined;
+  const openCodeProtocolModelMap = modelProbe.models.length > 0
+    ? opencodeCatalogProtocolModelMap(request.baseUrl, protocols)
+    : undefined;
+  const resolvedModelProbe = openCodeProtocolModels
+    ? { ...modelProbe, models: modelProbe.models.filter((model) => openCodeProtocolModels.includes(model)) }
+    : modelProbe;
+  const models = (mode === "connectivity" || mode === "models") && resolvedModelProbe.models.length > 0
+    ? resolvedModelProbe.models
     : typedModels;
   const protocolResults = await probeProtocols(parsed, request.apiKey, models, protocols, mode, request.providerPlugins ?? []);
-  const detectedProtocol = detectProtocol(parsed, protocolResults, modelProbe.source, protocols);
+  const detectedProtocol = detectProtocol(parsed, protocolResults, resolvedModelProbe.source, protocols);
   const normalizedBaseUrl = detectedProtocol
-    ? resolveProbeBaseUrl(parsed, detectedProtocol, protocolResults, modelProbe)
+    ? resolveProbeBaseUrl(parsed, detectedProtocol, protocolResults, resolvedModelProbe)
     : parsed.normalizedInputBaseUrl;
   const detectedProvider = detectProvider(protocolResults);
   const account = detectedProvider === "new-api" ? newApiKeyUsageAccountConfig(normalizedBaseUrl) : undefined;
@@ -368,10 +378,11 @@ async function resolveGatewayProviderProbe(request: GatewayProviderProbeRequest)
     catalogModelMetadata: catalog.modelMetadata,
     ...(detectedProvider ? { detectedProvider } : {}),
     detectedProtocol,
-    modelDisplayNames: modelProbe.modelDisplayNames,
-    modelSource: modelProbe.source,
-    models: modelProbe.models,
+    modelDisplayNames: resolvedModelProbe.modelDisplayNames,
+    modelSource: resolvedModelProbe.source,
+    models: resolvedModelProbe.models,
     normalizedBaseUrl,
+    ...(openCodeProtocolModelMap ? { protocolModels: openCodeProtocolModelMap } : {}),
     protocols: protocolResults
   };
 }
