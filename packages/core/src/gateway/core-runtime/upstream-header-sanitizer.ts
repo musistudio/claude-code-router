@@ -90,6 +90,25 @@ function sanitizeOpenCodeSessionHeaderValue(value: string | undefined): string |
   return trimmed.slice(0, openCodeSessionHeaderMaxLength);
 }
 
+function requestHeaderValue(
+  headers: Record<string, string | string[] | undefined> | undefined,
+  name: string
+): string | undefined {
+  for (const [headerName, headerValue] of Object.entries(headers ?? {})) {
+    if (headerName.trim().toLowerCase() !== name) {
+      continue;
+    }
+    const values = Array.isArray(headerValue) ? headerValue : [headerValue];
+    for (const value of values) {
+      const trimmed = value?.trim();
+      if (trimmed) {
+        return trimmed;
+      }
+    }
+  }
+  return undefined;
+}
+
 /**
  * Removes CCR-owned routing, authentication and observability metadata at the
  * final provider boundary. Provider credentials and non-CCR custom X-Auth
@@ -232,7 +251,10 @@ export function createGatewayPlugin() {
               (url.port === "" || url.port === "443") &&
               /^\/zen\/go\/v1(?:\/|$)/.test(url.pathname)
             ) {
-              const claudeSessionId = sanitizeOpenCodeSessionHeaderValue(
+              const explicitClientSession = sanitizeOpenCodeSessionHeaderValue(
+                requestHeaderValue(input.request?.headers, "x-opencode-session")
+              );
+              const claudeSessionId = explicitClientSession || sanitizeOpenCodeSessionHeaderValue(
                 resolveResponsesSessionKey(
                   input.request?.headers,
                   inboundMetadataUserId(input.request?.body)

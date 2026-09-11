@@ -246,6 +246,15 @@ export function opencodeCatalogProtocolModels(
   return uniqueStrings(Object.values(protocolModels).flatMap((models) => models ?? []));
 }
 
+/**
+ * Returns the local OpenCode catalog models grouped by protocol for an official
+ * Zen or Go endpoint, or undefined when no local OpenCode metadata is available.
+ * Provider model discovery uses this so a multi-protocol endpoint like OpenCode
+ * Go does not list chat-only models on a Responses or Anthropic provider. The
+ * Live discovery already reflects the credentials supplied to the probe, so
+ * the catalog is not reduced using unrelated local-login state; the zero-cost
+ * filter applies only to login-less imports.
+ */
 export function opencodeCatalogProtocolModelMap(
   baseUrl: string,
   protocols: readonly GatewayProviderCapabilityProtocol[]
@@ -254,9 +263,7 @@ export function opencodeCatalogProtocolModelMap(
   if (!providerId) {
     return undefined;
   }
-  const credential = readOpenCodeCredential(providerId);
-  const publicOnly = providerId === "opencode" && !credential;
-  const catalog = readOpenCodeCatalog(providerId, { publicOnly });
+  const catalog = readOpenCodeCatalog(providerId, { publicOnly: false });
   if (!catalog.detected) {
     return undefined;
   }

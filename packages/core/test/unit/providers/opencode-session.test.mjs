@@ -102,6 +102,27 @@ test("#1780 official opencode-go requests use a stable fallback without overridi
   assert.equal(blankConfigured.headers["x-opencode-session"], "claude-session");
 });
 
+test("#1780 explicit client opencode-session outranks other session sources", () => {
+  const [hook] = createGatewayPlugin().providerHooks;
+  const upstreamRequest = { body: {}, headers: { authorization: "Bearer provider-key" }, url: "https://opencode.ai/zen/go/v1/chat/completions" };
+
+  const explicitOverMetadata = hook.transformRequest({
+    request: { body: { metadata: { user_id: "conversation-1" } }, headers: { "x-opencode-session": "client-session" }, id: "request-1" },
+    upstreamRequest
+  }).value;
+  assert.equal(explicitOverMetadata.headers["x-opencode-session"], "client-session");
+
+  const blankProviderKeepsClientSession = hook.transformRequest({
+    request: {
+      body: { metadata: { user_id: "conversation-1" } },
+      headers: { "x-claude-code-session-id": "claude-session", "x-opencode-session": "client-session" },
+      id: "request-2"
+    },
+    upstreamRequest: { ...upstreamRequest, headers: { ...upstreamRequest.headers, "X-OpenCode-Session": "   " } }
+  }).value;
+  assert.equal(blankProviderKeepsClientSession.headers["x-opencode-session"], "client-session");
+});
+
 test("OpenCode Go session injection is scoped to the official Go endpoint", () => {
   const [hook] = createGatewayPlugin().providerHooks;
   const request = { id: "request-1", headers: { "x-claude-code-session-id": "claude-session" } };
@@ -110,17 +131,28 @@ test("OpenCode Go session injection is scoped to the official Go endpoint", () =
     "https://opencode.ai/zen/v1/chat/completions",
     "https://other.test/zen/go/v1/chat/completions",
     "https://opencode.ai/zen/go/v10/chat/completions",
+    "https://opencode.ai/zen/go/v1x/chat/completions",
+    "https://opencode.ai/zen/gofake/chat/completions",
+    "https://opencode.ai/zen/go/chat/completions",
+    "https://sub.opencode.ai/zen/go/v1/chat/completions",
+    "https://opencode.ai.example.com/zen/go/v1/chat/completions",
     "http://opencode.ai/zen/go/v1/chat/completions",
     "https://opencode.ai:8443/zen/go/v1/chat/completions"
   ]) {
     assert.equal(hook.transformRequest({ request, upstreamRequest: { ...upstreamRequest, url } }).value.headers["x-opencode-session"], undefined);
   }
 
-  const defaultPort = hook.transformRequest({
-    request,
-    upstreamRequest: { ...upstreamRequest, url: "https://opencode.ai:443/zen/go/v1/chat/completions" }
-  }).value;
-  assert.equal(defaultPort.headers["x-opencode-session"], "claude-session");
+  for (const url of [
+    "https://opencode.ai/zen/go/v1",
+    "https://opencode.ai/zen/go/v1/",
+    "https://opencode.ai/zen/go/v1/messages",
+    "https://opencode.ai/zen/go/v1/responses",
+    "https://opencode.ai/zen/go/v1/chat/completions",
+    "https://opencode.ai/zen/go/v1/chat/completions?stream=true",
+    "https://opencode.ai:443/zen/go/v1/chat/completions"
+  ]) {
+    assert.equal(hook.transformRequest({ request, upstreamRequest: { ...upstreamRequest, url } }).value.headers["x-opencode-session"], "claude-session");
+  }
 
   const clientSession = hook.transformRequest({
     request: { ...request, headers: { "x-opencode-session": "client-session" } },

@@ -13,7 +13,7 @@ import type {
   GatewayProviderProtocol
 } from "@ccr/core/contracts/app";
 import { codexDefaultBaseUrl, readCodexAuth } from "@ccr/core/agents/local-providers/codex";
-import { opencodeCatalogProtocolModelMap, opencodeCatalogProtocolModels } from "@ccr/core/agents/local-providers/opencode";
+import { opencodeCatalogProtocolModelMap } from "@ccr/core/agents/local-providers/opencode";
 import { localAgentProviderApiKey } from "@ccr/core/agents/local-providers/shared";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue } from "@ccr/core/providers/presets/index";
 import { getProviderCatalogModels } from "@ccr/core/providers/model-catalog";
@@ -351,17 +351,17 @@ async function resolveGatewayProviderProbe(request: GatewayProviderProbeRequest)
   const modelProbe = mode !== "models" || request.skipModelDiscovery
     ? { models: [] }
     : await probeModels(parsed, request.apiKey, protocols, request.providerPlugins ?? []);
-  const openCodeProtocolModels = modelProbe.models.length > 0
-    ? opencodeCatalogProtocolModels(request.baseUrl, protocols)
-    : undefined;
   const openCodeProtocolModelMap = modelProbe.models.length > 0
     ? opencodeCatalogProtocolModelMap(request.baseUrl, protocols)
     : undefined;
-  const resolvedModelProbe = openCodeProtocolModels
+  const openCodeProtocolModels = openCodeProtocolModelMap
+    ? uniqueStrings(Object.values(openCodeProtocolModelMap).flatMap((models) => models ?? []))
+    : undefined;
+  const resolvedModelProbe = openCodeProtocolModels && openCodeProtocolModels.length > 0
     ? { ...modelProbe, models: modelProbe.models.filter((model) => openCodeProtocolModels.includes(model)) }
     : modelProbe;
-  const resolvedOpenCodeProtocolModelMap = openCodeProtocolModelMap
-    ? intersectProtocolModels(openCodeProtocolModelMap, resolvedModelProbe.models)
+  const resolvedOpenCodeProtocolModelMap = openCodeProtocolModels && openCodeProtocolModels.length > 0
+    ? intersectProtocolModels(openCodeProtocolModelMap ?? {}, resolvedModelProbe.models)
     : undefined;
   const models = (mode === "connectivity" || mode === "models") && resolvedModelProbe.models.length > 0
     ? resolvedModelProbe.models
