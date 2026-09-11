@@ -72,6 +72,7 @@ OpenCode 导入会同时读取本机认证文件、OpenCode 配置和模型目�
 2. OpenCode Go 使用自己的目录条目和 API 地址，缺省为 `https://opencode.ai/zen/go/v1`，并使用按上述顺序解析出的 `opencode-go` 凭据。
 3. 模型 ID 和显示名来自对应的 OpenCode 供应商目录。CCR 按每个模型声明的 AI SDK 包分别归入 OpenAI Responses、Chat Completions、Anthropic 或 Gemini 协议，支持同一目录中混合多种协议。
 4. 请求发往 OpenCode Go 官方地址时，CCR 会把 `x-claude-code-session-id`（或旧版 `x-claude-session-id`）转发为 `x-opencode-session`。客户端两者都未提供时，CCR 会优先使用请求中的 `metadata.user_id`，否则使用进程内生成一次的稳定 `ccr-<uuid>`，这是为不发送会话标识的客户端提供的最后兜底；显式配置的 `x-opencode-session` 优先。Zen 和其他无关供应商不会被添加此请求头。
+5. OpenCode Go 的账户用量会使用导入的 `opencode-go` 密钥请求 `GET https://opencode.ai/zen/go/v1/usage`，把 5 小时、每周和每月窗口显示为剩余百分比。Zen 没有对应的账户用量端点，因此只会自动读取 Go。
 
 如果 OpenCode Go 不可用，或添加供应商时没有出现 Go 导入项，请先在 OpenCode 中连接 `OpenCode Go` 并让 OpenCode 刷新本机模型缓存，然后回到 CCR 重新扫描。
 

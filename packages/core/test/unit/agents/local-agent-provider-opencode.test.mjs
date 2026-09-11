@@ -185,16 +185,28 @@ test("OpenCode local provider imports Go separately from Zen using provider cata
     assert.equal(goResult.providerPlugins[0].auth.headers["x-api-key"], "opencode-go-key");
     assert.ok(goResult.providerPlugins[0].key.endsWith("-opencode-go-anthropic-messages-api-key"));
     assert.ok(goResult.providerPlugins[1].key.endsWith("-opencode-go-anthropic-messages-api-key-internal"));
+    assert.equal(goResult.provider.account?.enabled, true);
+    const goUsageConnector = goResult.provider.account?.connectors?.[0];
+    assert.equal(goUsageConnector?.type, "http-json");
+    assert.equal(goUsageConnector?.endpoint, "https://opencode.ai/zen/go/v1/usage");
+    assert.equal(goUsageConnector?.auth, "provider-api-key");
+    assert.deepEqual(goUsageConnector?.mapping?.meters.map((meter) => meter.id), [
+      "opencode_go_5h",
+      "opencode_go_weekly",
+      "opencode_go_monthly"
+    ]);
 
     const goChatResult = importOpenCodeProvider(goChat, []);
     assert.equal(goChatResult.provider.models.length, 26);
     assert.equal(goChatResult.provider.models.at(-1), "go-chat");
     assert.equal(goChatResult.provider.modelDisplayNames["go-chat-25"], "Go Chat 25");
+    assert.equal(goChatResult.provider.account?.connectors?.[0]?.endpoint, "https://opencode.ai/zen/go/v1/usage");
 
     const zenResult = importOpenCodeProvider(zenResponses, []);
     assert.equal(zenResult.provider.baseUrl, "https://opencode.ai/zen/v1");
     assert.equal(zenResult.providerPlugins[0].auth.headers.authorization, "Bearer opencode-zen-key");
     assert.ok(zenResult.providerPlugins[0].key.endsWith("-opencode-openai-responses-api-key"));
+    assert.equal(zenResult.provider.account, undefined);
   });
 });
 

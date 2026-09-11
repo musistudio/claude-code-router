@@ -7,11 +7,13 @@ import type {
   GatewayProviderProtocol,
   LocalAgentProviderCandidate,
   LocalAgentProviderImportResult,
+  ProviderAccountConfig,
   ProviderAccountConnectorConfig
 } from "@ccr/core/contracts/app";
 import {
   apiKeyAuthPlugin,
   bearerAuthPlugin,
+  cloneProviderAccountConfig,
   isRecord,
   missingCandidate,
   parseJsoncRecord,
@@ -25,6 +27,7 @@ import {
   uniqueProviderName,
   uniqueStrings
 } from "@ccr/core/agents/local-providers/shared";
+import { findProviderPresetByBaseUrl } from "@ccr/core/providers/presets/index";
 
 type OpenCodeCredential = {
   apiKey?: string;
@@ -178,7 +181,7 @@ export function importOpenCodeProvider(
     candidate,
     uniqueProviderName(providerNames, candidate.name),
     catalog.baseUrl,
-    undefined,
+    openCodeProviderAccountConfig(catalog.baseUrl),
     { preserveAllModels: providerId === "opencode-go" }
   );
   if (publicOnly) {
@@ -216,6 +219,10 @@ export function removeOpenCodeProviderAccountConfig(provider: GatewayProviderCon
     ...provider,
     account: connectors.length > 0 ? { ...account, connectors } : undefined
   };
+}
+
+function openCodeProviderAccountConfig(baseUrl: string): ProviderAccountConfig | undefined {
+  return cloneProviderAccountConfig(findProviderPresetByBaseUrl(baseUrl)?.account);
 }
 
 function isGeneratedOpenCodeAccountConnector(connector: ProviderAccountConnectorConfig): boolean {
