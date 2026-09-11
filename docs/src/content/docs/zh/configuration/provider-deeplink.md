@@ -30,6 +30,10 @@ lead: 通过预设按钮或 ccr://provider 深度链接（deeplink）一键导�
     <span class="provider-import-icon-shell"><img src="../../provider-icons/nvidia.svg" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">NVIDIA</span><span class="provider-import-meta">NIM Chat Completions</span></span>
   </a>
+  <a class="provider-import-button provider-requesty" href="ccr://provider?name=Requesty&amp;base_url=https%3A%2F%2Frouter.requesty.ai%2Fv1&amp;protocol=openai_chat_completions&amp;models=anthropic%2Fclaude-sonnet-4-6%2Copenai%2Fgpt-4o-mini%2Cgoogle%2Fgemini-2.5-flash&amp;source=https%3A%2F%2Fapp.requesty.ai%2Fapi-keys" aria-label="导入 Requesty 供应商">
+    <span class="provider-import-icon-shell"><img src="../../provider-icons/requesty.png" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">Requesty</span><span class="provider-import-meta">Chat / Responses / Anthropic</span></span>
+  </a>
   <a class="provider-import-button provider-deepseek" href="ccr://provider?name=DeepSeek&amp;base_url=https%3A%2F%2Fapi.deepseek.com&amp;protocol=openai_chat_completions&amp;models=deepseek-v4-pro%2Cdeepseek-v4-flash%2Cdeepseek-v3.2%2Cdeepseek-reasoner%2Cdeepseek-chat" aria-label="导入 DeepSeek 深度求索供应商">
     <span class="provider-import-icon-shell"><img src="../../provider-icons/deepseek.ico" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">DeepSeek 深度求索</span><span class="provider-import-meta">Chat Completions</span></span>

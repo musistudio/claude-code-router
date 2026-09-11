@@ -14,6 +14,7 @@ import { nvidiaProviderPreset } from "@ccr/core/providers/presets/nvidia/index";
 import { openaiProviderPreset } from "@ccr/core/providers/presets/openai/index";
 import { openRouterProviderPreset } from "@ccr/core/providers/presets/openrouter/index";
 import { qiniuAiProviderPreset } from "@ccr/core/providers/presets/qiniu-ai/index";
+import { requestyProviderPreset } from "@ccr/core/providers/presets/requesty/index";
 import { runApiProviderPreset } from "@ccr/core/providers/presets/runapi/index";
 import { siliconFlowProviderPreset } from "@ccr/core/providers/presets/siliconflow/index";
 import { teamoRouterProviderPreset } from "@ccr/core/providers/presets/teamorouter/index";
@@ -44,6 +45,7 @@ export const providerPresets: ProviderPreset[] = [
   anthropicProviderPreset,
   geminiProviderPreset,
   openRouterProviderPreset,
+  requestyProviderPreset,
   nvidiaProviderPreset,
   deepSeekProviderPreset,
   xiaomiMimoProviderPreset,

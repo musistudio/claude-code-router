@@ -58,6 +58,7 @@ import nvidiaProviderIconUrl from "@/assets/provider-icons/nvidia.svg";
 import openaiProviderIconUrl from "@/assets/provider-icons/openai.png";
 import openrouterProviderIconUrl from "@/assets/provider-icons/openrouter.ico";
 import qiniuAiProviderIconUrl from "@/assets/provider-icons/qiniu-ai.png";
+import requestyProviderIconUrl from "@/assets/provider-icons/requesty.png";
 import runapiProviderIconUrl from "@/assets/provider-icons/runapi.jpg";
 import siliconflowProviderIconUrl from "@/assets/provider-icons/siliconflow.png";
 import teamorouterProviderIconUrl from "@/assets/provider-icons/teamorouter.png";
@@ -386,6 +387,7 @@ export const providerPresetIconUrls: Record<string, string> = {
   openai: openaiProviderIconUrl,
   openrouter: openrouterProviderIconUrl,
   "qiniu-ai": qiniuAiProviderIconUrl,
+  requesty: requestyProviderIconUrl,
   runapi: runapiProviderIconUrl,
   siliconflow: siliconflowProviderIconUrl,
   teamorouter: teamorouterProviderIconUrl,

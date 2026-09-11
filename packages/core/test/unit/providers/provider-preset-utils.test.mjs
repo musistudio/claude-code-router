@@ -35,6 +35,9 @@ import {
   qiniuAiProviderPreset
 } from "@ccr/core/providers/presets/qiniu-ai/index.ts";
 import {
+  requestyProviderPreset
+} from "@ccr/core/providers/presets/requesty/index.ts";
+import {
   unity2ProviderPreset
 } from "@ccr/core/providers/presets/unity2/index.ts";
 import {
@@ -144,6 +147,26 @@ test("NVIDIA preset exposes the hosted NIM OpenAI-compatible endpoint", () => {
   ]);
   assert.equal(providerPresetMatchesBaseUrl(nvidiaProviderPreset, "https://integrate.api.nvidia.com/v1/chat/completions"), true);
   assert.equal(providerPresetMatchesBaseUrl(nvidiaProviderPreset, "https://build.nvidia.com/models"), false);
+});
+
+test("Requesty preset exposes the router endpoint for Chat, Responses, and Anthropic protocols", () => {
+  assert.equal(providerPresets.find((preset) => preset.id === "requesty"), requestyProviderPreset);
+  assert.equal(requestyProviderPreset.websiteUrl, "https://app.requesty.ai/api-keys");
+  assert.deepEqual(requestyProviderPreset.defaultModels, [
+    "anthropic/claude-sonnet-4-6",
+    "openai/gpt-4o-mini",
+    "google/gemini-2.5-flash"
+  ]);
+  assert.deepEqual(requestyProviderPreset.endpoints, [
+    {
+      baseUrl: "https://router.requesty.ai/v1",
+      protocols: ["openai_chat_completions", "openai_responses", "anthropic_messages"]
+    }
+  ]);
+  assert.equal(providerPresetMatchesBaseUrl(requestyProviderPreset, "https://router.requesty.ai/v1/chat/completions"), true);
+  assert.equal(providerPresetMatchesBaseUrl(requestyProviderPreset, "https://router.requesty.ai/v1/messages"), true);
+  assert.equal(providerPresetMatchesBaseUrl(requestyProviderPreset, "https://app.requesty.ai/api-keys"), false);
+  assert.equal(findProviderPresetByBaseUrlInList(providerPresets, "https://router.requesty.ai/v1")?.id, "requesty");
 });
 
 test("Xiaomi MiMo presets expose official Responses, Chat, and Anthropic endpoints", () => {
