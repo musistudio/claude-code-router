@@ -850,3 +850,82 @@ test("UsageStore migrates usage rows left without an upstream outcome", async ()
     rmSync(dir, { force: true, recursive: true });
   }
 });
+
+// The backfill is paged so it never holds the usage table's write lock for a
+// whole large history at once. Paging is only correct if it actually walks past
+// the first batch, so seed more rows than the batch size (500) and mix statuses
+// so a wrong page boundary would leave some row behind or mislabel it.
+test("UsageStore migrates more usage rows than a single backfill batch", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-outcome-paged-test-"));
+  try {
+    const dbFile = path.join(dir, "usage.sqlite");
+    const now = new Date().toISOString();
+    const seed = new UsageStore(dbFile);
+    await seed.record({
+      createdAt: now,
+      durationMs: 1,
+      method: "POST",
+      model: "model-a",
+      path: "/v1/messages",
+      provider: "vendor",
+      requestId: "seed-1",
+      statusCode: 200,
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+    });
+    await seed.getStats("30d");
+
+    const total = 1250;
+    const database = createBetterSqliteDatabase(dbFile);
+    try {
+      const insert = database.prepare(`
+        INSERT INTO usage_events (
+          created_at, request_id, client, method, path, model, logical_model, provider,
+          credential_id, status_code, duration_ms, input_tokens, output_tokens,
+          cache_read_tokens, cache_write_tokens, total_tokens, cost_usd, cost_source,
+          upstream_outcome
+        ) VALUES (?, ?, 'unknown', 'POST', '/v1/messages', 'model-a', 'model-a',
+          'vendor', '', ?, 1, 1, 1, 0, 0, 2, NULL, 'models.dev', '')
+      `);
+      database.exec("BEGIN");
+      // Alternate a captured status and an uncaptured one across the batch
+      // boundary, so both branches of the CASE are exercised on every page.
+      for (let index = 0; index < total; index += 1) {
+        insert.run(now, `legacy-${index}`, index % 2 === 0 ? 200 : 0);
+      }
+      database.exec("UPDATE usage_events SET upstream_outcome = ''");
+      database.exec("COMMIT");
+    } finally {
+      database.close();
+    }
+
+    const reopened = new UsageStore(dbFile);
+    const stats = await reopened.getStats("30d");
+    const after = createBetterSqliteDatabase(dbFile);
+    try {
+      const counts = after.prepare(`
+        SELECT upstream_outcome AS outcome, COUNT(*) AS n
+        FROM usage_events
+        GROUP BY upstream_outcome
+        ORDER BY upstream_outcome
+      `).all();
+      assert.deepEqual(counts, [
+        // 625 seeded zero-status rows.
+        { outcome: "unknown", n: total / 2 },
+        // 625 seeded plus the one real success recorded above.
+        { outcome: "http_status", n: total / 2 + 1 }
+      ].sort((a, b) => a.outcome.localeCompare(b.outcome)));
+      assert.equal(
+        after.prepare("SELECT COUNT(*) AS n FROM usage_events WHERE upstream_outcome = ''").get().n,
+        0,
+        "no row is left behind past the first page"
+      );
+    } finally {
+      after.close();
+    }
+    assert.equal(stats.totals.requestCount, total + 1);
+    // Only the zero-status rows are undecided; nothing became an error.
+    assert.equal(stats.totals.errorCount, 0);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});

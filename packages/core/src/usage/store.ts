@@ -110,6 +110,8 @@ type UsageSnapshot = UsageNumbers & {
   model?: string;
 };
 
+const usageOutcomeBackfillBatchSize = 500;
+
 const usageEvents = new EventEmitter();
 const usageStatsRanges = new Set<UsageStatsRange>(["today", "24h", "7d", "30d"]);
 const usageStatsResetAtKey = "usage_stats_reset_at";
@@ -488,6 +490,44 @@ export function onUsageRecorded(listener: () => void): () => void {
   };
 }
 
+/**
+ * Rows predating the column, and rows written by a build that added it without
+ * populating it, hold ''. That reads as decided, which put every uncaptured
+ * status back in the error count.
+ *
+ * Paged deliberately. This runs while the app is opening the usage database, and
+ * a single unbounded UPDATE would hold the table's write lock for its whole
+ * duration -- long enough on a large history to push concurrent writers past
+ * `busy_timeout`, and those failures are swallowed by the usage capture path, so
+ * requests would vanish from Overview instead of erroring visibly.
+ *
+ * No progress ledger is needed: the predicate is its own progress marker, since
+ * every row this touches stops matching it. So the loop is idempotent, resumable
+ * after a crash mid-migration, and self-terminating.
+ */
+function backfillUsageUpstreamOutcome(database: SqlDatabase): void {
+  const selectBatch = database.prepare(`
+    SELECT id
+    FROM usage_events
+    WHERE upstream_outcome = ''
+    ORDER BY id ASC
+    LIMIT ?
+  `);
+  const updateBatch = database.prepare(`
+    UPDATE usage_events
+    SET upstream_outcome = CASE WHEN status_code > 0 THEN 'http_status' ELSE 'unknown' END
+    WHERE id <= ? AND upstream_outcome = ''
+  `);
+  while (true) {
+    const rows = selectBatch.all(usageOutcomeBackfillBatchSize) as Record<string, SqlValue>[];
+    if (rows.length === 0) {
+      return;
+    }
+    const batchLastId = normalizeCount(rows.at(-1)?.id);
+    updateBatch.run(batchLastId);
+  }
+}
+
 function ensureUsageSchema(database: SqlDatabase): void {
   const columns = new Set(
     queryRows(database, "PRAGMA table_info(usage_events)")
@@ -514,16 +554,17 @@ function ensureUsageSchema(database: SqlDatabase): void {
   if (!columns.has("upstream_outcome")) {
     // Without this, a request whose upstream status was never captured looks
     // identical to a failed one here, so Overview counts it as an error.
-    database.exec("ALTER TABLE usage_events ADD COLUMN upstream_outcome TEXT NOT NULL DEFAULT ''");
+    try {
+      database.exec("ALTER TABLE usage_events ADD COLUMN upstream_outcome TEXT NOT NULL DEFAULT ''");
+    } catch (error) {
+      // A second opener can win this race; that is the state we wanted, so carry
+      // on to the backfill instead of failing the open.
+      if (!/duplicate column name/i.test(error instanceof Error ? error.message : String(error))) {
+        throw error;
+      }
+    }
   }
-  // Rows predating the column, and rows written by a build that added it without
-  // populating it, hold ''. That reads as decided and put every uncaptured status
-  // back in the error count. Idempotent: after the first run nothing matches.
-  database.exec(`
-    UPDATE usage_events
-    SET upstream_outcome = CASE WHEN status_code > 0 THEN 'http_status' ELSE 'unknown' END
-    WHERE upstream_outcome = ''
-  `);
+  backfillUsageUpstreamOutcome(database);
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_client_idx ON usage_events(client)");
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_created_at_idx ON usage_events(created_at)");
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_credential_id_idx ON usage_events(credential_id)");

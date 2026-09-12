@@ -4855,15 +4855,30 @@ function migrateGatewayFinalAttempt(database: SqlDatabase): void {
  * provider is an ordinary HTTP status, and mislabelling it as our client
  * disconnect would be worse than leaving it alone.
  */
+function isDuplicateColumnError(error: unknown): boolean {
+  return /duplicate column name/i.test(error instanceof Error ? error.message : String(error));
+}
+
 function ensureUpstreamOutcomeColumn(database: SqlDatabase, columns: Set<string>): void {
   if (columns.has("upstream_outcome")) {
     return;
   }
   database.exec("BEGIN IMMEDIATE");
   try {
-    database.exec(
-      `ALTER TABLE request_logs ADD COLUMN upstream_outcome ${upstreamOutcomeColumnDefinition}`
-    );
+    try {
+      database.exec(
+        `ALTER TABLE request_logs ADD COLUMN upstream_outcome ${upstreamOutcomeColumnDefinition}`
+      );
+    } catch (error) {
+      // Another opener -- the request-log worker thread, a second app instance,
+      // or a CLI invocation -- can add the column between the PRAGMA read above
+      // and this ALTER. That is the state this function wanted, so adopt it and
+      // still run the backfill below rather than failing the database open and
+      // taking request logging down with it. The backfill is idempotent.
+      if (!isDuplicateColumnError(error)) {
+        throw error;
+      }
+    }
     database.prepare(`
       UPDATE request_logs
       SET upstream_outcome = CASE
