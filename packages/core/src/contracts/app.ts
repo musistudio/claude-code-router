@@ -1009,6 +1009,8 @@ export const CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV = "CLAUDE_CODE_ENABL
 export const CLAUDE_CODE_ATTRIBUTION_HEADER_ENV = "CLAUDE_CODE_ATTRIBUTION_HEADER";
 export const CLAUDE_CODE_DEFAULT_ENV: Record<string, string> = {
   [CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV]: "1",
+  // Profile-wide opt-out; explicit profile env values can re-enable attribution.
+  // This removes the header, but does not guarantee upstream cache hits.
   [CLAUDE_CODE_ATTRIBUTION_HEADER_ENV]: "0"
 };
 

@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { ProfileConfig } from "@ccr/core/contracts/app.ts";
 import { AddProfileForm, DeleteProfileDialog, ProfileView } from "@ccr/ui/pages/home/components/profiles.tsx";
 import { AppI18nContext, appCopy } from "@ccr/ui/pages/home/shared/i18n.tsx";
-import { createProfileDraft, createProfileDraftFromProfile, isProfileDraftSubmittable, normalizeUnknownProfileItem, profileAgentLogoUrl, profileConfigFromDraft, profileDraftWithDetectedAppPath, profileSummaryItems } from "@ccr/ui/pages/home/shared/profiles.ts";
+import { createProfileDraft, createProfileDraftFromProfile, isProfileDraftSubmittable, normalizeUnknownProfileItem, profileAgentLogoUrl, profileConfigFromDraft, profileDraftWithDetectedAppPath, profileEnvRowsForAgent, profileSummaryItems } from "@ccr/ui/pages/home/shared/profiles.ts";
 import { appConfigFixture } from "../fixtures/index.ts";
 
 const profile: ProfileConfig = {
@@ -15,6 +15,29 @@ const profile: ProfileConfig = {
   model: "openai/gpt-5.2",
   name: "Claude Code Main"
 };
+
+test("Claude profile forms default attribution off and preserve an explicit opt-in", () => {
+  const created = profileConfigFromDraft({ ...createProfileDraft("claude-code"), model: "Provider/model" }, []);
+  assert.equal(created.env?.CLAUDE_CODE_ATTRIBUTION_HEADER, "0");
+  for (const value of [undefined, "1"]) {
+    const existing: ProfileConfig = { ...profile, env: { USER_VALUE: "kept", ...(value === undefined ? {} : { CLAUDE_CODE_ATTRIBUTION_HEADER: value }) } };
+    const draft = createProfileDraftFromProfile(existing);
+    const saved = profileConfigFromDraft(draft, [existing], existing);
+    assert.equal(saved.env?.CLAUDE_CODE_ATTRIBUTION_HEADER, value ?? "0");
+    assert.equal(saved.env?.USER_VALUE, "kept");
+  }
+});
+
+test("switching away from Claude removes its managed attribution and discovery rows", () => {
+  const draft = createProfileDraftFromProfile({ ...profile, env: { CLAUDE_CODE_ATTRIBUTION_HEADER: "1", USER_VALUE: "kept" } });
+  assert.deepEqual(profileEnvRowsForAgent("claude-code", draft.envRows), draft.envRows);
+  const rows = profileEnvRowsForAgent("codex", draft.envRows.map((row) => ({ ...row, key: ` ${row.key} ` })));
+  assert.deepEqual(rows.map((row) => row.key.trim()), ["USER_VALUE"]);
+  const saved = profileConfigFromDraft({ ...createProfileDraft("codex"), model: "Provider/model", envRows: draft.envRows }, []);
+  assert.equal(saved.env?.CLAUDE_CODE_ATTRIBUTION_HEADER, undefined);
+  assert.equal(saved.env?.CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY, undefined);
+  assert.equal(saved.env?.USER_VALUE, "kept");
+});
 
 test("DeleteProfileDialog identifies the profile and requires an explicit confirmation", () => {
   const html = renderToStaticMarkup(

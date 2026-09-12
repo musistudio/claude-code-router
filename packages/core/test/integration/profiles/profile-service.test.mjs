@@ -10,6 +10,43 @@ import { replacePersistedApiKeys, replacePersistedAppConfig } from "@ccr/core/co
 import { CONFIGDIR } from "@ccr/core/config/constants.ts";
 import { applyProfileConfig, cleanupGeneratedBinBackups, resolveGrokSourceHome, resolveKimiSourceHome, restoreInactiveGlobalProfileConfigs, restoreGlobalProfileConfigsOnExit } from "@ccr/core/profiles/service.ts";
 
+test("Claude attribution defaults survive config loading and settings application with explicit overrides", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const profileId = "claude-attribution";
+  const settingsFile = path.join(CONFIGDIR, "profiles", profileId, "claude", "settings.json");
+  for (const value of [undefined, "1"]) {
+    const config = createDefaultAppConfig();
+    const defaultClaude = config.profile.profiles.find((profile) => profile.agent === "claude-code");
+    assert.equal(defaultClaude.env.CLAUDE_CODE_ATTRIBUTION_HEADER, "0");
+    config.Providers = [{ name: "Provider", api_base_url: "https://example.test/v1", api_key: "test-key", models: ["model"] }];
+    config.APIKEYS = [{ id: `profile:${profileId}`, key: "ccr-attribution-test", name: "Attribution test", createdAt: "2026-01-01T00:00:00.000Z" }];
+    config.profile.profiles = [{
+      ...defaultClaude,
+      id: profileId,
+      enabled: true,
+      scope: "ccr",
+      surface: "cli",
+      settingsFile,
+      model: "Provider/model",
+      env: { USER_VALUE: "kept", ...(value === undefined ? {} : { CLAUDE_CODE_ATTRIBUTION_HEADER: value }) }
+    }];
+    await replacePersistedAppConfig(config);
+    const loaded = await loadAppConfig();
+    const expected = value ?? "0";
+    assert.equal(loaded.profile.profiles[0].env.CLAUDE_CODE_ATTRIBUTION_HEADER, expected);
+    const result = await applyProfileFixture(loaded);
+    assert.ok(result.clients.some((client) => client.client === "claude-code" && client.ok));
+    const settings = JSON.parse(readFileSync(settingsFile, "utf8"));
+    assert.equal(settings.env.CLAUDE_CODE_ATTRIBUTION_HEADER, expected);
+    assert.equal(settings.env.USER_VALUE, "kept");
+
+    config.profile.profiles = [{ agent: "codex", id: "codex-attribution", name: "Codex", enabled: false, env: { CLAUDE_CODE_ATTRIBUTION_HEADER: expected, USER_VALUE: "kept" } }];
+    await replacePersistedAppConfig(config);
+    const switched = await loadAppConfig();
+    assert.equal(switched.profile.profiles[0].env.CLAUDE_CODE_ATTRIBUTION_HEADER, undefined);
+    assert.equal(switched.profile.profiles[0].env.USER_VALUE, "kept");
+  }
+});
+
 test("Grok profile source home follows profile and process environment overrides", () => {
   const previous = {
     GROK_CONFIG_DIR: process.env.GROK_CONFIG_DIR,
