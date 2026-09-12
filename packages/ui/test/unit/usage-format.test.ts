@@ -94,3 +94,26 @@ test("request log model summaries stay stable without list body text", () => {
   assert.equal(logResponseModel(entry), "response-model");
   assert.equal(logResponseModel({ ...entry, responseModel: "" }), "resolved-model");
 });
+
+// On a rerouted request `requestedModel` holds the post-routing target, so the
+// "asked -> used" display rendered the same model on both sides and the reroute
+// was invisible. `clientModel` is the only field that carries the original ask.
+test("logRequestModel prefers the client model so a reroute is visible", () => {
+  const entry = {
+    model: "deepseek-v4.1-flash",
+    requestedModel: "deepseek-v4.1-flash",
+    resolvedModel: "deepseek-v4.1-flash"
+  } as unknown as RequestLogEntry;
+
+  // Without the client model there is nothing to show but the resolved target.
+  assert.equal(logRequestModel(entry), "deepseek-v4.1-flash");
+
+  // With it, the pair becomes readable, and the provider prefix is trimmed the
+  // same way the resolved side is.
+  assert.equal(
+    logRequestModel({ ...entry, clientModel: "Claude Code API/claude-opus-5" }),
+    "claude-opus-5"
+  );
+  // An empty value must fall back rather than render blank.
+  assert.equal(logRequestModel({ ...entry, clientModel: "" }), "deepseek-v4.1-flash");
+});
