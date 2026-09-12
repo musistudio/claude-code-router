@@ -1831,6 +1831,7 @@ function standaloneRecordInputFromRawTrace(
     bodyCapturePolicy,
     captureBody,
     ...(client ? { client } : {}),
+    ...(input.clientModel ? { clientModel: input.clientModel } : {}),
     completedAt,
     durationMs,
     ...(input.bundleId ? { eventId: `raw-trace:${input.bundleId}` } : {}),
@@ -1849,6 +1850,8 @@ function standaloneRecordInputFromRawTrace(
     responseBodyText: responseBody.text,
     responseBodyTruncated: responseBody.truncated,
     responseHeaders,
+    ...(input.routeReason ? { routeReason: input.routeReason } : {}),
+    ...(input.routeSource ? { routeSource: input.routeSource } : {}),
     startedAt,
     statusCode,
     ...(input.upstreamResponseReceived === undefined
