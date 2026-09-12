@@ -747,20 +747,33 @@ test("UsageStore does not count an uncaptured upstream status as an error", asyn
       statusCode: 500,
       usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
     });
-    // The undecided row only reaches usage_events through the request-log
-    // backfill, which is the path that carries upstream_outcome.
-    await store.getStats("30d");
+    // The undecided row goes through the same public writer, because that is the
+    // writer that actually runs: on a single-gateway install the request-log
+    // backfill produces no rows at all. Inserting this row with raw SQL instead
+    // would assert only that the SELECT reads a column, and would pass even when
+    // no writer ever populates it -- which is exactly how this shipped empty.
+    await store.record({
+      createdAt: now.toISOString(),
+      durationMs: 10,
+      method: "POST",
+      model: "model-a",
+      path: "/v1/messages",
+      provider: "vendor",
+      requestId: "unknown-1",
+      statusCode: 0,
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+    });
+
     const database = createBetterSqliteDatabase(path.join(dir, "usage.sqlite"));
     try {
-      database.prepare(`
-        INSERT INTO usage_events (
-          created_at, request_id, client, method, path, model, logical_model, provider,
-          credential_id, status_code, duration_ms, input_tokens, output_tokens,
-          cache_read_tokens, cache_write_tokens, total_tokens, cost_usd, cost_source,
-          upstream_outcome
-        ) VALUES (?, 'unknown-1', 'unknown', 'POST', '/v1/messages', 'model-a', 'model-a',
-          'vendor', '', 0, 10, 1, 1, 0, 0, 2, NULL, 'request_log', 'unknown')
-      `).run(now.toISOString());
+      const outcomes = database.prepare(
+        "SELECT request_id, upstream_outcome FROM usage_events ORDER BY request_id"
+      ).all();
+      assert.deepEqual(outcomes, [
+        { request_id: "bad-1", upstream_outcome: "http_status" },
+        { request_id: "ok-1", upstream_outcome: "http_status" },
+        { request_id: "unknown-1", upstream_outcome: "unknown" }
+      ], "the writer records the outcome it can establish from the status");
     } finally {
       database.close();
     }
@@ -771,6 +784,68 @@ test("UsageStore does not count an uncaptured upstream status as an error", asyn
     // Decided requests are the 200 and the 500, so the rate is 1/2 -- the
     // undecided row must not drag it to 1/3.
     assert.equal(stats.totals.successRate, 0.5);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+// An install that ran a build which added the column without populating it holds
+// '' on every row. '' reads as decided, so every uncaptured status stayed in the
+// error count until the rows are migrated.
+test("UsageStore migrates usage rows left without an upstream outcome", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-outcome-migrate-test-"));
+  try {
+    const dbFile = path.join(dir, "usage.sqlite");
+    const now = new Date().toISOString();
+    const seed = new UsageStore(dbFile);
+    await seed.record({
+      createdAt: now,
+      durationMs: 10,
+      method: "POST",
+      model: "model-a",
+      path: "/v1/messages",
+      provider: "vendor",
+      requestId: "seed-1",
+      statusCode: 200,
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+    });
+    await seed.getStats("30d");
+
+    // Reproduce the shipped state: the column exists but holds ''.
+    const database = createBetterSqliteDatabase(dbFile);
+    try {
+      database.exec("UPDATE usage_events SET upstream_outcome = ''");
+      database.prepare(`
+        INSERT INTO usage_events (
+          created_at, request_id, client, method, path, model, logical_model, provider,
+          credential_id, status_code, duration_ms, input_tokens, output_tokens,
+          cache_read_tokens, cache_write_tokens, total_tokens, cost_usd, cost_source,
+          upstream_outcome
+        ) VALUES (?, 'legacy-zero', 'unknown', 'POST', '/v1/messages', 'model-a', 'model-a',
+          'vendor', '', 0, 10, 1, 1, 0, 0, 2, NULL, 'models.dev', '')
+      `).run(now);
+    } finally {
+      database.close();
+    }
+
+    // Reopening runs the schema migration.
+    const reopened = new UsageStore(dbFile);
+    const stats = await reopened.getStats("30d");
+    const after = createBetterSqliteDatabase(dbFile);
+    try {
+      const rows = after.prepare(
+        "SELECT request_id, upstream_outcome FROM usage_events ORDER BY request_id"
+      ).all();
+      assert.deepEqual(rows, [
+        { request_id: "legacy-zero", upstream_outcome: "unknown" },
+        { request_id: "seed-1", upstream_outcome: "http_status" }
+      ]);
+    } finally {
+      after.close();
+    }
+    assert.equal(stats.totals.requestCount, 2, "both rows are still counted");
+    assert.equal(stats.totals.errorCount, 0, "the migrated zero-status row is not an error");
+    assert.equal(stats.totals.successRate, 1);
   } finally {
     rmSync(dir, { force: true, recursive: true });
   }

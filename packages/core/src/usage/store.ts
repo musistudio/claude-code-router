@@ -192,8 +192,9 @@ export class UsageStore {
         cache_write_tokens,
         total_tokens,
         cost_usd,
-        cost_source
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        cost_source,
+        upstream_outcome
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     statement.run(
@@ -214,7 +215,13 @@ export class UsageStore {
       cacheWriteTokens,
       totalTokens,
       costUsd ?? null,
-      costSource
+      costSource,
+      // This writer is the one that actually runs on a single-gateway install;
+      // the request-log backfill below produces no rows there. It only knows the
+      // status, so it records the honest subset of the outcome vocabulary: a
+      // positive status is a real HTTP result, and a zero status means the
+      // upstream status was never captured -- undecided, not failed.
+      normalizeCount(event.statusCode) > 0 ? "http_status" : "unknown"
     );
     usageEvents.emit("recorded");
   }
@@ -509,6 +516,14 @@ function ensureUsageSchema(database: SqlDatabase): void {
     // identical to a failed one here, so Overview counts it as an error.
     database.exec("ALTER TABLE usage_events ADD COLUMN upstream_outcome TEXT NOT NULL DEFAULT ''");
   }
+  // Rows predating the column, and rows written by a build that added it without
+  // populating it, hold ''. That reads as decided and put every uncaptured status
+  // back in the error count. Idempotent: after the first run nothing matches.
+  database.exec(`
+    UPDATE usage_events
+    SET upstream_outcome = CASE WHEN status_code > 0 THEN 'http_status' ELSE 'unknown' END
+    WHERE upstream_outcome = ''
+  `);
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_client_idx ON usage_events(client)");
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_created_at_idx ON usage_events(created_at)");
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_credential_id_idx ON usage_events(credential_id)");
