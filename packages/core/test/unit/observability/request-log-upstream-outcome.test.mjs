@@ -732,13 +732,13 @@ test("raw trace persists routing evidence that survives spool cleanup", async ()
     }));
     write("upstream_request_metadata", JSON.stringify({ method: "POST", url: "https://example.test/v1/chat/completions" }));
     write("upstream_response_metadata", JSON.stringify({ statusCode: 200 }));
-    write("upstream_response", JSON.stringify({ id: "resp", model: "deepseek-v4.1-flash" }));
+    write("upstream_response", JSON.stringify({ id: "resp", model: "worker-model-fast" }));
 
     const bundle = await readRawTraceRequestLogBundle({
       completedAt: new Date().toISOString(),
       parts,
       requestId: "evidence-bundle",
-      target: { model: "deepseek-v4.1-flash", providerName: "opencode-go::openai_chat_completions" },
+      target: { model: "worker-model-fast", providerName: "worker-vendor::openai_chat_completions" },
       turnKey: "evidence-request"
     }, spool);
     assert.ok(bundle);
@@ -761,7 +761,7 @@ test("raw trace persists routing evidence that survives spool cleanup", async ()
       assert.equal(row.route_reason, "builtin:claude-code-subagent");
       assert.equal(row.route_source, "subagent");
       // The original ask and the resolved target must be distinguishable.
-      assert.equal(row.resolved_model, "deepseek-v4.1-flash");
+      assert.equal(row.resolved_model, "worker-model-fast");
       assert.notEqual(row.client_model, row.resolved_model);
       assert.doesNotMatch(String(row.request_headers ?? ""), /must-not-be-stored/);
     } finally {
@@ -962,7 +962,7 @@ test("a standalone write-batch bundle persists the routing evidence it carries",
           headers: {
             "x-ccr-route-reason": "builtin:claude-code-subagent",
             "x-ccr-route-source": "subagent",
-            "x-ccr-routed-model": "OpenCode Go (Chat Completions)/deepseek-v4.1-flash"
+            "x-ccr-routed-model": "Worker Vendor (Chat Completions)/worker-model-fast"
           },
           method: "POST",
           url: "/v1/messages"

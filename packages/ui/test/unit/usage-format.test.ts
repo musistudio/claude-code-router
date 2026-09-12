@@ -100,13 +100,13 @@ test("request log model summaries stay stable without list body text", () => {
 // was invisible. `clientModel` is the only field that carries the original ask.
 test("logRequestModel prefers the client model so a reroute is visible", () => {
   const entry = {
-    model: "deepseek-v4.1-flash",
-    requestedModel: "deepseek-v4.1-flash",
-    resolvedModel: "deepseek-v4.1-flash"
+    model: "worker-model-fast",
+    requestedModel: "worker-model-fast",
+    resolvedModel: "worker-model-fast"
   } as unknown as RequestLogEntry;
 
   // Without the client model there is nothing to show but the resolved target.
-  assert.equal(logRequestModel(entry), "deepseek-v4.1-flash");
+  assert.equal(logRequestModel(entry), "worker-model-fast");
 
   // With it, the pair becomes readable, and the provider prefix is trimmed the
   // same way the resolved side is.
@@ -115,5 +115,5 @@ test("logRequestModel prefers the client model so a reroute is visible", () => {
     "claude-opus-5"
   );
   // An empty value must fall back rather than render blank.
-  assert.equal(logRequestModel({ ...entry, clientModel: "" }), "deepseek-v4.1-flash");
+  assert.equal(logRequestModel({ ...entry, clientModel: "" }), "worker-model-fast");
 });
