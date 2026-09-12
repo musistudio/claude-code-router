@@ -728,21 +728,21 @@ test("raw trace persists routing evidence that survives spool cleanup", async ()
     // into the routing columns.
     write("client_request", JSON.stringify({
       messages: [{ content: "a private prompt", role: "user" }],
-      model: "client-provider/model-requested"
+      model: "Claude Code API/claude-opus-5"
     }));
     write("upstream_request_metadata", JSON.stringify({ method: "POST", url: "https://example.test/v1/chat/completions" }));
     write("upstream_response_metadata", JSON.stringify({ statusCode: 200 }));
-    write("upstream_response", JSON.stringify({ id: "resp", model: "model-resolved" }));
+    write("upstream_response", JSON.stringify({ id: "resp", model: "deepseek-v4.1-flash" }));
 
     const bundle = await readRawTraceRequestLogBundle({
       completedAt: new Date().toISOString(),
       parts,
       requestId: "evidence-bundle",
-      target: { model: "model-resolved", providerName: "test-provider::openai_chat_completions" },
+      target: { model: "deepseek-v4.1-flash", providerName: "opencode-go::openai_chat_completions" },
       turnKey: "evidence-request"
     }, spool);
     assert.ok(bundle);
-    assert.equal(bundle.update.clientModel, "client-provider/model-requested");
+    assert.equal(bundle.update.clientModel, "Claude Code API/claude-opus-5");
     assert.equal(bundle.update.routeReason, "builtin:claude-code-subagent");
     assert.equal(bundle.update.routeSource, "subagent");
 
@@ -757,11 +757,11 @@ test("raw trace persists routing evidence that survives spool cleanup", async ()
       const row = database.prepare(
         "SELECT client_model, route_reason, route_source, resolved_model, request_headers FROM request_logs WHERE request_id = ?"
       ).get("evidence-request");
-      assert.equal(row.client_model, "client-provider/model-requested");
+      assert.equal(row.client_model, "Claude Code API/claude-opus-5");
       assert.equal(row.route_reason, "builtin:claude-code-subagent");
       assert.equal(row.route_source, "subagent");
       // The original ask and the resolved target must be distinguishable.
-      assert.equal(row.resolved_model, "model-resolved");
+      assert.equal(row.resolved_model, "deepseek-v4.1-flash");
       assert.notEqual(row.client_model, row.resolved_model);
       assert.doesNotMatch(String(row.request_headers ?? ""), /must-not-be-stored/);
     } finally {
@@ -942,4 +942,80 @@ test("record() persists routing evidence supplied by the gateway", async () => {
       database.close();
     }
   });
+});
+
+// The standalone branch converts a bundle straight into a record input instead
+// of updating an existing gateway row. That conversion is a field-by-field map,
+// so a field the bundle carries but the map omits is silently dropped -- which
+// is exactly how routing evidence stayed empty on every row of a real install
+// while both the extraction test above and the record() test still passed. The
+// contrast that hid it: `upstreamResponseReceived`/`upstreamCancelled` ARE
+// mapped, so the outcome column worked on the very same path.
+test("a standalone write-batch bundle persists the routing evidence it carries", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-standalone-route-evidence-test-"));
+  try {
+    const spoolDirectory = path.join(dir, "spool");
+    const config = createConfig();
+    const bundle = await readBundle(spoolDirectory, "standalone-route-evidence", [
+      {
+        body: JSON.stringify({
+          headers: {
+            "x-ccr-route-reason": "builtin:claude-code-subagent",
+            "x-ccr-route-source": "subagent",
+            "x-ccr-routed-model": "OpenCode Go (Chat Completions)/deepseek-v4.1-flash"
+          },
+          method: "POST",
+          url: "/v1/messages"
+        }),
+        partType: "client_request_metadata"
+      },
+      { body: JSON.stringify({ model: "Claude Code API/claude-opus-5" }), partType: "client_request" },
+      {
+        body: JSON.stringify({ method: "POST", url: "https://upstream.example/v1/chat/completions" }),
+        partType: "upstream_request_metadata"
+      },
+      { body: JSON.stringify({ statusCode: 200 }), partType: "upstream_response_metadata" }
+    ]);
+
+    // The bundle reader must surface the evidence in the first place.
+    assert.equal(bundle.update.clientModel, "Claude Code API/claude-opus-5");
+    assert.equal(bundle.update.routeReason, "builtin:claude-code-subagent");
+    assert.equal(bundle.update.routeSource, "subagent");
+
+    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    try {
+      await store.writeBatch([{
+        input: {
+          ...applyRawTraceRequestLogPolicy(config, bundle.update).update,
+          allowStandaloneRecord: true
+        },
+        kind: "raw-trace-update",
+        sequence: 1
+      }]);
+
+      const database = createBetterSqliteDatabase(path.join(dir, "request-logs.sqlite"));
+      try {
+        const row = database.prepare(`
+          SELECT client_model, route_reason, route_source, model
+          FROM request_logs
+          WHERE request_id = ?
+          ORDER BY id DESC
+          LIMIT 1
+        `).get(bundle.update.requestId);
+        assert.ok(row, "expected the standalone bundle to insert a row");
+        assert.equal(row.route_reason, "builtin:claude-code-subagent");
+        assert.equal(row.route_source, "subagent");
+        assert.equal(row.client_model, "Claude Code API/claude-opus-5");
+        // A reroute has to remain visible: the client asked for one model and
+        // the gateway used another.
+        assert.notEqual(row.client_model, row.model);
+      } finally {
+        database.close();
+      }
+    } finally {
+      await store.close();
+    }
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
 });
