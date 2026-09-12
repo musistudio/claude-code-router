@@ -8,6 +8,7 @@ import workbuddyLogoUrl from "@/assets/agent-logos/workbuddy.png";
 import zcodeLogoUrl from "@/assets/agent-logos/zcode.png";
 import moonshotProviderIconUrl from "@/assets/provider-icons/moonshot.ico";
 import {
+  CLAUDE_CODE_ATTRIBUTION_HEADER_ENV,
   CLAUDE_CODE_DEFAULT_ENV,
   CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV,
   enforceSingleEnabledGlobalProfilePerAgent,
@@ -1070,7 +1071,11 @@ export function claudeCodeProfileEnv(env: Record<string, string> = {}): Record<s
 }
 
 function codexCompatibleProfileEnv(env: Record<string, string>): Record<string, string> {
-  const { [CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV]: _ignored, ...result } = env;
+  const {
+    [CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV]: _ignoredDiscovery,
+    [CLAUDE_CODE_ATTRIBUTION_HEADER_ENV]: _ignoredAttribution,
+    ...result
+  } = env;
   return result;
 }
 
@@ -1078,7 +1083,11 @@ export function profileEnvRowsForAgent(agent: ProfileConfig["agent"], envRows: A
   if (agent === "claude-code") {
     return envRows;
   }
-  return envRows.filter((row) => row.key.trim() !== CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV);
+  return envRows.filter(
+    (row) =>
+      row.key.trim() !== CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV &&
+      row.key.trim() !== CLAUDE_CODE_ATTRIBUTION_HEADER_ENV
+  );
 }
 
 export function normalizeBotGatewayPlatform(value: unknown): string {

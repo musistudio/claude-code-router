@@ -2,7 +2,7 @@ import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readlinkSync
 import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
-import { CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, NO_AVAILABLE_GATEWAY_MODELS_MESSAGE, availableGatewayModelIds, enforceSingleEnabledGlobalProfilePerAgent, hasAvailableGatewayModels, isGatewayProviderEnabled, type AppConfig, type ProfileApplyResult, type ProfileClientApplyStatus, type ProfileClientKind, type ProfileConfig } from "@ccr/core/contracts/app";
+import { CLAUDE_CODE_ATTRIBUTION_HEADER_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, NO_AVAILABLE_GATEWAY_MODELS_MESSAGE, availableGatewayModelIds, enforceSingleEnabledGlobalProfilePerAgent, hasAvailableGatewayModels, isGatewayProviderEnabled, type AppConfig, type ProfileApplyResult, type ProfileClientApplyStatus, type ProfileClientKind, type ProfileConfig } from "@ccr/core/contracts/app";
 import { CLAUDE_CODE_AUTH_MODE_ENV, resolveClaudeCodeGatewayAuthMode, type ClaudeCodeGatewayAuthMode } from "@ccr/core/agents/claude-code/auth-mode";
 import { updatePersistedApiKeys } from "@ccr/core/config/config-repository";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
@@ -3188,6 +3188,7 @@ function isManagedClaudeCodeSettingsEnvKey(key: string): boolean {
     isClaudeCodeFirstPartyProviderEnvKey(key) ||
     isClaudeCodeWifEnvKey(key) ||
     key === CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV ||
+    key === CLAUDE_CODE_ATTRIBUTION_HEADER_ENV ||
     key === CLAUDE_CODE_MCP_CONFIG_ENV ||
     key === CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV ||
     isClaudeCodeManagedModelEnvKey(key) ||
@@ -4174,7 +4175,10 @@ function profileEnv(profile: ProfileConfig): Record<string, string> {
     if (key === CLAUDE_CODE_AUTH_MODE_ENV) {
       return result;
     }
-    if (profile.agent !== "claude-code" && key === CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV) {
+    if (
+      profile.agent !== "claude-code" &&
+      (key === CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV || key === CLAUDE_CODE_ATTRIBUTION_HEADER_ENV)
+    ) {
       return result;
     }
     result[key] = value;
