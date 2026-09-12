@@ -21,6 +21,7 @@ import { compactBase64ImagePayloads } from "@ccr/core/observability/request-log-
 import { requestLogRequestedModel, requestLogResponseModel } from "@ccr/core/observability/request-log-model";
 import { isSensitiveRequestLogHeaderName } from "@ccr/core/observability/sensitive-headers";
 import { inferGatewayClient } from "@ccr/core/gateway/http/io";
+import { clientClosedRequestStatusCode, clientDisconnectMessage } from "@ccr/core/gateway/internal/shared";
 import type {
   AgentAnalysisAgentRow,
   AgentAnalysisConversationItem,
@@ -59,8 +60,10 @@ import type {
   RequestLogFilterOptions,
   RequestLogListFilter,
   RequestLogPage,
+  AgentAnalysisTraceRunStatus,
   RequestLogRetryAttempt,
   RequestLogStatusFilter,
+  RequestLogUpstreamOutcome,
   RequestRouteTrace,
   RequestRouteTraceHop,
   RequestRouteTraceSnapshot,
@@ -70,6 +73,33 @@ import type {
 type SqlDatabase = BetterSqliteDatabase;
 type SqlValue = bigint | Buffer | number | string | null;
 type HeaderRecord = Record<string, string | string[] | undefined>;
+
+/**
+ * Why a request ended the way it did, kept separately from `status_code` so a
+ * producer that omits the upstream status (the raw-trace bundle serializes an
+ * undefined status to `{}`) is never flattened into a fabricated 0/200.
+ *
+ * - `http_status`: a real upstream HTTP status was observed (see `status_code`).
+ * - `unknown`: an upstream response was observed but carried no status.
+ * - `stream_failure`: the response stream reported an explicit failure.
+ * - `transport_failure`: the request ended before any upstream response existed.
+ * - `cancelled`: the client disconnected or the stream reported cancellation.
+ *
+ * `status_code` and `ok` keep their existing meaning for every caller; this is
+ * an additive, private persistence column.
+ */
+export type { RequestLogUpstreamOutcome };
+
+export const requestLogUpstreamOutcomes: readonly RequestLogUpstreamOutcome[] = [
+  "http_status",
+  "unknown",
+  "stream_failure",
+  "transport_failure",
+  "cancelled"
+];
+
+const defaultUpstreamOutcome: RequestLogUpstreamOutcome = "unknown";
+const upstreamOutcomeColumnDefinition = "TEXT NOT NULL DEFAULT 'unknown'";
 
 type UsageNumbers = {
   cacheReadTokens?: number;
@@ -105,6 +135,7 @@ type RequestLogStoredOutcome = {
   responseBodyContentType: string;
   responseBodyText: string;
   statusCode: number;
+  upstreamOutcome: RequestLogUpstreamOutcome;
 };
 
 type RawTraceBodyCaptureResolution = {
@@ -143,6 +174,20 @@ export type RequestLogRecordInput = {
   responseHeaders?: Headers | HeaderRecord;
   startedAt: string;
   statusCode: number;
+  /**
+   * Internal: whether this record observed an upstream response at all. It is
+   * only meaningful when no positive `statusCode` is available, and it is what
+   * separates "response observed without a status" (unknown) from "no response
+   * ever existed" (transport_failure). It never changes `statusCode` or `ok`.
+   */
+  upstreamResponseReceived?: boolean;
+  /**
+   * Internal: explicit cancellation evidence supplied by a caller that holds
+   * it directly. The standalone raw-trace conversion sets it from the bundle's
+   * own body, because the body-capture policy can suppress the text before
+   * `record()` ever sees it.
+   */
+  upstreamCancelled?: boolean;
   url: string;
 };
 
@@ -153,6 +198,9 @@ export type RequestLogRawTraceUpdateInput = {
   bundleCapturedAt?: string;
   bundleId?: string;
   client?: string;
+  clientModel?: string;
+  routeReason?: string;
+  routeSource?: string;
   completedAt?: string;
   deferBodyCaptureUntilRecord?: boolean;
   deferOutcomeUntilRecord?: boolean;
@@ -177,6 +225,13 @@ export type RequestLogRawTraceUpdateInput = {
   responseHeaders?: HeaderRecord;
   startedAt?: string;
   statusCode?: number;
+  /**
+   * Internal: set by the raw-trace reader when the bundle carried an upstream
+   * response part at all, even one whose metadata serialized to `{}`. A bundle
+   * with no response part leaves this false, which is what makes a
+   * transport-level failure distinguishable from an omitted status.
+   */
+  upstreamResponseReceived?: boolean;
   url?: string;
 };
 
@@ -242,6 +297,10 @@ type StoredRequestLogEntry = {
   requestBody: RequestLogBody;
   requestHeaders: Record<string, string | string[]>;
   requestId: string;
+  clientModel: string;
+  routeReason: string;
+  routeSource: string;
+  upstreamOutcome: RequestLogUpstreamOutcome;
   routeAttemptCount: number;
   routeHopCount: number;
   routeTrace?: RequestRouteTrace;
@@ -259,6 +318,7 @@ type StoredRequestLogEntry = {
 type AnalyzedAgentRequest = AgentAnalysisRequestRow & {
   client: string;
   completedAt: string;
+  upstreamOutcome?: RequestLogUpstreamOutcome;
   conversation?: AgentAnalysisConversationTurn;
   endedAtMs: number;
   requestBody: RequestLogBody;
@@ -362,6 +422,14 @@ const terminalSseResponseStatuses = new Set([
   "error",
   "failed",
   "incomplete"
+]);
+// Explicit, self-describing cancellation markers. A bare "cancelled" response
+// status (as used by the Responses API) stays alongside the terminal names so
+// the two sets describe different questions and can drift independently.
+const sseCancellationMarkers = new Set([
+  "cancelled",
+  "response.cancelled",
+  "response.canceled"
 ]);
 const requestLogBodyMetadataSelect = `
             '' AS request_body_text,
@@ -568,8 +636,9 @@ export class RequestLogStore {
     const requestHeaders = sanitizeHeaders(rawRequestHeaders);
     const responseHeaders = sanitizeHeaders(rawResponseHeaders);
     const responseBodyText = input.responseBodyText ?? "";
-    const responseError = normalizeFilterValue(input.error) ??
-      detectSseError(responseBodyText, headerValue(responseHeaders, "content-type"));
+    const responseContentType = headerValue(responseHeaders, "content-type");
+    const detectedSseError = detectSseError(responseBodyText, responseContentType);
+    const responseError = normalizeFilterValue(input.error) ?? detectedSseError;
     const bodyUsage = extractUsageFromBody(responseBodyText);
     // Each source carries its own cache-inclusion convention; normalize before
     // merging (see UsageConventionSource).
@@ -662,6 +731,19 @@ export class RequestLogStore {
       responseHeaders,
       url: input.url
     });
+    // A cancellation is recognized from the gateway's own disconnect marker,
+    // from the flag the standalone raw-trace conversion carries (it still holds
+    // the body that the capture policy may have suppressed), or from the
+    // response body itself. `statusCode` is deliberately not consulted: a bare
+    // upstream 499 is an ordinary status, not this gateway's client disconnect.
+    const upstreamOutcome = resolveUpstreamOutcome({
+      cancellation: isCancellationSignal(input.error) ||
+        input.upstreamCancelled === true ||
+        detectSseCancellation(responseBodyText, responseContentType),
+      statusCode: input.statusCode,
+      streamFailure: detectedSseError !== undefined,
+      upstreamResponseReceived: input.upstreamResponseReceived
+    });
 
     const statement = this.insertRequestStatement ??= database.prepare(`
       INSERT OR IGNORE INTO request_logs (
@@ -688,6 +770,7 @@ export class RequestLogStore {
         is_stream,
         status_code,
         ok,
+        upstream_outcome,
         duration_ms,
         input_tokens,
         output_tokens,
@@ -712,7 +795,7 @@ export class RequestLogStore {
         response_body_truncated,
         response_body_ref,
         error
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     let inserted = false;
@@ -741,6 +824,7 @@ export class RequestLogStore {
         isStream ? 1 : 0,
         normalizeCount(input.statusCode),
         isSuccessStatus(input.statusCode, responseError) ? 1 : 0,
+        upstreamOutcome,
         normalizeCount(input.durationMs),
         inputTokens,
         outputTokens,
@@ -835,6 +919,14 @@ export class RequestLogStore {
     const rawSseError = rawInput.responseBodyText === undefined
       ? undefined
       : detectSseError(rawInput.responseBodyText, rawResponseBodyContentType);
+    // Step 2 of the merge: INCOMING cancellation evidence only. The stored
+    // outcome is deliberately not folded in here — if it were, a status-only
+    // update would look like an incoming cancellation and evade the same-attempt
+    // precedence comparison below, which is what let a later bundle downgrade a
+    // stored stream failure.
+    const incomingCancellation = rawInput.responseBodyText === undefined
+      ? false
+      : detectSseCancellation(rawInput.responseBodyText, rawResponseBodyContentType);
     const gatewayFailure = Boolean(existingOutcome.gatewayError) ||
       (!existingOutcome.gatewayOk && existingOutcome.gatewayStatusCode > 0);
     const existingFailure = gatewayFailure || Boolean(existingOutcome.error) ||
@@ -890,11 +982,35 @@ export class RequestLogStore {
     pushValue("model", modelFromTrace);
     pushValue("resolved_model", resolvedModelFromTrace);
     pushValue("response_model", responseModelFromTrace);
-    // The gateway's terminal failure is authoritative, even when it has only
-    // an HTTP error status and no error string. A final-attempt raw failure may
-    // still refine a gateway success (for example an SSE error inside HTTP 200).
+    pushValue("client_model", normalizeFilterValue(input.clientModel));
+    pushValue("route_reason", normalizeFilterValue(input.routeReason));
+    pushValue("route_source", normalizeFilterValue(input.routeSource));
+    // Step 3 of the merge: pick the same-attempt winner. The ranking is
+    // cancelled > stream_failure > http_status > unknown > transport_failure,
+    // but it is deliberately expressed as a narrow guard rather than a blanket
+    // rank-max. `unknown` doubles as the schema default, so a rank-max would
+    // block the legitimate first-evidence `unknown -> transport_failure`
+    // refinement that a bundle without any response part must still perform.
+    const incomingOutcome: RequestLogUpstreamOutcome = resolveUpstreamOutcome({
+      cancellation: incomingCancellation,
+      statusCode,
+      streamFailure: Boolean(sseError),
+      upstreamResponseReceived: input.upstreamResponseReceived
+    });
+    const storedOutcome = existingOutcome.upstreamOutcome;
+    const preserveStoredOutcome = storedOutcome === "cancelled" ||
+      (storedOutcome === "stream_failure" && !incomingCancellation);
+
+    // Step 4 of the merge: the gateway-failure veto and the stronger-outcome
+    // veto both apply to the legacy `status_code`/`ok` columns. The gateway's
+    // terminal failure is authoritative, even when it has only an HTTP error
+    // status and no error string; a final-attempt raw failure may still refine a
+    // gateway success (for example an SSE error inside HTTP 200). A stored
+    // outcome that already outranked this update must not be rewritten into a
+    // success merely because this bundle carried a positive status.
     const preserveGatewayOutcome = gatewayFailure;
-    if (statusCode !== undefined && statusCode > 0 && !preserveGatewayOutcome) {
+    if (statusCode !== undefined && statusCode > 0 &&
+      !preserveGatewayOutcome && !preserveStoredOutcome) {
       pushValue("status_code", statusCode);
       pushValue("ok", isSuccessStatus(statusCode, sseError) ? 1 : 0);
     }
@@ -903,6 +1019,19 @@ export class RequestLogStore {
       if (statusCode === undefined && !preserveGatewayOutcome) {
         pushValue("ok", 0);
       }
+    }
+    // Step 5 of the merge: write the winner. Explicit evidence — a
+    // cancellation, a stream failure, or a real status — always outranks the
+    // stored outcome. When the trace carries none of that, the outcome is only
+    // refined from the column default, so a gateway that already knew the
+    // status is never downgraded to "unknown" by a bundle the producer stripped
+    // of its status. Unrelated headers, bodies and usage merge either way.
+    const incomingOutcomeIsExplicit = incomingCancellation ||
+      Boolean(sseError) ||
+      normalizeCount(statusCode) > 0;
+    if (!preserveStoredOutcome &&
+      (incomingOutcomeIsExplicit || storedOutcome === defaultUpstreamOutcome)) {
+      pushValue("upstream_outcome", incomingOutcome);
     }
     if (mergedRequestHeaders) {
       pushValue("request_headers", JSON.stringify(mergedRequestHeaders));
@@ -1078,6 +1207,10 @@ export class RequestLogStore {
             requested_model,
             resolved_model,
             response_model,
+            client_model,
+            route_reason,
+            route_source,
+            upstream_outcome,
             route_trace_version,
             route_hop_count,
             route_attempt_count,
@@ -1244,6 +1377,10 @@ export class RequestLogStore {
             requested_model,
             resolved_model,
             response_model,
+            client_model,
+            route_reason,
+            route_source,
+            upstream_outcome,
             is_stream,
             status_code,
             ok,
@@ -1397,6 +1534,9 @@ export class RequestLogStore {
         model TEXT NOT NULL DEFAULT 'unknown',
         requested_model TEXT NOT NULL DEFAULT '',
         resolved_model TEXT NOT NULL DEFAULT '',
+        client_model TEXT NOT NULL DEFAULT '',
+        route_reason TEXT NOT NULL DEFAULT '',
+        route_source TEXT NOT NULL DEFAULT '',
         response_model TEXT NOT NULL DEFAULT '',
         route_trace_version INTEGER NOT NULL DEFAULT 0,
         route_hop_count INTEGER NOT NULL DEFAULT 0,
@@ -1411,6 +1551,7 @@ export class RequestLogStore {
         gateway_final_attempt INTEGER NOT NULL DEFAULT 1,
         gateway_body_capture_policy TEXT NOT NULL DEFAULT 'none',
         gateway_body_capture_max_bytes INTEGER NOT NULL DEFAULT 0,
+        upstream_outcome TEXT NOT NULL DEFAULT 'unknown',
         duration_ms INTEGER NOT NULL DEFAULT 0,
         input_tokens INTEGER NOT NULL DEFAULT 0,
         output_tokens INTEGER NOT NULL DEFAULT 0,
@@ -1634,6 +1775,11 @@ function standaloneRecordInputFromRawTrace(
   const statusCode = normalizeCount(input.statusCode);
   const rawFailure = (statusCode > 0 && (statusCode < 200 || statusCode >= 400)) ||
     Boolean(detectSseError(responseBodyForOutcome, responseContentType));
+  // This is the only place that still holds the bundle's unredacted body: the
+  // capture policy below may suppress it before `record()` runs. Without this
+  // flag a standalone bundle whose stream cancelled itself would be stored as
+  // an ordinary 200 by the status-only path.
+  const rawCancellation = detectSseCancellation(responseBodyForOutcome, responseContentType);
   const captureBody = bodyCapturePolicy === "all" || (bodyCapturePolicy === "errors" && rawFailure);
   const requestBody = captureBody
     ? rawTraceBodyBuffer(input.requestBodyText, rawTraceFiles?.requestBody, maxBodyBytes)
@@ -1673,6 +1819,10 @@ function standaloneRecordInputFromRawTrace(
     responseHeaders,
     startedAt,
     statusCode,
+    ...(input.upstreamResponseReceived === undefined
+      ? {}
+      : { upstreamResponseReceived: input.upstreamResponseReceived }),
+    ...(rawCancellation ? { upstreamCancelled: true } : {}),
     url: input.url ?? input.path ?? "/"
   };
 }
@@ -1860,6 +2010,7 @@ function toAnalyzedAgentRequest(entry: StoredRequestLogEntry): AnalyzedAgentRequ
   );
 
   return {
+    upstreamOutcome: entry.upstreamOutcome,
     agent: details.agent,
     cacheReadTokens: entry.cacheReadTokens,
     cacheWriteTokens: entry.cacheWriteTokens,
@@ -1909,7 +2060,8 @@ function agentAnalysisCacheKey(filter: AgentAnalysisFilter): string {
 function extractAgentLogDetails(entry: StoredRequestLogEntry): AgentLogDetails {
   const requestPayloads = parseLogBodyPayloads(entry.requestBody);
   const responsePayloads = parseLogBodyPayloads(entry.responseBody);
-  const routeReason = readHeaderValue(entry.requestHeaders, "x-ccr-route-reason");
+  // Prefer the persisted column; the header is only present on captured traces.
+  const routeReason = entry.routeReason || readHeaderValue(entry.requestHeaders, "x-ccr-route-reason");
   const routedModel = readHeaderValue(entry.requestHeaders, "x-ccr-routed-model");
   const subagentModel = extractSubagentModel(entry, requestPayloads, routeReason, routedModel);
   const agent = inferAgentKind(entry, requestPayloads, responsePayloads);
@@ -2391,7 +2543,12 @@ function extractSubagentModelFromContent(content: unknown): string | undefined {
 }
 
 function extractSubagentModelFromText(text: string): string | undefined {
-  const match = text.match(/<CCR-SUBAGENT-MODEL>(.*?)<\/CCR-SUBAGENT-MODEL>/s);
+  // Anchored on purpose. A child prompt puts the routing element FIRST, which is
+  // the shape the gateway also requires before it will route. An element that
+  // appears later in the text is being quoted -- a reviewed transcript, or an
+  // example in a conversation -- and attributing a subagent from it invents a
+  // child call that never ran, named after the quoted text.
+  const match = text.match(/^\s*<CCR-SUBAGENT-MODEL>(.*?)<\/CCR-SUBAGENT-MODEL>/s);
   const model = match?.[1]?.trim();
   return model && model.toLowerCase() !== "provider/model" ? model : undefined;
 }
@@ -3477,9 +3634,41 @@ function buildAgentRouteRows(requests: AnalyzedAgentRequest[]): AgentObservabili
     .slice(0, 100);
 }
 
+/**
+ * A row whose upstream status was never captured is UNKNOWN, not failed. Several
+ * provider routes omit the status, so `ok === false` on its own over-reports
+ * failures. The request-log error filter already excludes these rows, and the
+ * agent views must agree with it rather than contradict it.
+ */
+function analyzedRequestIsFailure(
+  request: { error?: string; ok: boolean; upstreamOutcome?: RequestLogUpstreamOutcome }
+): boolean {
+  if (request.error) {
+    return true;
+  }
+  if (request.ok) {
+    return false;
+  }
+  return request.upstreamOutcome !== "unknown";
+}
+
+/**
+ * Three-valued, because a row whose upstream status was never captured is neither
+ * a success nor a failure. `partial` already exists in the contract for exactly
+ * this "in between" case, so no consumer has to change.
+ */
+function analyzedRequestStatus(
+  request: { error?: string; ok: boolean; upstreamOutcome?: RequestLogUpstreamOutcome }
+): AgentAnalysisTraceRunStatus {
+  if (analyzedRequestIsFailure(request)) {
+    return "error";
+  }
+  return request.ok ? "success" : "partial";
+}
+
 function buildAgentErrorRows(requests: AnalyzedAgentRequest[]): AgentObservabilityErrorRow[] {
   return requests
-    .filter((request) => !request.ok || Boolean(request.error))
+    .filter((request) => analyzedRequestIsFailure(request))
     .slice(-100)
     .reverse()
     .map((request) => ({
@@ -3819,7 +4008,7 @@ function requestTraceRun({
     routeReason: request.routeReason,
     sessionId: request.sessionId,
     startedAt: request.createdAt,
-    status: request.ok && !request.error ? "success" : "error",
+    status: analyzedRequestStatus(request),
     statusCode: request.statusCode,
     totalTokens: request.totalTokens
   };
@@ -3996,6 +4185,11 @@ function buildAgentAnalysisTotals(requests: AnalyzedAgentRequest[]): AgentAnalys
   const totalTokens = sum(requests, agentAnalysisTotalTokenCount);
   const promptTokens = sum(requests, agentAnalysisPromptTokenCount);
   const successfulRequests = requests.filter((request) => request.ok).length;
+  // Count only decided requests. A row with no captured upstream status is
+  // undecided, so counting it as an error (requests.length - successful) both
+  // inflated errorCount and depressed successRate.
+  const failedRequests = requests.filter((request) => analyzedRequestIsFailure(request)).length;
+  const decidedRequests = successfulRequests + failedRequests;
   const sessionCount = new Set(requests.map((request) => `${request.agent}:${request.sessionId}`)).size;
   const durations = requests.map((request) => request.durationMs).sort((a, b) => a - b);
 
@@ -4006,7 +4200,7 @@ function buildAgentAnalysisTotals(requests: AnalyzedAgentRequest[]): AgentAnalys
     cacheTokens,
     cacheWriteTokens,
     costUsd,
-    errorCount: requests.length - successfulRequests,
+    errorCount: failedRequests,
     inputTokens,
     maxConcurrentRequests: maxConcurrentRequests(requests),
     maxDurationMs: durations.at(-1) ?? 0,
@@ -4017,7 +4211,7 @@ function buildAgentAnalysisTotals(requests: AnalyzedAgentRequest[]): AgentAnalys
     requestCount: requests.length,
     sessionCount,
     subagentCallCount: requests.filter((request) => Boolean(request.subagentModel)).length,
-    successRate: successfulRequests / requests.length,
+    successRate: decidedRequests > 0 ? successfulRequests / decidedRequests : 0,
     toolCallCount: sum(requests, (request) => request.toolCallCount),
     totalTokens
   };
@@ -4466,6 +4660,13 @@ function ensureRequestLogSchema(database: SqlDatabase): void {
   addColumn("response_body_truncated", "INTEGER NOT NULL DEFAULT 0");
   addColumn("response_body_ref", "TEXT NOT NULL DEFAULT ''");
   addColumn("error", "TEXT NOT NULL DEFAULT ''");
+  // Routing evidence. `model`/`resolved_model` hold the target CCR actually used,
+  // so these record what the client asked for and why it moved. Legacy
+  // `requested_model` keeps its existing post-routing meaning for current callers.
+  addColumn("client_model", "TEXT NOT NULL DEFAULT ''");
+  addColumn("route_reason", "TEXT NOT NULL DEFAULT ''");
+  addColumn("route_source", "TEXT NOT NULL DEFAULT ''");
+  ensureUpstreamOutcomeColumn(database, columns);
 
   if (needsModelSummaryMigration) {
     migrateRequestLogModelSummaries(database);
@@ -4615,6 +4816,54 @@ function migrateGatewayFinalAttempt(database: SqlDatabase): void {
       if (database.inTransaction) database.exec("ROLLBACK");
       throw error;
     }
+  }
+}
+
+/**
+ * Add `upstream_outcome` to a database that predates it and seed the rows it
+ * already holds.
+ *
+ * The column and its backfill are applied in one transaction, so a database
+ * interrupted mid-upgrade is either fully converted or left exactly as it was
+ * for the next open to retry. A separate paged migration would not fit here:
+ * the work is a single statement over an indexed column, and adding a versioned
+ * entry to `request_log_schema_migrations` would claim a migration slot for a
+ * change that is already implied by the column's own presence.
+ *
+ * The backfill is deliberately conservative. A positive status is unambiguous,
+ * but a stored zero can be either an omitted status or a genuine transport
+ * failure, so historical zero rows keep the `unknown` default rather than being
+ * guessed at. Cancellation is only claimed for rows that also carry the
+ * gateway's own client-disconnect message: a bare 499 written by an upstream
+ * provider is an ordinary HTTP status, and mislabelling it as our client
+ * disconnect would be worse than leaving it alone.
+ */
+function ensureUpstreamOutcomeColumn(database: SqlDatabase, columns: Set<string>): void {
+  if (columns.has("upstream_outcome")) {
+    return;
+  }
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    database.exec(
+      `ALTER TABLE request_logs ADD COLUMN upstream_outcome ${upstreamOutcomeColumnDefinition}`
+    );
+    database.prepare(`
+      UPDATE request_logs
+      SET upstream_outcome = CASE
+        WHEN status_code = ? AND error = ? THEN 'cancelled'
+        ELSE 'http_status'
+      END
+      WHERE upstream_outcome = ? AND status_code <> 0
+    `).run(
+      clientClosedRequestStatusCode,
+      clientDisconnectMessage,
+      defaultUpstreamOutcome
+    );
+    database.exec("COMMIT");
+    columns.add("upstream_outcome");
+  } catch (error) {
+    if (database.inTransaction) database.exec("ROLLBACK");
+    throw error;
   }
 }
 
@@ -4782,7 +5031,11 @@ function buildLogWhereClause(filter: RequestLogListFilter): { params: SqlValue[]
   if (status === "success") {
     where.push("ok = 1");
   } else if (status === "error") {
-    where.push("ok = 0");
+    // `ok = 0` alone over-reports failures: provider routes that omit the HTTP
+    // status leave a successful request at status_code 0 / ok 0. Those rows are
+    // unknown, not failed, so they belong in neither filter until real evidence
+    // (a status, a stream failure, or an error) arrives.
+    where.push("ok = 0 AND NOT (upstream_outcome = 'unknown' AND error = '')");
   }
   if (model) {
     where.push("model = ?");
@@ -5041,6 +5294,10 @@ function readRequestLogById(database: SqlDatabase, id: number): StoredRequestLog
         is_stream,
         status_code,
         ok,
+        client_model,
+        route_reason,
+        route_source,
+        upstream_outcome,
         duration_ms,
         input_tokens,
         output_tokens,
@@ -5113,6 +5370,10 @@ function toRequestLogEntry(row: Record<string, SqlValue>): StoredRequestLogEntry
     requestBody,
     requestHeaders,
     requestId: String(row.request_id ?? ""),
+    clientModel: normalizeLabel(String(row.client_model ?? ""), ""),
+    routeReason: normalizeLabel(String(row.route_reason ?? ""), ""),
+    routeSource: normalizeLabel(String(row.route_source ?? ""), ""),
+    upstreamOutcome: normalizeUpstreamOutcome(row.upstream_outcome),
     routeAttemptCount: normalizeCount(row.route_attempt_count),
     routeHopCount: normalizeCount(row.route_hop_count),
     routeTraceTruncated: normalizeCount(row.route_trace_truncated) === 1,
@@ -5592,7 +5853,8 @@ function readRequestLogStoredOutcome(database: SqlDatabase, requestId: string): 
         response_body_text,
         response_body_ref,
         ok,
-        status_code
+        status_code,
+        upstream_outcome
       FROM request_logs
       WHERE request_id = ?
       ORDER BY id DESC
@@ -5610,7 +5872,8 @@ function readRequestLogStoredOutcome(database: SqlDatabase, requestId: string): 
     ok: normalizeCount(row?.ok) === 1,
     responseBodyContentType: String(row?.response_body_content_type ?? ""),
     responseBodyText: String(row?.response_body_text ?? ""),
-    statusCode: normalizeCount(row?.status_code)
+    statusCode: normalizeCount(row?.status_code),
+    upstreamOutcome: normalizeUpstreamOutcome(row?.upstream_outcome)
   };
 }
 
@@ -6136,6 +6399,41 @@ function isSseTerminalEvent(eventName: string, dataLines: string[]): boolean {
   );
 }
 
+/**
+ * Detect an explicit cancellation marker inside a response stream, so a
+ * cancelled turn is not reported as an ordinary failure. Only markers that
+ * state cancellation outright count (`event: response.cancelled`,
+ * `"type":"response.cancelled"`, `"status":"cancelled"`); a stream that simply
+ * stops without a terminal event carries no such evidence and must not be
+ * reinterpreted.
+ */
+function detectSseCancellation(text: string, contentType?: string): boolean {
+  if (!text || (!contentTypeLooksSse(contentType) && !textLooksSse(text))) {
+    return false;
+  }
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim().toLowerCase();
+    if (line.startsWith("event:") && sseCancellationMarkers.has(line.slice(6).trim())) {
+      return true;
+    }
+  }
+  for (const payload of parseStreamPayloads(text)) {
+    if (!isRecord(payload)) {
+      continue;
+    }
+    const payloadType = asString(payload.type)?.toLowerCase();
+    if (payloadType && sseCancellationMarkers.has(payloadType)) {
+      return true;
+    }
+    const response = isRecord(payload.response) ? payload.response : undefined;
+    const responseStatus = asString(response?.status)?.toLowerCase();
+    if (responseStatus && sseCancellationMarkers.has(responseStatus)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function detectSseEventError(eventName: string, dataLines: string[]): string | undefined {
   const event = eventName.trim().toLowerCase();
   const data = dataLines.join("\n").trim();
@@ -6447,6 +6745,66 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isSuccessStatus(statusCode: number, error: string | undefined): boolean {
   return !error && statusCode >= 200 && statusCode < 400;
+}
+
+function normalizeUpstreamOutcome(value: unknown): RequestLogUpstreamOutcome {
+  return typeof value === "string" &&
+    (requestLogUpstreamOutcomes as readonly string[]).includes(value)
+    ? value as RequestLogUpstreamOutcome
+    : defaultUpstreamOutcome;
+}
+
+/**
+ * True when the request was explicitly cancelled rather than answered.
+ *
+ * The gateway is the only authoritative source for its own client disconnect,
+ * and it records that outcome through a single fixed message paired with its
+ * client-closed status (`resolveStreamRequestLogOutcome`). That marker is the
+ * evidence; the status alone is not.
+ *
+ * A bare 499 is deliberately NOT cancellation: upstream providers and proxies
+ * use that informal status for their own purposes, and a raw trace cannot tell
+ * the two apart. Such a row keeps its real status as an ordinary
+ * `http_status`. An abruptly truncated stream without a marker is likewise not
+ * cancellation — it cannot be told apart from an ordinary failure.
+ */
+function isCancellationSignal(error: string | undefined): boolean {
+  return normalizeFilterValue(error) === clientDisconnectMessage;
+}
+
+type UpstreamOutcomeResolution = {
+  cancellation: boolean;
+  statusCode: number | undefined;
+  streamFailure: boolean;
+  upstreamResponseReceived: boolean | undefined;
+};
+
+/**
+ * Resolve the upstream outcome for a row. Precedence, strongest first:
+ * explicit cancellation, explicit stream failure, a real positive HTTP status,
+ * an observed response whose status the producer omitted (`unknown`), and
+ * finally a request that never saw an upstream response (`transport_failure`).
+ *
+ * A missing `upstreamResponseReceived` (every caller that predates the flag)
+ * stays `unknown`; nothing here ever synthesizes a status.
+ */
+function resolveUpstreamOutcome(input: UpstreamOutcomeResolution): RequestLogUpstreamOutcome {
+  if (input.cancellation) {
+    return "cancelled";
+  }
+  if (input.streamFailure) {
+    return "stream_failure";
+  }
+  if (normalizeCount(input.statusCode) > 0) {
+    return "http_status";
+  }
+  if (input.upstreamResponseReceived === true) {
+    return defaultUpstreamOutcome;
+  }
+  if (input.upstreamResponseReceived === false) {
+    return "transport_failure";
+  }
+  return defaultUpstreamOutcome;
 }
 
 function clampInteger(value: unknown, min: number, max: number, fallback: number): number {

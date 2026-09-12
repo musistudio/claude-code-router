@@ -357,7 +357,8 @@ export class UsageStore {
         cache_write_tokens INTEGER NOT NULL DEFAULT 0,
         total_tokens INTEGER NOT NULL DEFAULT 0,
         cost_usd REAL,
-        cost_source TEXT NOT NULL DEFAULT ''
+        cost_source TEXT NOT NULL DEFAULT '',
+        upstream_outcome TEXT NOT NULL DEFAULT ''
       );
       CREATE INDEX IF NOT EXISTS usage_events_created_at_idx ON usage_events(created_at);
       CREATE INDEX IF NOT EXISTS usage_events_model_idx ON usage_events(model);
@@ -424,7 +425,8 @@ export class UsageStore {
             cache_write_tokens,
             total_tokens,
             cost_usd,
-            cost_source
+            cost_source,
+            upstream_outcome
           )
           SELECT
             logs.created_at,
@@ -444,7 +446,8 @@ export class UsageStore {
             logs.cache_write_tokens,
             logs.total_tokens,
             logs.cost_usd,
-            'request_log'
+            'request_log',
+            logs.upstream_outcome
           FROM request_log_source.request_logs AS logs
           WHERE logs.source_usage_id IS NULL
             AND logs.path NOT LIKE ?
@@ -500,6 +503,11 @@ function ensureUsageSchema(database: SqlDatabase): void {
   }
   if (!columns.has("credential_id")) {
     database.exec("ALTER TABLE usage_events ADD COLUMN credential_id TEXT NOT NULL DEFAULT ''");
+  }
+  if (!columns.has("upstream_outcome")) {
+    // Without this, a request whose upstream status was never captured looks
+    // identical to a failed one here, so Overview counts it as an error.
+    database.exec("ALTER TABLE usage_events ADD COLUMN upstream_outcome TEXT NOT NULL DEFAULT ''");
   }
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_client_idx ON usage_events(client)");
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_created_at_idx ON usage_events(created_at)");
@@ -722,6 +730,7 @@ const usageTotalsSelect = `
             COALESCE(SUM(COALESCE(cost_usd, 0)), 0) AS cost_usd,
             COALESCE(SUM(duration_ms), 0) AS duration_ms,
             COALESCE(SUM(CASE WHEN status_code >= 200 AND status_code < 400 THEN 1 ELSE 0 END), 0) AS success_count,
+            COALESCE(SUM(CASE WHEN status_code = 0 AND upstream_outcome = 'unknown' THEN 1 ELSE 0 END), 0) AS undecided_count,
             COALESCE(SUM(CASE
               WHEN total_tokens - output_tokens > input_tokens + cache_read_tokens + cache_write_tokens THEN total_tokens - output_tokens
               ELSE input_tokens + cache_read_tokens + cache_write_tokens
@@ -908,6 +917,10 @@ function usageTotalsFromRow(row: Record<string, SqlValue> | undefined): UsageTot
     return { ...emptyTotals };
   }
   const successfulRequests = normalizeCount(row?.success_count);
+  // Rows whose upstream status was never captured are undecided, not failed.
+  // Counting them as errors both inflated errorCount and depressed successRate.
+  const undecidedRequests = Math.min(requestCount, normalizeCount(row?.undecided_count));
+  const decidedRequests = Math.max(0, requestCount - undecidedRequests);
   const promptTokens = normalizeCount(row?.prompt_tokens);
   const cacheTokens = normalizeCount(row?.cache_read_tokens);
   return {
@@ -915,11 +928,11 @@ function usageTotalsFromRow(row: Record<string, SqlValue> | undefined): UsageTot
     cacheRatio: ratio(cacheTokens, promptTokens),
     cacheTokens,
     costUsd: normalizeCost(row?.cost_usd),
-    errorCount: requestCount - successfulRequests,
+    errorCount: Math.max(0, decidedRequests - successfulRequests),
     inputTokens: normalizeCount(row?.input_tokens),
     outputTokens: normalizeCount(row?.output_tokens),
     requestCount,
-    successRate: successfulRequests / requestCount,
+    successRate: decidedRequests > 0 ? successfulRequests / decidedRequests : 0,
     totalTokens: normalizeCount(row?.computed_total_tokens)
   };
 }

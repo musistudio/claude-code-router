@@ -715,3 +715,63 @@ test("UsageStore reset clears overview stats and does not backfill old request l
     rmSync(dir, { force: true, recursive: true });
   }
 });
+
+// A request whose upstream status was never captured is undecided, not failed.
+// Overview used to derive errorCount as requestCount - successCount, so those
+// rows inflated the error count and depressed the success rate.
+test("UsageStore does not count an uncaptured upstream status as an error", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-unknown-outcome-test-"));
+  try {
+    const store = new UsageStore(path.join(dir, "usage.sqlite"));
+    const now = new Date();
+    // One genuine success and one genuine failure through the public API.
+    await store.record({
+      createdAt: now.toISOString(),
+      durationMs: 10,
+      method: "POST",
+      model: "model-a",
+      path: "/v1/messages",
+      provider: "vendor",
+      requestId: "ok-1",
+      statusCode: 200,
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+    });
+    await store.record({
+      createdAt: now.toISOString(),
+      durationMs: 10,
+      method: "POST",
+      model: "model-a",
+      path: "/v1/messages",
+      provider: "vendor",
+      requestId: "bad-1",
+      statusCode: 500,
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+    });
+    // The undecided row only reaches usage_events through the request-log
+    // backfill, which is the path that carries upstream_outcome.
+    await store.getStats("30d");
+    const database = createBetterSqliteDatabase(path.join(dir, "usage.sqlite"));
+    try {
+      database.prepare(`
+        INSERT INTO usage_events (
+          created_at, request_id, client, method, path, model, logical_model, provider,
+          credential_id, status_code, duration_ms, input_tokens, output_tokens,
+          cache_read_tokens, cache_write_tokens, total_tokens, cost_usd, cost_source,
+          upstream_outcome
+        ) VALUES (?, 'unknown-1', 'unknown', 'POST', '/v1/messages', 'model-a', 'model-a',
+          'vendor', '', 0, 10, 1, 1, 0, 0, 2, NULL, 'request_log', 'unknown')
+      `).run(now.toISOString());
+    } finally {
+      database.close();
+    }
+
+    const stats = await store.getStats("30d");
+    assert.equal(stats.totals.requestCount, 3, "all three rows are still counted");
+    assert.equal(stats.totals.errorCount, 1, "only the real 500 is an error");
+    // Decided requests are the 200 and the 500, so the rate is 1/2 -- the
+    // undecided row must not drag it to 1/3.
+    assert.equal(stats.totals.successRate, 0.5);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});

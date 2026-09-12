@@ -1613,6 +1613,7 @@ export async function readRawTraceRequestLogBundle(
 
   const [
     clientRequestMetadata,
+    clientRequestBody,
     upstreamRequestMetadata,
     upstreamResponseMetadata,
     upstreamRequestBody,
@@ -1620,6 +1621,7 @@ export async function readRawTraceRequestLogBundle(
     fallbackResponseBody
   ] = await Promise.all([
     readRawTraceJsonPart(parts, "client_request_metadata", spoolDirectory),
+    readRawTraceJsonPart(parts, "client_request", spoolDirectory),
     readRawTraceJsonPart(parts, "upstream_request_metadata", spoolDirectory),
     readRawTraceJsonPart(parts, "upstream_response_metadata", spoolDirectory),
     readRawTracePart(parts, "upstream_request", spoolDirectory),
@@ -1627,6 +1629,12 @@ export async function readRawTraceRequestLogBundle(
     readRawTracePart(parts, "upstream_response", spoolDirectory)
   ]);
   const upstreamResponseBody = upstreamResponseStream ?? fallbackResponseBody;
+  // A response part is proof that an upstream response existed, even when the
+  // producer's metadata serialized to `{}` because it had no status to report.
+  // The distinction matters: an omitted status after a response is `unknown`,
+  // while a bundle with no response part at all never got one.
+  const upstreamResponseReceived =
+    upstreamResponseMetadata !== undefined || upstreamResponseBody !== undefined;
   const target = isRecord(manifest.target) ? manifest.target : {};
   const rawUrl = stringValue(upstreamRequestMetadata?.url);
   const url = sanitizeUrlForLog(rawUrl);
@@ -1637,6 +1645,14 @@ export async function readRawTraceRequestLogBundle(
     clientRequestHeaders,
     "x-ccr-route-attempt"
   ));
+  // Routing evidence the gateway itself stamped, plus the model the client
+  // originally asked for. `model`/`provider` below already hold the RESOLVED
+  // target from the server-generated manifest, so without these a reader cannot
+  // tell that a request was rerouted at all, nor why. Only the model string is
+  // taken from the client body -- never the prompt.
+  const clientModel = stringValue(clientRequestBody?.model);
+  const routeReason = stringValue(readUnknownHeader(clientRequestHeaders, "x-ccr-route-reason"));
+  const routeSource = stringValue(readUnknownHeader(clientRequestHeaders, "x-ccr-route-source"));
 
   return {
     files: {
@@ -1649,6 +1665,9 @@ export async function readRawTraceRequestLogBundle(
       ...(stringValue(manifest.uploadedAt) ? { bundleCapturedAt: stringValue(manifest.uploadedAt) } : {}),
       ...(bundleId ? { bundleId } : {}),
       ...(client ? { client } : {}),
+      ...(clientModel ? { clientModel } : {}),
+      ...(routeReason ? { routeReason } : {}),
+      ...(routeSource ? { routeSource } : {}),
       ...(stringValue(manifest.completedAt) ? { completedAt: stringValue(manifest.completedAt) } : {}),
       ...(numberValue(manifest.durationMs) !== undefined ? { durationMs: numberValue(manifest.durationMs) } : {}),
       method: stringValue(upstreamRequestMetadata?.method) || "POST",
@@ -1667,6 +1686,7 @@ export async function readRawTraceRequestLogBundle(
       responseHeaders: headerRecordFromUnknown(upstreamResponseMetadata?.headers),
       ...(stringValue(manifest.startedAt) ? { startedAt: stringValue(manifest.startedAt) } : {}),
       statusCode: numberValue(upstreamResponseMetadata?.statusCode),
+      upstreamResponseReceived,
       url
     }
   };
