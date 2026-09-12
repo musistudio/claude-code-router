@@ -161,6 +161,14 @@ export type RequestLogRecordInput = {
   providerName?: string;
   pricing?: ProviderModelPricing;
   providerProtocol?: GatewayProviderProtocol;
+  /**
+   * Routing evidence the gateway supplies directly. It must NOT be sourced from
+   * the raw trace alone: that update is queued behind record admission and does
+   * not always land, which left these columns permanently empty in practice.
+   */
+  clientModel?: string;
+  routeReason?: string;
+  routeSource?: string;
   requestedModel?: string;
   requestBody: Buffer;
   requestBodySizeBytes?: number;
@@ -777,6 +785,9 @@ export class RequestLogStore {
         requested_model,
         resolved_model,
         response_model,
+        client_model,
+        route_reason,
+        route_source,
         route_trace_version,
         route_hop_count,
         route_attempt_count,
@@ -810,7 +821,7 @@ export class RequestLogStore {
         response_body_ref,
         stream_metrics_json,
         error
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     let inserted = false;
@@ -832,6 +843,9 @@ export class RequestLogStore {
         requestedModel,
         resolvedModel,
         responseModel,
+        normalizeFilterValue(input.clientModel) ?? "",
+        normalizeFilterValue(input.routeReason) ?? "",
+        normalizeFilterValue(input.routeSource) ?? "",
         input.routeTrace?.version ?? 0,
         input.routeTrace?.hopCount ?? 0,
         input.routeTrace?.attemptCount ?? 0,
