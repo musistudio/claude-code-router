@@ -193,6 +193,11 @@ export class GatewayRequestPipeline {
       let routedModel: string | undefined;
       let routedSessionId: string | undefined;
       let routedTokenCount: number | undefined;
+      // Recorded directly on the request log. Relying on the raw trace for this
+      // does not work: that update is queued behind record admission and may
+      // never land, leaving the routing columns empty.
+      let routedReason: string | undefined;
+      let routedSource: string | undefined;
       let codexApplyPatchBridgeActive = false;
       let codexMultiAgentBridgeActive = false;
       const pluginResponseHeaders = new Headers();
@@ -321,6 +326,11 @@ export class GatewayRequestPipeline {
             routedModel
           ),
           providerProtocol: resolveResponseProviderProtocol(responseHeaders, this.config),
+          // The model the client asked for, read from the original request body
+          // before routing rewrote it, plus why the gateway moved it.
+          clientModel: requestedModel,
+          routeReason: routedReason,
+          routeSource: routedSource,
           requestedModel,
           requestBody: shouldSendBody(method) ? bodyToForward ?? Buffer.alloc(0) : Buffer.alloc(0),
           requestHeaders: headers,
@@ -389,6 +399,8 @@ export class GatewayRequestPipeline {
         headers["content-type"] = "application/json";
         headers[ccrRouteReasonHeader] = sanitizeHeaderValue(routed.decision.reason);
         headers[ccrRouteSourceHeader] = routed.decision.source;
+        routedReason = routed.decision.reason;
+        routedSource = routed.decision.source;
         if (routed.decision.diagnostics.length > 0) {
           headers[ccrRouteDiagnosticsHeader] = String(routed.decision.diagnostics.length);
         }

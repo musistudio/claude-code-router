@@ -911,3 +911,35 @@ test("route evidence columns upgrade an existing database, survive reopen, and r
     rmSync(dir, { force: true, recursive: true });
   }
 });
+
+// Routing evidence must be written by record(), not only by the raw-trace update.
+// The raw-trace path is queued behind record admission and may never land, which
+// is exactly how these columns stayed empty on every row in a real installation
+// while the unit tests that called updateFromRawTrace directly still passed.
+test("record() persists routing evidence supplied by the gateway", async () => {
+  await withStore(async ({ dbFile, store }) => {
+    await store.record(gatewayRecord("record-route-evidence", {
+      clientModel: "client-provider/model-requested",
+      requestedModel: "client-provider/model-requested",
+      resolvedModel: "model-resolved",
+      routeReason: "builtin:example-rule",
+      routeSource: "subagent",
+      statusCode: 200
+    }));
+
+    const database = createBetterSqliteDatabase(dbFile);
+    try {
+      const row = database.prepare(
+        "SELECT client_model, route_reason, route_source, requested_model, resolved_model FROM request_logs WHERE request_id = ?"
+      ).get("record-route-evidence");
+      assert.equal(row.client_model, "client-provider/model-requested");
+      assert.equal(row.route_reason, "builtin:example-rule");
+      assert.equal(row.route_source, "subagent");
+      // Legacy semantics unchanged, and a reroute is visible.
+      assert.equal(row.resolved_model, "model-resolved");
+      assert.notEqual(row.client_model, row.resolved_model);
+    } finally {
+      database.close();
+    }
+  });
+});
