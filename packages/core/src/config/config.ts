@@ -875,6 +875,10 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   if (trayIcon) {
     config.trayIcon = trayIcon;
   }
+  const trayShowTokenRate = (value as Record<string, unknown>).trayShowTokenRate;
+  if (typeof trayShowTokenRate === "boolean") {
+    config.trayShowTokenRate = trayShowTokenRate;
+  }
   const trayBalanceProgress = parseTrayBalanceProgress((value as Record<string, unknown>).trayBalanceProgress);
   if (trayBalanceProgress) {
     config.trayBalanceProgress = trayBalanceProgress;

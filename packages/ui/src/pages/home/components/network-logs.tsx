@@ -853,6 +853,9 @@ function LogMobileCard({
             <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
               <LogCompactMetric label={t("Token")} value={tokenSummary} />
               <LogCompactMetric label={t("持续时间")} value={formatDuration(item.durationMs)} />
+              {item.outputTokensPerSecond !== undefined ? (
+                <LogCompactMetric label={t("Output speed")} value={formatTokenRate(item.outputTokensPerSecond)} />
+              ) : null}
               {hasCredentialInfo ? <LogCompactMetric label={t("Credential")} value={logCredentialCellLabel(item)} /> : null}
               <LogCompactMetric label={t("Provider")} value={item.provider || "-"} />
             </div>
@@ -969,6 +972,16 @@ export function LogExpandedDetails({
       <div className={cn("network-body-meta grid grid-cols-2 gap-y-2 border-b px-3 py-2 text-[12px] sm:grid-cols-4", hasCredentialInfo ? "lg:grid-cols-12" : "lg:grid-cols-9")}>
         <LogMetric label={t("持续时间")} value={formatDuration(entry.durationMs)} />
         <LogMetric label={t("Stream")} value={entry.isStream ? t("Streaming") : t("Non-streaming")} />
+        {entry.outputTokensPerSecond !== undefined ? <LogMetric label={t("Output speed")} value={formatTokenRate(entry.outputTokensPerSecond)} /> : null}
+        {entry.responseHeadersMs !== undefined ? <LogMetric label={t("Headers ready")} value={formatDuration(entry.responseHeadersMs)} /> : null}
+        {entry.timeToFirstSignalMs !== undefined ? <LogMetric label={t("First signal")} value={formatDuration(entry.timeToFirstSignalMs)} /> : null}
+        {entry.timeToFirstTextMs !== undefined ? <LogMetric label={t("First text")} value={formatDuration(entry.timeToFirstTextMs)} /> : null}
+        {entry.upstreamTimeToFirstSignalMs !== undefined ? <LogMetric label={t("Upstream first signal")} value={formatDuration(entry.upstreamTimeToFirstSignalMs)} /> : null}
+        {entry.activeOutputMs !== undefined ? <LogMetric label={t("Output window")} value={formatDuration(entry.activeOutputMs)} /> : null}
+        {entry.p95InterEventGapMs !== undefined ? <LogMetric label={t("P95 gap")} value={formatDuration(entry.p95InterEventGapMs)} /> : null}
+        {entry.maxInterEventGapMs !== undefined ? <LogMetric label={t("Max stall")} value={formatDuration(entry.maxInterEventGapMs)} /> : null}
+        {entry.tailMs !== undefined ? <LogMetric label={t("Tail wait")} value={formatDuration(entry.tailMs)} /> : null}
+        {entry.streamSpeedSampleStatus ? <LogMetric label={t("Speed sample")} value={t(streamSpeedSampleLabel(entry.streamSpeedSampleStatus))} /> : null}
         <LogMetric label={t("Request ID")} value={entry.requestId || "-"} />
         <LogMetric label={t("Client")} value={entry.client || "-"} />
         <LogMetric label={t("Provider")} value={entry.provider || "-"} />
@@ -1481,6 +1494,22 @@ function logHasCredentialInfo(entry: RequestLogEntry): boolean {
 
 function logCredentialCellLabel(entry: RequestLogEntry): string {
   return entry.credentialId || entry.credentialChain[0] || (entry.credentialSaturated ? "saturated" : "-");
+}
+
+function formatTokenRate(value: number): string {
+  return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: value < 10 ? 1 : 0 }).format(value)} tok/s`;
+}
+
+function streamSpeedSampleLabel(status: NonNullable<RequestLogEntry["streamSpeedSampleStatus"]>): string {
+  switch (status) {
+    case "complete": return "Complete speed sample";
+    case "partial": return "Partial speed sample";
+    case "usage_missing": return "Usage missing speed sample";
+    case "insufficient_tokens": return "Insufficient tokens speed sample";
+    case "unsupported_protocol": return "Unsupported protocol speed sample";
+    case "hidden_reasoning": return "Hidden reasoning speed sample";
+    case "batched_output": return "Batched output speed sample";
+  }
 }
 
 function LogStatusDot({ entry }: { entry: RequestLogEntry }) {

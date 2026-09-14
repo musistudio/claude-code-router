@@ -90,6 +90,8 @@ export type AppCopy = {
     trayPreview: string;
     trayPreviewEmpty: string;
     trayProgressTarget: string;
+    trayTokenRate: string;
+    trayTokenRateDescription: string;
     trayWindowModules: string;
     title: string;
   };
@@ -204,6 +206,8 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       trayPreview: "Preview",
       trayPreviewEmpty: "No tray modules enabled",
       trayProgressTarget: "Progress target",
+      trayTokenRate: "Live output speed",
+      trayTokenRateDescription: "Show the estimated combined token rate of all active streams in the macOS menu bar.",
       trayWindowModules: "Tray window modules",
       title: "Settings"
     },
@@ -227,6 +231,16 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Stream": "Stream",
       "Streaming": "Streaming",
       "Non-streaming": "Non-streaming",
+      "Output speed": "Output speed",
+      "Headers ready": "Headers ready",
+      "First signal": "First signal",
+      "First text": "First text",
+      "Upstream first signal": "Upstream first signal",
+      "Output window": "Output window",
+      "P95 gap": "P95 gap",
+      "Max stall": "Max stall",
+      "Tail wait": "Tail wait",
+      "Speed sample": "Speed sample",
       "Token": "Token",
       "令牌": "Tokens",
       "成本": "Cost",
@@ -820,6 +834,8 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       trayPreview: "预览",
       trayPreviewEmpty: "未启用 Tray 模块",
       trayProgressTarget: "进度目标",
+      trayTokenRate: "实时输出速率",
+      trayTokenRateDescription: "在 macOS 菜单栏显示所有活跃流叠加后的预估 Token 速率。",
       trayWindowModules: "Tray 窗口模块",
       title: "设置"
     },
@@ -1780,6 +1796,23 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Stream": "流式",
       "Streaming": "流式",
       "Non-streaming": "非流式",
+      "Output speed": "输出速率",
+      "Headers ready": "响应头就绪",
+      "First signal": "首反馈",
+      "First text": "首文本",
+      "Upstream first signal": "上游首反馈",
+      "Output window": "连续输出窗口",
+      "P95 gap": "P95 间隔",
+      "Max stall": "最大卡顿",
+      "Tail wait": "尾部等待",
+      "Speed sample": "测速样本",
+      "Complete speed sample": "有效",
+      "Partial speed sample": "未完整结束",
+      "Usage missing speed sample": "缺少 Usage",
+      "Insufficient tokens speed sample": "Token 不足",
+      "Unsupported protocol speed sample": "协议不支持",
+      "Hidden reasoning speed sample": "包含隐藏推理",
+      "Batched output speed sample": "输出被批量合并",
       "Started": "开始时间",
       "Source truncated": "源数据已截断",
       "User sent": "用户发送",

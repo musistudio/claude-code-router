@@ -4819,6 +4819,9 @@ function configRequirementsRead(existingResult) {
     ? { ...requirements.featureRequirements }
     : {};
   featureRequirements.fast_mode = true;
+  if (!Object.prototype.hasOwnProperty.call(requirements, "application")) {
+    requirements.application = null;
+  }
   requirements.featureRequirements = featureRequirements;
   result.requirements = requirements;
   return result;

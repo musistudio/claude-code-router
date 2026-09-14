@@ -7,6 +7,9 @@ import {
   ccrCodexBridgeResponseHookKey,
   ccrCodexBridgeStreamHookKey,
   ccrCodexMultiAgentBridgeHeader,
+  ccrLiveTokenRateConfigMessageType,
+  ccrLiveTokenRateSnapshotMessageType,
+  ccrLiveTokenRateStreamHookKey,
   ccrOpenRouterDiscountFinalizeResponseHookKey,
   ccrRuntimeConfigReloadMessageType,
   ccrRouteReasonHeader,
@@ -81,6 +84,82 @@ test("CCR router core plugin exposes route endpoint and beforeRouting transform"
   assert.equal(resolved.targetProviderName, providerRuntimeId(config.Providers[1]));
   assert.equal(resolved.model, "beta");
   assert.equal(resolved.requestBody.model, "beta");
+});
+
+test("CCR router core plugin publishes live token rate snapshots from the single runtime", async () => {
+  const originalSend = process.send;
+  const messages = [];
+  process.send = (message) => {
+    messages.push(message);
+    return true;
+  };
+  try {
+    const config = createDefaultAppConfig();
+    const plugin = await createGatewayPlugin({ plugin: { config: { appConfig: config } } });
+    const streamHook = plugin.streamHooks.find((item) => item.key === ccrLiveTokenRateStreamHookKey);
+    assert.ok(streamHook);
+    const disabledResult = await streamHook.transformResponse({
+      request: { id: "single-runtime-rate-disabled" },
+      targetProvider: "openai",
+      targetProviderConfig: { type: "openai_chat_completions" },
+      upstreamResponse: new Response("disabled", {
+        headers: { "content-type": "text/event-stream" },
+        status: 200
+      })
+    });
+    assert.equal(disabledResult, undefined);
+    process.emit("message", {
+      enabled: true,
+      protocolVersion: 1,
+      type: ccrLiveTokenRateConfigMessageType
+    });
+    const encoder = new TextEncoder();
+    const upstreamResponse = new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"first token"}}]}\n\n'));
+        setTimeout(() => {
+          controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":" second token"}}]}\n\n'));
+        }, 275);
+        setTimeout(() => controller.close(), 325);
+      }
+    }), {
+      headers: { "content-type": "text/event-stream" },
+      status: 200
+    });
+    const meteredResponse = await streamHook.transformResponse({
+      request: {
+        headers: {},
+        id: "single-runtime-rate-test",
+        method: "POST",
+        url: "/v1/chat/completions"
+      },
+      targetProvider: "openai",
+      targetProviderConfig: {
+        provider: "openai_chat_completions",
+        type: "openai_chat_completions"
+      },
+      upstreamResponse
+    });
+
+    assert.ok(meteredResponse instanceof Response);
+    await meteredResponse.text();
+    assert.ok(messages.some((message) =>
+      message?.type === ccrLiveTokenRateSnapshotMessageType &&
+      message.activeRequests === 1 &&
+      message.tokensPerSecond > 0
+    ));
+  } finally {
+    process.emit("message", {
+      enabled: false,
+      protocolVersion: 1,
+      type: ccrLiveTokenRateConfigMessageType
+    });
+    if (originalSend) {
+      process.send = originalSend;
+    } else {
+      delete process.send;
+    }
+  }
 });
 
 test("CCR router core plugin resolves bare Codex companion models through the authenticated profile provider", async () => {

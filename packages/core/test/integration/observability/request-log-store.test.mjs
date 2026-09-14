@@ -318,6 +318,62 @@ test("RequestLogStore keeps list rows lightweight and detail rows complete", asy
   }
 });
 
+test("RequestLogStore persists stream experience metrics and derives authoritative TPS", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-speed-test-"));
+  let store;
+  try {
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    await store.record({
+      completedAt: new Date().toISOString(),
+      durationMs: 900,
+      method: "POST",
+      path: "/v1/messages",
+      providerName: "test-provider",
+      requestBody: Buffer.from(JSON.stringify({ messages: [], model: "test-model", stream: true })),
+      requestHeaders: { "content-type": "application/json" },
+      requestId: "request-log-speed-test",
+      responseBodyText: [
+        'event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":10,"output_tokens":1}}}',
+        "",
+        'event: message_delta\ndata: {"type":"message_delta","usage":{"output_tokens":21}}',
+        "",
+        'event: message_stop\ndata: {"type":"message_stop"}',
+        ""
+      ].join("\n"),
+      responseHeaders: { "content-type": "text/event-stream" },
+      startedAt: new Date().toISOString(),
+      statusCode: 200,
+      streamMetrics: {
+        activeOutputMs: 500,
+        estimatedOutputTokens: 19,
+        maxInterEventGapMs: 180,
+        p95InterEventGapMs: 120,
+        reasoningObserved: false,
+        responseHeadersMs: 100,
+        sampleStatus: "complete",
+        tailMs: 40,
+        textObserved: true,
+        timeToFirstSignalMs: 150,
+        timeToFirstTextMs: 170,
+        toolObserved: false,
+        upstreamTimeToFirstSignalMs: 80
+      },
+      url: "http://127.0.0.1:3456/v1/messages"
+    });
+
+    const entry = (await store.list({ pageSize: 25 })).items[0];
+    assert.equal(entry.outputTokens, 21);
+    assert.equal(entry.outputTokensPerSecond, 40);
+    assert.equal(entry.timeToFirstSignalMs, 150);
+    assert.equal(entry.timeToFirstTextMs, 170);
+    assert.equal(entry.maxInterEventGapMs, 180);
+    assert.equal(entry.streamSpeedSampleStatus, "complete");
+  } finally {
+    await store?.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("RequestLogStore keeps large request bodies in sidecar storage and reads them by chunk", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-sidecar-test-"));
   let store;

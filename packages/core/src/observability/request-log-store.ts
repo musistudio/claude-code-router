@@ -64,6 +64,8 @@ import type {
   RequestRouteTrace,
   RequestRouteTraceHop,
   RequestRouteTraceSnapshot,
+  RequestStreamMetrics,
+  StreamSpeedSampleStatus,
   UsageStatsRange
 } from "@ccr/core/contracts/app";
 
@@ -136,6 +138,7 @@ export type RequestLogRecordInput = {
   requestId?: string;
   resolvedModel?: string;
   routeTrace?: RequestRouteTrace;
+  streamMetrics?: RequestStreamMetrics;
   responseBodyText?: string;
   responseBodySizeBytes?: number;
   responseBodyTruncated?: boolean;
@@ -217,6 +220,7 @@ export type RequestLogStoreWriteResult = {
 };
 
 type StoredRequestLogEntry = {
+  activeOutputMs?: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
   client: string;
@@ -231,13 +235,17 @@ type StoredRequestLogEntry = {
   id: number;
   inputTokens: number;
   isStream: boolean;
+  maxInterEventGapMs?: number;
   method: string;
   model: string;
   ok: boolean;
   outputTokens: number;
+  outputTokensPerSecond?: number;
   path: string;
+  p95InterEventGapMs?: number;
   provider: string;
   reasoningTokens: number;
+  responseHeadersMs?: number;
   requestedModel: string;
   requestBody: RequestLogBody;
   requestHeaders: Record<string, string | string[]>;
@@ -252,7 +260,12 @@ type StoredRequestLogEntry = {
   responseModel: string;
   responseHeaders: Record<string, string | string[]>;
   statusCode: number;
+  streamSpeedSampleStatus?: StreamSpeedSampleStatus;
+  tailMs?: number;
+  timeToFirstSignalMs?: number;
+  timeToFirstTextMs?: number;
   totalTokens: number;
+  upstreamTimeToFirstSignalMs?: number;
   url: string;
 };
 
@@ -662,6 +675,7 @@ export class RequestLogStore {
       responseHeaders,
       url: input.url
     });
+    const streamMetrics = resolveStoredStreamMetrics(input.streamMetrics, outputTokens, reasoningTokens);
 
     const statement = this.insertRequestStatement ??= database.prepare(`
       INSERT OR IGNORE INTO request_logs (
@@ -711,8 +725,9 @@ export class RequestLogStore {
         response_body_size_bytes,
         response_body_truncated,
         response_body_ref,
+        stream_metrics_json,
         error
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     let inserted = false;
@@ -764,6 +779,7 @@ export class RequestLogStore {
         responseBody.sizeBytes,
         responseBody.truncated ? 1 : 0,
         responseBody.bodyRef ?? "",
+        streamMetrics ? JSON.stringify(streamMetrics) : "",
         responseError ?? ""
       );
       if (result.changes === 0) return;
@@ -1086,6 +1102,7 @@ export class RequestLogStore {
             status_code,
             ok,
             duration_ms,
+            stream_metrics_json,
             input_tokens,
             output_tokens,
             reasoning_tokens,
@@ -1434,6 +1451,7 @@ export class RequestLogStore {
         response_body_size_bytes INTEGER NOT NULL DEFAULT 0,
         response_body_truncated INTEGER NOT NULL DEFAULT 0,
         response_body_ref TEXT NOT NULL DEFAULT '',
+        stream_metrics_json TEXT NOT NULL DEFAULT '',
         error TEXT NOT NULL DEFAULT ''
       );
 
@@ -4465,6 +4483,7 @@ function ensureRequestLogSchema(database: SqlDatabase): void {
   addColumn("response_body_size_bytes", "INTEGER NOT NULL DEFAULT 0");
   addColumn("response_body_truncated", "INTEGER NOT NULL DEFAULT 0");
   addColumn("response_body_ref", "TEXT NOT NULL DEFAULT ''");
+  addColumn("stream_metrics_json", "TEXT NOT NULL DEFAULT ''");
   addColumn("error", "TEXT NOT NULL DEFAULT ''");
 
   if (needsModelSummaryMigration) {
@@ -5042,6 +5061,7 @@ function readRequestLogById(database: SqlDatabase, id: number): StoredRequestLog
         status_code,
         ok,
         duration_ms,
+        stream_metrics_json,
         input_tokens,
         output_tokens,
         reasoning_tokens,
@@ -5075,6 +5095,12 @@ function readRequestLogById(database: SqlDatabase, id: number): StoredRequestLog
 
 function toRequestLogEntry(row: Record<string, SqlValue>): StoredRequestLogEntry {
   const costUsd = asFloat(row.cost_usd);
+  const outputTokens = normalizeCount(row.output_tokens);
+  const streamMetrics = parseStoredStreamMetrics(row.stream_metrics_json);
+  const outputTokensPerSecond = streamMetrics?.sampleStatus === "complete" &&
+    streamMetrics.activeOutputMs !== undefined && streamMetrics.activeOutputMs > 0 && outputTokens >= 2
+    ? Math.round(((outputTokens - 1) * 1_000 / streamMetrics.activeOutputMs) * 10) / 10
+    : undefined;
   const requestBody = bodyFromRow(row, "request") ?? emptyBody();
   const responseBody = bodyFromRow(row, "response");
   const requestHeaders = parseHeaderJson(row.request_headers);
@@ -5088,6 +5114,7 @@ function toRequestLogEntry(row: Record<string, SqlValue>): StoredRequestLogEntry
     url: String(row.url ?? "")
   });
   return {
+    ...(streamMetrics?.activeOutputMs !== undefined ? { activeOutputMs: streamMetrics.activeOutputMs } : {}),
     cacheReadTokens: normalizeCount(row.cache_read_tokens),
     cacheWriteTokens: normalizeCount(row.cache_write_tokens),
     client: normalizeLabel(String(row.client ?? ""), "unknown"),
@@ -5102,13 +5129,17 @@ function toRequestLogEntry(row: Record<string, SqlValue>): StoredRequestLogEntry
     id: normalizeCount(row.id),
     inputTokens: normalizeCount(row.input_tokens),
     isStream,
+    ...(streamMetrics?.maxInterEventGapMs !== undefined ? { maxInterEventGapMs: streamMetrics.maxInterEventGapMs } : {}),
     method: String(row.method ?? ""),
     model: normalizeLabel(String(row.model ?? ""), "unknown"),
     ok: normalizeCount(row.ok) === 1,
-    outputTokens: normalizeCount(row.output_tokens),
+    outputTokens,
+    ...(outputTokensPerSecond !== undefined ? { outputTokensPerSecond } : {}),
     path: normalizeLabel(String(row.path ?? ""), "/"),
+    ...(streamMetrics?.p95InterEventGapMs !== undefined ? { p95InterEventGapMs: streamMetrics.p95InterEventGapMs } : {}),
     provider: normalizeLabel(String(row.provider ?? ""), "unknown"),
     reasoningTokens: normalizeCount(row.reasoning_tokens),
+    ...(streamMetrics?.responseHeadersMs !== undefined ? { responseHeadersMs: streamMetrics.responseHeadersMs } : {}),
     requestedModel: normalizeLabel(String(row.requested_model ?? ""), ""),
     requestBody,
     requestHeaders,
@@ -5122,9 +5153,78 @@ function toRequestLogEntry(row: Record<string, SqlValue>): StoredRequestLogEntry
     responseHeaders,
     responseModel: normalizeLabel(String(row.response_model ?? ""), ""),
     statusCode: normalizeCount(row.status_code),
+    ...(streamMetrics ? { streamSpeedSampleStatus: streamMetrics.sampleStatus } : {}),
+    ...(streamMetrics?.tailMs !== undefined ? { tailMs: streamMetrics.tailMs } : {}),
+    ...(streamMetrics?.timeToFirstSignalMs !== undefined ? { timeToFirstSignalMs: streamMetrics.timeToFirstSignalMs } : {}),
+    ...(streamMetrics?.timeToFirstTextMs !== undefined ? { timeToFirstTextMs: streamMetrics.timeToFirstTextMs } : {}),
     totalTokens: normalizeCount(row.total_tokens),
+    ...(streamMetrics?.upstreamTimeToFirstSignalMs !== undefined
+      ? { upstreamTimeToFirstSignalMs: streamMetrics.upstreamTimeToFirstSignalMs }
+      : {}),
     url: String(row.url ?? "")
   };
+}
+
+function resolveStoredStreamMetrics(
+  metrics: RequestStreamMetrics | undefined,
+  outputTokens: number,
+  reasoningTokens: number
+): RequestStreamMetrics | undefined {
+  if (!metrics) {
+    return undefined;
+  }
+  let sampleStatus = metrics.sampleStatus;
+  if (sampleStatus === "complete") {
+    if (outputTokens === 0) {
+      sampleStatus = "usage_missing";
+    } else if (outputTokens < 2) {
+      sampleStatus = "insufficient_tokens";
+    } else if (reasoningTokens > 0 && !metrics.reasoningObserved) {
+      sampleStatus = "hidden_reasoning";
+    } else if (metrics.activeOutputMs === undefined || metrics.activeOutputMs <= 0) {
+      sampleStatus = "batched_output";
+    }
+  }
+  return { ...metrics, sampleStatus };
+}
+
+function parseStoredStreamMetrics(value: SqlValue): RequestStreamMetrics | undefined {
+  if (typeof value !== "string" || !value.trim()) {
+    return undefined;
+  }
+  const parsed = parseJson(value);
+  if (!isRecord(parsed) || !isStreamSpeedSampleStatus(parsed.sampleStatus)) {
+    return undefined;
+  }
+  return {
+    ...optionalStreamMetricNumber("activeOutputMs", parsed.activeOutputMs),
+    estimatedOutputTokens: normalizeCount(parsed.estimatedOutputTokens),
+    ...optionalStreamMetricNumber("maxInterEventGapMs", parsed.maxInterEventGapMs),
+    ...optionalStreamMetricNumber("p95InterEventGapMs", parsed.p95InterEventGapMs),
+    reasoningObserved: parsed.reasoningObserved === true,
+    ...optionalStreamMetricNumber("responseHeadersMs", parsed.responseHeadersMs),
+    sampleStatus: parsed.sampleStatus,
+    ...optionalStreamMetricNumber("tailMs", parsed.tailMs),
+    textObserved: parsed.textObserved === true,
+    ...optionalStreamMetricNumber("timeToFirstSignalMs", parsed.timeToFirstSignalMs),
+    ...optionalStreamMetricNumber("timeToFirstTextMs", parsed.timeToFirstTextMs),
+    toolObserved: parsed.toolObserved === true,
+    ...optionalStreamMetricNumber("upstreamTimeToFirstSignalMs", parsed.upstreamTimeToFirstSignalMs)
+  };
+}
+
+function optionalStreamMetricNumber<Key extends keyof RequestStreamMetrics>(
+  key: Key,
+  value: unknown
+): Partial<Pick<RequestStreamMetrics, Key>> {
+  const number = asNumber(value);
+  return number === undefined ? {} : { [key]: number } as Partial<Pick<RequestStreamMetrics, Key>>;
+}
+
+function isStreamSpeedSampleStatus(value: unknown): value is StreamSpeedSampleStatus {
+  return value === "complete" || value === "partial" || value === "usage_missing" ||
+    value === "insufficient_tokens" || value === "unsupported_protocol" ||
+    value === "hidden_reasoning" || value === "batched_output";
 }
 
 function bodyFromRow(row: Record<string, SqlValue>, prefix: "request" | "response"): RequestLogBody | undefined {

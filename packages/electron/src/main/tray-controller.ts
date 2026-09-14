@@ -6,6 +6,7 @@ import { loadAppConfig } from "@ccr/core/config/config";
 import { APP_NAME, IPC_CHANNELS } from "@ccr/core/config/constants";
 import { getProviderAccountSnapshots } from "@ccr/core/providers/account-service";
 import { getTodayUsageTotals, onUsageRecorded } from "@ccr/core/usage/store";
+import { getLiveTokenRateSnapshot, onLiveTokenRateChanged } from "@ccr/core/observability/stream-experience";
 import windowsManager from "./windows";
 import type { AppConfig, ProviderAccountMeter, TrayBalanceProgressConfig, TrayIconPreference } from "@ccr/core/contracts/app";
 
@@ -20,6 +21,7 @@ const trayMenuBarIconSize = 20;
 const trayWindowDarkBackgroundColor = "#1c1c1e";
 const trayWindowLightBackgroundColor = "#f2f2f7";
 const trayTokenFallbackTitle = "0 tokens";
+const trayTokenRateFallbackTitle = "0 tok/s";
 const trayIconFallbackPath = path.join(__dirname, "../assets/tray.png");
 const trayMascotIconIds = ["violet", "orange", "cyan"] as const;
 
@@ -40,11 +42,14 @@ class TrayController {
   private randomTrayIconDateKey?: string;
   private resolvedRandomTrayIcon?: TrayMascotIconId;
   private refreshTimer?: NodeJS.Timeout;
+  private liveRateRefreshTimer?: NodeJS.Timeout;
   private suppressMainWindowActivationUntil = 0;
   private tray?: Tray;
   private trayBalanceProgress?: TrayBalanceProgressConfig;
   private trayIconPreference: TrayIconPreference = "random";
-  private trayTotalTokens = 0;
+  private trayShowTokenRate = false;
+  private trayTitle = trayTokenFallbackTitle;
+  private unsubscribeLiveRateUpdates?: () => void;
   private unsubscribeUsageUpdates?: () => void;
 
   start(): void {
@@ -72,10 +77,21 @@ class TrayController {
     this.unsubscribeUsageUpdates = onUsageRecorded(() => {
       this.refreshUsageTitle();
     });
+    this.unsubscribeLiveRateUpdates = onLiveTokenRateChanged((snapshot) => {
+      if (this.trayShowTokenRate) {
+        this.applyLiveTokenRateTitle(snapshot);
+      }
+    });
     this.refreshUsageTitle();
     this.refreshTimer = setInterval(() => {
       this.refreshUsageTitle();
     }, 15_000);
+    this.liveRateRefreshTimer = setInterval(() => {
+      if (this.trayShowTokenRate) {
+        this.applyLiveTokenRateTitle(getLiveTokenRateSnapshot());
+      }
+    }, 250);
+    this.liveRateRefreshTimer.unref?.();
   }
 
   hidePopover(): void {
@@ -93,6 +109,12 @@ class TrayController {
       clearInterval(this.refreshTimer);
       this.refreshTimer = undefined;
     }
+    if (this.liveRateRefreshTimer) {
+      clearInterval(this.liveRateRefreshTimer);
+      this.liveRateRefreshTimer = undefined;
+    }
+    this.unsubscribeLiveRateUpdates?.();
+    this.unsubscribeLiveRateUpdates = undefined;
     this.unsubscribeUsageUpdates?.();
     this.unsubscribeUsageUpdates = undefined;
     if (this.detailPopover && !this.detailPopover.isDestroyed()) {
@@ -134,12 +156,14 @@ class TrayController {
       this.resolvedRandomTrayIcon = undefined;
     }
     this.trayIconPreference = nextPreference;
+    this.trayShowTokenRate = nextConfig.trayShowTokenRate === true;
     this.trayBalanceProgress = normalizeTrayBalanceProgressConfig(nextConfig.trayBalanceProgress);
     if (nextPreference === "progress" && this.trayBalanceProgress) {
       await this.refreshBalanceProgressTrayIcon();
-      return;
+    } else {
+      this.applyTrayIcon(this.resolveTrayIconId(nextPreference));
     }
-    this.applyTrayIcon(this.resolveTrayIconId(nextPreference));
+    await this.refreshTrayTitle();
   }
 
   refreshTheme(theme: AppConfig["theme"]): void {
@@ -241,7 +265,7 @@ class TrayController {
     const menu = Menu.buildFromTemplate([
       {
         enabled: false,
-        label: formatTokenTitle(this.trayTotalTokens)
+        label: this.trayTitle
       },
       { type: "separator" },
       {
@@ -316,9 +340,13 @@ class TrayController {
       return;
     }
 
+    if (this.trayShowTokenRate) {
+      this.applyLiveTokenRateTitle(getLiveTokenRateSnapshot());
+      return;
+    }
+
     try {
       const totals = await getTodayUsageTotals(undefined, { includeProxy: true });
-      this.trayTotalTokens = Math.max(0, totals.totalTokens);
       if (this.trayIconPreference === "progress" && this.trayBalanceProgress) {
         await this.refreshBalanceProgressTrayIcon();
       }
@@ -332,10 +360,22 @@ class TrayController {
     if (!this.tray) {
       return;
     }
-    if (supportsTrayTitle()) {
+    const titleChanged = this.trayTitle !== title;
+    this.trayTitle = title;
+    if (supportsTrayTitle() && titleChanged) {
       this.tray.setTitle(title);
     }
     this.tray.setToolTip(`${APP_NAME} Usage\n${title}`);
+  }
+
+  private applyLiveTokenRateTitle(snapshot: { activeRequests: number; tokensPerSecond: number }): void {
+    const title = snapshot.activeRequests > 0
+      ? formatTokenRateTitle(snapshot.tokensPerSecond)
+      : trayTokenRateFallbackTitle;
+    this.applyTrayTitle(title);
+    this.tray?.setToolTip(
+      `${APP_NAME} Usage\n${title}\n${snapshot.activeRequests} active stream${snapshot.activeRequests === 1 ? "" : "s"} · estimated`
+    );
   }
 
   private applyTrayIcon(iconId: TrayMascotIconId): void {
@@ -809,4 +849,12 @@ function formatCompactNumber(value: number): string {
 
 function formatTokenTitle(value: number): string {
   return `${formatCompactNumber(Math.max(0, value))} tokens`;
+}
+
+function formatTokenRateTitle(value: number): string {
+  const rate = Math.max(0, value);
+  const formatted = new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: rate < 10 ? 1 : 0
+  }).format(rate);
+  return `${formatted} tok/s`;
 }

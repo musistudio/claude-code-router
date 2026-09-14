@@ -478,9 +478,12 @@ test("Codex app-server merges CCR Fast Mode catalog metadata without spoofing au
     account: { type: "amazonBedrock", credentialSource: "codexManaged" },
     requiresOpenaiAuth: false
   });
-  assert.deepEqual(responses.get(4).result.requirements.featureRequirements, {
-    fast_mode: true,
-    other_feature: false
+  assert.deepEqual(responses.get(4).result.requirements, {
+    application: null,
+    featureRequirements: {
+      fast_mode: true,
+      other_feature: false
+    }
   });
 });
 
