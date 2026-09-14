@@ -4812,9 +4812,17 @@ function configRequirementsRead(existingResult) {
   const result = existingResult && typeof existingResult === "object" && !Array.isArray(existingResult)
     ? { ...existingResult }
     : {};
-  const requirements = result.requirements && typeof result.requirements === "object" && !Array.isArray(result.requirements)
-    ? { ...result.requirements }
-    : {};
+  // The upstream app-server returns requirements:null when there are no special
+  // requirements, and the desktop app treats null as "no requirements" and starts
+  // normally. Injecting a requirements object that only contains fast_mode makes
+  // the app expect application network requirements that are not provided, so it
+  // refuses to launch with "This app server did not provide application network
+  // requirements" (see issue #1795). Only annotate an already non-null
+  // requirements object; never fabricate one from null.
+  if (result.requirements == null) {
+    return existingResult;
+  }
+  const requirements = { ...result.requirements };
   const featureRequirements = requirements.featureRequirements && typeof requirements.featureRequirements === "object" && !Array.isArray(requirements.featureRequirements)
     ? { ...requirements.featureRequirements }
     : {};
