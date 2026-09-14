@@ -33,8 +33,13 @@ const codexUpstreamUrlMarkers = ["chatgpt.com/backend-api/codex", "/backend-api/
  * on body fields hash each turn onto a different channel and the next hop
  * rejects channel-bound `encrypted_content` continuations. A caller-supplied
  * non-empty `prompt_cache_key` always wins; other protocols and non-JSON
- * bodies pass through untouched. Codex upstreams reject unknown body fields
- * with `400 Unsupported parameter`, so affinity is skipped for them.
+ * bodies pass through untouched.
+ *
+ * Codex backends reject unknown body fields, so affinity is skipped for
+ * them. Anthropic `metadata` is only copied onto the public OpenAI
+ * Responses API (`api.openai.com`), which documents that field. Other
+ * openai_responses proxies (Grok CLI, custom endpoints, …) inherit Claude
+ * Code's `user_id` and 400 if they do not implement it.
  */
 export function applyResponsesSessionAffinity(input: ResponsesSessionAffinityInput): UpstreamRequest {
   const upstreamRequest = input.upstreamRequest;
@@ -58,7 +63,11 @@ export function applyResponsesSessionAffinity(input: ResponsesSessionAffinityInp
       changes.prompt_cache_key = sessionKey;
     }
   }
-  if (inboundUserId && body.metadata === undefined) {
+  if (
+    inboundUserId &&
+    body.metadata === undefined &&
+    isOfficialOpenAIResponsesUpstream(upstreamRequest.url, input.targetProviderConfig)
+  ) {
     changes.metadata = { user_id: inboundUserId };
   }
   if (Object.keys(changes).length === 0) {
@@ -96,11 +105,37 @@ export function isCodexResponsesUpstream(
   upstreamUrl: string,
   providerConfig?: { baseurl?: string }
 ): boolean {
-  const candidates = [upstreamUrl, providerConfig?.baseurl];
-  return candidates.some((candidate) => {
-    const normalized = candidate?.trim().toLowerCase();
-    return Boolean(normalized && codexUpstreamUrlMarkers.some((marker) => normalized.includes(marker)));
+  return urlCandidates(upstreamUrl, providerConfig).some((normalized) =>
+    codexUpstreamUrlMarkers.some((marker) => normalized.includes(marker))
+  );
+}
+
+/**
+ * Public OpenAI Responses (`api.openai.com`) is the documented home of
+ * `metadata`. Claude Code's Anthropic `user_id` is only replayed there.
+ */
+export function isOfficialOpenAIResponsesUpstream(
+  upstreamUrl: string,
+  providerConfig?: { baseurl?: string }
+): boolean {
+  return urlCandidates(upstreamUrl, providerConfig).some((normalized) => {
+    const host = hostnameFromCandidate(normalized);
+    return host === "api.openai.com" || host.endsWith(".api.openai.com");
   });
+}
+
+function urlCandidates(upstreamUrl: string, providerConfig?: { baseurl?: string }): string[] {
+  return [upstreamUrl, providerConfig?.baseurl]
+    .map((candidate) => candidate?.trim().toLowerCase())
+    .filter((candidate): candidate is string => Boolean(candidate));
+}
+
+function hostnameFromCandidate(candidate: string): string {
+  try {
+    return new URL(candidate.includes("://") ? candidate : `https://${candidate}`).hostname;
+  } catch {
+    return "";
+  }
 }
 
 function inboundMetadataUserId(body: unknown): string | undefined {

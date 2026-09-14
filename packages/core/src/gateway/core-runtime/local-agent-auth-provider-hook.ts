@@ -420,7 +420,8 @@ const grokSupportedResponsesToolTypes = new Set([
 ]);
 
 const grokUnsupportedResponsesOptions = new Set([
-  "external_web_access"
+  "external_web_access",
+  "metadata"
 ]);
 
 function uniqueStrings(values: string[]): string[] {

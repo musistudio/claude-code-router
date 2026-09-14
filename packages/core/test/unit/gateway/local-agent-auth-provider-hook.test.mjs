@@ -49,6 +49,7 @@ test("Grok local agent auth hook refreshes live login state before authenticatin
     const upstreamRequest = {
       body: {
         external_web_access: true,
+        metadata: { user_id: "ccr-test" },
         input: [
           { type: "custom_tool_call", call_id: "call_patch", name: "apply_patch", input: patch },
           { type: "custom_tool_call_output", call_id: "call_patch", output: "Success" }
@@ -89,6 +90,7 @@ test("Grok local agent auth hook refreshes live login state before authenticatin
     assert.equal(requestResult.value.headers["x-grok-client-version"], "0.2.93");
     assert.equal(requestResult.value.headers["x-grok-model-override"], "grok-4.5");
     assert.equal(requestResult.value.body.external_web_access, undefined);
+    assert.equal(requestResult.value.body.metadata, undefined);
     assert.deepEqual(requestResult.value.body.tools.map((tool) => tool.type), ["function", "function"]);
     assert.equal(requestResult.value.body.tools[1].name, virtualApplyPatchToolName);
     assert.equal(requestResult.value.body.tools.some((tool) => tool.type === "custom" || tool.type === "namespace"), false);
@@ -222,7 +224,6 @@ test("core gateway config removes Grok unsupported Responses options through dec
       refresh_token: "grok-refresh-token"
     });
     const plugin = grokOauthProviderPlugin();
-    plugin.request.bodyRemove = ["metadata"];
 
     const config = createDefaultAppConfig();
     config.providerPlugins = [plugin];

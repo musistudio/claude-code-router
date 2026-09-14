@@ -1166,7 +1166,7 @@ function withCodexProbeBackendRequestTransform(requestTransform: Record<string, 
   const bodyRemove = readStringArray(requestTransform.bodyRemove);
   return {
     ...requestTransform,
-    bodyRemove: uniqueStrings([...bodyRemove, "max_output_tokens", "stop"])
+    bodyRemove: uniqueStrings([...bodyRemove, "max_output_tokens", "stop", "metadata"])
   };
 }
 
