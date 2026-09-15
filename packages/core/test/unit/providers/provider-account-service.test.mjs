@@ -15,6 +15,7 @@ import {
   grokDefaultSubscriptionEndpoint,
   grokProviderAccountConfig
 } from "@ccr/core/agents/local-providers/grok.ts";
+import { findProviderPreset } from "@ccr/core/providers/presets/index.ts";
 
 const localAgentProviderApiKey = "ccr-local-agent-login";
 const codexDefaultBaseUrl = "https://chatgpt.com/backend-api/codex";
@@ -100,6 +101,44 @@ test("Grok subscription connector maps access status payload", async (t) => {
   assert.equal(result.status, "ok");
   assert.equal(result.message, "SuperGrok Heavy");
   assert.equal(result.meters.find((meter) => meter.id === "grok_subscription_access")?.remaining, 100);
+});
+
+test("OpenCode Go usage connector maps official windows to remaining percent", async (t) => {
+  const previousFetch = globalThis.fetch;
+  let authorization = "";
+  globalThis.fetch = async (input, init) => {
+    assert.equal(String(input), "https://opencode.ai/zen/go/v1/usage");
+    authorization = init?.headers?.authorization ?? "";
+    return new Response(JSON.stringify({
+      usage: {
+        rolling: { resetsAt: "2026-09-11T20:00:00.000Z", status: "ok", percent: 12 },
+        weekly: { resetsAt: "2026-09-14T00:00:00.000Z", status: "ok", percent: 34 },
+        monthly: { resetsAt: "2026-10-01T00:00:00.000Z", status: "limit_reached", percent: 100 }
+      }
+    }), { headers: { "content-type": "application/json" }, status: 200 });
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+  });
+
+  const connector = findProviderPreset("opencode-go")?.account?.connectors?.[0];
+  assert.equal(connector?.type, "http-json");
+  const result = await testProviderAccountConnector({
+    apiKey: "opencode-go-key",
+    baseUrl: "https://opencode.ai/zen/go/v1",
+    connector,
+    providerName: "OpenCode Go"
+  });
+
+  assert.equal(authorization, "Bearer opencode-go-key");
+  const rolling = result.meters.find((meter) => meter.id === "opencode_go_5h");
+  assert.equal(rolling?.used, 12);
+  assert.equal(rolling?.remaining, 88);
+  assert.equal(rolling?.limit, 100);
+  assert.equal(rolling?.unit, "%");
+  assert.equal(rolling?.resetAt, "2026-09-11T20:00:00.000Z");
+  assert.equal(result.meters.find((meter) => meter.id === "opencode_go_weekly")?.remaining, 66);
+  assert.equal(result.meters.find((meter) => meter.id === "opencode_go_monthly")?.remaining, 0);
 });
 
 test("webcontent-json connector uses browser-session handler without provider API key", async (t) => {
@@ -480,6 +519,56 @@ test("ZCode local account credential falls back to the live config when plugin i
   });
 
   assert.equal(credential?.apiKey, "zcode-live-key");
+});
+
+test("OpenCode local account credential reuses the imported plugin key", async () => {
+  const bearer = await localAgentProviderAccountCredentialForTest({
+    providerPlugins: [
+      {
+        auth: {
+          headers: { authorization: "Bearer opencode-go-key" },
+          removeHeaders: ["x-api-key"],
+          strict: true
+        },
+        key: "ccr-local-agent-opencode-go-chat-completions-opencode-go-openai-chat-completions-api-key",
+        providerName: "OpenCode Go (Chat Completions)"
+      }
+    ]
+  }, {
+    api_base_url: "https://opencode.ai/zen/go/v1",
+    api_key: localAgentProviderApiKey,
+    id: "opencode-go-api-openai-chat-completions",
+    models: ["kimi-k2.7-code"],
+    name: "OpenCode Go (Chat Completions)",
+    type: "openai_chat_completions"
+  });
+
+  assert.equal(bearer?.apiKey, "opencode-go-key");
+  assert.equal(bearer?.headers?.authorization, undefined);
+
+  const anthropic = await localAgentProviderAccountCredentialForTest({
+    providerPlugins: [
+      {
+        auth: {
+          headers: { "x-api-key": "opencode-go-anthropic-key" },
+          removeHeaders: ["authorization"],
+          strict: true
+        },
+        key: "ccr-local-agent-opencode-go-anthropic-messages-opencode-go-anthropic-messages-api-key",
+        providerName: "opencode-go-api-anthropic-messages::anthropic_messages"
+      }
+    ]
+  }, {
+    api_base_url: "https://opencode.ai/zen/go/v1",
+    api_key: localAgentProviderApiKey,
+    id: "opencode-go-api-anthropic-messages",
+    models: ["minimax-m3"],
+    name: "Renamed OpenCode Go",
+    type: "anthropic_messages"
+  });
+
+  assert.equal(anthropic?.apiKey, "opencode-go-anthropic-key");
+  assert.equal(anthropic?.headers?.["x-api-key"], undefined);
 });
 
 function useTemporaryCodexHome(t, prefix) {

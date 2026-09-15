@@ -67,6 +67,7 @@ import zaiGlobalCodingProviderIconUrl from "@/assets/provider-icons/zai-global-c
 import zaiGlobalGeneralProviderIconUrl from "@/assets/provider-icons/zai-global-general.svg";
 import zhipuCnCodingProviderIconUrl from "@/assets/provider-icons/zhipu-cn-coding.png";
 import zhipuCnGeneralProviderIconUrl from "@/assets/provider-icons/zhipu-cn-general.png";
+import openCodeProviderIconUrl from "@/assets/agent-logos/opencode.ico";
 import trayCyanIconUrl from "@/assets/tray-cyan.png";
 import trayOrangeIconUrl from "@/assets/tray-orange.png";
 import trayVioletIconUrl from "@/assets/tray-violet.png";
@@ -384,6 +385,7 @@ export const providerPresetIconUrls: Record<string, string> = {
   "moonshot-global": moonshotProviderIconUrl,
   nvidia: nvidiaProviderIconUrl,
   openai: openaiProviderIconUrl,
+  "opencode-go": openCodeProviderIconUrl,
   openrouter: openrouterProviderIconUrl,
   "qiniu-ai": qiniuAiProviderIconUrl,
   runapi: runapiProviderIconUrl,

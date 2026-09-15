@@ -8,7 +8,7 @@ import { minimaxChinaProviderPreset } from "@ccr/core/providers/presets/minimax/
 import { moonshotGlobalProviderPreset } from "@ccr/core/providers/presets/moonshot/index.ts";
 import { qiniuAiProviderPreset } from "@ccr/core/providers/presets/qiniu-ai/index.ts";
 import { xiaomiMimoProviderPreset } from "@ccr/core/providers/presets/xiaomi/index.ts";
-import { AddProviderDialog, AddProviderForm, ProviderConnectivityCheckDialog, ProvidersView, uniqueProviderProbeProtocolRows } from "@ccr/ui/pages/home/components/providers.tsx";
+import { AddProviderDialog, AddProviderForm, ProviderConnectivityCheckDialog, ProvidersView, localAgentProviderAlreadyImported, localAgentProviderPluginSuffixesForCandidate, uniqueProviderProbeProtocolRows } from "@ccr/ui/pages/home/components/providers.tsx";
 import {
   applyProviderProbeResult,
   createProviderConfigFromDeepLink,
@@ -36,6 +36,7 @@ import {
   providerPresetIconUrls,
   providerProtocolOptions,
   providerProbeCandidates,
+  providerProbeModelsForProtocol,
   providerSelectableProtocolsFromProbe,
   removeLocalAgentProviderPluginsForProvider,
   setProviderPresets
@@ -1584,6 +1585,60 @@ test("New API user balance template adds configurable user self connector", () =
   assert.equal(connectors[1].headers.Authorization, "Bearer <new-api-access-token>");
   assert.equal(connectors[1].headers["New-Api-User"], "42");
   assert.equal(connectors[1].mapping.meters[0].id, "new_api_user_balance");
+});
+
+test("Zen and Go candidates use distinct local agent plugin suffixes", () => {
+  const zenCandidate = {
+    id: "opencode-api-anthropic-messages",
+    importable: true,
+    kind: "opencode",
+    models: ["shared-model"],
+    name: "OpenCode Zen (Anthropic)",
+    protocol: "anthropic_messages",
+    status: "available"
+  };
+  const goCandidate = {
+    ...zenCandidate,
+    id: "opencode-go-api-anthropic-messages",
+    name: "OpenCode Go (Anthropic)"
+  };
+
+  assert.deepEqual(localAgentProviderPluginSuffixesForCandidate(zenCandidate), [
+    "-opencode-anthropic-messages-api-key",
+    "-opencode-anthropic-messages-api-key-internal"
+  ]);
+  assert.deepEqual(localAgentProviderPluginSuffixesForCandidate(goCandidate), [
+    "-opencode-go-anthropic-messages-api-key",
+    "-opencode-go-anthropic-messages-api-key-internal"
+  ]);
+
+  const zenProvider = {
+    api_key: "ccr-local-agent-login",
+    models: ["shared-model"],
+    name: "OpenCode Zen (Anthropic)"
+  };
+  const zenPlugin = {
+    key: "ccr-local-agent-opencode-zen-anthropic-opencode-anthropic-messages-api-key",
+    providerName: "OpenCode Zen (Anthropic)"
+  };
+  assert.equal(localAgentProviderAlreadyImported(zenCandidate, [zenProvider], [zenPlugin]), true);
+  assert.equal(localAgentProviderAlreadyImported(goCandidate, [zenProvider], [zenPlugin]), false);
+});
+
+test("provider probe models prefer the protocol-scoped list", () => {
+  const probe = {
+    models: ["chat-model", "responses-model"],
+    normalizedBaseUrl: "https://opencode.ai/zen/go",
+    protocolModels: {
+      openai_chat_completions: ["chat-model"],
+      openai_responses: ["responses-model"]
+    },
+    protocols: []
+  };
+  assert.deepEqual(providerProbeModelsForProtocol(probe, "openai_responses"), ["responses-model"]);
+  assert.deepEqual(providerProbeModelsForProtocol(probe, "anthropic_messages"), ["chat-model", "responses-model"]);
+  assert.deepEqual(providerProbeModelsForProtocol({ ...probe, protocolModels: undefined }, "openai_responses"), ["chat-model", "responses-model"]);
+  assert.deepEqual(providerProbeModelsForProtocol(undefined, "openai_responses"), []);
 });
 
 function providerInstallLinkPayload(link) {

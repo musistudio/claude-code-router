@@ -60,6 +60,22 @@ After import:
 
 If CCR detects login traces but no usable OAuth token, the import entry shows why. Run `/login` in Kimi CLI, then return to CCR and rescan.
 
+### OpenCode
+
+OpenCode import reads the local authentication file together with OpenCode's config and cached model catalog. CCR treats the catalog provider IDs `opencode` and `opencode-go` as separate services, so overlapping model names do not cause a Go subscription to be imported as Zen.
+
+Credentials resolve in this order per provider ID: OpenCode config (`provider.opencode` or `provider.opencode-go` `options.apiKey`, with `{env:VAR}` and `{file:path}` references), `OPENCODE_AUTH_CONTENT`, OpenCode's `auth.json`, then environment variables. `OPENCODE_API_KEY` follows OpenCode's catalog behavior and applies to both Zen and Go; CCR also accepts `OPENCODE_GO_API_KEY` as a Go-specific override.
+
+After import:
+
+1. Zen keeps its configured or cached endpoint, defaulting to `https://opencode.ai/zen/v1`. Public zero-cost Zen models can still be imported without a login.
+2. OpenCode Go uses its own catalog entry and endpoint, defaulting to `https://opencode.ai/zen/go/v1`, and uses the `opencode-go` credential resolved as described above.
+3. Model IDs and display names come from the matching OpenCode provider catalog. Each model is grouped under the protocol declared by its AI SDK package, including mixed OpenAI Responses, Chat Completions, Anthropic, and Gemini catalogs.
+4. For requests sent to the official OpenCode Go endpoint, CCR forwards `x-claude-code-session-id` (or the legacy `x-claude-session-id`) as `x-opencode-session`. If the client supplies neither header, CCR uses the request's `metadata.user_id` when present and otherwise a stable `ccr-<uuid>` generated once per process, which is a last-resort value for clients that send no session identity; explicit `x-opencode-session` configuration takes precedence. This header is not added to Zen or unrelated providers.
+5. OpenCode Go account usage reads `GET https://opencode.ai/zen/go/v1/usage` with the imported `opencode-go` key and shows the 5-hour, weekly, and monthly windows as remaining percent. Zen has no equivalent account usage endpoint, so only Go is fetched automatically.
+
+If OpenCode Go is unavailable or does not appear as an import option, connect `OpenCode Go` in OpenCode first and let OpenCode refresh its local model cache, then return to CCR and rescan.
+
 ## Main fields
 
 | Field | Capability |

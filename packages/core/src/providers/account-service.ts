@@ -1495,6 +1495,9 @@ async function localAgentProviderAccountCredential(
     if (key.includes("zcode-api-key")) {
       return localApiKeyHeaderAccountCredential(plugin);
     }
+    if (isLocalOpenCodeProvider(provider)) {
+      return localOpenCodeAccountCredential(plugin);
+    }
   }
   if (isLocalCodexProvider(provider)) {
     return await localCodexAccountCredential({
@@ -1553,6 +1556,15 @@ function isLocalZcodeProvider(provider: GatewayProviderConfig): boolean {
     provider.name,
     baseUrl
   ]);
+}
+
+function isLocalOpenCodeProvider(provider: GatewayProviderConfig): boolean {
+  try {
+    const url = new URL(providerUrlWithDefaultScheme(normalizeProviderBaseUrl(providerBaseUrl(provider))));
+    return url.hostname === "opencode.ai" && /^\/zen(?:\/|$)/.test(url.pathname);
+  } catch {
+    return false;
+  }
 }
 
 function localZcodeProviderBaseUrlMatches(provider: GatewayProviderConfig, credentialBaseUrl: string): boolean {
@@ -1875,6 +1887,22 @@ function localApiKeyHeaderAccountCredential(plugin: Record<string, unknown>): { 
   };
 }
 
+function localOpenCodeAccountCredential(plugin: Record<string, unknown>): LocalAgentAccountCredential {
+  const headers = localProviderPluginAuthHeaders(plugin);
+  // OpenCode imports auth as a bearer token, an Anthropic x-api-key, or a
+  // Gemini x-goog-api-key depending on the provider protocol. The account
+  // usage endpoint always expects a bearer token, so normalize them here.
+  const apiKey =
+    readBearerToken(headers.authorization || headers.Authorization) ||
+    headers["x-api-key"] ||
+    headers["X-API-Key"] ||
+    headers["x-goog-api-key"];
+  return {
+    apiKey,
+    headers: withoutHeaders(headers, ["authorization", "x-api-key", "x-goog-api-key"])
+  };
+}
+
 function localProviderPluginAuthHeaders(plugin: Record<string, unknown>): Record<string, string> {
   const auth = isRecord(plugin.auth) ? plugin.auth : {};
   const headers = isRecord(auth.headers) ? auth.headers : {};
@@ -1888,6 +1916,11 @@ function localProviderPluginAuthHeaders(plugin: Record<string, unknown>): Record
 function withoutHeader(headers: Record<string, string>, header: string): Record<string, string> {
   const normalized = header.toLowerCase();
   return Object.fromEntries(Object.entries(headers).filter(([key]) => key.toLowerCase() !== normalized));
+}
+
+function withoutHeaders(headers: Record<string, string>, names: string[]): Record<string, string> {
+  const normalized = new Set(names.map((name) => name.toLowerCase()));
+  return Object.fromEntries(Object.entries(headers).filter(([key]) => !normalized.has(key.toLowerCase())));
 }
 
 function readBearerToken(value: string | undefined): string | undefined {
