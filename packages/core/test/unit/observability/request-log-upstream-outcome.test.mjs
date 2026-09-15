@@ -5,11 +5,12 @@ import path from "node:path";
 import test from "node:test";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
 import { clientDisconnectMessage } from "@ccr/core/gateway/internal/shared.ts";
+import { encodeCcrClientModelHeader } from "@ccr/core/gateway/core-runtime/router-plugin-contract.ts";
 import {
   applyRawTraceRequestLogPolicy,
   readRawTraceRequestLogBundle
 } from "@ccr/core/observability/raw-trace-sync.ts";
-import { RequestLogStore } from "@ccr/core/observability/request-log-store.ts";
+import { addColumnDuplicateTolerant, RequestLogStore } from "@ccr/core/observability/request-log-store.ts";
 import { createBetterSqliteDatabase } from "@ccr/core/storage/sqlite-native.ts";
 
 // The producer (@the-next-ai/ai-gateway) serializes an undefined upstream
@@ -716,6 +717,7 @@ test("raw trace persists routing evidence that survives spool cleanup", async ()
     };
     write("client_request_metadata", JSON.stringify({
       headers: {
+        "x-ccr-client-model": encodeCcrClientModelHeader("Claude Code API/claude-opus-5"),
         "x-ccr-route-reason": "builtin:claude-code-subagent",
         "x-ccr-route-source": "subagent",
         // A credential must never be copied into the log by this path.
@@ -724,11 +726,11 @@ test("raw trace persists routing evidence that survives spool cleanup", async ()
       method: "POST",
       url: "/v1/messages"
     }));
-    // Only the model is taken from the client body; the prompt must not be read
-    // into the routing columns.
+    // The client model must come from the trusted header only: the body is not
+    // read at all, so its model must not leak into the routing columns.
     write("client_request", JSON.stringify({
       messages: [{ content: "a private prompt", role: "user" }],
-      model: "Claude Code API/claude-opus-5"
+      model: "body-model-must-not-be-read"
     }));
     write("upstream_request_metadata", JSON.stringify({ method: "POST", url: "https://example.test/v1/chat/completions" }));
     write("upstream_response_metadata", JSON.stringify({ statusCode: 200 }));
@@ -960,6 +962,7 @@ test("a standalone write-batch bundle persists the routing evidence it carries",
       {
         body: JSON.stringify({
           headers: {
+            "x-ccr-client-model": encodeCcrClientModelHeader("Claude Code API/claude-opus-5"),
             "x-ccr-route-reason": "builtin:claude-code-subagent",
             "x-ccr-route-source": "subagent",
             "x-ccr-routed-model": "Worker Vendor (Chat Completions)/worker-model-fast"
@@ -969,7 +972,7 @@ test("a standalone write-batch bundle persists the routing evidence it carries",
         }),
         partType: "client_request_metadata"
       },
-      { body: JSON.stringify({ model: "Claude Code API/claude-opus-5" }), partType: "client_request" },
+      { body: JSON.stringify({ model: "body-model-must-not-be-read" }), partType: "client_request" },
       {
         body: JSON.stringify({ method: "POST", url: "https://upstream.example/v1/chat/completions" }),
         partType: "upstream_request_metadata"
@@ -1014,6 +1017,135 @@ test("a standalone write-batch bundle persists the routing evidence it carries",
       }
     } finally {
       await store.close();
+    }
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+// The client model is read from the trusted route header, never from the
+// request body. Without the header the column stays empty even though the
+// captured body names a model, which is what keeps the reader from pulling a
+// large prompt into memory just to extract the field.
+test("a raw trace without the client-model header records no client model", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-client-model-header-test-"));
+  try {
+    const spoolDirectory = path.join(dir, "spool");
+    const config = createConfig();
+    const bundle = await readBundle(spoolDirectory, "header-missing", [
+      {
+        body: JSON.stringify({ headers: { authorization: "Bearer secret" }, method: "POST", url: "/v1/messages" }),
+        partType: "client_request_metadata"
+      },
+      { body: JSON.stringify({ messages: [{ content: "prompt", role: "user" }], model: "asked-by-body" }), partType: "client_request" },
+      {
+        body: JSON.stringify({ method: "POST", url: "https://upstream.example/v1/messages" }),
+        partType: "upstream_request_metadata"
+      },
+      { body: JSON.stringify({ statusCode: 200 }), partType: "upstream_response_metadata" }
+    ]);
+
+    assert.equal(bundle.update.clientModel, undefined);
+    assert.equal(Object.hasOwn(bundle.update, "clientModel"), false);
+
+    // A bundle without the header must not clear the value the direct gateway
+    // write already recorded.
+    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    try {
+      await store.record(gatewayRecord(bundle.update.requestId, { clientModel: "kept-by-record" }));
+      assert.equal(await store.updateFromRawTrace(rawTraceUpdate(bundle, config)), true);
+      const database = createBetterSqliteDatabase(path.join(dir, "request-logs.sqlite"));
+      try {
+        const row = database.prepare(
+          "SELECT client_model FROM request_logs WHERE request_id = ?"
+        ).get(bundle.update.requestId);
+        assert.equal(row.client_model, "kept-by-record");
+      } finally {
+        database.close();
+      }
+    } finally {
+      await store.close();
+    }
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+// Model selectors can carry non-ASCII provider names. The header is base64url
+// encoded so the exact ask survives; `sanitizeHeaderValue` would mangle it and
+// the update would overwrite the correct value the gateway wrote directly.
+test("the client model survives a non-ASCII selector through the header", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-client-model-unicode-test-"));
+  try {
+    const spoolDirectory = path.join(dir, "spool");
+    const asked = "小米mimo/worker-model";
+    const bundle = await readBundle(spoolDirectory, "unicode-model", [
+      {
+        body: JSON.stringify({
+          headers: { "x-ccr-client-model": encodeCcrClientModelHeader(asked) },
+          method: "POST",
+          url: "/v1/messages"
+        }),
+        partType: "client_request_metadata"
+      },
+      { body: JSON.stringify({ model: "body-model-must-not-be-read" }), partType: "client_request" },
+      {
+        body: JSON.stringify({ method: "POST", url: "https://upstream.example/v1/messages" }),
+        partType: "upstream_request_metadata"
+      },
+      { body: JSON.stringify({ statusCode: 200 }), partType: "upstream_response_metadata" }
+    ]);
+
+    assert.equal(bundle.update.clientModel, asked);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+// Concurrent openers race the request-log schema upgrade: each reads
+// `PRAGMA table_info` once and then adds columns. If another opener adds one in
+// between, this process's ALTER throws `duplicate column name` and the database
+// open fails, taking request logging down with it. The staled-columns-set call
+// below is exactly that moment: the column exists but this process has not seen
+// it yet.
+test("a column added by a concurrent opener is adopted instead of failing the open", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-duplicate-column-test-"));
+  const dbFile = path.join(dir, "request-logs.sqlite");
+  try {
+    const database = createBetterSqliteDatabase(dbFile);
+    try {
+      database.exec("CREATE TABLE request_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, client_model TEXT NOT NULL DEFAULT '')");
+
+      const staleColumns = new Set(["id"]);
+      addColumnDuplicateTolerant(database, staleColumns, "request_logs", "client_model", "TEXT NOT NULL DEFAULT ''");
+      assert.equal(staleColumns.has("client_model"), true);
+      assert.equal(database.prepare("SELECT COUNT(*) AS total FROM request_logs").get().total, 0);
+
+      // A column that does not exist yet is still added normally.
+      addColumnDuplicateTolerant(database, staleColumns, "request_logs", "route_reason", "TEXT NOT NULL DEFAULT ''");
+      assert.equal(staleColumns.has("route_reason"), true);
+      const columns = new Set(database.prepare("PRAGMA table_info(request_logs)").all().map((row) => String(row.name)));
+      assert.equal(columns.has("route_reason"), true);
+
+      // The two sibling tables on the same open path adopt the same way.
+      database.exec(`
+        CREATE TABLE request_route_traces (id INTEGER PRIMARY KEY AUTOINCREMENT, trace_json TEXT NOT NULL DEFAULT '');
+        CREATE TABLE request_log_pending_updates (request_id TEXT PRIMARY KEY, update_bytes INTEGER NOT NULL DEFAULT 0);
+      `);
+      const routeTraceColumns = new Set(["id"]);
+      addColumnDuplicateTolerant(database, routeTraceColumns, "request_route_traces", "trace_json", "TEXT NOT NULL DEFAULT ''");
+      assert.equal(routeTraceColumns.has("trace_json"), true);
+      const pendingUpdateColumns = new Set(["request_id"]);
+      addColumnDuplicateTolerant(database, pendingUpdateColumns, "request_log_pending_updates", "update_bytes", "INTEGER NOT NULL DEFAULT 0");
+      assert.equal(pendingUpdateColumns.has("update_bytes"), true);
+
+      // Only the duplicate error is adopted; every other failure still surfaces.
+      assert.throws(
+        () => addColumnDuplicateTolerant(database, new Set(), "request_logs_missing", "client_model", "TEXT"),
+        /no such table/i
+      );
+    } finally {
+      database.close();
     }
   } finally {
     rmSync(dir, { force: true, recursive: true });
