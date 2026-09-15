@@ -266,7 +266,13 @@ export class UsageStore {
       path: input.path,
       client: input.client,
       provider,
-      pricing: providerModelPricingForUsage(input.config, provider, model),
+      // Price the model that actually served the request. After a rewrite or
+      // fallback the display model is still the requested alias.
+      pricing: providerModelPricingForUsage(
+        input.config,
+        provider,
+        fallbackAttribution.model ?? input.fallbackModel ?? model
+      ),
       credentialId: readCredentialId(input.responseHeaders),
       requestId: input.requestId,
       statusCode: input.statusCode,

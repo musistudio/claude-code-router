@@ -14,7 +14,7 @@ import {
   ProviderAccountTestResult, providerBaseUrl, providerCapabilitiesSummary, ProviderCredentialDraft, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerDraftSafetyIssue, providerCredentialDraftPatchFromJson, providerHttpJsonConnectorFromDraft,
   providerBrowserConnectorFromDraft, providerBrowserCredentialsOptions,
   ProviderConnectivityCheckReport, providerCapabilityBaseUrlForProtocol, providerConnectivityApiKeyFromDraft, providerDeepLinkDisplayIcon, providerDraftHasReadyCredentialPool, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerProbeHasSupportedProtocol,
-  providerDisplayIcon, providerGlobalBaseUrlForProbe, providerModelDisplayName, providerModelDisplayTitle, providerProtocolOptions, providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
+  providerDisplayIcon, providerGlobalBaseUrlForProbe, providerModelDisplayName, providerModelDisplayTitle, providerProbeModelsForProtocol, providerProtocolOptions, providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
   RefreshCw, resolveProviderDeepLinkPreset, ShieldCheck, splitLines, Switch, Tabs, TabsList, TabsTrigger, Textarea, Toggle, translatedProviderProtocolLabel, translateOptions,
   translateProbeProtocolMessage, Trash2, uniqueProviderName, uniqueProviderProtocols, useAppErrorText, useAppText, useEffect, useLayoutEffect, useMemo,
   useRef, useState, X, isGatewayProviderEnabled, isPlainRecord
@@ -1503,9 +1503,8 @@ function LocalAgentProviderImportPanel({
                       </div>
                     ) : (
                       <div className="mt-1 space-y-2 text-[12px] leading-5 text-muted-foreground">
-                        <p>{t("Cannot read local login information. Sign in to the agent and scan again, or configure an API key manually.")}</p>
+                        <p>{t(candidate.detail || "Cannot read local login information. Sign in to the agent and scan again, or configure an API key manually.")}</p>
                         <Button onClick={() => onChange({ presetId: customProviderPresetId }, true)} size="sm" variant="outline">{t("Configure API key manually")}</Button>
-                        {candidate.detail ? <details><summary className="cursor-pointer">{t("Technical details")}</summary><p className="mt-1 break-all">{candidate.detail}</p></details> : null}
                       </div>
                     )}
                   </div>
@@ -1551,15 +1550,16 @@ const localAgentProviderPluginSuffixes: Record<Exclude<LocalAgentProviderCandida
   zcode: ["-zcode-api-key", "-zcode-api-key-internal"]
 };
 
-function localAgentProviderPluginSuffixesForCandidate(candidate: LocalAgentProviderCandidate): string[] {
+export function localAgentProviderPluginSuffixesForCandidate(candidate: LocalAgentProviderCandidate): string[] {
   if (candidate.kind === "opencode") {
-    const baseSuffix = `-opencode-${candidate.protocol.replaceAll("_", "-")}-api-key`;
+    const providerId = candidate.id.startsWith("opencode-go-") ? "opencode-go" : "opencode";
+    const baseSuffix = `-${providerId}-${candidate.protocol.replaceAll("_", "-")}-api-key`;
     return [baseSuffix, `${baseSuffix}-internal`];
   }
   return localAgentProviderPluginSuffixes[candidate.kind];
 }
 
-function localAgentProviderAlreadyImported(
+export function localAgentProviderAlreadyImported(
   candidate: LocalAgentProviderCandidate,
   providers: GatewayProviderConfig[],
   providerPlugins: unknown[]
@@ -2353,7 +2353,7 @@ export function AddProviderForm({
             />
             <div className="sm:col-span-2">
               <ProviderModelPicker
-                catalogModels={probe?.models ?? []}
+                catalogModels={providerProbeModelsForProtocol(probe, draft.protocol)}
                 defaults={draft.catalogModelMetadata}
                 displayNames={draft.modelDisplayNames}
                 loading={probeLoading}

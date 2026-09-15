@@ -2,15 +2,18 @@ import { existsSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type {
+  GatewayProviderCapabilityProtocol,
   GatewayProviderConfig,
   GatewayProviderProtocol,
   LocalAgentProviderCandidate,
   LocalAgentProviderImportResult,
+  ProviderAccountConfig,
   ProviderAccountConnectorConfig
 } from "@ccr/core/contracts/app";
 import {
   apiKeyAuthPlugin,
   bearerAuthPlugin,
+  cloneProviderAccountConfig,
   isRecord,
   missingCandidate,
   parseJsoncRecord,
@@ -24,6 +27,7 @@ import {
   uniqueProviderName,
   uniqueStrings
 } from "@ccr/core/agents/local-providers/shared";
+import { findProviderPresetByBaseUrl } from "@ccr/core/providers/presets/index";
 
 type OpenCodeCredential = {
   apiKey?: string;
@@ -38,15 +42,24 @@ type OpenCodeConfig = {
 
 type OpenCodeCatalog = {
   baseUrl: string;
+  detected: boolean;
   modelDisplayNames: Partial<Record<OpenCodeProtocol, Record<string, string>>>;
   models: Record<OpenCodeProtocol, string[]>;
   name: string;
 };
 
 type OpenCodeProtocol = Exclude<GatewayProviderProtocol, "gemini_interactions">;
+type OpenCodeProviderId = "opencode" | "opencode-go";
 
-const openCodeProviderId = "opencode";
-const openCodeDefaultBaseUrl = "https://opencode.ai/zen/v1";
+const openCodeProviderIds: OpenCodeProviderId[] = ["opencode", "opencode-go"];
+const openCodeDefaultBaseUrls: Record<OpenCodeProviderId, string> = {
+  opencode: "https://opencode.ai/zen/v1",
+  "opencode-go": "https://opencode.ai/zen/go/v1"
+};
+const openCodeDefaultNames: Record<OpenCodeProviderId, string> = {
+  opencode: "OpenCode Zen",
+  "opencode-go": "OpenCode Go"
+};
 const openCodeProtocolOrder: OpenCodeProtocol[] = [
   "openai_responses",
   "anthropic_messages",
@@ -67,60 +80,81 @@ const openCodeFallbackModels: Record<OpenCodeProtocol, string[]> = {
 };
 
 export function opencodeCandidates(): LocalAgentProviderCandidate[] {
-  const credential = readOpenCodeCredential();
-  const invalidCredential = Boolean(credential?.hasCredential && !credential.apiKey);
-  const publicOnly = !credential;
-  const catalog = readOpenCodeCatalog({ publicOnly });
-  const sourceFile = credential?.sourceFile || openCodeModelsCacheFile();
-  return openCodeProtocolOrder.map((protocol) => {
-    const providerName = publicOnly ? "OpenCode Public" : catalog.name;
-    const name = `${providerName} (${openCodeProtocolLabels[protocol]})`;
-    const id = `opencode-api-${protocol.replaceAll("_", "-")}`;
-    const models = catalog.models[protocol];
-    const modelDisplayNames = catalog.modelDisplayNames[protocol];
-    if (publicOnly && models.length > 0) {
-      return {
-        detail: "OpenCode CLI public models detected. No login is required.",
-        id,
-        importable: true,
-        kind: "opencode",
-        modelDisplayNames,
-        models,
-        name,
-        protocol,
-        sourceFile,
-        status: "available"
-      };
+  return openCodeProviderIds.flatMap((providerId) => {
+    const credential = readOpenCodeCredential(providerId);
+    const invalidCredential = Boolean(credential?.hasCredential && !credential.apiKey);
+    const publicOnly = providerId === "opencode" && !credential;
+    const catalog = readOpenCodeCatalog(providerId, { publicOnly });
+    if (providerId === "opencode-go" && !catalog.detected && !credential) {
+      return [];
     }
-    if (invalidCredential) {
-      return {
-        detail: "OpenCode CLI credential was found, but no usable API key was detected.",
-        id,
-        importable: false,
-        kind: "opencode",
-        modelDisplayNames,
-        models,
-        name,
-        protocol,
-        sourceFile,
-        status: "locked"
-      };
-    }
-    if (credential?.apiKey) {
-      return {
-        detail: "OpenCode CLI login detected. Click Import to add it as a gateway provider.",
-        id,
-        importable: true,
-        kind: "opencode",
-        modelDisplayNames,
-        models,
-        name,
-        protocol,
-        sourceFile: credential.sourceFile,
-        status: "available"
-      };
-    }
-    return missingCandidate("opencode", id, name, protocol, models, modelDisplayNames);
+    const hasAnyModels = openCodeProtocolOrder.some((protocol) => catalog.models[protocol].length > 0);
+    const providerLabel = providerId === "opencode-go" ? "OpenCode Go" : "OpenCode CLI";
+    const sourceFile = credential?.sourceFile || openCodeModelsCacheFile();
+    return openCodeProtocolOrder.map((protocol) => {
+      const providerName = publicOnly ? "OpenCode Public" : catalog.name;
+      const name = `${providerName} (${openCodeProtocolLabels[protocol]})`;
+      const id = openCodeCandidateId(providerId, protocol);
+      const models = catalog.models[protocol];
+      const modelDisplayNames = catalog.modelDisplayNames[protocol];
+      if (publicOnly && models.length > 0) {
+        return {
+          detail: "OpenCode CLI public models detected. No login is required.",
+          id,
+          importable: true,
+          kind: "opencode" as const,
+          modelDisplayNames,
+          models,
+          name,
+          protocol,
+          sourceFile,
+          status: "available" as const
+        };
+      }
+      if (invalidCredential) {
+        return {
+          detail: `${providerLabel} credential was found, but no usable API key was detected.`,
+          id,
+          importable: false,
+          kind: "opencode" as const,
+          modelDisplayNames,
+          models,
+          name,
+          protocol,
+          sourceFile,
+          status: "locked" as const
+        };
+      }
+      if (providerId === "opencode-go" && credential?.apiKey && !hasAnyModels) {
+        return {
+          detail: "OpenCode Go credential was found, but no OpenCode Go models were detected. Connect OpenCode Go in OpenCode to refresh its model cache, then rescan.",
+          id,
+          importable: false,
+          kind: "opencode" as const,
+          modelDisplayNames,
+          models,
+          name,
+          protocol,
+          sourceFile: credential.sourceFile,
+          status: "locked" as const
+        };
+      }
+      if (credential?.apiKey && models.length > 0) {
+        return {
+          detail: `${providerLabel} login detected. Click Import to add it as a gateway provider.`,
+          id,
+          importable: true,
+          kind: "opencode" as const,
+          modelDisplayNames,
+          models,
+          name,
+          protocol,
+          sourceFile: credential.sourceFile,
+          status: "available" as const
+        };
+      }
+      return missingCandidate("opencode", id, name, protocol, models, modelDisplayNames);
+    });
   });
 }
 
@@ -128,23 +162,27 @@ export function importOpenCodeProvider(
   candidate: LocalAgentProviderCandidate,
   providerNames: string[]
 ): LocalAgentProviderImportResult {
-  const credential = readOpenCodeCredential();
-  if (credential?.hasCredential && !credential.apiKey) {
-    throw new Error("OpenCode CLI API key was not found.");
-  }
-  const publicOnly = !credential;
-  const catalog = readOpenCodeCatalog({ publicOnly });
   if (!isOpenCodeProtocol(candidate.protocol)) {
     throw new Error(`Unsupported OpenCode protocol: ${candidate.protocol}`);
   }
   const protocol = candidate.protocol;
+  const providerId = openCodeProviderIdFromCandidate(candidate);
+  const providerLabel = providerId === "opencode-go" ? "OpenCode Go" : "OpenCode CLI";
+  const credential = readOpenCodeCredential(providerId);
+  if (credential?.hasCredential && !credential.apiKey) {
+    throw new Error(`${providerLabel} API key was not found.`);
+  }
+  const publicOnly = providerId === "opencode" && !credential;
+  const catalog = readOpenCodeCatalog(providerId, { publicOnly });
   if (publicOnly && !candidate.models.every((model) => catalog.models[protocol].includes(model))) {
     throw new Error("OpenCode CLI public models were not found.");
   }
   const provider = providerPayload(
     candidate,
     uniqueProviderName(providerNames, candidate.name),
-    catalog.baseUrl
+    catalog.baseUrl,
+    openCodeProviderAccountConfig(catalog.baseUrl),
+    { preserveAllModels: providerId === "opencode-go" }
   );
   if (publicOnly) {
     return {
@@ -158,9 +196,9 @@ export function importOpenCodeProvider(
   }
   const apiKey = credential?.apiKey;
   if (!apiKey) {
-    throw new Error("OpenCode CLI API key was not found.");
+    throw new Error(`${providerLabel} API key was not found.`);
   }
-  const authSuffix = `opencode-${candidate.protocol.replaceAll("_", "-")}-api-key`;
+  const authSuffix = `${providerId}-${candidate.protocol.replaceAll("_", "-")}-api-key`;
   return {
     candidate,
     provider,
@@ -183,6 +221,10 @@ export function removeOpenCodeProviderAccountConfig(provider: GatewayProviderCon
   };
 }
 
+function openCodeProviderAccountConfig(baseUrl: string): ProviderAccountConfig | undefined {
+  return cloneProviderAccountConfig(findProviderPresetByBaseUrl(baseUrl)?.account);
+}
+
 function isGeneratedOpenCodeAccountConnector(connector: ProviderAccountConnectorConfig): boolean {
   if (connector.type !== "local-estimate") {
     return false;
@@ -191,6 +233,74 @@ function isGeneratedOpenCodeAccountConnector(connector: ProviderAccountConnector
   return ids.has("opencode_monthly_spend") &&
     ids.has("opencode_monthly_tokens") &&
     ids.has("opencode_monthly_requests");
+}
+
+/**
+ * Returns the local OpenCode catalog models that belong to the requested
+ * upstream protocols for an official Zen or Go endpoint, or undefined when no
+ * local OpenCode metadata is available. Provider model discovery uses this so a
+ * multi-protocol endpoint like OpenCode Go does not list chat-only models on a
+ * Responses or Anthropic provider.
+ */
+export function opencodeCatalogProtocolModels(
+  baseUrl: string,
+  protocols: readonly GatewayProviderCapabilityProtocol[]
+): string[] | undefined {
+  const protocolModels = opencodeCatalogProtocolModelMap(baseUrl, protocols);
+  if (!protocolModels) {
+    return undefined;
+  }
+  return uniqueStrings(Object.values(protocolModels).flatMap((models) => models ?? []));
+}
+
+/**
+ * Returns the local OpenCode catalog models grouped by protocol for an official
+ * Zen or Go endpoint, or undefined when no local OpenCode metadata is available.
+ * Provider model discovery uses this so a multi-protocol endpoint like OpenCode
+ * Go does not list chat-only models on a Responses or Anthropic provider. The
+ * Live discovery already reflects the credentials supplied to the probe, so
+ * the catalog is not reduced using unrelated local-login state; the zero-cost
+ * filter applies only to login-less imports.
+ */
+export function opencodeCatalogProtocolModelMap(
+  baseUrl: string,
+  protocols: readonly GatewayProviderCapabilityProtocol[]
+): Partial<Record<GatewayProviderCapabilityProtocol, string[]>> | undefined {
+  const providerId = openCodeProviderIdFromBaseUrl(baseUrl);
+  if (!providerId) {
+    return undefined;
+  }
+  const catalog = readOpenCodeCatalog(providerId, { publicOnly: false });
+  if (!catalog.detected) {
+    return undefined;
+  }
+  const protocolModels: Partial<Record<GatewayProviderCapabilityProtocol, string[]>> = {};
+  for (const protocol of protocols) {
+    if (!openCodeProtocolOrder.includes(protocol as OpenCodeProtocol)) {
+      continue;
+    }
+    protocolModels[protocol] = [...catalog.models[protocol as OpenCodeProtocol]];
+  }
+  return protocolModels;
+}
+
+function openCodeProviderIdFromBaseUrl(baseUrl: string): OpenCodeProviderId | undefined {
+  try {
+    const url = new URL(baseUrl);
+    if (url.hostname !== "opencode.ai") {
+      return undefined;
+    }
+    const pathname = url.pathname.replace(/\/+$/, "");
+    if (pathname === "/zen/go" || pathname.startsWith("/zen/go/")) {
+      return "opencode-go";
+    }
+    if (pathname === "/zen" || pathname.startsWith("/zen/")) {
+      return "opencode";
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function openCodeAuthPlugin(
@@ -221,10 +331,10 @@ function openCodeAuthPlugin(
   return bearerAuthPlugin(suffix, apiKey, {}, providerName);
 }
 
-function readOpenCodeCredential(): OpenCodeCredential | undefined {
-  const config = readOpenCodeConfig();
-  const configuredApiKey = configuredOpenCodeApiKey(config);
-  const configuredApiKeyPresent = configuredOpenCodeApiKeyIsPresent(config);
+function readOpenCodeCredential(providerId: OpenCodeProviderId): OpenCodeCredential | undefined {
+  const config = readOpenCodeConfig(providerId);
+  const configuredApiKey = configuredOpenCodeApiKey(config, providerId);
+  const configuredApiKeyPresent = configuredOpenCodeApiKeyIsPresent(config, providerId);
   if (configuredApiKey) {
     return {
       apiKey: configuredApiKey,
@@ -236,7 +346,7 @@ function readOpenCodeCredential(): OpenCodeCredential | undefined {
   const inlineAuth = process.env.OPENCODE_AUTH_CONTENT?.trim();
   if (inlineAuth) {
     const record = parseJsoncRecord(inlineAuth);
-    const credential = openCodeCredentialFromRecord(record, "env:OPENCODE_AUTH_CONTENT");
+    const credential = openCodeCredentialFromRecord(record, providerId, "env:OPENCODE_AUTH_CONTENT");
     if (credential) {
       return credential;
     }
@@ -247,15 +357,20 @@ function readOpenCodeCredential(): OpenCodeCredential | undefined {
     if (!record) {
       continue;
     }
-    const credential = openCodeCredentialFromRecord(record, sourceFile);
+    const credential = openCodeCredentialFromRecord(record, providerId, sourceFile);
     if (credential) {
       return credential;
     }
   }
 
-  const environmentApiKey = process.env.OPENCODE_API_KEY?.trim();
-  if (environmentApiKey) {
-    return { apiKey: environmentApiKey, hasCredential: true, sourceFile: "env:OPENCODE_API_KEY" };
+  const environmentNames = providerId === "opencode-go"
+    ? ["OPENCODE_GO_API_KEY", "OPENCODE_API_KEY"]
+    : ["OPENCODE_API_KEY"];
+  for (const environmentName of environmentNames) {
+    const environmentApiKey = process.env[environmentName]?.trim();
+    if (environmentApiKey) {
+      return { apiKey: environmentApiKey, hasCredential: true, sourceFile: `env:${environmentName}` };
+    }
   }
 
   return configuredApiKeyPresent
@@ -265,12 +380,13 @@ function readOpenCodeCredential(): OpenCodeCredential | undefined {
 
 function openCodeCredentialFromRecord(
   record: Record<string, unknown> | undefined,
+  providerId: OpenCodeProviderId,
   sourceFile: string
 ): OpenCodeCredential | undefined {
-  if (!record || !(openCodeProviderId in record)) {
+  if (!record || !(providerId in record)) {
     return undefined;
   }
-  const value = record[openCodeProviderId];
+  const value = record[providerId];
   if (typeof value === "string") {
     return {
       apiKey: readString(value),
@@ -288,8 +404,8 @@ function openCodeCredentialFromRecord(
   };
 }
 
-function configuredOpenCodeApiKey(config: OpenCodeConfig): string | undefined {
-  const value = configuredOpenCodeApiKeyValue(config);
+function configuredOpenCodeApiKey(config: OpenCodeConfig, providerId: OpenCodeProviderId): string | undefined {
+  const value = configuredOpenCodeApiKeyValue(config, providerId);
   if (!value) {
     return undefined;
   }
@@ -311,28 +427,30 @@ function configuredOpenCodeApiKey(config: OpenCodeConfig): string | undefined {
   return value;
 }
 
-function configuredOpenCodeApiKeyIsPresent(config: OpenCodeConfig): boolean {
-  return Boolean(configuredOpenCodeApiKeyValue(config));
+function configuredOpenCodeApiKeyIsPresent(config: OpenCodeConfig, providerId: OpenCodeProviderId): boolean {
+  return Boolean(configuredOpenCodeApiKeyValue(config, providerId));
 }
 
-function configuredOpenCodeApiKeyValue(config: OpenCodeConfig): string | undefined {
-  const provider = openCodeProviderConfig(config.record);
+function configuredOpenCodeApiKeyValue(config: OpenCodeConfig, providerId: OpenCodeProviderId): string | undefined {
+  const provider = openCodeProviderConfig(config.record, providerId);
   const options = isRecord(provider?.options) ? provider.options : {};
   return readString(options.apiKey) || readString(options.api_key);
 }
 
-function readOpenCodeCatalog(options: { publicOnly: boolean }): OpenCodeCatalog {
+function readOpenCodeCatalog(providerId: OpenCodeProviderId, options: { publicOnly: boolean }): OpenCodeCatalog {
   const cache = readJsonRecord(openCodeModelsCacheFile());
-  const cachedProvider = isRecord(cache?.[openCodeProviderId]) ? cache[openCodeProviderId] : {};
-  const config = readOpenCodeConfig().record;
-  const configuredProvider = openCodeProviderConfig(config) ?? {};
+  const cachedProviderValue = cache?.[providerId];
+  const cachedProvider = isRecord(cachedProviderValue) ? cachedProviderValue : {};
+  const config = readOpenCodeConfig(providerId).record;
+  const configuredProviderValue = openCodeProviderConfig(config, providerId);
+  const configuredProvider = configuredProviderValue ?? {};
   const configuredOptions = isRecord(configuredProvider.options) ? configuredProvider.options : {};
   const baseUrl =
     readString(configuredOptions.baseURL) ||
     readString(configuredOptions.baseUrl) ||
     readString(cachedProvider.api) ||
-    openCodeDefaultBaseUrl;
-  const name = readString(configuredProvider.name) || readString(cachedProvider.name) || "OpenCode Zen";
+    openCodeDefaultBaseUrls[providerId];
+  const name = readString(configuredProvider.name) || readString(cachedProvider.name) || openCodeDefaultNames[providerId];
   const providerNpm = readString(configuredProvider.npm) || readString(cachedProvider.npm) || "@ai-sdk/openai-compatible";
   const cachedModels = isRecord(cachedProvider.models) ? cachedProvider.models : {};
   const configuredModels = isRecord(configuredProvider.models) ? configuredProvider.models : {};
@@ -349,8 +467,8 @@ function readOpenCodeCatalog(options: { publicOnly: boolean }): OpenCodeCatalog 
   }
 
   const selectedModels = uniqueStrings([
-    openCodeModelId(readString(config.model)),
-    openCodeModelId(readString(config.small_model))
+    openCodeModelId(readString(config.model), providerId),
+    openCodeModelId(readString(config.small_model), providerId)
   ]);
   const orderedModelIds = uniqueStrings([...selectedModels, ...mergedModels.keys()]);
   const models = emptyOpenCodeProtocolRecord<string[]>(() => []);
@@ -378,7 +496,7 @@ function readOpenCodeCatalog(options: { publicOnly: boolean }): OpenCodeCatalog 
     models[protocol] = uniqueStrings(
       models[protocol].length > 0
         ? models[protocol]
-        : options.publicOnly ? [] : openCodeFallbackModels[protocol]
+        : options.publicOnly || providerId === "opencode-go" ? [] : openCodeFallbackModels[protocol]
     );
     const allowedModels = new Set(models[protocol]);
     modelDisplayNames[protocol] = Object.fromEntries(
@@ -386,7 +504,13 @@ function readOpenCodeCatalog(options: { publicOnly: boolean }): OpenCodeCatalog 
     );
   }
 
-  return { baseUrl, modelDisplayNames, models, name };
+  return {
+    baseUrl,
+    detected: isRecord(cachedProviderValue) || Boolean(configuredProviderValue),
+    modelDisplayNames,
+    models,
+    name
+  };
 }
 
 function openCodeModelIsFree(model: Record<string, unknown>): boolean {
@@ -445,19 +569,19 @@ function isOpenCodeProtocol(protocol: GatewayProviderProtocol): protocol is Open
   return protocol !== "gemini_interactions";
 }
 
-function openCodeModelId(value: string | undefined): string | undefined {
-  if (!value?.startsWith(`${openCodeProviderId}/`)) {
+function openCodeModelId(value: string | undefined, providerId: OpenCodeProviderId): string | undefined {
+  if (!value?.startsWith(`${providerId}/`)) {
     return undefined;
   }
-  return readString(value.slice(openCodeProviderId.length + 1));
+  return readString(value.slice(providerId.length + 1));
 }
 
-function openCodeProviderConfig(config: Record<string, unknown>): Record<string, unknown> | undefined {
+function openCodeProviderConfig(config: Record<string, unknown>, providerId: OpenCodeProviderId): Record<string, unknown> | undefined {
   const providers = isRecord(config.provider) ? config.provider : undefined;
-  return isRecord(providers?.[openCodeProviderId]) ? providers[openCodeProviderId] : undefined;
+  return isRecord(providers?.[providerId]) ? providers[providerId] : undefined;
 }
 
-function readOpenCodeConfig(): OpenCodeConfig {
+function readOpenCodeConfig(providerId: OpenCodeProviderId): OpenCodeConfig {
   let record: Record<string, unknown> = {};
   let sourceFile: string | undefined;
   for (const file of openCodeConfigFiles()) {
@@ -466,7 +590,7 @@ function readOpenCodeConfig(): OpenCodeConfig {
       continue;
     }
     record = deepMergeRecords(record, next);
-    if (openCodeProviderConfig(next)) {
+    if (openCodeProviderConfig(next, providerId)) {
       sourceFile = file;
     }
   }
@@ -475,12 +599,25 @@ function readOpenCodeConfig(): OpenCodeConfig {
     const next = parseJsoncRecord(inlineConfig);
     if (next) {
       record = deepMergeRecords(record, next);
-      if (openCodeProviderConfig(next)) {
+      if (openCodeProviderConfig(next, providerId)) {
         sourceFile = "env:OPENCODE_CONFIG_CONTENT";
       }
     }
   }
   return { record, sourceFile };
+}
+
+function openCodeCandidateId(providerId: OpenCodeProviderId, protocol: OpenCodeProtocol): string {
+  return `${providerId}-api-${protocol.replaceAll("_", "-")}`;
+}
+
+function openCodeProviderIdFromCandidate(candidate: LocalAgentProviderCandidate): OpenCodeProviderId {
+  for (const providerId of openCodeProviderIds) {
+    if (isOpenCodeProtocol(candidate.protocol) && candidate.id === openCodeCandidateId(providerId, candidate.protocol)) {
+      return providerId;
+    }
+  }
+  throw new Error(`Unsupported OpenCode provider candidate: ${candidate.id}`);
 }
 
 function deepMergeRecords(left: Record<string, unknown>, right: Record<string, unknown>): Record<string, unknown> {

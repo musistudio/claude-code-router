@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { RequestLogStore } from "@ccr/core/observability/request-log-store.ts";
+import { providerRuntimeId } from "@ccr/core/routing/model-registry.ts";
 import { createBetterSqliteDatabase } from "@ccr/core/storage/sqlite-native.ts";
 import { GatewayBillingSynchronizer } from "@ccr/core/usage/billing-sync.ts";
 import { resolveUsageModelAttribution } from "@ccr/core/usage/model-attribution.ts";
@@ -284,6 +285,74 @@ test("UsageStore keeps the Fusion logical model while grouping by the upstream m
     assert.equal(stats.models[0]?.provider, "Kimi Code - Coding Plan");
     assert.equal(stats.recentRequests[0]?.logicalModel, "Fusion/kimisearch");
     assert.equal(stats.totals.requestCount, 1);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("UsageStore prices the routed upstream model when the response echoes a rule alias", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-alias-pricing-test-"));
+  try {
+    const pricing = {
+      inputUsdPerMillionTokens: 1,
+      outputUsdPerMillionTokens: 2
+    };
+    const provider = {
+      baseUrl: "https://api.example.com",
+      modelMetadata: { "Vendor/some-model": { pricing } },
+      models: ["Vendor/some-model"],
+      name: "ProviderA",
+      type: "anthropic_messages"
+    };
+    const estimatedInputs = [];
+    const store = new UsageStore(path.join(dir, "usage.sqlite"), {
+      estimateCost: async (input) => {
+        estimatedInputs.push({
+          model: input.model,
+          pricing: input.pricing,
+          provider: input.provider
+        });
+        return input.pricing
+          ? { amountUsd: 2, model: input.model, source: "custom" }
+          : undefined;
+      }
+    });
+
+    await store.recordCapture({
+      bodyText: JSON.stringify({
+        model: "my-alias",
+        usage: { input_tokens: 1000000, output_tokens: 500000 }
+      }),
+      config: { Providers: [provider] },
+      durationMs: 40,
+      fallbackModel: `${providerRuntimeId(provider)}::anthropic_messages/Vendor/some-model`,
+      method: "POST",
+      path: "/v1/messages",
+      providerName: "ProviderA",
+      requestId: "alias-pricing-request",
+      responseHeaders: new Headers({ "content-type": "application/json" }),
+      statusCode: 200
+    });
+
+    const stats = await store.getStats("today", { includeProxy: true });
+    assert.equal(stats.models[0]?.model, "my-alias");
+    assert.equal(stats.models[0]?.provider, "ProviderA");
+    assert.equal(stats.totals.costUsd, 2);
+    assert.deepEqual(estimatedInputs, [{
+      model: "my-alias",
+      pricing,
+      provider: "ProviderA"
+    }]);
+
+    const database = createBetterSqliteDatabase(path.join(dir, "usage.sqlite"));
+    try {
+      const row = database.prepare("SELECT model, cost_source, cost_usd FROM usage_events").get();
+      assert.equal(row.model, "my-alias");
+      assert.equal(row.cost_source, "custom");
+      assert.equal(row.cost_usd, 2);
+    } finally {
+      database.close();
+    }
   } finally {
     rmSync(dir, { force: true, recursive: true });
   }
