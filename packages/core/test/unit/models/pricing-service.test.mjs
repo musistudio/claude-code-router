@@ -70,12 +70,32 @@ test("custom pricing applies separate 5m and 1h cache-write rates", () => {
 test("provider model pricing lookup is case-insensitive and accepts a full selector", () => {
   const config = {
     Providers: [{
-      modelMetadata: { "Custom-Model": { pricing } },
-      models: ["Custom-Model"],
+      modelMetadata: {
+        "Custom-Model": { pricing },
+        "Vendor/some-model": { pricing }
+      },
+      models: ["Custom-Model", "Vendor/some-model"],
       name: "Custom"
     }]
   };
 
   assert.deepEqual(providerModelPricingForUsage(config, "custom", "CUSTOM/Custom-Model"), pricing);
+  assert.deepEqual(
+    providerModelPricingForUsage(config, "custom", "custom::openai_chat_completions/Custom-Model"),
+    pricing
+  );
+  assert.deepEqual(
+    providerModelPricingForUsage(
+      config,
+      "custom",
+      "custom::openai_chat_completions::cred:main/Custom-Model"
+    ),
+    pricing
+  );
+  assert.deepEqual(
+    providerModelPricingForUsage(config, "custom", "custom::anthropic_messages/Vendor/some-model"),
+    pricing
+  );
+  assert.equal(providerModelPricingForUsage(config, "custom", "my-alias"), undefined);
   assert.equal(providerModelPricingForUsage(config, "other", "custom-model"), undefined);
 });

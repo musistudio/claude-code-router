@@ -122,6 +122,7 @@ export function providerModelPricingForUsage(
   if (!provider) {
     return undefined;
   }
+  normalizedModel = unwrapRoutedModelName(normalizedModel);
   const selectorPrefix = `${normalizedProvider}/`;
   if (normalizedModel.startsWith(selectorPrefix)) {
     normalizedModel = normalizedModel.slice(selectorPrefix.length);
@@ -129,6 +130,20 @@ export function providerModelPricingForUsage(
   const metadata = Object.entries(provider.modelMetadata ?? {})
     .find(([candidate]) => candidate.trim().toLowerCase() === normalizedModel)?.[1];
   return metadata?.pricing;
+}
+
+function unwrapRoutedModelName(model: string): string {
+  // Usage and request logs can hand us a route selector
+  // ("<providerId>::<protocol>/<model>") rather than a plain model name.
+  const routeSeparator = model.indexOf("::");
+  if (routeSeparator < 0) {
+    return model;
+  }
+  const modelStart = model.indexOf("/", routeSeparator);
+  if (modelStart > 0 && modelStart < model.length - 1) {
+    return model.slice(modelStart + 1);
+  }
+  return model;
 }
 
 function estimateUsageCostFromCustomPricing(
