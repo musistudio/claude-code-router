@@ -1570,81 +1570,137 @@ function OverviewActivityGrid({
   dimensions: OverviewWidgetDimensions;
 }) {
   const t = useAppText();
+  const gridFrameRef = useRef<HTMLDivElement>(null);
+  const gridFrameSize = useElementSize(gridFrameRef);
   const showDayLabels = dimensions.width >= 2;
   const showMonthLabels = dimensions.height >= 2;
   const dayLabels = [t("M"), "", t("W"), "", t("F"), "", ""];
   const cellGap = dimensions.height <= 1 ? 2 : dimensions.width >= 3 ? 4 : 3;
   const labelColumnWidth = showDayLabels ? 20 : 0;
+  const monthLabelHeight = showMonthLabels ? 10 : 0;
+  const monthLabelGap = showMonthLabels ? 4 : 0;
+  const cellSize = activityGridCellSize({
+    availableHeight: gridFrameSize.height,
+    availableWidth: gridFrameSize.width,
+    cellGap,
+    fallbackCellSize: dimensions.height <= 1 ? 8 : dimensions.width >= 3 ? 10 : 9,
+    labelColumnWidth,
+    monthLabelGap,
+    monthLabelHeight,
+    weekCount: activity.weekCount
+  });
+  const activityColumns = `repeat(${activity.weekCount}, ${cellSize}px)`;
+  const gridTemplateColumns = `${showDayLabels ? `${labelColumnWidth}px ` : ""}${activityColumns}`;
+  const gridWidth = labelColumnWidth + (labelColumnWidth ? cellGap : 0) + activity.weekCount * cellSize + Math.max(0, activity.weekCount - 1) * cellGap;
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <div className="min-w-0 overflow-visible">
-        <div className="w-full">
-          {showMonthLabels ? (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" ref={gridFrameRef}>
+      {cellSize > 0 ? (
+        <div className="min-w-0 overflow-visible">
+          <div className="w-full max-w-full" style={{ width: `${gridWidth}px` }}>
+            {showMonthLabels ? (
+              <div
+                className="mb-1 grid text-[10px] font-medium leading-none text-muted-foreground"
+                style={{
+                  columnGap: `${cellGap}px`,
+                  gridTemplateColumns: activityColumns,
+                  marginLeft: `${labelColumnWidth ? labelColumnWidth + cellGap : 0}px`
+                }}
+              >
+                {activity.months.map((month) => (
+                  <span
+                    className="truncate"
+                    key={`${month.label}-${month.weekIndex}`}
+                    style={{ gridColumn: `${month.weekIndex + 1} / span ${Math.min(4, activity.weekCount - month.weekIndex)}` }}
+                  >
+                    {month.label}
+                  </span>
+                ))}
+              </div>
+            ) : null}
             <div
-              className="mb-1 grid text-[10px] font-medium text-muted-foreground"
+              className="grid min-h-[64px]"
+              role="img"
+              aria-label={`${t("Activity")} ${t("Tokens")}`}
               style={{
-                columnGap: `${cellGap}px`,
-                gridTemplateColumns: `repeat(${activity.weekCount}, minmax(0, 1fr))`,
-                marginLeft: `${labelColumnWidth ? labelColumnWidth + cellGap : 0}px`
+                gap: `${cellGap}px`,
+                gridTemplateColumns,
+                gridTemplateRows: `repeat(7, ${cellSize}px)`
               }}
             >
-              {activity.months.map((month) => (
+              {showDayLabels ? dayLabels.map((label, index) => (
                 <span
-                  className="truncate"
-                  key={`${month.label}-${month.weekIndex}`}
-                  style={{ gridColumn: `${month.weekIndex + 1} / span ${Math.min(4, activity.weekCount - month.weekIndex)}` }}
+                  className="self-center truncate text-[10px] font-medium leading-none text-muted-foreground"
+                  key={`${label}-${index}`}
+                  style={{ gridColumn: 1, gridRow: index + 1 }}
                 >
-                  {month.label}
+                  {label}
                 </span>
+              )) : null}
+              {activity.cells.map((cell) => (
+                <UiTooltip
+                  aria-label={`${cell.dateLabel}: ${formatActivityTokenCount(cell.totalTokens)} ${t("tokens")}`}
+                  align={cell.weekIndex <= 1 ? "start" : cell.weekIndex >= activity.weekCount - 2 ? "end" : "center"}
+                  className="overview-activity-cell rounded-[4px]"
+                  content={(
+                    <>
+                      <span className="block font-semibold">{cell.dateLabel}</span>
+                      <span className="mt-0.5 block text-muted-foreground">{formatActivityTokenCount(cell.totalTokens)} {t("tokens")}</span>
+                    </>
+                  )}
+                  contentClassName="min-w-[112px] border-border/70 px-2 py-1.5 text-left text-[11px] font-normal"
+                  key={cell.dateKey}
+                  side={cell.dayIndex <= 1 ? "bottom" : "top"}
+                  style={{
+                    backgroundColor: overviewActivityColor(cell.intensity, cell.inObservedRange),
+                    gridColumn: cell.weekIndex + (showDayLabels ? 2 : 1),
+                    gridRow: cell.dayIndex + 1,
+                    height: `${cellSize}px`,
+                    width: `${cellSize}px`
+                  }}
+                />
               ))}
             </div>
-          ) : null}
-          <div
-            className="grid min-h-[64px]"
-            role="img"
-            aria-label={`${t("Activity")} ${t("Tokens")}`}
-            style={{
-              gap: `${cellGap}px`,
-              gridTemplateColumns: `${showDayLabels ? `${labelColumnWidth}px ` : ""}repeat(${activity.weekCount}, minmax(0, 1fr))`,
-              gridTemplateRows: "repeat(7, auto)"
-            }}
-          >
-            {showDayLabels ? dayLabels.map((label, index) => (
-              <span
-                className="self-center truncate text-[10px] font-medium leading-none text-muted-foreground"
-                key={`${label}-${index}`}
-                style={{ gridColumn: 1, gridRow: index + 1 }}
-              >
-                {label}
-              </span>
-            )) : null}
-            {activity.cells.map((cell) => (
-              <UiTooltip
-                aria-label={`${cell.dateLabel}: ${formatActivityTokenCount(cell.totalTokens)} ${t("tokens")}`}
-                align={cell.weekIndex <= 1 ? "start" : cell.weekIndex >= activity.weekCount - 2 ? "end" : "center"}
-                className="overview-activity-cell aspect-square w-full rounded-[4px]"
-                content={(
-                  <>
-                    <span className="block font-semibold">{cell.dateLabel}</span>
-                    <span className="mt-0.5 block text-muted-foreground">{formatActivityTokenCount(cell.totalTokens)} {t("tokens")}</span>
-                  </>
-                )}
-                contentClassName="min-w-[112px] border-border/70 px-2 py-1.5 text-left text-[11px] font-normal"
-                key={cell.dateKey}
-                side={cell.dayIndex <= 1 ? "bottom" : "top"}
-                style={{
-                  backgroundColor: overviewActivityColor(cell.intensity, cell.inObservedRange),
-                  gridColumn: cell.weekIndex + (showDayLabels ? 2 : 1),
-                  gridRow: cell.dayIndex + 1
-                }}
-              />
-            ))}
           </div>
         </div>
-      </div>
+      ) : null}
     </div>
   );
+}
+
+type ActivityGridCellSizeInput = {
+  availableHeight: number;
+  availableWidth: number;
+  cellGap: number;
+  fallbackCellSize: number;
+  labelColumnWidth: number;
+  monthLabelGap: number;
+  monthLabelHeight: number;
+  weekCount: number;
+};
+
+function activityGridCellSize({
+  availableHeight,
+  availableWidth,
+  cellGap,
+  fallbackCellSize,
+  labelColumnWidth,
+  monthLabelGap,
+  monthLabelHeight,
+  weekCount
+}: ActivityGridCellSizeInput): number {
+  if (weekCount <= 0) {
+    return 0;
+  }
+  if (availableHeight <= 0 || availableWidth <= 0) {
+    return fallbackCellSize;
+  }
+
+  const widthForCells = availableWidth - labelColumnWidth - (labelColumnWidth ? cellGap : 0) - Math.max(0, weekCount - 1) * cellGap;
+  const heightForCells = availableHeight - monthLabelHeight - monthLabelGap - 6 * cellGap;
+  const maxByWidth = widthForCells / weekCount;
+  const maxByHeight = heightForCells / 7;
+  return Math.max(1, Math.floor(Math.min(maxByWidth, maxByHeight)));
 }
 
 function formatActivityTokenCount(value: number): string {
@@ -6371,6 +6427,16 @@ function UsageTooltip({
 
 function ChartFrame({ children, fill = false }: { children: (size: { height: number; width: number }) => ReactNode; fill?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const size = useElementSize(containerRef);
+
+  return (
+    <div className={cn(fill ? "h-full min-h-[120px]" : "h-[260px]", "min-w-0")} ref={containerRef}>
+      {size.height > 0 && size.width > 0 ? children(size) : null}
+    </div>
+  );
+}
+
+function useElementSize<T extends HTMLElement>(containerRef: { current: T | null }) {
   const [size, setSize] = useState({ height: 0, width: 0 });
 
   useEffect(() => {
@@ -6399,13 +6465,9 @@ function ChartFrame({ children, fill = false }: { children: (size: { height: num
 
     observer.observe(container);
     return () => observer.disconnect();
-  }, []);
+  }, [containerRef]);
 
-  return (
-    <div className={cn(fill ? "h-full min-h-[120px]" : "h-[260px]", "min-w-0")} ref={containerRef}>
-      {size.height > 0 && size.width > 0 ? children(size) : null}
-    </div>
-  );
+  return size;
 }
 
 function TokenTooltip({
