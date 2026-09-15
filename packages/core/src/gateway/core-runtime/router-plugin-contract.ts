@@ -18,6 +18,12 @@ export const ccrRouteReasonHeader = "x-ccr-route-reason";
 export const ccrRouteSourceHeader = "x-ccr-route-source";
 export const ccrRouteDiagnosticsHeader = "x-ccr-route-diagnostics";
 export const ccrRoutedModelHeader = "x-ccr-routed-model";
+// The model the client asked for, before routing moved it. Persists the ask on
+// the wire so a raw-trace reader does not have to read the client request body,
+// which is allowed to be far larger than a request log ever keeps. The value is
+// base64url-encoded because model selectors can carry non-ASCII provider names,
+// which `sanitizeHeaderValue` would mangle and header values cannot carry raw.
+export const ccrClientModelHeader = "x-ccr-client-model";
 export const ccrRouteFallbackHeader = "x-ccr-route-fallback";
 export const ccrRouteSessionIdHeader = "x-ccr-route-session-id";
 export const ccrRouteTokenCountHeader = "x-ccr-route-token-count";
@@ -25,6 +31,7 @@ export const ccrCodexApplyPatchBridgeHeader = "x-ccr-codex-apply-patch-bridge";
 export const ccrCodexMultiAgentBridgeHeader = "x-ccr-codex-multi-agent-bridge";
 export const ccrOpenRouterDiscountRequestIdHeader = "x-ccr-openrouter-discount-request-id";
 export const ccrRouteHeaderNames = [
+  ccrClientModelHeader,
   ccrCodexApplyPatchBridgeHeader,
   ccrCodexMultiAgentBridgeHeader,
   ccrOpenRouterDiscountRequestIdHeader,
@@ -73,6 +80,24 @@ export function decodeCcrRouteFallbackHeader(value: string | undefined): RouterF
   } catch {
     return undefined;
   }
+}
+
+export function encodeCcrClientModelHeader(model: string): string {
+  return Buffer.from(model, "utf8").toString("base64url");
+}
+
+export function decodeCcrClientModelHeader(value: string | undefined): string | undefined {
+  const encoded = value?.trim();
+  if (!encoded) {
+    return undefined;
+  }
+  const decoded = Buffer.from(encoded, "base64url").toString("utf8");
+  // Round-trip so a value that is not actually encoded (or is not valid UTF-8)
+  // yields nothing rather than replacement characters. The check runs on the
+  // untrimmed value so an encoded ask with outer whitespace is trimmed, not lost.
+  return decoded.trim() && Buffer.from(decoded, "utf8").toString("base64url") === encoded
+    ? decoded.trim()
+    : undefined;
 }
 
 function isRouterFallbackConfig(value: unknown): value is RouterFallbackConfig {

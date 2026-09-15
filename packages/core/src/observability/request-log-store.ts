@@ -4616,12 +4616,8 @@ function ensureRequestLogSchema(database: SqlDatabase): void {
   const needsModelSummaryMigration = !columns.has("requested_model") ||
     !columns.has("resolved_model") ||
     !columns.has("response_model");
-  const addColumn = (name: string, definition: string) => {
-    if (!columns.has(name)) {
-      database.exec(`ALTER TABLE request_logs ADD COLUMN ${name} ${definition}`);
-      columns.add(name);
-    }
-  };
+  const addColumn = (name: string, definition: string) =>
+    addColumnDuplicateTolerant(database, columns, "request_logs", name, definition);
 
   addColumn("source_usage_id", "INTEGER");
   addColumn("created_at", "TEXT NOT NULL DEFAULT ''");
@@ -4859,6 +4855,38 @@ function isDuplicateColumnError(error: unknown): boolean {
   return /duplicate column name/i.test(error instanceof Error ? error.message : String(error));
 }
 
+/**
+ * Add a column the way `ALTER TABLE ADD COLUMN IF NOT EXISTS` would.
+ *
+ * Callers read `PRAGMA table_info` once and then add several columns, so another
+ * opener -- the request-log worker thread, a second app instance, a CLI
+ * invocation -- can add one of them in between and make this process's ALTER
+ * throw `duplicate column name`. That is the state the caller wanted; adopting
+ * it lets the database open instead of failing request logging with it.
+ */
+export function addColumnDuplicateTolerant(
+  database: BetterSqliteDatabase,
+  columns: Set<string>,
+  table: string,
+  name: string,
+  definition: string
+): void {
+  if (columns.has(name)) {
+    return;
+  }
+  try {
+    database.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
+  } catch (error) {
+    if (!isDuplicateColumnError(error)) {
+      throw error;
+    }
+    // Another opener added it between the PRAGMA read and this ALTER. The
+    // column now exists with the definition the winner used, which is the
+    // closest this process can get to the state it asked for.
+  }
+  columns.add(name);
+}
+
 function ensureUpstreamOutcomeColumn(database: SqlDatabase, columns: Set<string>): void {
   if (columns.has("upstream_outcome")) {
     return;
@@ -4923,9 +4951,13 @@ function ensureRequestRouteTraceSchema(database: SqlDatabase): void {
       .map((row) => String(row.name ?? ""))
       .filter(Boolean)
   );
-  if (!columns.has("trace_json")) {
-    database.exec("ALTER TABLE request_route_traces ADD COLUMN trace_json TEXT NOT NULL DEFAULT ''");
-  }
+  addColumnDuplicateTolerant(
+    database,
+    columns,
+    "request_route_traces",
+    "trace_json",
+    "TEXT NOT NULL DEFAULT ''"
+  );
 }
 
 function ensurePendingRawTraceUpdateSchema(database: SqlDatabase): void {
@@ -4934,9 +4966,13 @@ function ensurePendingRawTraceUpdateSchema(database: SqlDatabase): void {
       .map((row) => String(row.name ?? ""))
       .filter(Boolean)
   );
-  if (!columns.has("update_bytes")) {
-    database.exec("ALTER TABLE request_log_pending_updates ADD COLUMN update_bytes INTEGER NOT NULL DEFAULT 0");
-  }
+  addColumnDuplicateTolerant(
+    database,
+    columns,
+    "request_log_pending_updates",
+    "update_bytes",
+    "INTEGER NOT NULL DEFAULT 0"
+  );
   database.exec(`
     UPDATE request_log_pending_updates
     SET update_bytes = length(CAST(update_json AS BLOB))

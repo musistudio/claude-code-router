@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
 import {
+  ccrClientModelHeader,
   ccrCodexApplyPatchBridgeHeader,
   ccrCodexBridgeRequestTransformKey,
   ccrCodexBridgeResponseHookKey,
@@ -14,7 +15,8 @@ import {
   ccrRoutedModelHeader,
   ccrRouterHttpRoutePath,
   ccrRouterRouteResolverKey,
-  ccrRouterRequestTransformKey
+  ccrRouterRequestTransformKey,
+  encodeCcrClientModelHeader
 } from "@ccr/core/gateway/core-runtime/router-plugin-contract.ts";
 import { coreGatewayAuthHeader } from "@ccr/core/gateway/internal/shared.ts";
 import { ccrRemoteControlPathPrefix } from "@ccr/core/gateway/remote-control-service.ts";
@@ -62,6 +64,27 @@ test("CCR router core plugin exposes route endpoint and beforeRouting transform"
   assert.equal(transformed.headers[ccrRoutedModelHeader], "Secondary/beta");
   assert.equal(transformed.headers[ccrRouteReasonHeader], "rule:route-to-secondary");
   assert.equal(transformed.headers[ccrRouteSourceHeader], "rule");
+  // The ask travels on a trusted header so the raw trace can record it without
+  // reading the request body.
+  assert.equal(transformed.headers[ccrClientModelHeader], encodeCcrClientModelHeader("Primary/alpha"));
+
+  // Paths that never route still carry the ask, or the raw-trace record would
+  // lose the client model where the body read used to supply it.
+  const nonRouted = await plugin.requestTransforms[0].transform({
+    request: {
+      headers: {},
+      method: "POST",
+      url: "/v1/embeddings"
+    },
+    requestBody: {
+      model: "Primary/alpha"
+    },
+    route: {
+      method: "POST",
+      url: "/v1/embeddings"
+    }
+  });
+  assert.equal(nonRouted.headers[ccrClientModelHeader], encodeCcrClientModelHeader("Primary/alpha"));
 
   const resolver = plugin.routeResolvers.find((item) => item.key === ccrRouterRouteResolverKey);
   const resolved = resolver.resolve({
