@@ -34,6 +34,7 @@ import { codexMultiAgentBridgeResponseStream, prepareCodexMultiAgentBridgeReques
 import { rewriteAnthropicMessageStartModelStream, shouldRewriteAnthropicMessageStartModel } from "@ccr/core/gateway/features/anthropic-response-model";
 import { prepareCursorOpenAICompatChatBody } from "@ccr/core/gateway/features/cursor-compat";
 import { filteredResponseHeaders, formatError, formatUpstreamErrorForLog, forwardHeaders, inferGatewayClient, readRequestBody, sendJson, shouldCaptureGatewayUsage, shouldSendBody, stripLocalGatewayAuthHeaders } from "@ccr/core/gateway/http/io";
+import { appendAggregateErrorAttemptSummary, shouldBufferAggregateErrorBody } from "@ccr/core/gateway/http/error-detail";
 import { parseJsonObjectSafe, serializeJsonBody, takeJsonObject } from "@ccr/core/gateway/http/body";
 import { createGatewayModelsResponse, prepareClaudeAppDiscoveredModelRequest, prepareClaudeCodeDiscoveredModelRequest, shouldServeGatewayModelsResponse } from "@ccr/core/gateway/features/model-discovery";
 import { providerProtocolForClientProtocol, resolveProviderLogName, resolveResponseProviderProtocol, sanitizeHeaderValue } from "@ccr/core/providers/runtime-topology";
@@ -900,6 +901,62 @@ export class GatewayRequestPipeline {
         await cancelResponseBody(upstreamResponse);
         finalizeOpenRouterDiscountSelection(false);
         writeRequestLog(clientClosedRequestStatusCode, responseHeaders, "", false, clientDisconnectMessage);
+        return;
+      }
+      if (
+        upstreamResponse.body &&
+        !upstreamResponse.ok &&
+        shouldBufferAggregateErrorBody(responseHeaders) &&
+        !codexApplyPatchBridgeActive &&
+        !codexMultiAgentBridgeActive &&
+        !appendContextArchiveFooter &&
+        !transformCodexCompactResponse &&
+        !hostedWebSearchProtocolContext &&
+        !rewriteAnthropicResponseModel
+      ) {
+        // Aggregate errors from the core gateway keep per-attempt root causes
+        // in `error.attempts`, but clients that only render `error.message`
+        // (e.g. Claude Code) cannot see them. Buffer the bounded JSON error
+        // body and append a compact per-attempt summary to the message.
+        let bufferedErrorText: string;
+        try {
+          bufferedErrorText = await upstreamResponse.text();
+        } catch (error) {
+          response.writeHead(upstreamResponse.status, Object.fromEntries(filteredResponseHeaders(responseHeaders)));
+          finalizeOpenRouterDiscountSelection(false);
+          writeRequestLog(upstreamResponse.status, responseHeaders, "", false, formatUpstreamErrorForLog(error, {
+            attempts: upstreamResult.failedAttempts.length + 1,
+            elapsedMs: Date.now() - startedAt,
+            fallbackFailures: upstreamResult.failedAttempts.length,
+            operation: "fetch",
+            responseStarted: true
+          }));
+          response.end();
+          return;
+        }
+        const outboundErrorText = appendAggregateErrorAttemptSummary(bufferedErrorText) ?? bufferedErrorText;
+        if (outboundErrorText !== bufferedErrorText) {
+          responseHeaders.delete("content-length");
+        }
+        response.writeHead(upstreamResponse.status, Object.fromEntries(filteredResponseHeaders(responseHeaders)));
+        finalizeOpenRouterDiscountSelection(false);
+        if (shouldCaptureUsage) {
+          recordUsage({
+            bodyText: outboundErrorText,
+            client,
+            durationMs: Date.now() - startedAt,
+            fallbackModel: routedModel,
+            method,
+            path,
+            providerName: resolveProviderLogName(responseHeaders, this.config, routedModel),
+            providerProtocol: resolveResponseProviderProtocol(responseHeaders, this.config),
+            requestId,
+            responseHeaders,
+            statusCode: upstreamResponse.status
+          });
+        }
+        writeRequestLog(upstreamResponse.status, responseHeaders, outboundErrorText);
+        response.end(outboundErrorText);
         return;
       }
       response.writeHead(upstreamResponse.status, Object.fromEntries(filteredResponseHeaders(responseHeaders)));
