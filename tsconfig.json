@@ -15,7 +15,6 @@
     "noEmit": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./packages/ui/src/*"],
       "@ccr/cli/*": ["./packages/cli/src/*"],
