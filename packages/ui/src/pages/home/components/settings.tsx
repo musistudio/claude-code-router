@@ -36,6 +36,7 @@ export function AppSettingsDialog({
   onChangeLanguage,
   onChangeTheme,
   onChangeTrayIcon,
+  onChangeTrayShowTokenRate,
   onChangeTrayWidgets,
   onClose,
   observability,
@@ -50,6 +51,7 @@ export function AppSettingsDialog({
   traySupported,
   trayBalanceProgress,
   trayIconPreference,
+  trayShowTokenRate,
   trayWidgets,
   updateConfig
 }: {
@@ -71,6 +73,7 @@ export function AppSettingsDialog({
   onChangeLanguage: (value: string) => void;
   onChangeTheme: (value: string) => void;
   onChangeTrayIcon: (value: string) => void;
+  onChangeTrayShowTokenRate: (checked: boolean) => void;
   onChangeTrayWidgets: (widgets: TrayWidgetConfig[]) => void;
   onClose: () => void;
   observability: AppConfig["observability"];
@@ -85,6 +88,7 @@ export function AppSettingsDialog({
   traySupported: boolean;
   trayBalanceProgress?: TrayBalanceProgressConfig;
   trayIconPreference: AppConfig["trayIcon"];
+  trayShowTokenRate: boolean;
   trayWidgets: TrayWidgetConfig[];
   updateConfig: (mutator: (config: AppConfig) => AppConfig) => void;
 }) {
@@ -129,11 +133,14 @@ export function AppSettingsDialog({
               copy={copy}
               onChangeTrayBalanceProgress={onChangeTrayBalanceProgress}
               onChangeTrayIcon={onChangeTrayIcon}
+              onChangeTrayShowTokenRate={onChangeTrayShowTokenRate}
               onChangeTrayWidgets={onChangeTrayWidgets}
               providerAccountSnapshots={providerAccountSnapshots}
               trayBalanceProgress={trayBalanceProgress}
               trayIconPreference={trayIconPreference}
+              trayShowTokenRate={trayShowTokenRate}
               trayWidgets={trayWidgets}
+              tokenRateSupported={appInfo.platform === "darwin"}
             />
           );
         }
@@ -1902,20 +1909,26 @@ function TraySettingsPage({
   copy,
   onChangeTrayBalanceProgress,
   onChangeTrayIcon,
+  onChangeTrayShowTokenRate,
   onChangeTrayWidgets,
   providerAccountSnapshots,
   trayBalanceProgress,
   trayIconPreference,
-  trayWidgets
+  trayShowTokenRate,
+  trayWidgets,
+  tokenRateSupported
 }: {
   copy: AppCopy;
   onChangeTrayBalanceProgress: (config: TrayBalanceProgressConfig) => void;
   onChangeTrayIcon: (value: string) => void;
+  onChangeTrayShowTokenRate: (checked: boolean) => void;
   onChangeTrayWidgets: (widgets: TrayWidgetConfig[]) => void;
   providerAccountSnapshots: ProviderAccountSnapshot[];
   trayBalanceProgress?: TrayBalanceProgressConfig;
   trayIconPreference: AppConfig["trayIcon"];
+  trayShowTokenRate: boolean;
   trayWidgets: TrayWidgetConfig[];
+  tokenRateSupported: boolean;
 }) {
   const pageRef = useRef<HTMLDivElement>(null);
   const [selectedTrayWidgetId, setSelectedTrayWidgetId] = useState<string>();
@@ -2100,8 +2113,17 @@ function TraySettingsPage({
   }, [selectedWidget, selectedWidgetIndex, widgets]);
 
   return (
-    <div className={cn(settingsPageContentWidthClassName, "grid min-h-[520px] grid-rows-[auto_auto_auto] gap-4")} ref={pageRef}>
+    <div className={cn(settingsPageContentWidthClassName, "grid min-h-[520px] grid-rows-[auto_auto_auto_auto] gap-4")} ref={pageRef}>
       <h3 className="text-[15px] font-semibold text-foreground">{copy.settings.tray}</h3>
+      {tokenRateSupported ? (
+        <SettingsSwitchRow
+          checked={trayShowTokenRate}
+          description={copy.settings.trayTokenRateDescription}
+          icon={Gauge}
+          label={copy.settings.trayTokenRate}
+          onChange={onChangeTrayShowTokenRate}
+        />
+      ) : null}
       <div className="flex flex-wrap items-end gap-3 rounded-md border border-border bg-background p-3">
         <Field className="min-w-[220px] flex-1" label={copy.settings.trayIcon}>
           <TrayIconSelect onChange={changeTrayIcon} options={trayIconOptions} progress={progressPreviewValue} value={effectiveTrayIconPreference} />

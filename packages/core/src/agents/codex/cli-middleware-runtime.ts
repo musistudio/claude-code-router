@@ -796,6 +796,18 @@ function copyPermissionFields(source, target) {
   copyJsonField(source, target, "approvalPolicy");
   copyJsonField(source, target, "sandboxPolicy");
   copyJsonField(source, target, "approvalsReviewer");
+  if (target.approvalsReviewer !== undefined) {
+    target.approvalsReviewer = normalizeCodexApprovalsReviewer(target.approvalsReviewer);
+  }
+}
+
+function normalizeCodexApprovalsReviewer(value) {
+  if (codexAppAutoReviewEnabled()) return value;
+  return value === "auto_review" || value === "guardian_subagent" ? "user" : value;
+}
+
+function codexAppAutoReviewEnabled() {
+  return boolEnv("CCR_CODEX_ALLOW_AUTO_REVIEW") || boolEnv("CODEXL_CODEX_ALLOW_AUTO_REVIEW");
 }
 
 function copyCollaborationModelFields(source, target) {
@@ -4806,20 +4818,27 @@ function modelListItemHasFastMode(item) {
 }
 
 function configRequirementsRead(existingResult) {
-  if (!codexAppFastModeShimEnabled()) {
-    return existingResult;
-  }
+  const fastModeEnabled = codexAppFastModeShimEnabled();
   const result = existingResult && typeof existingResult === "object" && !Array.isArray(existingResult)
     ? { ...existingResult }
     : {};
   const requirements = result.requirements && typeof result.requirements === "object" && !Array.isArray(result.requirements)
     ? { ...result.requirements }
     : {};
-  const featureRequirements = requirements.featureRequirements && typeof requirements.featureRequirements === "object" && !Array.isArray(requirements.featureRequirements)
-    ? { ...requirements.featureRequirements }
-    : {};
-  featureRequirements.fast_mode = true;
-  requirements.featureRequirements = featureRequirements;
+
+  const application = isPlainObject(requirements.application) ? { ...requirements.application } : {};
+  const applicationNetwork = isPlainObject(application.network) ? { ...application.network } : {};
+  if (typeof applicationNetwork.enabled !== "boolean") applicationNetwork.enabled = false;
+  if (!isPlainObject(applicationNetwork.domains)) applicationNetwork.domains = {};
+  application.network = applicationNetwork;
+  requirements.application = application;
+  if (fastModeEnabled) {
+    const featureRequirements = requirements.featureRequirements && typeof requirements.featureRequirements === "object" && !Array.isArray(requirements.featureRequirements)
+      ? { ...requirements.featureRequirements }
+      : {};
+    featureRequirements.fast_mode = true;
+    requirements.featureRequirements = featureRequirements;
+  }
   result.requirements = requirements;
   return result;
 }

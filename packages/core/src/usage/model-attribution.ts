@@ -61,7 +61,7 @@ export function resolveUsageModelAttribution(
   return attributionFromSelector(logicalModel, logicalModel, isKnownProviderSelector(config, logicalModel));
 }
 
-function isKnownProviderSelector(
+export function isKnownProviderSelector(
   config: Pick<AppConfig, "Providers" | "virtualModelProfiles">,
   value: string
 ): boolean {

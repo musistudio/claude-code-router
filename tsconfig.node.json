@@ -1,14 +1,15 @@
 {
   "compilerOptions": {
     "composite": true,
+    "outDir": ".tmp/tsconfig-node",
+    "tsBuildInfoFile": ".tmp/tsconfig-node/tsconfig.node.tsbuildinfo",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
     }
   },
-  "include": ["build/**/*.mjs"]
+  "include": ["playwright.config.ts"]
 }

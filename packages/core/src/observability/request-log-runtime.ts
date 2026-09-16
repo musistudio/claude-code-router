@@ -1086,7 +1086,8 @@ function plainHeaderRecord(value: Headers | Record<string, string | string[] | u
 
 function estimateRecordBytes(input: RequestLogRecordInput): number {
   return input.requestBody.byteLength + Buffer.byteLength(input.responseBodyText ?? "") +
-    jsonBytes(input.requestHeaders) + jsonBytes(input.responseHeaders) + jsonBytes(input.routeTrace) + 1_024;
+    jsonBytes(input.requestHeaders) + jsonBytes(input.responseHeaders) + jsonBytes(input.routeTrace) +
+    jsonBytes(input.streamMetrics) + 1_024;
 }
 
 function estimateRawTraceBytes(

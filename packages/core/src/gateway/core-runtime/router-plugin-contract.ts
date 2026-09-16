@@ -12,6 +12,22 @@ export const ccrRouterHttpRouteKey = "ccr-router-route";
 export const ccrRouterHttpRoutePath = "/__ccr/route";
 export const ccrRawTraceSyncAckRouteKey = "ccr-raw-trace-sync-ack";
 export const ccrRuntimeConfigReloadMessageType = "ccr:runtime-config-reload";
+export const ccrLiveTokenRateConfigMessageType = "ccr:live-token-rate-config";
+export const ccrLiveTokenRateSnapshotMessageType = "ccr:live-token-rate-snapshot";
+export const ccrLiveTokenRateStreamHookKey = "ccr-live-token-rate-stream-hook";
+
+export type CcrLiveTokenRateConfigMessage = {
+  enabled: boolean;
+  protocolVersion: 1;
+  type: typeof ccrLiveTokenRateConfigMessageType;
+};
+
+export type CcrLiveTokenRateSnapshotMessage = {
+  activeRequests: number;
+  protocolVersion: 1;
+  tokensPerSecond: number;
+  type: typeof ccrLiveTokenRateSnapshotMessageType;
+};
 
 export const ccrRouteStageHeader = "x-ccr-route-stage";
 export const ccrRouteReasonHeader = "x-ccr-route-reason";

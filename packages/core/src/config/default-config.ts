@@ -216,6 +216,7 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions = {}): A
     theme: "system",
     trayComponentVariants: DEFAULT_TRAY_COMPONENT_VARIANTS,
     trayIcon: "random",
+    trayShowTokenRate: false,
     trayProgressTargetTokens: 100000,
     trayWidgets: DEFAULT_TRAY_WIDGETS,
     trayWindowModules: DEFAULT_TRAY_WINDOW_MODULES,

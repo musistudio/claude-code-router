@@ -394,6 +394,98 @@ test("UsageStore attributes Claude App encoded response model IDs to the routed 
   }
 });
 
+test("UsageStore attributes client-visible provider-prefixed response models to the bare model", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-client-visible-selector-test-"));
+  try {
+    const store = new UsageStore(path.join(dir, "usage.sqlite"));
+    const config = {
+      Providers: [
+        {
+          baseUrl: "https://dashscope.example.com/api/v2/apps/anthropic",
+          models: ["ZHIPU/GLM-5.3"],
+          name: "dashscope-private",
+          type: "anthropic_messages"
+        }
+      ],
+      virtualModelProfiles: []
+    };
+
+    await store.recordCapture({
+      bodyText: [
+        "event: message_start",
+        'data: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"dashscope-private/ZHIPU/GLM-5.3","usage":{"input_tokens":12,"output_tokens":8,"total_tokens":20}}}',
+        "",
+        "data: [DONE]",
+        ""
+      ].join("\n"),
+      client: "Claude Code",
+      config,
+      durationMs: 100,
+      fallbackModel: "dashscope-private/ZHIPU/GLM-5.3",
+      method: "POST",
+      path: "/v1/messages",
+      providerProtocol: "anthropic_messages",
+      requestId: "client-visible-selector-model",
+      responseHeaders: new Headers({ "content-type": "text/event-stream; charset=utf-8" }),
+      statusCode: 200
+    });
+
+    const stats = await store.getStats("today", { includeProxy: true });
+    assert.equal(stats.models[0]?.model, "ZHIPU/GLM-5.3");
+    assert.equal(stats.models[0]?.provider, "dashscope-private");
+    assert.notEqual(stats.models[0]?.model, "dashscope-private/ZHIPU/GLM-5.3");
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("UsageStore keeps physical response models with unknown provider prefixes verbatim", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-physical-slash-model-test-"));
+  try {
+    const store = new UsageStore(path.join(dir, "usage.sqlite"));
+    const config = {
+      Providers: [
+        {
+          baseUrl: "https://dashscope.example.com/api/v2/apps/anthropic",
+          models: ["ZHIPU/GLM-5.3"],
+          name: "dashscope-private",
+          type: "anthropic_messages"
+        }
+      ],
+      virtualModelProfiles: []
+    };
+
+    // The upstream echoes the physical model id, whose own name contains a
+    // slash; "ZHIPU" is not a configured provider, so the echo must be kept
+    // verbatim instead of being re-attributed as a route selector.
+    await store.recordCapture({
+      bodyText: [
+        "event: message_start",
+        'data: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"ZHIPU/GLM-5.3","usage":{"input_tokens":12,"output_tokens":8,"total_tokens":20}}}',
+        "",
+        "data: [DONE]",
+        ""
+      ].join("\n"),
+      client: "Claude Code",
+      config,
+      durationMs: 100,
+      fallbackModel: "dashscope-private/ZHIPU/GLM-5.3",
+      method: "POST",
+      path: "/v1/messages",
+      providerProtocol: "anthropic_messages",
+      requestId: "physical-slash-model",
+      responseHeaders: new Headers({ "content-type": "text/event-stream; charset=utf-8" }),
+      statusCode: 200
+    });
+
+    const stats = await store.getStats("today", { includeProxy: true });
+    assert.equal(stats.models[0]?.model, "ZHIPU/GLM-5.3");
+    assert.equal(stats.models[0]?.provider, "dashscope-private");
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("lightweight usage synchronization records and deduplicates Fusion internal upstream calls", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-fusion-internal-test-"));
   try {

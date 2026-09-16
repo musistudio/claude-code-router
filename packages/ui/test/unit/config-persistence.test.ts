@@ -30,6 +30,15 @@ test("failed provider writes leave the draft unchanged and can be retried once",
   assert.deepEqual(draft.Providers.map((provider) => provider.name), ["New provider"]);
 });
 
+test("live tray token rate is opt-in and survives config reconciliation", () => {
+  const base = createDefaultAppConfig();
+  assert.equal(base.trayShowTokenRate, false);
+  const draft = { ...base, trayShowTokenRate: true };
+  const saved = structuredClone(base);
+  const next = reconcileSavedConfig(base, draft, saved);
+  assert.equal(next.trayShowTokenRate, true);
+});
+
 test("API key writes wait for configuration writes and their commit", async () => {
   const queue = createConfigSaveQueue();
   const write = deferred<number>();

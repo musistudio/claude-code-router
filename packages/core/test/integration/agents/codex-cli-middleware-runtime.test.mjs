@@ -413,6 +413,133 @@ test("Codex app-server delegates public Git marketplaces and leaves account-priv
   });
 });
 
+test("Codex app-server uses interactive approval without widening the requested sandbox", { skip: process.platform === "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-native-permissions-"));
+  const runtimeFile = writeRuntimeScript(dir);
+  const fakeCodex = path.join(dir, "fake-codex");
+  const codexHome = path.join(dir, "codex-home");
+  mkdirSync(codexHome, { recursive: true });
+  writeFileSync(fakeCodex, [
+    "#!/usr/bin/env node",
+    "const readline = require('node:readline');",
+    "const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });",
+    "input.on('line', (line) => {",
+    "  const request = JSON.parse(line);",
+    "  const result = request.method === 'configRequirements/read'",
+    "    ? { requirements: null }",
+    "    : { method: request.method, params: request.params };",
+    "  process.stdout.write(JSON.stringify({ id: request.id, result }) + '\\n');",
+    "});",
+    ""
+  ].join("\n"));
+  chmodSync(fakeCodex, 0o700);
+
+  const workspace = path.join(dir, "workspace");
+  const readOnlySandbox = { type: "readOnly", networkAccess: false };
+  const workspaceWriteSandbox = { type: "workspaceWrite", writableRoots: [workspace], networkAccess: false };
+  const result = spawnSync(process.execPath, [runtimeFile, "app-server"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      CCR_CODEX_ALLOW_AUTO_REVIEW: "",
+      CCR_CODEX_REMOTE_FRONTEND_MODE: "app",
+      CCR_PROFILE_SCOPE: "ccr",
+      CCR_REAL_CODEX_CLI_PATH: fakeCodex,
+      CODEX_HOME: codexHome,
+      CODEXL_CODEX_ALLOW_AUTO_REVIEW: ""
+    },
+    input: [
+      JSON.stringify({
+        id: 1,
+        method: "thread/start",
+        params: {
+          cwd: workspace,
+          permissions: {
+            approvalPolicy: "on-request",
+            approvalsReviewer: "auto_review",
+            sandboxPolicy: readOnlySandbox
+          }
+        }
+      }),
+      JSON.stringify({
+        id: 2,
+        method: "turn/start",
+        params: {
+          threadId: "thread-1",
+          input: [{ type: "text", text: "write the file" }],
+          approvalPolicy: "on-request",
+          approvalsReviewer: "guardian_subagent",
+          sandboxPolicy: workspaceWriteSandbox
+        }
+      }),
+      JSON.stringify({ id: 3, method: "configRequirements/read", params: {} }),
+      ""
+    ].join("\n")
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const responses = new Map(result.stdout.trim().split(/\r?\n/).map((line) => JSON.parse(line)).map((response) => [response.id, response]));
+  assert.equal(responses.get(1).result.params.approvalsReviewer, "user");
+  assert.deepEqual(responses.get(1).result.params.sandboxPolicy, readOnlySandbox);
+  assert.equal(responses.get(2).result.params.approvalsReviewer, "user");
+  assert.deepEqual(responses.get(2).result.params.sandboxPolicy, workspaceWriteSandbox);
+  assert.deepEqual(responses.get(3).result.requirements, {
+    application: {
+      network: { enabled: false, domains: {} }
+    }
+  });
+});
+
+test("Codex app-server preserves auto-review when explicitly enabled", { skip: process.platform === "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-native-auto-review-"));
+  const runtimeFile = writeRuntimeScript(dir);
+  const fakeCodex = path.join(dir, "fake-codex");
+  const codexHome = path.join(dir, "codex-home");
+  mkdirSync(codexHome, { recursive: true });
+  writeFileSync(fakeCodex, [
+    "#!/usr/bin/env node",
+    "const readline = require('node:readline');",
+    "const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });",
+    "input.on('line', (line) => {",
+    "  const request = JSON.parse(line);",
+    "  process.stdout.write(JSON.stringify({ id: request.id, result: request.params }) + '\\n');",
+    "});",
+    ""
+  ].join("\n"));
+  chmodSync(fakeCodex, 0o700);
+
+  const result = spawnSync(process.execPath, [runtimeFile, "app-server"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      CCR_CODEX_ALLOW_AUTO_REVIEW: "1",
+      CCR_CODEX_REMOTE_FRONTEND_MODE: "app",
+      CCR_PROFILE_SCOPE: "ccr",
+      CCR_REAL_CODEX_CLI_PATH: fakeCodex,
+      CODEX_HOME: codexHome
+    },
+    input: [
+      JSON.stringify({
+        id: 1,
+        method: "turn/start",
+        params: {
+          threadId: "thread-1",
+          input: [{ type: "text", text: "write the file" }],
+          approvalPolicy: "on-request",
+          approvalsReviewer: "auto_review",
+          sandboxPolicy: { type: "workspaceWrite" }
+        }
+      }),
+      ""
+    ].join("\n")
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const response = JSON.parse(result.stdout.trim());
+  assert.equal(response.result.approvalsReviewer, "auto_review");
+  assert.deepEqual(response.result.sandboxPolicy, { type: "workspaceWrite" });
+});
+
 test("Codex app-server merges CCR Fast Mode catalog metadata without spoofing auth", { skip: process.platform === "win32" }, () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-native-models-"));
   const runtimeFile = writeRuntimeScript(dir);
@@ -427,7 +554,7 @@ test("Codex app-server merges CCR Fast Mode catalog metadata without spoofing au
     "  const request = JSON.parse(line);",
     "  let result = {};",
     "  if (request.method === 'model/list') result = { data: [{ id: 'native-model', hidden: true }], nextCursor: null };",
-    "  else if (request.method === 'configRequirements/read') result = { requirements: { featureRequirements: { fast_mode: false, other_feature: false } } };",
+    "  else if (request.method === 'configRequirements/read') result = { requirements: { application: null, featureRequirements: { fast_mode: false, other_feature: false } } };",
     "  process.stdout.write(JSON.stringify({ id: request.id, result }) + '\\n');",
     "});",
     ""
@@ -478,9 +605,14 @@ test("Codex app-server merges CCR Fast Mode catalog metadata without spoofing au
     account: { type: "amazonBedrock", credentialSource: "codexManaged" },
     requiresOpenaiAuth: false
   });
-  assert.deepEqual(responses.get(4).result.requirements.featureRequirements, {
-    fast_mode: true,
-    other_feature: false
+  assert.deepEqual(responses.get(4).result.requirements, {
+    application: {
+      network: { enabled: false, domains: {} }
+    },
+    featureRequirements: {
+      fast_mode: true,
+      other_feature: false
+    }
   });
 });
 

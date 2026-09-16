@@ -22,6 +22,7 @@ import { retryDelayAfterNetworkError, retryDelayAfterStatus, shouldFallbackAfter
 import { claudeCodeOauthBetaHeader, claudeCodeOauthRequiredBeta, UpstreamRequestError } from "@ccr/core/gateway/internal/shared";
 import type { ApiKeyLimitUsage, ProviderCredentialRoutingTarget, UpstreamAttempt, UpstreamFailedAttempt, UpstreamFetchResult } from "@ccr/core/gateway/internal/shared";
 import type { RouteTraceObserver } from "@ccr/core/observability/route-trace";
+import { monotonicNowMs } from "@ccr/core/observability/stream-experience";
 
 const providerCredentialSpilloverThreshold = 0.8;
 const openRouterDiscountModelHeader = "x-ccr-openrouter-discount-model";
@@ -431,6 +432,7 @@ export async function fetchUpstreamWithFallback(input: {
       attempt.target?.kind === "provider" ? attempt.target.provider.name : undefined
     );
     const attemptStartedAt = Date.now();
+    const attemptStartedAtMonoMs = monotonicNowMs();
     input.trace?.capture({
       attempt: attemptNumber,
       changes: [
@@ -529,7 +531,10 @@ export async function fetchUpstreamWithFallback(input: {
       return {
         attempt,
         failedAttempts,
-        response
+        response,
+        timing: {
+          attemptStartedAtMonoMs
+        }
       };
     } catch (error) {
       const message = formatError(error);

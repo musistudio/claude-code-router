@@ -2519,6 +2519,13 @@ function App() {
     }));
   }
 
+  function changeTrayShowTokenRate(trayShowTokenRate: boolean) {
+    updateConfig((config) => ({
+      ...config,
+      trayShowTokenRate
+    }));
+  }
+
   function changeTrayBalanceProgress(config: TrayBalanceProgressConfig) {
     const trayBalanceProgress = normalizeTrayBalanceProgressConfig(config);
     updateConfig((current) => ({
@@ -3563,6 +3570,7 @@ function App() {
               onChangeToolHub: changeToolHubConfig,
               onChangeTrayBalanceProgress: changeTrayBalanceProgress,
               onChangeTrayIcon: changeTrayIconPreference,
+              onChangeTrayShowTokenRate: changeTrayShowTokenRate,
               onChangeTrayWidgets: changeTrayWidgets,
               onClose: () => setSettingsOpen(false),
               observability: draftConfig.observability,
@@ -3576,6 +3584,7 @@ function App() {
               providerAccountSnapshots,
               trayBalanceProgress: normalizeTrayBalanceProgressConfig(draftConfig.trayBalanceProgress),
               trayIconPreference: draftConfig.trayIcon || "random",
+              trayShowTokenRate: Boolean(draftConfig.trayShowTokenRate),
               traySupported,
               trayWidgets: normalizeTrayWidgets(draftConfig.trayWidgets ?? DEFAULT_TRAY_WIDGETS, draftConfig.trayWindowModules, draftConfig.trayComponentVariants),
               updateConfig

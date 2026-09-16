@@ -206,6 +206,9 @@ export type UpstreamFetchResult = {
   attempt: UpstreamAttempt;
   failedAttempts: UpstreamFailedAttempt[];
   response: Response;
+  timing: {
+    attemptStartedAtMonoMs: number;
+  };
 };
 
 

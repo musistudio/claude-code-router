@@ -1855,6 +1855,7 @@ export type AppConfig = {
   routerEndpoint: string;
   theme: "system" | "light" | "dark";
   trayBalanceProgress?: TrayBalanceProgressConfig;
+  trayShowTokenRate: boolean;
   trayProgressTargetTokens: number;
   trayComponentVariants: TrayComponentVariants;
   trayIcon: TrayIconPreference;
@@ -2191,7 +2192,33 @@ export type RequestRouteTrace = {
   version: 1 | 2;
 };
 
+export type StreamSpeedSampleStatus =
+  | "complete"
+  | "partial"
+  | "usage_missing"
+  | "insufficient_tokens"
+  | "unsupported_protocol"
+  | "hidden_reasoning"
+  | "batched_output";
+
+export type RequestStreamMetrics = {
+  activeOutputMs?: number;
+  estimatedOutputTokens: number;
+  maxInterEventGapMs?: number;
+  p95InterEventGapMs?: number;
+  reasoningObserved: boolean;
+  responseHeadersMs?: number;
+  sampleStatus: StreamSpeedSampleStatus;
+  tailMs?: number;
+  textObserved: boolean;
+  timeToFirstSignalMs?: number;
+  timeToFirstTextMs?: number;
+  toolObserved: boolean;
+  upstreamTimeToFirstSignalMs?: number;
+};
+
 export type RequestLogEntry = {
+  activeOutputMs?: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
   client: string;
@@ -2213,13 +2240,17 @@ export type RequestLogEntry = {
   id: number;
   inputTokens: number;
   isStream: boolean;
+  maxInterEventGapMs?: number;
   method: string;
   model: string;
   ok: boolean;
   outputTokens: number;
+  outputTokensPerSecond?: number;
   path: string;
+  p95InterEventGapMs?: number;
   provider: string;
   reasoningTokens: number;
+  responseHeadersMs?: number;
   requestedModel?: string;
   requestBody: RequestLogBody;
   requestHeaders: Record<string, string | string[]>;
@@ -2238,6 +2269,10 @@ export type RequestLogEntry = {
   responseModel?: string;
   responseHeaders: Record<string, string | string[]>;
   statusCode: number;
+  streamSpeedSampleStatus?: StreamSpeedSampleStatus;
+  tailMs?: number;
+  timeToFirstSignalMs?: number;
+  timeToFirstTextMs?: number;
   totalTokens: number;
   /**
    * How the upstream attempt actually ended. This keeps "no status was captured"
@@ -2246,6 +2281,7 @@ export type RequestLogEntry = {
    * failure. `statusCode` and `ok` are unchanged for existing callers.
    */
   upstreamOutcome?: RequestLogUpstreamOutcome;
+  upstreamTimeToFirstSignalMs?: number;
   url: string;
 };
 
