@@ -858,15 +858,17 @@ function stripResponsesReasoningContent(input: unknown): boolean {
       continue;
     }
     let itemChanged = false;
+    // Drop `content` (the offending non-empty array). Preserve `summary` as-is:
+    // OpenAI Responses reasoning items still require `summary`, and an empty
+    // array is a valid summary.
     if ("content" in item) {
       delete item.content;
       itemChanged = true;
     }
-    if (Array.isArray(item.summary) && item.summary.length === 0) {
-      delete item.summary;
-      itemChanged = true;
-    }
-    if ("summary" in item || "encrypted_content" in item) {
+    const hasSummary = "summary" in item;
+    const encrypted = item.encrypted_content;
+    const hasValidEncrypted = typeof encrypted === "string" && encrypted.length > 0;
+    if (hasSummary || hasValidEncrypted) {
       kept.push(item);
     } else {
       itemChanged = true; // nothing accepted remains; drop the item
