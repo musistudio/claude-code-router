@@ -656,16 +656,20 @@ test("upgrading an existing database backfills outcomes without changing stored 
       assert.equal(limited.statusCode, 429);
       assert.equal(limited.ok, 0);
 
-      // The new column is implied by the column list itself, so it must not
-      // claim a versioned slot in the migration ledger.
+      // The seeding is a paged, ledgered migration like its siblings, and it is
+      // recorded as complete so later opens skip it.
       const migrated = createBetterSqliteDatabase(dbFile);
       try {
         const migrations = migrated.prepare(`
-          SELECT migration
+          SELECT migration, completed
           FROM request_log_schema_migrations
           ORDER BY migration
-        `).all().map((row) => String(row.migration));
-        assert.deepEqual(migrations, ["gateway-final-attempt-v1", "gateway-outcome-v1"]);
+        `).all().map((row) => [String(row.migration), Number(row.completed)]);
+        assert.deepEqual(migrations, [
+          ["gateway-final-attempt-v1", 1],
+          ["gateway-outcome-v1", 1],
+          ["upstream-outcome-v1", 1]
+        ]);
       } finally {
         migrated.close();
       }
@@ -673,9 +677,9 @@ test("upgrading an existing database backfills outcomes without changing stored 
       const firstOpen = migrationSnapshot(dbFile, legacyRequestIds);
       await store.close();
 
-      // Reopening the upgraded database must be a no-op: the column's presence
-      // is itself the completion marker, so the backfill must not run again and
-      // no value may drift on a second open.
+      // Reopening the upgraded database must be a no-op: the ledger marks the
+      // backfill complete, so it must not run again and no value may drift on a
+      // second open.
       const reopened = new RequestLogStore(dbFile);
       try {
         await reopened.list({ pageSize: 25 });
@@ -694,6 +698,82 @@ test("upgrading an existing database backfills outcomes without changing stored 
       }
     } finally {
       await store.close();
+    }
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+// The seeding runs in pages so a large history never holds the write lock for
+// the whole table, and it resumes from the ledger. The interrupted case is the
+// important one: the column is added on its own, so an open that stopped right
+// after the ALTER leaves the column present with nothing seeded, and the next
+// open must still finish the job rather than trust the column's presence.
+test("the upstream outcome seeding pages through a large history and resumes after an interrupted upgrade", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-upstream-outcome-paged-test-"));
+  const dbFile = path.join(dir, "request-logs.sqlite");
+  const createdAt = new Date().toISOString();
+  const total = 1250;
+  try {
+    const seed = new RequestLogStore(dbFile);
+    await seed.list({ pageSize: 1 });
+    await seed.close();
+
+    const database = createBetterSqliteDatabase(dbFile);
+    try {
+      const insert = database.prepare(`
+        INSERT INTO request_logs (
+          created_at, completed_at, request_id, method, path, status_code, ok, error, upstream_outcome
+        ) VALUES (?, ?, ?, 'POST', '/v1/responses', ?, ?, ?, 'unknown')
+      `);
+      database.exec("BEGIN");
+      // Mix every seeded shape across the page boundaries.
+      for (let index = 0; index < total; index += 1) {
+        const shape = index % 3;
+        insert.run(
+          createdAt,
+          createdAt,
+          `paged-${index}`,
+          shape === 0 ? 200 : shape === 1 ? 499 : 0,
+          shape === 0 ? 1 : 0,
+          shape === 1 ? clientDisconnectMessage : ""
+        );
+      }
+      // The state an interrupted upgrade leaves behind: column present, rows
+      // unseeded, and no completed ledger entry.
+      database.exec("DELETE FROM request_log_schema_migrations WHERE migration = 'upstream-outcome-v1'");
+      database.exec("COMMIT");
+    } finally {
+      database.close();
+    }
+
+    const reopened = new RequestLogStore(dbFile);
+    try {
+      await reopened.list({ pageSize: 1 });
+    } finally {
+      await reopened.close();
+    }
+
+    const after = createBetterSqliteDatabase(dbFile);
+    try {
+      const counts = Object.fromEntries(after.prepare(`
+        SELECT upstream_outcome AS outcome, COUNT(*) AS n
+        FROM request_logs
+        WHERE request_id LIKE 'paged-%'
+        GROUP BY upstream_outcome
+      `).all().map((row) => [row.outcome, row.n]));
+      assert.deepEqual(counts, {
+        // 1250 rows split by index % 3: 417, 417, 416.
+        cancelled: 417,
+        http_status: 417,
+        unknown: 416
+      }, "every page is seeded, including rows past the first batch");
+      const ledger = after.prepare(`
+        SELECT completed FROM request_log_schema_migrations WHERE migration = 'upstream-outcome-v1'
+      `).get();
+      assert.equal(ledger?.completed, 1);
+    } finally {
+      after.close();
     }
   } finally {
     rmSync(dir, { force: true, recursive: true });
