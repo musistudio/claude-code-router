@@ -44,6 +44,10 @@ export const deepSeekProviderPreset: ProviderPreset = {
     {
       baseUrl: "https://api.deepseek.com",
       protocols: ["openai_chat_completions"]
+    },
+    {
+      baseUrl: "https://api.deepseek.com/anthropic",
+      protocols: ["anthropic_messages"]
     }
   ],
   id: "deepseek",
