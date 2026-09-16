@@ -2,6 +2,7 @@ import {
   buildBrowserRenderer,
   buildCoreServer,
   buildRenderer,
+  buildRequestLogBodyWorker,
   buildStyles,
   buildTrayRenderer,
   buildWebClientBridge,
@@ -27,6 +28,7 @@ await Promise.all([
   buildRenderer({ mode }),
   buildTrayRenderer({ mode }),
   buildWebClientBridge({ mode }),
+  buildRequestLogBodyWorker({ mode }),
   buildStyles({ minify: mode === "production" })
 ]);
 
