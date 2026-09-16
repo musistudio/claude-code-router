@@ -876,3 +876,319 @@ test("UsageStore reset clears overview stats and does not backfill old request l
     rmSync(dir, { force: true, recursive: true });
   }
 });
+
+// A request whose upstream status was never captured is undecided, not failed.
+// Overview used to derive errorCount as requestCount - successCount, so those
+// rows inflated the error count and depressed the success rate.
+test("UsageStore does not count an uncaptured upstream status as an error", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-unknown-outcome-test-"));
+  try {
+    const store = new UsageStore(path.join(dir, "usage.sqlite"));
+    const now = new Date();
+    // One genuine success and one genuine failure through the public API.
+    await store.record({
+      createdAt: now.toISOString(),
+      durationMs: 10,
+      method: "POST",
+      model: "model-a",
+      path: "/v1/messages",
+      provider: "vendor",
+      requestId: "ok-1",
+      statusCode: 200,
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+    });
+    await store.record({
+      createdAt: now.toISOString(),
+      durationMs: 10,
+      method: "POST",
+      model: "model-a",
+      path: "/v1/messages",
+      provider: "vendor",
+      requestId: "bad-1",
+      statusCode: 500,
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+    });
+    // The undecided row goes through the same public writer, because that is the
+    // writer that actually runs: on a single-gateway install the request-log
+    // backfill produces no rows at all. Inserting this row with raw SQL instead
+    // would assert only that the SELECT reads a column, and would pass even when
+    // no writer ever populates it -- which is exactly how this shipped empty.
+    await store.record({
+      createdAt: now.toISOString(),
+      durationMs: 10,
+      method: "POST",
+      model: "model-a",
+      path: "/v1/messages",
+      provider: "vendor",
+      requestId: "unknown-1",
+      statusCode: 0,
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+    });
+
+    const database = createBetterSqliteDatabase(path.join(dir, "usage.sqlite"));
+    try {
+      const outcomes = database.prepare(
+        "SELECT request_id, upstream_outcome FROM usage_events ORDER BY request_id"
+      ).all();
+      assert.deepEqual(outcomes, [
+        { request_id: "bad-1", upstream_outcome: "http_status" },
+        { request_id: "ok-1", upstream_outcome: "http_status" },
+        { request_id: "unknown-1", upstream_outcome: "unknown" }
+      ], "the writer records the outcome it can establish from the status");
+    } finally {
+      database.close();
+    }
+
+    const stats = await store.getStats("30d");
+    assert.equal(stats.totals.requestCount, 3, "all three rows are still counted");
+    assert.equal(stats.totals.errorCount, 1, "only the real 500 is an error");
+    // Decided requests are the 200 and the 500, so the rate is 1/2 -- the
+    // undecided row must not drag it to 1/3.
+    assert.equal(stats.totals.successRate, 0.5);
+
+    // Recent requests are totalled per row in memory rather than in SQL, so they
+    // need the same rule or the undecided row still shows as a failed request.
+    const recentByStatus = new Map(
+      stats.recentRequests.map((row) => [row.caption.split(" · ").at(-1), row])
+    );
+    assert.equal(recentByStatus.get("500")?.errorCount, 1);
+    assert.equal(recentByStatus.get("200")?.errorCount, 0);
+    assert.equal(recentByStatus.get("200")?.successRate, 1);
+    assert.equal(recentByStatus.get("0")?.errorCount, 0, "the undecided recent request is not a failure");
+    assert.equal(recentByStatus.get("0")?.successRate, 0);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+// Usage can attach a request-log database before the request-log worker has
+// migrated it. Reading logs.upstream_outcome unconditionally failed with
+// `no such column` and silently skipped the entire backfill.
+test("UsageStore backfills from a request-log database that predates upstream_outcome", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-legacy-request-log-test-"));
+  try {
+    const requestLogDbFile = path.join(dir, "request-logs.sqlite");
+    const now = new Date().toISOString();
+    const legacy = createBetterSqliteDatabase(requestLogDbFile);
+    try {
+      legacy.exec(`
+        CREATE TABLE request_logs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          created_at TEXT NOT NULL,
+          request_id TEXT NOT NULL DEFAULT '',
+          client TEXT NOT NULL DEFAULT 'unknown',
+          method TEXT NOT NULL DEFAULT '',
+          path TEXT NOT NULL DEFAULT '',
+          model TEXT NOT NULL DEFAULT '',
+          provider TEXT NOT NULL DEFAULT '',
+          credential_id TEXT NOT NULL DEFAULT '',
+          status_code INTEGER NOT NULL DEFAULT 0,
+          duration_ms INTEGER NOT NULL DEFAULT 0,
+          input_tokens INTEGER NOT NULL DEFAULT 0,
+          output_tokens INTEGER NOT NULL DEFAULT 0,
+          cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+          cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+          total_tokens INTEGER NOT NULL DEFAULT 0,
+          cost_usd REAL,
+          source_usage_id TEXT
+        )
+      `);
+      const insert = legacy.prepare(`
+        INSERT INTO request_logs (
+          created_at, request_id, client, method, path, model, provider, status_code,
+          duration_ms, input_tokens, output_tokens, total_tokens
+        ) VALUES (?, ?, 'Claude Code', 'POST', '/v1/messages', 'alpha-model', 'alpha', ?, 10, 3, 2, 5)
+      `);
+      insert.run(now, "legacy-ok", 200);
+      insert.run(now, "legacy-uncaptured", 0);
+    } finally {
+      legacy.close();
+    }
+
+    const usageStore = new UsageStore(path.join(dir, "usage.sqlite"), { requestLogDbFile });
+    const stats = await usageStore.getStats("today", { includeProxy: true });
+    assert.equal(stats.totals.requestCount, 2, "the backfill ran instead of being skipped");
+    assert.equal(stats.totals.errorCount, 0);
+    assert.equal(stats.totals.successRate, 1);
+
+    const usageDatabase = createBetterSqliteDatabase(path.join(dir, "usage.sqlite"));
+    try {
+      assert.deepEqual(
+        usageDatabase.prepare("SELECT request_id, upstream_outcome FROM usage_events ORDER BY request_id").all(),
+        [
+          { request_id: "legacy-ok", upstream_outcome: "http_status" },
+          { request_id: "legacy-uncaptured", upstream_outcome: "unknown" }
+        ],
+        "the outcome is derived from the status the way the request-log migration seeds it"
+      );
+    } finally {
+      usageDatabase.close();
+    }
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+// An install that ran a build which added the column without populating it holds
+// '' on every row. '' reads as decided, so every uncaptured status stayed in the
+// error count until the rows are migrated.
+test("UsageStore migrates usage rows left without an upstream outcome", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-outcome-migrate-test-"));
+  try {
+    const dbFile = path.join(dir, "usage.sqlite");
+    const now = new Date().toISOString();
+    const seed = new UsageStore(dbFile);
+    await seed.record({
+      createdAt: now,
+      durationMs: 10,
+      method: "POST",
+      model: "model-a",
+      path: "/v1/messages",
+      provider: "vendor",
+      requestId: "seed-1",
+      statusCode: 200,
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+    });
+    await seed.getStats("30d");
+
+    // Reproduce the shipped state: the column exists but holds '', and that build
+    // never recorded the backfill as complete.
+    const database = createBetterSqliteDatabase(dbFile);
+    try {
+      database.exec("UPDATE usage_events SET upstream_outcome = ''");
+      database.exec("DELETE FROM usage_metadata WHERE key = 'usage_upstream_outcome_backfill_v1'");
+      database.prepare(`
+        INSERT INTO usage_events (
+          created_at, request_id, client, method, path, model, logical_model, provider,
+          credential_id, status_code, duration_ms, input_tokens, output_tokens,
+          cache_read_tokens, cache_write_tokens, total_tokens, cost_usd, cost_source,
+          upstream_outcome
+        ) VALUES (?, 'legacy-zero', 'unknown', 'POST', '/v1/messages', 'model-a', 'model-a',
+          'vendor', '', 0, 10, 1, 1, 0, 0, 2, NULL, 'models.dev', '')
+      `).run(now);
+    } finally {
+      database.close();
+    }
+
+    // Reopening runs the schema migration.
+    const reopened = new UsageStore(dbFile);
+    const stats = await reopened.getStats("30d");
+    const after = createBetterSqliteDatabase(dbFile);
+    try {
+      const rows = after.prepare(
+        "SELECT request_id, upstream_outcome FROM usage_events ORDER BY request_id"
+      ).all();
+      assert.deepEqual(rows, [
+        { request_id: "legacy-zero", upstream_outcome: "unknown" },
+        { request_id: "seed-1", upstream_outcome: "http_status" }
+      ]);
+    } finally {
+      after.close();
+    }
+    assert.equal(stats.totals.requestCount, 2, "both rows are still counted");
+    assert.equal(stats.totals.errorCount, 0, "the migrated zero-status row is not an error");
+    assert.equal(stats.totals.successRate, 1);
+
+    // Once the backfill has finished, later opens skip it rather than scanning
+    // the whole table again. A row put back to '' behind its back stays as it is.
+    const marked = createBetterSqliteDatabase(dbFile);
+    try {
+      marked.exec("UPDATE usage_events SET upstream_outcome = '' WHERE request_id = 'seed-1'");
+    } finally {
+      marked.close();
+    }
+    await new UsageStore(dbFile).getStats("30d");
+    const skipped = createBetterSqliteDatabase(dbFile);
+    try {
+      assert.equal(
+        skipped.prepare("SELECT upstream_outcome FROM usage_events WHERE request_id = 'seed-1'").get().upstream_outcome,
+        "",
+        "a completed backfill does not run again on reopen"
+      );
+    } finally {
+      skipped.close();
+    }
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+// The backfill is paged so it never holds the usage table's write lock for a
+// whole large history at once. Paging is only correct if it actually walks past
+// the first batch, so seed more rows than the batch size (500) and mix statuses
+// so a wrong page boundary would leave some row behind or mislabel it.
+test("UsageStore migrates more usage rows than a single backfill batch", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-outcome-paged-test-"));
+  try {
+    const dbFile = path.join(dir, "usage.sqlite");
+    const now = new Date().toISOString();
+    const seed = new UsageStore(dbFile);
+    await seed.record({
+      createdAt: now,
+      durationMs: 1,
+      method: "POST",
+      model: "model-a",
+      path: "/v1/messages",
+      provider: "vendor",
+      requestId: "seed-1",
+      statusCode: 200,
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+    });
+    await seed.getStats("30d");
+
+    const total = 1250;
+    const database = createBetterSqliteDatabase(dbFile);
+    try {
+      const insert = database.prepare(`
+        INSERT INTO usage_events (
+          created_at, request_id, client, method, path, model, logical_model, provider,
+          credential_id, status_code, duration_ms, input_tokens, output_tokens,
+          cache_read_tokens, cache_write_tokens, total_tokens, cost_usd, cost_source,
+          upstream_outcome
+        ) VALUES (?, ?, 'unknown', 'POST', '/v1/messages', 'model-a', 'model-a',
+          'vendor', '', ?, 1, 1, 1, 0, 0, 2, NULL, 'models.dev', '')
+      `);
+      database.exec("BEGIN");
+      // Alternate a captured status and an uncaptured one across the batch
+      // boundary, so both branches of the CASE are exercised on every page.
+      for (let index = 0; index < total; index += 1) {
+        insert.run(now, `legacy-${index}`, index % 2 === 0 ? 200 : 0);
+      }
+      database.exec("UPDATE usage_events SET upstream_outcome = ''");
+      database.exec("DELETE FROM usage_metadata WHERE key = 'usage_upstream_outcome_backfill_v1'");
+      database.exec("COMMIT");
+    } finally {
+      database.close();
+    }
+
+    const reopened = new UsageStore(dbFile);
+    const stats = await reopened.getStats("30d");
+    const after = createBetterSqliteDatabase(dbFile);
+    try {
+      const counts = after.prepare(`
+        SELECT upstream_outcome AS outcome, COUNT(*) AS n
+        FROM usage_events
+        GROUP BY upstream_outcome
+        ORDER BY upstream_outcome
+      `).all();
+      assert.deepEqual(counts, [
+        // 625 seeded zero-status rows.
+        { outcome: "unknown", n: total / 2 },
+        // 625 seeded plus the one real success recorded above.
+        { outcome: "http_status", n: total / 2 + 1 }
+      ].sort((a, b) => a.outcome.localeCompare(b.outcome)));
+      assert.equal(
+        after.prepare("SELECT COUNT(*) AS n FROM usage_events WHERE upstream_outcome = ''").get().n,
+        0,
+        "no row is left behind past the first page"
+      );
+    } finally {
+      after.close();
+    }
+    assert.equal(stats.totals.requestCount, total + 1);
+    // Only the zero-status rows are undecided; nothing became an error.
+    assert.equal(stats.totals.errorCount, 0);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});

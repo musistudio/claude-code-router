@@ -13,6 +13,7 @@ import {
   type ClaudeCodeRouteDecision
 } from "@ccr/core/gateway/claude-code-router-plugin";
 import {
+  ccrClientModelHeader,
   ccrCodexApplyPatchBridgeHeader,
   ccrCodexBridgeRequestTransformKey,
   ccrCodexBridgeResponseHookKey,
@@ -39,6 +40,7 @@ import {
   ccrRouterHttpRoutePath,
   ccrRouterRouteResolverKey,
   ccrRouterRequestTransformKey,
+  encodeCcrClientModelHeader,
   encodeCcrRouteFallbackHeader,
   type CcrRouterPluginRouteRequest
 } from "@ccr/core/gateway/core-runtime/router-plugin-contract";
@@ -388,15 +390,28 @@ export async function createGatewayPlugin(input: GatewayPluginFactoryInput = {})
         const method = requestInput.route?.method ?? requestInput.request?.method ?? "GET";
         const url = requestInput.route?.url ?? requestInput.request?.url ?? "/";
         const path = requestPath(url);
-        if (!shouldApplyGatewayRouting(method, path) || !isRecord(requestInput.requestBody)) {
-          return undefined;
+        const body = isRecord(requestInput.requestBody) ? requestInput.requestBody : undefined;
+        const routingApplies = shouldApplyGatewayRouting(method, path) && body !== undefined;
+        // Requests that never route keep their ask too, so the raw trace can
+        // record it without reading the body. Only the model field is read
+        // here, so stamping does not serialize a body the router never saw.
+        const directModel = typeof body?.model === "string" && body.model.trim()
+          ? body.model.trim()
+          : undefined;
+        const modelBeforeRouting = routingApplies
+          ? requestedModelFromBody(body, path, requestInput.model)
+          : directModel ?? (requestInput.model?.trim() || undefined);
+        const clientModelHeaders = modelBeforeRouting
+          ? { [ccrClientModelHeader]: encodeCcrClientModelHeader(modelBeforeRouting) }
+          : {};
+        if (!routingApplies) {
+          return Object.keys(clientModelHeaders).length > 0 ? { headers: clientModelHeaders } : undefined;
         }
 
         const apiKey = await resolveApiKey(config, requestInput.request?.headers);
         const profile = profileForApiKey(config, apiKey);
-        const modelBeforeRouting = requestedModelFromBody(requestInput.requestBody, path, requestInput.model);
         const routeResponse = await routeWithRouter(router, {
-          body: requestInput.requestBody,
+          body,
           headers: requestInput.request?.headers,
           method,
           path,
@@ -426,7 +441,10 @@ export async function createGatewayPlugin(input: GatewayPluginFactoryInput = {})
           url,
           openRouterDiscountContext
         );
-        const headers = decisionHeaders(routeResponse.decision);
+        const headers = {
+          ...decisionHeaders(routeResponse.decision),
+          ...clientModelHeaders
+        };
         return {
           headers: {
             ...headers,

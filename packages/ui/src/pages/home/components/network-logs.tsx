@@ -831,7 +831,7 @@ function LogMobileCard({
             <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
               <span className={cn(
                 "rounded-full px-2 py-0.5 text-[11px] font-bold uppercase",
-                item.ok ? "network-state-pill-completed" : "network-state-pill-error"
+                `network-state-pill-${logOutcomeTone(item)}`
               )}>
                 HTTP {item.statusCode || "-"}
               </span>
@@ -961,7 +961,7 @@ export function LogExpandedDetails({
       <div className="network-detail-bar flex min-h-10 min-w-0 items-center gap-2 border-b px-3 py-1.5">
         <span className={cn(
           "rounded-full px-3 py-1 text-[12px] font-bold uppercase",
-          entry.ok ? "network-state-pill-completed" : "network-state-pill-error"
+          `network-state-pill-${logOutcomeTone(entry)}`
         )}>
           HTTP {entry.statusCode || "-"}
         </span>
@@ -1496,6 +1496,21 @@ function logCredentialCellLabel(entry: RequestLogEntry): string {
   return entry.credentialId || entry.credentialChain[0] || (entry.credentialSaturated ? "saturated" : "-");
 }
 
+// Several provider routes never report an HTTP status, which leaves a perfectly
+// successful request at statusCode 0 with ok=false. That is unknown, not failed,
+// so it must not be painted as an error.
+function logOutcomeTone(
+  entry: Pick<RequestLogEntry, "error" | "ok" | "upstreamOutcome">
+): "active" | "completed" | "error" {
+  if (entry.ok) {
+    return "completed";
+  }
+  if (entry.upstreamOutcome === "unknown" && !entry.error) {
+    return "active";
+  }
+  return "error";
+}
+
 function formatTokenRate(value: number): string {
   return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: value < 10 ? 1 : 0 }).format(value)} tok/s`;
 }
@@ -1514,7 +1529,7 @@ function streamSpeedSampleLabel(status: NonNullable<RequestLogEntry["streamSpeed
 
 function LogStatusDot({ entry }: { entry: RequestLogEntry }) {
   return (
-    <span className={cn("h-3 w-3 shrink-0 rounded-full", entry.ok ? "network-dot-completed" : "network-dot-error")} />
+    <span className={cn("h-3 w-3 shrink-0 rounded-full", `network-dot-${logOutcomeTone(entry)}`)} />
   );
 }
 

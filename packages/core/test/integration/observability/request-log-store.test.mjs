@@ -163,7 +163,8 @@ test("RequestLogStore resumes interrupted gateway migrations across bounded batc
       `).all();
       assert.deepEqual(migrations, [
         { completed: 1, migration: "gateway-final-attempt-v1" },
-        { completed: 1, migration: "gateway-outcome-v1" }
+        { completed: 1, migration: "gateway-outcome-v1" },
+        { completed: 1, migration: "upstream-outcome-v1" }
       ]);
       const indexes = migrated.prepare("PRAGMA index_list(request_logs)").all();
       assert.equal(indexes.some((index) => index.name === "request_logs_request_id_idx"), true);
@@ -2086,6 +2087,114 @@ test("RequestLogStore does not identify an unknown client as OpenCode from its m
     const analysis = await store.analyze({ agent: "all", range: "30d" });
     assert.equal(analysis.scannedRequestCount, 1);
     assert.equal(analysis.agents[0]?.agent, "unknown");
+  } finally {
+    await store?.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+// A request whose upstream status was never captured is undecided. It must not be
+// rendered or counted as a failure, and it must not be claimed as a success.
+test("RequestLogStore reports an uncaptured upstream status as partial, not an error", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-unknown-outcome-test-"));
+  let store;
+  try {
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const baseTime = Date.now() - 5000;
+
+    async function recordRequest({ offsetMs, requestId, statusCode }) {
+      const startedAtMs = baseTime + offsetMs;
+      await store.record({
+        completedAt: new Date(startedAtMs + 100).toISOString(),
+        durationMs: 100,
+        method: "POST",
+        path: "/v1/responses",
+        providerName: "test-provider",
+        providerProtocol: "openai_responses",
+        requestBody: Buffer.from(JSON.stringify({
+          input: "do the thing",
+          model: "model-a"
+        }), "utf8"),
+        requestHeaders: {
+          "content-type": "application/json",
+          "user-agent": "claude-cli test",
+          "x-claude-code-session-id": "unknown-outcome-session"
+        },
+        requestId,
+        responseBodyText: JSON.stringify({ model: "model-a" }),
+        responseHeaders: { "content-type": "application/json" },
+        startedAt: new Date(startedAtMs).toISOString(),
+        statusCode,
+        url: "http://127.0.0.1:3456/v1/responses"
+      });
+    }
+
+    await recordRequest({ offsetMs: 0, requestId: "ok-request", statusCode: 200 });
+    // statusCode 0 is what a provider route that omits the HTTP status leaves behind.
+    await recordRequest({ offsetMs: 1000, requestId: "unknown-request", statusCode: 0 });
+
+    const analysis = await store.analyze({
+      range: "30d",
+      sessionAgent: "claude-code",
+      sessionId: "unknown-outcome-session"
+    });
+    const runs = analysis.selectedSession?.trace.runs ?? [];
+    const llmRuns = runs.filter((run) => run.kind === "llm");
+    assert.equal(llmRuns.some((run) => run.status === "success"), true, "the 200 is a success");
+    assert.equal(llmRuns.some((run) => run.status === "partial"), true, "the uncaptured status is partial");
+    assert.equal(llmRuns.some((run) => run.status === "error"), false, "neither row is an error");
+
+    // The error list and the summary must agree with that.
+    assert.equal(analysis.errors.some((row) => row.requestId === "unknown-request"), false);
+    assert.equal(analysis.totals.errorCount, 0);
+    assert.equal(analysis.totals.successRate, 1, "the undecided row must not depress the rate");
+  } finally {
+    await store?.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+// The router deliberately ignores a routing element that is merely quoted, so
+// observability must not re-derive a subagent from one and invent a child call.
+test("RequestLogStore does not attribute a subagent to a quoted routing element", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-quoted-element-test-"));
+  let store;
+  try {
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const startedAtMs = Date.now() - 5000;
+    await store.record({
+      completedAt: new Date(startedAtMs + 100).toISOString(),
+      durationMs: 100,
+      method: "POST",
+      path: "/v1/messages",
+      providerName: "test-provider",
+      requestBody: Buffer.from(JSON.stringify({
+        messages: [{
+          content: "For example, <CCR-SUBAGENT-MODEL>Provider/claude-opus</CCR-SUBAGENT-MODEL> picks a worker. Explain that.",
+          role: "user"
+        }],
+        model: "claude-test"
+      }), "utf8"),
+      requestHeaders: {
+        "content-type": "application/json",
+        "user-agent": "claude-cli test",
+        "x-claude-code-session-id": "quoted-element-session"
+      },
+      requestId: "quoted-element-request",
+      responseBodyText: JSON.stringify({ model: "claude-test" }),
+      responseHeaders: { "content-type": "application/json" },
+      startedAt: new Date(startedAtMs).toISOString(),
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/messages"
+    });
+
+    const analysis = await store.analyze({
+      range: "30d",
+      sessionAgent: "claude-code",
+      sessionId: "quoted-element-session"
+    });
+    assert.equal(analysis.selectedSession?.trace.subagentRunCount, 0);
+    assert.equal(analysis.selectedSession?.subagents.length, 0);
   } finally {
     await store?.close();
     rmSync(dir, { force: true, recursive: true });

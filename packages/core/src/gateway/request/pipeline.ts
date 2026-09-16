@@ -53,12 +53,14 @@ import { isModelAllowedForProfile, profileForApiKey } from "@ccr/core/profiles/m
 import { pluginService } from "@ccr/core/plugins/service";
 import { finalizeOpenRouterDiscountProviderRouterSelection } from "@ccr/core/plugins/built-ins/openrouter-discount-provider-router";
 import {
+  ccrClientModelHeader,
   ccrRouteHeaderNames,
   ccrRouteDiagnosticsHeader,
   ccrRouteReasonHeader,
   ccrRouteSourceHeader,
   ccrRoutedModelHeader,
-  ccrRouterHttpRoutePath
+  ccrRouterHttpRoutePath,
+  encodeCcrClientModelHeader
 } from "@ccr/core/gateway/core-runtime/router-plugin-contract";
 import { isRecord } from "@ccr/core/gateway/internal/value";
 import { combineStreamExperienceMetrics, createStreamExperienceMeter, monotonicNowMs } from "@ccr/core/observability/stream-experience";
@@ -154,6 +156,12 @@ export class GatewayRequestPipeline {
         headers["x-auth-sub"] = apiKey.id;
       }
       headers["x-client-request-id"] = requestId;
+      // The ask, not the routed target `model`/`resolved_model` hold. Stamped
+      // here rather than in the routing branch so paths that never route still
+      // carry it to the raw trace. Encoded so non-ASCII model selectors survive.
+      if (requestedModel) {
+        headers[ccrClientModelHeader] = encodeCcrClientModelHeader(requestedModel);
+      }
       routeTrace?.capture({
         changes: [
           ...strippedCcrRouteHeaderChanges,
@@ -164,7 +172,8 @@ export class GatewayRequestPipeline {
             reportedRouteChange("headers", "/headers/x-auth-api-key-id", previousAuthApiKeyId, apiKey.id),
             reportedRouteChange("headers", "/headers/x-auth-sub", previousAuthSub, apiKey.id)
           ] : []),
-          reportedRouteChange("headers", "/headers/x-client-request-id", previousClientRequestId, requestId)
+          reportedRouteChange("headers", "/headers/x-client-request-id", previousClientRequestId, requestId),
+          reportedRouteChange("headers", `/headers/${ccrClientModelHeader}`, undefined, requestedModel)
         ].filter(isReportedRouteChange),
         durationMs: Date.now() - headerNormalizationStartedAt,
         kind: "mutation",
@@ -196,6 +205,11 @@ export class GatewayRequestPipeline {
       let routedModel: string | undefined;
       let routedSessionId: string | undefined;
       let routedTokenCount: number | undefined;
+      // Recorded directly on the request log. Relying on the raw trace for this
+      // does not work: that update is queued behind record admission and may
+      // never land, leaving the routing columns empty.
+      let routedReason: string | undefined;
+      let routedSource: string | undefined;
       let codexApplyPatchBridgeActive = false;
       let codexMultiAgentBridgeActive = false;
       const pluginResponseHeaders = new Headers();
@@ -325,6 +339,11 @@ export class GatewayRequestPipeline {
             routedModel
           ),
           providerProtocol: resolveResponseProviderProtocol(responseHeaders, this.config),
+          // The model the client asked for, read from the original request body
+          // before routing rewrote it, plus why the gateway moved it.
+          clientModel: requestedModel,
+          routeReason: routedReason,
+          routeSource: routedSource,
           requestedModel,
           requestBody: shouldSendBody(method) ? bodyToForward ?? Buffer.alloc(0) : Buffer.alloc(0),
           requestHeaders: headers,
@@ -394,6 +413,8 @@ export class GatewayRequestPipeline {
         headers["content-type"] = "application/json";
         headers[ccrRouteReasonHeader] = sanitizeHeaderValue(routed.decision.reason);
         headers[ccrRouteSourceHeader] = routed.decision.source;
+        routedReason = routed.decision.reason;
+        routedSource = routed.decision.source;
         if (routed.decision.diagnostics.length > 0) {
           headers[ccrRouteDiagnosticsHeader] = String(routed.decision.diagnostics.length);
         }

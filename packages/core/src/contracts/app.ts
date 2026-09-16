@@ -2222,6 +2222,13 @@ export type RequestLogEntry = {
   cacheReadTokens: number;
   cacheWriteTokens: number;
   client: string;
+  /**
+   * The model the client originally asked for, when it is known. `model` and
+   * `resolvedModel` hold the target CCR actually used, and legacy
+   * `requestedModel` keeps its existing post-routing meaning, so this is the
+   * only field that shows a request was rerouted.
+   */
+  clientModel?: string;
   completedAt?: string;
   costUsd?: number;
   createdAt: string;
@@ -2250,6 +2257,10 @@ export type RequestLogEntry = {
   requestId: string;
   routeAttemptCount: number;
   routeHopCount: number;
+  /** Why CCR chose this target, as stamped by the gateway (e.g. a built-in rule). */
+  routeReason?: string;
+  /** What kind of request the gateway classified this as (e.g. a subagent launch). */
+  routeSource?: string;
   routeTrace?: RequestRouteTrace;
   routeTraceTruncated: boolean;
   retryAttempts: RequestLogRetryAttempt[];
@@ -2263,9 +2274,30 @@ export type RequestLogEntry = {
   timeToFirstSignalMs?: number;
   timeToFirstTextMs?: number;
   totalTokens: number;
+  /**
+   * How the upstream attempt actually ended. This keeps "no status was captured"
+   * distinct from "the request failed": several provider routes omit the HTTP
+   * status, so `statusCode === 0` with `ok === false` does NOT by itself mean a
+   * failure. `statusCode` and `ok` are unchanged for existing callers.
+   */
+  upstreamOutcome?: RequestLogUpstreamOutcome;
   upstreamTimeToFirstSignalMs?: number;
   url: string;
 };
+
+/**
+ * - `http_status`: a real upstream HTTP status was observed (see `statusCode`).
+ * - `unknown`: an upstream response was observed but carried no status.
+ * - `stream_failure`: the response stream reported an explicit failure.
+ * - `transport_failure`: the request ended before any upstream response existed.
+ * - `cancelled`: the client disconnected or the stream reported cancellation.
+ */
+export type RequestLogUpstreamOutcome =
+  | "http_status"
+  | "unknown"
+  | "stream_failure"
+  | "transport_failure"
+  | "cancelled";
 
 export type RequestLogFilterOptions = {
   credentials: string[];

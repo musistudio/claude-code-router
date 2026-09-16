@@ -80,8 +80,15 @@ export class ClaudeCodeRouterPlugin {
         const profile = resolveBuiltInAgentProfile(matchedRequest, this.config, "claude-code");
         injectClaudeCodeAgentToolDescription(matchedRequest.body, this.config, profile);
         injectClaudeCodeToolHubInstructions(matchedRequest.body, this.config);
+        // Read the marker before the billing block is stripped, and from any
+        // system shape -- the strippable-block check below is deliberately
+        // narrower and must not decide routing on its own.
+        const declaresSubagent = claudeCodeRequestDeclaresSubagent(matchedRequest.body);
         matchedRequest.builtInClaudeCodeSubagent = removeClaudeCodeBillingSystemHeader(matchedRequest.body);
-        matchedRequest.builtInSubagentModel = extractAndRemoveClaudeCodeSubagentModelTag(matchedRequest.body);
+        matchedRequest.builtInSubagentModel = extractAndRemoveClaudeCodeSubagentModelTag(
+          matchedRequest.body,
+          matchedRequest.builtInClaudeCodeSubagent === true || declaresSubagent
+        );
       },
       id: "claude-code",
       matches: (candidate) => builtInAgentRouteMatches(candidate, this.config, "claude-code")
@@ -1072,6 +1079,37 @@ function removeClaudeCodeBillingSystemHeader(body: Record<string, unknown>): boo
   return isSubagent;
 }
 
+/**
+ * Read-only: does this request declare itself a Claude Code subagent launch?
+ *
+ * `removeClaudeCodeBillingSystemHeader` only reports the marker when the billing
+ * block is literally `system[0]` of an array, because that is the only block it
+ * is allowed to strip. That precondition is far too narrow to gate routing on: a
+ * genuine child whose `system` is a plain string, or whose billing block sits
+ * later in the array, would silently lose its routing and forward the routing
+ * element upstream. This inspects every shape and mutates nothing.
+ */
+function claudeCodeRequestDeclaresSubagent(body: Record<string, unknown>): boolean {
+  const system = body.system;
+  if (typeof system === "string") {
+    return claudeCodeBillingMetadataIsSubagent(system);
+  }
+  if (!Array.isArray(system)) {
+    return false;
+  }
+  for (const block of system) {
+    const text = typeof block === "string"
+      ? block
+      : isRecord(block) && typeof block.text === "string"
+        ? block.text
+        : undefined;
+    if (text !== undefined && claudeCodeBillingMetadataIsSubagent(text)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function claudeCodeBillingMetadataIsSubagent(text: string): boolean {
   const prefix = `${claudeCodeBillingSystemHeaderPrefix}:`;
   if (!text.startsWith(prefix)) {
@@ -1103,10 +1141,35 @@ function claudeCodeBillingMetadataIsSubagent(text: string): boolean {
   return values.length === 1 && values[0] === "true";
 }
 
-function extractAndRemoveClaudeCodeSubagentModelTag(body: Record<string, unknown>): string | undefined {
+function extractAndRemoveClaudeCodeSubagentModelTag(
+  body: Record<string, unknown>,
+  isSubagentRequest: boolean
+): string | undefined {
+  // `system` and `messages` are deliberately treated differently, because they
+  // carry different trust.
+  //
+  // `system` is author-controlled configuration: the caller's own system prompt,
+  // or a tag injected from the profile / user config. Honouring an element there
+  // is the documented way to force a model, so it stays unconditional.
+  //
+  // `messages` carry conversation content, which can include material the request
+  // is merely *reviewing* -- a transcript under security-classifier review, or an
+  // example quoted in the parent conversation. Honouring an element there let
+  // reviewed text choose the model for the request judging it. So the message slot
+  // is only trusted when this really is a subagent launch, which the
+  // cc_is_subagent billing marker tells us; otherwise the element is left in place
+  // (a classifier still needs to see it as evidence) and ignored for routing.
+  //
+  // Residual risk, accepted knowingly: a caller that puts reviewed content in
+  // `system` rather than in a message could still steer routing. No observed
+  // client does that -- classifier requests carry the transcript in messages[0] --
+  // and closing it would break the documented system-prompt mechanism.
   const systemModel = extractAndRemoveSystemSubagentModelTag(body);
   if (systemModel) {
     return systemModel;
+  }
+  if (!isSubagentRequest) {
+    return undefined;
   }
   return extractAndRemoveMessageSubagentModelTag(body);
 }
