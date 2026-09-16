@@ -104,6 +104,7 @@ type StoredUsageEvent = {
   requestId: string;
   statusCode: number;
   totalTokens: number;
+  upstreamOutcome: string;
 };
 
 type UsageSnapshot = UsageNumbers & {
@@ -421,6 +422,15 @@ export class UsageStore {
   private backfillFromAttachedRequestLog(database: SqlDatabase, requestLogDbFile: string, since: Date): void {
     database.exec(`ATTACH DATABASE ${sqlString(requestLogDbFile)} AS request_log_source`);
     try {
+      // Usage can open a request-log database before the request-log worker has
+      // migrated it, so the column may not exist yet. Derive the outcome from the
+      // status the same way that migration seeds it rather than failing the whole
+      // backfill on `no such column`.
+      const hasUpstreamOutcome = queryRows(database, "PRAGMA request_log_source.table_info(request_logs)")
+        .some((row) => row.name === "upstream_outcome");
+      const upstreamOutcomeExpression = hasUpstreamOutcome
+        ? "logs.upstream_outcome"
+        : "CASE WHEN logs.status_code > 0 THEN 'http_status' ELSE 'unknown' END";
       database.prepare(`
           INSERT INTO usage_events (
             created_at,
@@ -462,7 +472,7 @@ export class UsageStore {
             logs.total_tokens,
             logs.cost_usd,
             'request_log',
-            logs.upstream_outcome
+            ${upstreamOutcomeExpression}
           FROM request_log_source.request_logs AS logs
           WHERE logs.source_usage_id IS NULL
             AND logs.path NOT LIKE ?
@@ -509,28 +519,32 @@ export function onUsageRecorded(listener: () => void): () => void {
  *
  * No progress ledger is needed: the predicate is its own progress marker, since
  * every row this touches stops matching it. So the loop is idempotent, resumable
- * after a crash mid-migration, and self-terminating.
+ * after a crash mid-migration, and self-terminating. Each page still starts after
+ * the previous page's last id, so later pages seek past the migrated prefix
+ * instead of rescanning it.
  */
 function backfillUsageUpstreamOutcome(database: SqlDatabase): void {
   const selectBatch = database.prepare(`
     SELECT id
     FROM usage_events
-    WHERE upstream_outcome = ''
+    WHERE id > ? AND upstream_outcome = ''
     ORDER BY id ASC
     LIMIT ?
   `);
   const updateBatch = database.prepare(`
     UPDATE usage_events
     SET upstream_outcome = CASE WHEN status_code > 0 THEN 'http_status' ELSE 'unknown' END
-    WHERE id <= ? AND upstream_outcome = ''
+    WHERE id > ? AND id <= ? AND upstream_outcome = ''
   `);
+  let lastId = 0;
   while (true) {
-    const rows = selectBatch.all(usageOutcomeBackfillBatchSize) as Record<string, SqlValue>[];
+    const rows = selectBatch.all(lastId, usageOutcomeBackfillBatchSize) as Record<string, SqlValue>[];
     if (rows.length === 0) {
       return;
     }
     const batchLastId = normalizeCount(rows.at(-1)?.id);
-    updateBatch.run(batchLastId);
+    updateBatch.run(lastId, batchLastId);
+    lastId = batchLastId;
   }
 }
 
@@ -775,7 +789,8 @@ function toStoredUsageEvent(row: Record<string, SqlValue>): StoredUsageEvent {
     provider: normalizeLabel(String(row.provider ?? ""), "unknown"),
     requestId: String(row.request_id ?? ""),
     statusCode: normalizeCount(row.status_code),
-    totalTokens: normalizeCount(row.total_tokens)
+    totalTokens: normalizeCount(row.total_tokens),
+    upstreamOutcome: String(row.upstream_outcome ?? "")
   };
 }
 
@@ -962,7 +977,8 @@ function readRecentRequestRows(database: SqlDatabase, query: UsageWhereClause): 
         cache_write_tokens,
         total_tokens,
         cost_usd,
-        cost_source
+        cost_source,
+        upstream_outcome
       FROM usage_events
       WHERE ${query.where}
       ORDER BY created_at DESC, id DESC
@@ -1091,7 +1107,11 @@ function buildTotals(events: StoredUsageEvent[]): UsageTotals {
   const totalTokens = sum(events, totalTokenCount);
   const promptTokens = sum(events, promptTokenCount);
   const successfulRequests = events.filter((event) => event.statusCode >= 200 && event.statusCode < 400).length;
-  const errorCount = requestCount - successfulRequests;
+  // Same rule as the SQL totals: an uncaptured upstream status is undecided, so
+  // it is neither an error nor part of the success-rate denominator.
+  const undecidedRequests = events.filter(isUndecidedUsageEvent).length;
+  const decidedRequests = requestCount - undecidedRequests;
+  const errorCount = Math.max(0, decidedRequests - successfulRequests);
 
   return {
     avgDurationMs: Math.round(sum(events, (event) => event.durationMs) / requestCount),
@@ -1102,9 +1122,13 @@ function buildTotals(events: StoredUsageEvent[]): UsageTotals {
     inputTokens,
     outputTokens,
     requestCount,
-    successRate: successfulRequests / requestCount,
+    successRate: decidedRequests > 0 ? successfulRequests / decidedRequests : 0,
     totalTokens
   };
+}
+
+function isUndecidedUsageEvent(event: StoredUsageEvent): boolean {
+  return event.statusCode === 0 && event.upstreamOutcome === "unknown";
 }
 
 function promptTokenCount(event: StoredUsageEvent): number {

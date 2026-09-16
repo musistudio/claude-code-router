@@ -853,6 +853,85 @@ test("UsageStore does not count an uncaptured upstream status as an error", asyn
     // Decided requests are the 200 and the 500, so the rate is 1/2 -- the
     // undecided row must not drag it to 1/3.
     assert.equal(stats.totals.successRate, 0.5);
+
+    // Recent requests are totalled per row in memory rather than in SQL, so they
+    // need the same rule or the undecided row still shows as a failed request.
+    const recentByStatus = new Map(
+      stats.recentRequests.map((row) => [row.caption.split(" · ").at(-1), row])
+    );
+    assert.equal(recentByStatus.get("500")?.errorCount, 1);
+    assert.equal(recentByStatus.get("200")?.errorCount, 0);
+    assert.equal(recentByStatus.get("200")?.successRate, 1);
+    assert.equal(recentByStatus.get("0")?.errorCount, 0, "the undecided recent request is not a failure");
+    assert.equal(recentByStatus.get("0")?.successRate, 0);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+// Usage can attach a request-log database before the request-log worker has
+// migrated it. Reading logs.upstream_outcome unconditionally failed with
+// `no such column` and silently skipped the entire backfill.
+test("UsageStore backfills from a request-log database that predates upstream_outcome", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-legacy-request-log-test-"));
+  try {
+    const requestLogDbFile = path.join(dir, "request-logs.sqlite");
+    const now = new Date().toISOString();
+    const legacy = createBetterSqliteDatabase(requestLogDbFile);
+    try {
+      legacy.exec(`
+        CREATE TABLE request_logs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          created_at TEXT NOT NULL,
+          request_id TEXT NOT NULL DEFAULT '',
+          client TEXT NOT NULL DEFAULT 'unknown',
+          method TEXT NOT NULL DEFAULT '',
+          path TEXT NOT NULL DEFAULT '',
+          model TEXT NOT NULL DEFAULT '',
+          provider TEXT NOT NULL DEFAULT '',
+          credential_id TEXT NOT NULL DEFAULT '',
+          status_code INTEGER NOT NULL DEFAULT 0,
+          duration_ms INTEGER NOT NULL DEFAULT 0,
+          input_tokens INTEGER NOT NULL DEFAULT 0,
+          output_tokens INTEGER NOT NULL DEFAULT 0,
+          cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+          cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+          total_tokens INTEGER NOT NULL DEFAULT 0,
+          cost_usd REAL,
+          source_usage_id TEXT
+        )
+      `);
+      const insert = legacy.prepare(`
+        INSERT INTO request_logs (
+          created_at, request_id, client, method, path, model, provider, status_code,
+          duration_ms, input_tokens, output_tokens, total_tokens
+        ) VALUES (?, ?, 'Claude Code', 'POST', '/v1/messages', 'alpha-model', 'alpha', ?, 10, 3, 2, 5)
+      `);
+      insert.run(now, "legacy-ok", 200);
+      insert.run(now, "legacy-uncaptured", 0);
+    } finally {
+      legacy.close();
+    }
+
+    const usageStore = new UsageStore(path.join(dir, "usage.sqlite"), { requestLogDbFile });
+    const stats = await usageStore.getStats("today", { includeProxy: true });
+    assert.equal(stats.totals.requestCount, 2, "the backfill ran instead of being skipped");
+    assert.equal(stats.totals.errorCount, 0);
+    assert.equal(stats.totals.successRate, 1);
+
+    const usageDatabase = createBetterSqliteDatabase(path.join(dir, "usage.sqlite"));
+    try {
+      assert.deepEqual(
+        usageDatabase.prepare("SELECT request_id, upstream_outcome FROM usage_events ORDER BY request_id").all(),
+        [
+          { request_id: "legacy-ok", upstream_outcome: "http_status" },
+          { request_id: "legacy-uncaptured", upstream_outcome: "unknown" }
+        ],
+        "the outcome is derived from the status the way the request-log migration seeds it"
+      );
+    } finally {
+      usageDatabase.close();
+    }
   } finally {
     rmSync(dir, { force: true, recursive: true });
   }
