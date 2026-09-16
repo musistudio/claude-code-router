@@ -163,7 +163,8 @@ test("RequestLogStore resumes interrupted gateway migrations across bounded batc
       `).all();
       assert.deepEqual(migrations, [
         { completed: 1, migration: "gateway-final-attempt-v1" },
-        { completed: 1, migration: "gateway-outcome-v1" }
+        { completed: 1, migration: "gateway-outcome-v1" },
+        { completed: 1, migration: "upstream-outcome-v1" }
       ]);
       const indexes = migrated.prepare("PRAGMA index_list(request_logs)").all();
       assert.equal(indexes.some((index) => index.name === "request_logs_request_id_idx"), true);

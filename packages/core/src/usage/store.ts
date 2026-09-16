@@ -116,6 +116,7 @@ const usageOutcomeBackfillBatchSize = 500;
 const usageEvents = new EventEmitter();
 const usageStatsRanges = new Set<UsageStatsRange>(["today", "24h", "7d", "30d"]);
 const usageStatsResetAtKey = "usage_stats_reset_at";
+const usageUpstreamOutcomeBackfillKey = "usage_upstream_outcome_backfill_v1";
 const emptyTotals: UsageTotals = {
   avgDurationMs: 0,
   cacheRatio: 0,
@@ -517,13 +518,26 @@ export function onUsageRecorded(listener: () => void): () => void {
  * `busy_timeout`, and those failures are swallowed by the usage capture path, so
  * requests would vanish from Overview instead of erroring visibly.
  *
- * No progress ledger is needed: the predicate is its own progress marker, since
+ * No per-page progress is stored: the predicate is its own progress marker, since
  * every row this touches stops matching it. So the loop is idempotent, resumable
  * after a crash mid-migration, and self-terminating. Each page still starts after
  * the previous page's last id, so later pages seek past the migrated prefix
  * instead of rescanning it.
+ *
+ * Completion is recorded once, though, because `upstream_outcome` is not indexed
+ * and this runs on every open: without the marker each open would scan the whole
+ * table just to find nothing left to do. Every current writer stores a non-empty
+ * outcome, so no row can need this again after it has finished.
  */
 function backfillUsageUpstreamOutcome(database: SqlDatabase): void {
+  const completed = queryRows(
+    database,
+    "SELECT 1 FROM usage_metadata WHERE key = ? LIMIT 1",
+    [usageUpstreamOutcomeBackfillKey]
+  ).length > 0;
+  if (completed) {
+    return;
+  }
   const selectBatch = database.prepare(`
     SELECT id
     FROM usage_events
@@ -540,6 +554,11 @@ function backfillUsageUpstreamOutcome(database: SqlDatabase): void {
   while (true) {
     const rows = selectBatch.all(lastId, usageOutcomeBackfillBatchSize) as Record<string, SqlValue>[];
     if (rows.length === 0) {
+      database.prepare(`
+        INSERT INTO usage_metadata (key, value)
+        VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run(usageUpstreamOutcomeBackfillKey, new Date().toISOString());
       return;
     }
     const batchLastId = normalizeCount(rows.at(-1)?.id);

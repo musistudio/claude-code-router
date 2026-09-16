@@ -4698,7 +4698,7 @@ function ensureRequestLogSchema(database: SqlDatabase): void {
   addColumn("client_model", "TEXT NOT NULL DEFAULT ''");
   addColumn("route_reason", "TEXT NOT NULL DEFAULT ''");
   addColumn("route_source", "TEXT NOT NULL DEFAULT ''");
-  ensureUpstreamOutcomeColumn(database, columns);
+  addColumn("upstream_outcome", upstreamOutcomeColumnDefinition);
 
   if (needsModelSummaryMigration) {
     migrateRequestLogModelSummaries(database);
@@ -4707,6 +4707,7 @@ function ensureRequestLogSchema(database: SqlDatabase): void {
   ensureRequestLogMigrationSchema(database);
   migrateGatewayOutcome(database);
   migrateGatewayFinalAttempt(database);
+  migrateUpstreamOutcome(database);
 
   database.exec("CREATE INDEX IF NOT EXISTS request_logs_created_at_idx ON request_logs(created_at)");
   database.exec("CREATE INDEX IF NOT EXISTS request_logs_credential_id_idx ON request_logs(credential_id)");
@@ -4725,6 +4726,7 @@ function ensureRequestLogSchema(database: SqlDatabase): void {
 const requestLogMigrationBatchSize = 500;
 const gatewayOutcomeMigrationName = "gateway-outcome-v1";
 const gatewayFinalAttemptMigrationName = "gateway-final-attempt-v1";
+const upstreamOutcomeMigrationName = "upstream-outcome-v1";
 
 function ensureRequestLogMigrationSchema(database: SqlDatabase): void {
   database.exec(`
@@ -4851,25 +4853,6 @@ function migrateGatewayFinalAttempt(database: SqlDatabase): void {
   }
 }
 
-/**
- * Add `upstream_outcome` to a database that predates it and seed the rows it
- * already holds.
- *
- * The column and its backfill are applied in one transaction, so a database
- * interrupted mid-upgrade is either fully converted or left exactly as it was
- * for the next open to retry. A separate paged migration would not fit here:
- * the work is a single statement over an indexed column, and adding a versioned
- * entry to `request_log_schema_migrations` would claim a migration slot for a
- * change that is already implied by the column's own presence.
- *
- * The backfill is deliberately conservative. A positive status is unambiguous,
- * but a stored zero can be either an omitted status or a genuine transport
- * failure, so historical zero rows keep the `unknown` default rather than being
- * guessed at. Cancellation is only claimed for rows that also carry the
- * gateway's own client-disconnect message: a bare 499 written by an upstream
- * provider is an ordinary HTTP status, and mislabelling it as our client
- * disconnect would be worse than leaving it alone.
- */
 function isDuplicateColumnError(error: unknown): boolean {
   return /duplicate column name/i.test(error instanceof Error ? error.message : String(error));
 }
@@ -4906,43 +4889,76 @@ export function addColumnDuplicateTolerant(
   columns.add(name);
 }
 
-function ensureUpstreamOutcomeColumn(database: SqlDatabase, columns: Set<string>): void {
-  if (columns.has("upstream_outcome")) {
-    return;
-  }
-  database.exec("BEGIN IMMEDIATE");
-  try {
-    try {
-      database.exec(
-        `ALTER TABLE request_logs ADD COLUMN upstream_outcome ${upstreamOutcomeColumnDefinition}`
-      );
-    } catch (error) {
-      // Another opener -- the request-log worker thread, a second app instance,
-      // or a CLI invocation -- can add the column between the PRAGMA read above
-      // and this ALTER. That is the state this function wanted, so adopt it and
-      // still run the backfill below rather than failing the database open and
-      // taking request logging down with it. The backfill is idempotent.
-      if (!isDuplicateColumnError(error)) {
-        throw error;
-      }
+/**
+ * Seed `upstream_outcome` on rows written before the column existed.
+ *
+ * Paged and ledgered like the other request-log migrations. A single UPDATE
+ * would hold the write lock for the whole table, which on a large history blocks
+ * the request-log worker's own inserts for the duration of the upgrade. The
+ * ledger is also what makes the upgrade resumable: the column is added on its
+ * own, so an open interrupted after the ALTER still finishes the seeding on the
+ * next open instead of taking the column's presence as proof it ran.
+ *
+ * Re-running a page is harmless. Every writer that records a positive status
+ * also records a decided outcome, so a row that is still `unknown` with a
+ * non-zero status can only be one this migration has not reached yet.
+ *
+ * The backfill is deliberately conservative. A positive status is unambiguous,
+ * but a stored zero can be either an omitted status or a genuine transport
+ * failure, so historical zero rows keep the `unknown` default rather than being
+ * guessed at. Cancellation is only claimed for rows that also carry the
+ * gateway's own client-disconnect message: a bare 499 written by an upstream
+ * provider is an ordinary HTTP status, and mislabelling it as our client
+ * disconnect would be worse than leaving it alone.
+ */
+function migrateUpstreamOutcome(database: SqlDatabase): void {
+  const state = requestLogMigrationState(database, upstreamOutcomeMigrationName);
+  if (state.completed) return;
+  const selectBatch = database.prepare(`
+    SELECT id
+    FROM request_logs
+    WHERE id > ?
+    ORDER BY id ASC
+    LIMIT ?
+  `);
+  const updateBatch = database.prepare(`
+    UPDATE request_logs
+    SET upstream_outcome = CASE
+      WHEN status_code = ? AND error = ? THEN 'cancelled'
+      ELSE 'http_status'
+    END
+    WHERE id > ? AND id <= ?
+      AND upstream_outcome = ? AND status_code <> 0
+  `);
+  const updateProgress = database.prepare(`
+    UPDATE request_log_schema_migrations
+    SET last_id = ?, updated_at = ?
+    WHERE migration = ?
+  `);
+  let lastId = state.lastId;
+  while (true) {
+    const rows = selectBatch.all(lastId, requestLogMigrationBatchSize) as Record<string, SqlValue>[];
+    if (rows.length === 0) {
+      completeRequestLogMigration(database, upstreamOutcomeMigrationName, lastId);
+      return;
     }
-    database.prepare(`
-      UPDATE request_logs
-      SET upstream_outcome = CASE
-        WHEN status_code = ? AND error = ? THEN 'cancelled'
-        ELSE 'http_status'
-      END
-      WHERE upstream_outcome = ? AND status_code <> 0
-    `).run(
-      clientClosedRequestStatusCode,
-      clientDisconnectMessage,
-      defaultUpstreamOutcome
-    );
-    database.exec("COMMIT");
-    columns.add("upstream_outcome");
-  } catch (error) {
-    if (database.inTransaction) database.exec("ROLLBACK");
-    throw error;
+    const batchLastId = normalizeCount(rows.at(-1)?.id);
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      updateBatch.run(
+        clientClosedRequestStatusCode,
+        clientDisconnectMessage,
+        lastId,
+        batchLastId,
+        defaultUpstreamOutcome
+      );
+      updateProgress.run(batchLastId, Date.now(), upstreamOutcomeMigrationName);
+      database.exec("COMMIT");
+      lastId = batchLastId;
+    } catch (error) {
+      if (database.inTransaction) database.exec("ROLLBACK");
+      throw error;
+    }
   }
 }
 

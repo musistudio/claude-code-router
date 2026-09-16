@@ -109,8 +109,9 @@ export function decodeCcrClientModelHeader(value: string | undefined): string | 
   }
   const decoded = Buffer.from(encoded, "base64url").toString("utf8");
   // Round-trip so a value that is not actually encoded (or is not valid UTF-8)
-  // yields nothing rather than replacement characters. The check runs on the
-  // untrimmed value so an encoded ask with outer whitespace is trimmed, not lost.
+  // yields nothing rather than replacement characters. The comparison uses the
+  // decoded text before trimming, so an ask with outer whitespace still matches
+  // its encoding and comes back trimmed instead of being rejected.
   return decoded.trim() && Buffer.from(decoded, "utf8").toString("base64url") === encoded
     ? decoded.trim()
     : undefined;

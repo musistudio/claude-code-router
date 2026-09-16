@@ -1051,10 +1051,12 @@ test("UsageStore migrates usage rows left without an upstream outcome", async ()
     });
     await seed.getStats("30d");
 
-    // Reproduce the shipped state: the column exists but holds ''.
+    // Reproduce the shipped state: the column exists but holds '', and that build
+    // never recorded the backfill as complete.
     const database = createBetterSqliteDatabase(dbFile);
     try {
       database.exec("UPDATE usage_events SET upstream_outcome = ''");
+      database.exec("DELETE FROM usage_metadata WHERE key = 'usage_upstream_outcome_backfill_v1'");
       database.prepare(`
         INSERT INTO usage_events (
           created_at, request_id, client, method, path, model, logical_model, provider,
@@ -1086,6 +1088,26 @@ test("UsageStore migrates usage rows left without an upstream outcome", async ()
     assert.equal(stats.totals.requestCount, 2, "both rows are still counted");
     assert.equal(stats.totals.errorCount, 0, "the migrated zero-status row is not an error");
     assert.equal(stats.totals.successRate, 1);
+
+    // Once the backfill has finished, later opens skip it rather than scanning
+    // the whole table again. A row put back to '' behind its back stays as it is.
+    const marked = createBetterSqliteDatabase(dbFile);
+    try {
+      marked.exec("UPDATE usage_events SET upstream_outcome = '' WHERE request_id = 'seed-1'");
+    } finally {
+      marked.close();
+    }
+    await new UsageStore(dbFile).getStats("30d");
+    const skipped = createBetterSqliteDatabase(dbFile);
+    try {
+      assert.equal(
+        skipped.prepare("SELECT upstream_outcome FROM usage_events WHERE request_id = 'seed-1'").get().upstream_outcome,
+        "",
+        "a completed backfill does not run again on reopen"
+      );
+    } finally {
+      skipped.close();
+    }
   } finally {
     rmSync(dir, { force: true, recursive: true });
   }
@@ -1133,6 +1155,7 @@ test("UsageStore migrates more usage rows than a single backfill batch", async (
         insert.run(now, `legacy-${index}`, index % 2 === 0 ? 200 : 0);
       }
       database.exec("UPDATE usage_events SET upstream_outcome = ''");
+      database.exec("DELETE FROM usage_metadata WHERE key = 'usage_upstream_outcome_backfill_v1'");
       database.exec("COMMIT");
     } finally {
       database.close();
