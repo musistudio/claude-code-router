@@ -95,7 +95,7 @@ test("strips non-empty content from reasoning items in the Responses input array
   const reasoning = output.input[0];
   assert.equal(reasoning.type, "reasoning");
   assert.equal("content" in reasoning, false, "reasoning content array must be removed");
-  assert.equal("summary" in reasoning, false, "empty summary array must be removed");
+  assert.deepEqual(reasoning.summary, [], "empty summary must be preserved");
   assert.deepEqual(output.input[1], { type: "message", role: "user", content: [{ type: "input_text", text: "continue" }] });
 });
 
