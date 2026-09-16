@@ -103,7 +103,7 @@ export function isCodexResponsesUpstream(
   });
 }
 
-function inboundMetadataUserId(body: unknown): string | undefined {
+export function inboundMetadataUserId(body: unknown): string | undefined {
   if (!isRecord(body) || !isRecord(body.metadata)) {
     return undefined;
   }

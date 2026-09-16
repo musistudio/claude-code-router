@@ -636,6 +636,7 @@ export type GatewayProviderProbeResult = {
   modelSource?: "anthropic" | "gemini" | "openai";
   models: string[];
   normalizedBaseUrl: string;
+  protocolModels?: Partial<Record<GatewayProviderCapabilityProtocol, string[]>>;
   protocols: GatewayProviderProbeProtocolResult[];
 };
 

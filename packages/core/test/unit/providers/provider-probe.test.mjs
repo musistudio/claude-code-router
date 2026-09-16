@@ -890,6 +890,137 @@ test("New API user self parser returns user balance", () => {
   }]);
 });
 
+test("OpenCode Go model discovery only returns models for the requested protocol", async (t) => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "ccr-probe-opencode-"));
+  const previousHome = process.env.CCR_INTERNAL_HOME_DIR;
+  const previousFetch = globalThis.fetch;
+  process.env.CCR_INTERNAL_HOME_DIR = home;
+  fs.mkdirSync(path.join(home, ".cache", "opencode"), { recursive: true });
+  fs.writeFileSync(path.join(home, ".cache", "opencode", "models.json"), JSON.stringify({
+    "opencode-go": {
+      api: "https://opencode.ai/zen/go/v1",
+      models: {
+        "go-chat": { name: "Go Chat", provider: { npm: "@ai-sdk/openai-compatible" } },
+        "go-responses": { name: "Go Responses", provider: { npm: "@ai-sdk/openai" } },
+        "stale-chat": { name: "Stale Chat", provider: { npm: "@ai-sdk/openai-compatible" } },
+        "stale-responses": { name: "Stale Responses", provider: { npm: "@ai-sdk/openai" } }
+      },
+      name: "OpenCode Go",
+      npm: "@ai-sdk/openai-compatible"
+    }
+  }));
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    data: [{ id: "go-chat" }, { id: "go-responses" }]
+  }), { headers: { "content-type": "application/json" }, status: 200 });
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+    if (previousHome === undefined) {
+      delete process.env.CCR_INTERNAL_HOME_DIR;
+    } else {
+      process.env.CCR_INTERNAL_HOME_DIR = previousHome;
+    }
+    fs.rmSync(home, { force: true, recursive: true });
+  });
+
+  const probe = await probeGatewayProvider({
+    baseUrl: "https://opencode.ai/zen/go/v1",
+    forceRefresh: true,
+    mode: "models",
+    protocols: ["openai_responses", "openai_chat_completions"]
+  });
+  assert.deepEqual(probe.models, ["go-chat", "go-responses"]);
+  assert.deepEqual(probe.protocolModels, {
+    openai_chat_completions: ["go-chat"],
+    openai_responses: ["go-responses"]
+  });
+
+  const normalizedProbe = await probeGatewayProvider({
+    baseUrl: "https://opencode.ai/zen/go",
+    forceRefresh: true,
+    mode: "models",
+    protocols: ["openai_responses"]
+  });
+  assert.deepEqual(normalizedProbe.models, ["go-responses"]);
+});
+
+test("OpenCode Go model discovery keeps live models when the local catalog has no protocol models", async (t) => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "ccr-probe-opencode-empty-"));
+  const previousHome = process.env.CCR_INTERNAL_HOME_DIR;
+  const previousFetch = globalThis.fetch;
+  process.env.CCR_INTERNAL_HOME_DIR = home;
+  fs.mkdirSync(path.join(home, ".cache", "opencode"), { recursive: true });
+  fs.writeFileSync(path.join(home, ".cache", "opencode", "models.json"), JSON.stringify({
+    "opencode-go": {
+      api: "https://opencode.ai/zen/go/v1",
+      name: "OpenCode Go"
+    }
+  }));
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    data: [{ id: "go-new" }]
+  }), { headers: { "content-type": "application/json" }, status: 200 });
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+    if (previousHome === undefined) {
+      delete process.env.CCR_INTERNAL_HOME_DIR;
+    } else {
+      process.env.CCR_INTERNAL_HOME_DIR = previousHome;
+    }
+    fs.rmSync(home, { force: true, recursive: true });
+  });
+
+  const probe = await probeGatewayProvider({
+    baseUrl: "https://opencode.ai/zen/go/v1",
+    forceRefresh: true,
+    mode: "models",
+    protocols: ["openai_chat_completions"]
+  });
+  assert.deepEqual(probe.models, ["go-new"]);
+  assert.equal(probe.protocolModels, undefined);
+});
+
+test("OpenCode Zen model discovery keeps paid models when the probe supplies an API key", async (t) => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "ccr-probe-opencode-paid-"));
+  const previousHome = process.env.CCR_INTERNAL_HOME_DIR;
+  const previousFetch = globalThis.fetch;
+  process.env.CCR_INTERNAL_HOME_DIR = home;
+  fs.mkdirSync(path.join(home, ".cache", "opencode"), { recursive: true });
+  fs.writeFileSync(path.join(home, ".cache", "opencode", "models.json"), JSON.stringify({
+    opencode: {
+      api: "https://opencode.ai/zen/v1",
+      models: {
+        "free-model": { cost: { input: 0, output: 0 }, name: "Free Model", provider: { npm: "@ai-sdk/openai-compatible" } },
+        "paid-model": { cost: { input: 3, output: 15 }, name: "Paid Model", provider: { npm: "@ai-sdk/openai-compatible" } }
+      },
+      name: "OpenCode Zen",
+      npm: "@ai-sdk/openai-compatible"
+    }
+  }));
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    data: [{ id: "free-model" }, { id: "paid-model" }]
+  }), { headers: { "content-type": "application/json" }, status: 200 });
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+    if (previousHome === undefined) {
+      delete process.env.CCR_INTERNAL_HOME_DIR;
+    } else {
+      process.env.CCR_INTERNAL_HOME_DIR = previousHome;
+    }
+    fs.rmSync(home, { force: true, recursive: true });
+  });
+
+  const probe = await probeGatewayProvider({
+    apiKey: "paid-zen-key",
+    baseUrl: "https://opencode.ai/zen/v1",
+    forceRefresh: true,
+    mode: "models",
+    protocols: ["openai_chat_completions"]
+  });
+  assert.deepEqual(probe.models, ["free-model", "paid-model"]);
+  assert.deepEqual(probe.protocolModels, {
+    openai_chat_completions: ["free-model", "paid-model"]
+  });
+});
+
 function jwt(payload) {
   return [
     base64url({ alg: "none", typ: "JWT" }),
