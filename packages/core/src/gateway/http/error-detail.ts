@@ -8,13 +8,17 @@
  * ("429 Throttling", "403 Model access denied", ...) stays invisible behind
  * the generic "All target providers failed." line.
  *
- * The helpers here append a compact per-attempt summary to `error.message` so
- * single-field clients can surface the root cause directly. An attempt's own
- * `message` is often itself a generic wrapper ("Upstream request failed.");
- * the real upstream cause then lives in `error.attempts[].details` — either as
- * structured fields (`message` + `code`/`type`, Anthropic-style) or as an SSE
- * error frame (`details.raw`, provider-style). When the attempt message is
- * generic, the summary falls back to extracting the cause from `details`.
+ * The helpers here expose the root cause through `error.message` for
+ * single-field clients. Context-window errors from common OpenAI-compatible
+ * servers are translated into the format Claude Code recognizes for its
+ * max-token retry. Other failures receive a compact per-attempt summary.
+ *
+ * An attempt's own `message` is often itself a generic wrapper ("Upstream
+ * request failed."); the real upstream cause then lives in
+ * `error.attempts[].details` — either as structured fields (`message` +
+ * `code`/`type`, Anthropic-style) or as an SSE error frame (`details.raw`,
+ * provider-style). When the attempt message is generic, the summary falls
+ * back to extracting the cause from `details`.
  */
 
 const attemptMessageLimit = 200;
@@ -22,6 +26,7 @@ const attemptCountLimit = 8;
 const attemptSummarySpacing = " | ";
 
 const genericAttemptMessages = new Set(["upstream request failed", "upstream request failed."]);
+const claudeContextLimitMessagePrefix = "input length and `max_tokens` exceed context limit:";
 
 export type AggregateErrorAttempt = {
   details?: unknown;
@@ -42,7 +47,9 @@ export const maxAggregateErrorDetailBodyBytes = 262_144;
 /**
  * Returns the enriched JSON text for an aggregate error payload, or undefined
  * when the payload is not enrichable (not JSON, no `error.attempts`, nothing
- * new to add). The payload object is copied; the input is never mutated.
+ * new to add). Context-limit translation uses only the final attempt because
+ * it is the failure ultimately returned by the fallback chain. The payload
+ * object is copied; the input is never mutated.
  */
 export function appendAggregateErrorAttemptSummary(text: string): string | undefined {
   let payload: AggregateErrorPayload;
@@ -64,6 +71,18 @@ export function appendAggregateErrorAttemptSummary(text: string): string | undef
     return undefined;
   }
 
+  const contextLimitMessage = finalAttemptContextLimitMessage(error.attempts);
+  if (contextLimitMessage) {
+    if (error.message === contextLimitMessage) {
+      return undefined;
+    }
+    const translated: AggregateErrorPayload = {
+      ...payload,
+      error: { ...error, message: contextLimitMessage }
+    };
+    return `${JSON.stringify(translated)}\n`;
+  }
+
   const summary = formatAttemptSummaries(error.attempts);
   if (!summary || error.message.endsWith(summary)) {
     return undefined;
@@ -71,6 +90,90 @@ export function appendAggregateErrorAttemptSummary(text: string): string | undef
 
   const enriched: AggregateErrorPayload = { ...payload, error: { ...error, message: `${error.message} ${summary}` } };
   return `${JSON.stringify(enriched)}\n`;
+}
+
+type ContextLimitCounts = {
+  contextLimit: number;
+  inputTokens: number;
+  maxTokens: number;
+};
+
+function finalAttemptContextLimitMessage(attempts: unknown[]): string | undefined {
+  const finalAttempt = attempts[attempts.length - 1];
+  if (typeof finalAttempt !== "object" || finalAttempt === null || Array.isArray(finalAttempt)) {
+    return undefined;
+  }
+  for (const message of contextLimitCandidateMessages(finalAttempt as AggregateErrorAttempt)) {
+    const counts = parseContextLimitCounts(message);
+    if (counts) {
+      return `${claudeContextLimitMessagePrefix} ${counts.inputTokens} + ${counts.maxTokens} > ${counts.contextLimit}`;
+    }
+  }
+  return undefined;
+}
+
+function contextLimitCandidateMessages(attempt: AggregateErrorAttempt): string[] {
+  const candidates: unknown[] = [];
+  if (typeof attempt.details === "object" && attempt.details !== null && !Array.isArray(attempt.details)) {
+    const details = attempt.details as Record<string, unknown>;
+    candidates.push(details.message);
+    if (typeof details.error === "object" && details.error !== null && !Array.isArray(details.error)) {
+      candidates.push((details.error as Record<string, unknown>).message);
+    } else {
+      candidates.push(details.error);
+    }
+    candidates.push(details.raw);
+  }
+  candidates.push(attempt.message);
+
+  return [...new Set(candidates
+    .filter((candidate): candidate is string => typeof candidate === "string" && candidate.trim().length > 0)
+    .map((candidate) => candidate.trim()))];
+}
+
+function parseContextLimitCounts(message: string): ContextLimitCounts | undefined {
+  const canonical = /input length and\s+[`'"]?max_tokens[`'"]?\s+exceed context limit:\s*([\d,_]+)\s*\+\s*([\d,_]+)\s*>\s*([\d,_]+)/i.exec(message);
+  if (canonical) {
+    return validContextLimitCounts(canonical[1], canonical[2], canonical[3]);
+  }
+
+  const limitMatch = /maximum\s+context(?:\s+(?:length|window))?\s+(?:is|of|:)\s*([\d,_]+)\s+tokens?/i.exec(message);
+  if (!limitMatch) {
+    return undefined;
+  }
+
+  const messageParts = /([\d,_]+)(?:\s+tokens?)?\s+(?:from|in)\s+(?:(?:the|your)\s+)?(?:input\s+)?(?:messages?|prompt)\s*(?:,|;|and)\s*([\d,_]+)(?:\s+tokens?)?\s+(?:for|in)\s+(?:(?:the|your)\s+)?completion/i.exec(message);
+  const explicitParts = /input(?:\s+(?:token count|length|tokens))?\s*(?:is|of|:|=)\s*([\d,_]+)(?:\s+tokens?)?[\s\S]{0,200}?[`'"]?max_tokens[`'"]?\s*(?:is|of|:|=)\s*([\d,_]+)/i.exec(message);
+  const parts = messageParts ?? explicitParts;
+  if (!parts) {
+    return undefined;
+  }
+  return validContextLimitCounts(parts[1], parts[2], limitMatch[1]);
+}
+
+function validContextLimitCounts(
+  inputTokensText: string,
+  maxTokensText: string,
+  contextLimitText: string
+): ContextLimitCounts | undefined {
+  const inputTokens = parseTokenCount(inputTokensText);
+  const maxTokens = parseTokenCount(maxTokensText);
+  const contextLimit = parseTokenCount(contextLimitText);
+  if (
+    inputTokens === undefined ||
+    maxTokens === undefined ||
+    contextLimit === undefined ||
+    contextLimit <= 0 ||
+    inputTokens <= contextLimit - maxTokens
+  ) {
+    return undefined;
+  }
+  return { contextLimit, inputTokens, maxTokens };
+}
+
+function parseTokenCount(value: string): number | undefined {
+  const parsed = Number(value.replace(/[,_]/g, ""));
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
 function formatAttemptSummaries(attempts: unknown[]): string | undefined {

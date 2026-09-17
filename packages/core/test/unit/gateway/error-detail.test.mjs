@@ -135,6 +135,126 @@ test("appendAggregateErrorAttemptSummary extracts structured detail causes for g
   );
 });
 
+test("appendAggregateErrorAttemptSummary translates the issue 1799 vLLM context-limit error", () => {
+  const upstreamMessage = "Requested token count exceeds the model's maximum context length of 262144 tokens. "
+    + "You requested a total of 262462 tokens: 230462 tokens from the input messages and 32000 tokens for the completion.";
+  const payload = {
+    error: {
+      attempts: [
+        {
+          details: { message: upstreamMessage, object: "error", type: "BadRequestError" },
+          message: "Upstream request failed.",
+          provider: "openai",
+          stage: "upstream_response",
+          status: 400
+        }
+      ],
+      message: "All target providers failed.",
+      target_providers: ["openai"]
+    }
+  };
+
+  const translated = appendAggregateErrorAttemptSummary(JSON.stringify(payload));
+  assert.ok(translated);
+  const parsed = JSON.parse(translated);
+  assert.equal(
+    parsed.error.message,
+    "input length and `max_tokens` exceed context limit: 230462 + 32000 > 262144"
+  );
+  assert.deepEqual(parsed.error.attempts, payload.error.attempts);
+  assert.deepEqual(parsed.error.target_providers, ["openai"]);
+  assert.equal(appendAggregateErrorAttemptSummary(translated), undefined);
+});
+
+test("appendAggregateErrorAttemptSummary translates common OpenAI and LiteLLM context-limit formats", () => {
+  const cases = [
+    {
+      expected: "input length and `max_tokens` exceed context limit: 8000 + 1000 > 8192",
+      message: "This model's maximum context length is 8,192 tokens. However, you requested 9,000 tokens "
+        + "(8,000 in the messages, 1,000 in the completion)."
+    },
+    {
+      expected: "input length and `max_tokens` exceed context limit: 4851 + 509 > 4097",
+      message: "litellm.BadRequestError: ContextWindowExceededError: This model's maximum context length is "
+        + "4097 tokens, however you requested 5360 tokens (4851 in your prompt; 509 for the completion)."
+    },
+    {
+      expected: "input length and `max_tokens` exceed context limit: 130000 + 4096 > 131072",
+      message: "ContextWindowExceededError: maximum context window is 131072 tokens. "
+        + "The input length is 130000 tokens and max_tokens is 4096."
+    },
+    {
+      expected: "input length and `max_tokens` exceed context limit: 230462 + 32000 > 262144",
+      message: "input length and `max_tokens` exceed context limit: 230462 + 32000 > 262144",
+      source: "attempt"
+    }
+  ];
+
+  for (const { expected, message, source } of cases) {
+    const attempt = source === "attempt"
+      ? { message, status: 400 }
+      : { details: { error: { message } }, message: "Upstream request failed.", status: 400 };
+    const payload = {
+      error: {
+        attempts: [attempt],
+        message: "All target providers failed."
+      }
+    };
+    const translated = appendAggregateErrorAttemptSummary(JSON.stringify(payload));
+    assert.ok(translated);
+    assert.equal(JSON.parse(translated).error.message, expected);
+  }
+});
+
+test("appendAggregateErrorAttemptSummary only translates a context limit from the final attempt", () => {
+  const payload = {
+    error: {
+      attempts: [
+        {
+          details: {
+            message: "Requested token count exceeds the model's maximum context length of 1000 tokens. "
+              + "You requested a total of 1100 tokens: 900 tokens from the input messages and 200 tokens for the completion."
+          },
+          message: "Upstream request failed.",
+          status: 400
+        },
+        {
+          details: { message: "invalid api-key", type: "authentication_error" },
+          message: "Upstream request failed.",
+          status: 403
+        }
+      ],
+      message: "All target providers failed."
+    }
+  };
+
+  const enriched = appendAggregateErrorAttemptSummary(JSON.stringify(payload));
+  assert.ok(enriched);
+  assert.match(JSON.parse(enriched).error.message, /^All target providers failed\./);
+});
+
+test("appendAggregateErrorAttemptSummary does not translate inconsistent context-limit counts", () => {
+  const payload = {
+    error: {
+      attempts: [
+        {
+          details: {
+            message: "This model's maximum context length is 10000 tokens. However, you requested 5000 tokens "
+              + "(4000 in the messages, 1000 in the completion)."
+          },
+          message: "Upstream request failed.",
+          status: 400
+        }
+      ],
+      message: "All target providers failed."
+    }
+  };
+
+  const enriched = appendAggregateErrorAttemptSummary(JSON.stringify(payload));
+  assert.ok(enriched);
+  assert.match(JSON.parse(enriched).error.message, /^All target providers failed\./);
+});
+
 test("appendAggregateErrorAttemptSummary extracts causes from SSE error frames in details.raw", () => {
   const payload = {
     error: {
