@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-10T06:44:07.582Z",
+  "generatedAt": "2026-09-16T12:22:07.719Z",
   "generatedBy": "scripts/generate-claude-code-config-options.mjs",
   "sourceUrls": {
     "envEn": "https://code.claude.com/docs/en/env-vars.md",
@@ -20,8 +20,8 @@
       "valueKind": "string",
       "enumValues": [],
       "description": {
-        "en": "Pick which model answers when Claude calls the server-side advisor tool. Unset it to turn the advisor off. The advisor must be at least as capable as your main model; when it isn't, Claude Code sends requests without the advisor. See Choose an advisor model.",
-        "zh": "服务器端 advisor tool 的模型。接受模型别名，如 \"opus\"、\"sonnet\" 或 \"fable\"（v2.1.170+），或完整模型 ID。当您运行 /advisor 时自动写入。取消设置以禁用 advisor"
+        "en": "Pick which model answers when Claude calls the server-side advisor tool. Unset it to turn the advisor off. The advisor must be at least as capable as your main model. See Choose an advisor model for the accepted pairings and what happens when you pick one that isn't accepted.",
+        "zh": "Pick which model answers when Claude calls the server-side advisor tool. Unset it to turn the advisor off. The advisor must be at least as capable as your main model. See Choose an advisor model for the accepted pairings and what happens when you pick one that isn't accepted."
       }
     },
     {
@@ -37,7 +37,7 @@
       "enumValues": [],
       "description": {
         "en": "Run the main thread as a named subagent, so Claude Code applies that subagent's system prompt, tool restrictions, and model to your session. The same key sets the default agent for sessions you dispatch from claude agents.",
-        "zh": "将主线程作为命名 subagent 运行，并为从 claude agents 分派的会话设置默认 agent。应用该 subagent 的系统提示、工具限制和模型。请参阅显式调用 subagents"
+        "zh": "Run the main thread as a named subagent, so Claude Code applies that subagent's system prompt, tool restrictions, and model to your session. The same key sets the default agent for sessions you dispatch from claude agents."
       }
     },
     {
@@ -53,7 +53,7 @@
       "enumValues": [],
       "description": {
         "en": "Allow Claude to send a push notification to your phone when it decides one is worth sending, for example when a long task finishes. Claude Code syncs this choice to your account, and pushes arrive while Remote Control is connected. Appears in /config as Push when Claude decides.",
-        "zh": "默认：false。当远程控制已连接时，允许 Claude 向您的手机发送主动推送通知，例如当长任务完成时。在 /config 中显示为Claude 决定时推送。请参阅移动推送通知。需要 Claude Code v2.1.119 或更高版本"
+        "zh": "Allow Claude to send a push notification to your phone when it decides one is worth sending, for example when a long task finishes. Claude Code syncs this choice to your account, and pushes arrive while Remote Control is connected. Appears in /config as Push when Claude decides."
       }
     },
     {
@@ -69,7 +69,7 @@
       "enumValues": [],
       "description": {
         "en": "Load the claude.ai connectors Claude Code fetches itself alongside a deployed managed-mcp.json. Without this key, managed-mcp.json takes exclusive control of MCP servers and suppresses those connectors.",
-        "zh": "（仅 Managed 设置）加载 claude.ai connectors 与部署的 managed-mcp.json 一起，否则后者会获得独占控制并抑制它们。请参阅 Managed MCP 配置"
+        "zh": "Load the claude.ai connectors Claude Code fetches itself alongside a deployed managed-mcp.json. Without this key, managed-mcp.json takes exclusive control of MCP servers and suppresses those connectors."
       }
     },
     {
@@ -78,14 +78,14 @@
         "allowedChannelPlugins"
       ],
       "scope": "Managed",
-      "type": "array of objects, each with marketplace and plugin strings",
+      "type": "array of objects, each with marketplace and plugin strings. An entry can instead be a \"plugin@marketplace\" string such as \"telegram@claude-plugins-official\", which Claude Code treats as the equivalent object. The string form requires Claude Code v2.1.267 or later; earlier versions reject the whole allowedChannelPlugins value when it contains one",
       "default": "unset, so Claude Code uses the default Anthropic allowlist",
       "example": "{\n  \"channelsEnabled\": true,\n  \"allowedChannelPlugins\": [\n    { \"marketplace\": \"claude-plugins-official\", \"plugin\": \"telegram\" }\n  ]\n}",
       "valueKind": "array",
       "enumValues": [],
       "description": {
         "en": "Choose which channel plugins can push messages into sessions in your organization. When you set it, Claude Code uses your list in place of the default Anthropic allowlist; each entry names a plugin and the marketplace it comes from.",
-        "zh": "（仅 Managed 设置）可能推送消息的频道插件的允许列表。设置后替换默认 Anthropic 允许列表。未定义 = 回退到默认值，空数组 = 阻止所有频道插件。需要 channelsEnabled: true。请参阅限制哪些频道插件可以运行"
+        "zh": "Choose which channel plugins can push messages into sessions in your organization. When you set it, Claude Code uses your list in place of the default Anthropic allowlist; each entry names a plugin and the marketplace it comes from."
       }
     },
     {
@@ -101,7 +101,7 @@
       "enumValues": [],
       "description": {
         "en": "Limit which URLs HTTP hooks can target. When you define this key, Claude Code runs an HTTP hook only if its URL matches one of the patterns and blocks the rest without running them; an empty array blocks every HTTP hook.",
-        "zh": "HTTP hooks 可能针对的 URL 模式的允许列表。支持 * 作为通配符。设置后，具有不匹配 URL 的 hooks 被阻止。未定义 = 无限制，空数组 = 阻止所有 HTTP hooks。数组跨设置源合并。请参阅 Hook 配置"
+        "zh": "Limit which URLs HTTP hooks can target. When you define this key, Claude Code runs an HTTP hook only if its URL matches one of the patterns and blocks the rest without running them; an empty array blocks every HTTP hook."
       }
     },
     {
@@ -117,7 +117,7 @@
       "enumValues": [],
       "description": {
         "en": "Allowlist the MCP servers people can add. Claude Code blocks any server that doesn't match an entry wherever it's defined, including plugin servers, servers passed with --mcp-config, and servers from claude.ai.",
-        "zh": "在 managed-settings.json 中设置时，用户可以配置的 MCP servers 的允许列表。未定义 = 无限制，空数组 = 锁定。适用于所有作用域。拒绝列表优先。请参阅 Managed MCP 配置"
+        "zh": "Allowlist the MCP servers people can add. Claude Code blocks any server that doesn't match an entry wherever it's defined, including plugin servers, servers passed with --mcp-config, and servers from claude.ai."
       }
     },
     {
@@ -133,7 +133,7 @@
       "enumValues": [],
       "description": {
         "en": "Restrict hook execution to hooks your organization deploys.",
-        "zh": "（仅 Managed 设置）仅加载 managed hooks、SDK hooks 和在 managed 设置 enabledPlugins 中强制启用的插件中的 hooks。用户、项目和所有其他插件 hooks 被阻止。请参阅 Hook 配置"
+        "zh": "Restrict hook execution to hooks your organization deploys."
       }
     },
     {
@@ -149,7 +149,7 @@
       "enumValues": [],
       "description": {
         "en": "Make the managed allowlist the only one that applies. Claude Code then reads allowedMcpServers from managed settings alone and ignores allowlists in user, project, and local settings; deniedMcpServers still merges from every settings scope, so users can still block servers for themselves. Administrators set it so a user's own settings can't broaden what the managed allowlist permits.",
-        "zh": "（仅 Managed 设置）仅尊重来自 managed 设置的 allowedMcpServers。deniedMcpServers 仍从所有源合并。用户仍可以添加 MCP servers，但仅应用管理员定义的允许列表。请参阅 Managed MCP 配置"
+        "zh": "Make the managed allowlist the only one that applies. Claude Code then reads allowedMcpServers from managed settings alone and ignores allowlists in user, project, and local settings; deniedMcpServers still merges from every settings scope, so users can still block servers for themselves. Administrators set it so a user's own settings can't broaden what the managed allowlist permits."
       }
     },
     {
@@ -165,7 +165,7 @@
       "enumValues": [],
       "description": {
         "en": "Make managed settings the only settings source of permission rules. Claude Code then ignores allow, ask, and deny rules in user, project, local, and --settings files, ignores --allowedTools, hides the always-allow choices in permission prompts, and stops saving new rules.",
-        "zh": "（仅 Managed 设置）防止用户和项目设置定义 allow、ask 或 deny 权限规则。仅应用 managed 设置中的规则。请参阅 Managed 专用设置"
+        "zh": "Make managed settings the only settings source of permission rules. Claude Code then ignores allow, ask, and deny rules in user, project, local, and --settings files, ignores --allowedTools, hides the always-allow choices in permission prompts, and stops saving new rules."
       }
     },
     {
@@ -181,7 +181,7 @@
       "enumValues": [],
       "description": {
         "en": "Turn extended thinking off for every session by setting this to false. Thinking is on by default, so true changes nothing. Most people set this through /config rather than by editing the file.",
-        "zh": "为所有会话默认启用扩展思考。通常通过 /config 命令而不是直接编辑来配置。要强制禁用思考，无论此设置如何，请在 env 中设置 MAX_THINKING_TOKENS=0，这会禁用 Anthropic API 上的思考，除了 Fable 5，它无法关闭思考。在第三方提供商上，这会省略 thinking 参数，自适应推理模型仍可能思考"
+        "zh": "Turn extended thinking off for every session by setting this to false. Thinking is on by default, so true changes nothing. Most people set this through /config rather than by editing the file."
       }
     },
     {
@@ -197,7 +197,7 @@
       "enumValues": [],
       "description": {
         "en": "Run your own command to produce the credential Claude Code sends with model requests. Claude Code runs the command through the system shell, /bin/sh on macOS and Linux and cmd on Windows, and sends its output as both the X-Api-Key and Authorization: Bearer headers. Use it for dynamic or rotating credentials, such as short-lived tokens fetched from a vault.",
-        "zh": "自定义脚本，在系统 shell（macOS 和 Linux 上为 /bin/sh，Windows 上为 cmd）中运行，以生成身份验证值。此值将作为 X-Api-Key 和 Authorization: Bearer 标头发送用于模型请求。使用 CLAUDE_CODE_API_KEY_HELPER_TTL_MS 设置刷新间隔"
+        "zh": "Run your own command to produce the credential Claude Code sends with model requests. Claude Code runs the command through the system shell, /bin/sh on macOS and Linux and cmd on Windows, and sends its output as both the X-Api-Key and Authorization: Bearer headers. Use it for dynamic or rotating credentials, such as short-lived tokens fetched from a vault."
       }
     },
     {
@@ -213,7 +213,7 @@
       "enumValues": [],
       "description": {
         "en": "Let an unanswered AskUserQuestion dialog auto-continue after a period of idle time, submitting whatever options you had already selected. Set it when you step away and want Claude to continue without you. With the default, questions wait until you answer them. Requires Claude Code v2.1.200 or later.",
-        "zh": "默认：\"never\"。未回答的 AskUserQuestion 对话框自动继续的空闲时间，使用您已选择的任何选项。接受 \"60s\"、\"5m\"、\"10m\" 或 \"never\"。使用默认值，问题等待您回答。在 /config 中显示为问题自动继续超时，将此键写入用户设置。不从项目或本地设置读取。需要 Claude Code v2.1.200 或更高版本"
+        "zh": "Let an unanswered AskUserQuestion dialog auto-continue after a period of idle time, submitting whatever options you had already selected. Set it when you step away and want Claude to continue without you. With the default, questions wait until you answer them. Requires Claude Code v2.1.200 or later."
       }
     },
     {
@@ -229,7 +229,7 @@
       "enumValues": [],
       "description": {
         "en": "Customize the attribution Claude Code adds to git commits and pull requests. Commits get a git trailer such as Co-Authored-By by default; pull request descriptions get plain text. Set each part separately with the sub-keys below.",
-        "zh": "自定义 git 提交和拉取请求的归属。请参阅归属设置"
+        "zh": "Customize the attribution Claude Code adds to git commits and pull requests. Commits get a git trailer such as Co-Authored-By by default; pull request descriptions get plain text. Set each part separately with the sub-keys below."
       }
     },
     {
@@ -296,7 +296,7 @@
       "enumValues": [],
       "description": {
         "en": "Have Claude Code compact the conversation automatically when context approaches the limit. Appears in /config as Auto-compact, and toggling it there writes this key to your user settings.",
-        "zh": "默认：true。当上下文接近限制时自动压缩对话。在 /config 中显示为自动压缩。要通过环境变量禁用，请在 env 中设置 DISABLE_AUTO_COMPACT"
+        "zh": "Have Claude Code compact the conversation automatically when context approaches the limit. Appears in /config as Auto-compact, and toggling it there writes this key to your user settings."
       }
     },
     {
@@ -344,7 +344,7 @@
       "enumValues": [],
       "description": {
         "en": "Store auto memory in a directory of your choice instead of the per-project default.",
-        "zh": "自动内存存储的自定义目录。接受绝对路径或 ~/ 前缀的路径。从项目或本地设置接受，仅在您接受工作区信任对话框后，因为克隆的存储库可能提供此文件"
+        "zh": "Store auto memory in a directory of your choice instead of the per-project default."
       }
     },
     {
@@ -360,7 +360,7 @@
       "enumValues": [],
       "description": {
         "en": "Turn auto memory on or off. When false, Claude doesn't read from or write to the auto memory directory. You can also toggle it with /memory during a session, which writes this key to your user settings.",
-        "zh": "默认：true。启用自动内存。当为 false 时，Claude 不从自动内存目录读取或写入。您也可以在会话期间使用 /memory 切换此选项。要通过环境变量禁用，请在 env 中设置 CLAUDE_CODE_DISABLE_AUTO_MEMORY"
+        "zh": "Turn auto memory on or off. When false, Claude doesn't read from or write to the auto memory directory. You can also toggle it with /memory during a session, which writes this key to your user settings."
       }
     },
     {
@@ -376,7 +376,7 @@
       "enumValues": [],
       "description": {
         "en": "Add your own rules to what the auto mode classifier blocks and allows. Use it to tell the classifier which repos, buckets, and domains your organization trusts, so it stops blocking routine internal operations. The classifier ships with built-in allow and deny rules. Include the literal string \"$defaults\" in an array to keep those built-in rules at that position and add yours around them; leave it out to replace them with yours.",
-        "zh": "自定义自动模式分类器阻止和允许的内容。包含 environment、allow、soft_deny 和 hard_deny 散文规则数组。在数组中包含字面字符串 \"$defaults\" 以在该位置继承内置规则。请参阅配置自动模式。仅从用户设置、--settings 标志和 managed 设置读取。在项目 .claude/settings.json 和本地 .claude/settings.local.json 中被忽略。在 v2.1.207 之前，.claude/settings.local.json 也被读取"
+        "zh": "Add your own rules to what the auto mode classifier blocks and allows. Use it to tell the classifier which repos, buckets, and domains your organization trusts, so it stops blocking routine internal operations. The classifier ships with built-in allow and deny rules. Include the literal string \"$defaults\" in an array to keep those built-in rules at that position and add yours around them; leave it out to replace them with yours."
       }
     },
     {
@@ -392,8 +392,8 @@
       "valueKind": "boolean",
       "enumValues": [],
       "description": {
-        "en": "Send every Bash and PowerShell command through the auto mode classifier while auto mode is active. By default, auto mode suspends only allow rules that could run arbitrary code: tool-wide and wildcard rules such as Bash(), and interpreter or shell-wrapper prefixes such as Bash(python ). A command that any other allow rule matches, such as Bash(npm test), skips the classifier, and a destructive argument the rule's prefix didn't anticipate can get through unseen. Setting this key suspends every shell allow rule for the session so the classifier sees every command. Requires Claude Code v2.1.193 or later.",
-        "zh": "默认：false。当为 true 时，在自动模式活跃时暂停每个 Bash 和 PowerShell 允许规则，以便所有 shell 命令通过分类器路由，而不仅仅是匹配任意代码执行模式的规则。请参阅通过分类器路由所有 shell 命令。需要 Claude Code v2.1.193 或更高版本"
+        "en": "Send every Bash and PowerShell command through the auto mode classifier while auto mode is active. By default, auto mode suspends only allow rules that could run arbitrary code: tool-wide and wildcard rules such as Bash(), and interpreter or shell-wrapper prefixes such as Bash(python ). A command that any other allow rule matches, such as Bash(npm test), skips the classifier unless it carries per-command allowed domains. When it skips, a destructive argument the rule's prefix didn't anticipate can get through unseen. Setting this key suspends every shell allow rule for the session so the classifier sees every command. Requires Claude Code v2.1.193 or later.",
+        "zh": "Send every Bash and PowerShell command through the auto mode classifier while auto mode is active. By default, auto mode suspends only allow rules that could run arbitrary code: tool-wide and wildcard rules such as Bash(), and interpreter or shell-wrapper prefixes such as Bash(python ). A command that any other allow rule matches, such as Bash(npm test), skips the classifier unless it carries per-command allowed domains. When it skips, a destructive argument the rule's prefix didn't anticipate can get through unseen. Setting this key suspends every shell allow rule for the session so the classifier sees every command. Requires Claude Code v2.1.193 or later."
       }
     },
     {
@@ -409,7 +409,7 @@
       "enumValues": [],
       "description": {
         "en": "Follow new output to the bottom of the conversation in fullscreen rendering. Turn it off to stay where you scrolled while Claude keeps working; permission prompts still scroll into view.",
-        "zh": "默认：true。在全屏渲染中，跟随新输出到对话的底部。在 /config 中显示为自动滚动。权限提示仍在此关闭时滚动到视图中"
+        "zh": "Follow new output to the bottom of the conversation in fullscreen rendering. Turn it off to stay where you scrolled while Claude keeps working; permission prompts still scroll into view."
       }
     },
     {
@@ -428,7 +428,7 @@
       ],
       "description": {
         "en": "Choose which release channel background auto-updates and claude update follow. Set \"stable\" for a version that is typically about one week old and skips releases with major regressions, or \"latest\" for the most recent release.",
-        "zh": "默认：\"latest\"。遵循更新的发布渠道。使用 \"stable\" 获取通常约一周前的版本并跳过有主要回归的版本，或使用 \"latest\" 获取最新版本。要完全禁用自动更新，请在 env 中设置 DISABLE_AUTOUPDATER"
+        "zh": "Choose which release channel background auto-updates and claude update follow. Set \"stable\" for a version that is typically about one week old and skips releases with major regressions, or \"latest\" for the most recent release."
       }
     },
     {
@@ -444,7 +444,7 @@
       "enumValues": [],
       "description": {
         "en": "Restrict which models people can select for the main session, subagents, skills, and the advisor. A managed list constrains /model, --model, and the model key in a developer's own files; a model outside it can't be selected. On its own this doesn't touch the Default option; pair it with enforceAvailableModels for that.",
-        "zh": "限制用户可以为主会话、subagents、skills 和 advisor 选择的模型。不影响默认选项，除非 enforceAvailableModels 也被设置。请参阅限制模型选择"
+        "zh": "Restrict which models people can select for the main session, subagents, skills, and the advisor. A managed list constrains /model, --model, and the model key in a developer's own files; a model outside it can't be selected. On its own this doesn't touch the Default option; pair it with enforceAvailableModels for that."
       }
     },
     {
@@ -460,7 +460,7 @@
       "enumValues": [],
       "description": {
         "en": "Show a one-line session recap when you return to the terminal after a few minutes away. Set it to false, or turn off Session recap in /config, to stop the recap.",
-        "zh": "在您离开终端几分钟后返回时显示单行会话回顾。设置为 false 或在 /config 中关闭会话回顾以禁用。与 CLAUDE_CODE_ENABLE_AWAY_SUMMARY 相同"
+        "zh": "Show a one-line session recap when you return to the terminal after a few minutes away. Set it to false, or turn off Session recap in /config, to stop the recap."
       }
     },
     {
@@ -476,7 +476,7 @@
       "enumValues": [],
       "description": {
         "en": "Run your own command, such as aws sso login, to refresh the credentials in your .aws directory when the ones Claude Code has for Amazon Bedrock stop working. Claude Code checks the current credentials against STS first and runs the command only when that check fails, then reads the refreshed .aws directory.",
-        "zh": "修改 .aws 目录的自定义脚本（请参阅高级凭证配置）"
+        "zh": "Run your own command, such as aws sso login, to refresh the credentials in your .aws directory when the ones Claude Code has for Amazon Bedrock stop working. Claude Code checks the current credentials against STS first and runs the command only when that check fails, then reads the refreshed .aws directory."
       }
     },
     {
@@ -492,7 +492,7 @@
       "enumValues": [],
       "description": {
         "en": "Run your own command that prints AWS credentials as JSON, so Claude Code can call Amazon Bedrock with credentials that don't live in your .aws directory. Claude Code accepts the aws sts output shape and the flat aws configure export-credentials shape, and scopes the credentials to its own Bedrock client, so the shell commands Claude runs still see your ambient credentials.",
-        "zh": "输出包含 AWS 凭证的 JSON 的自定义脚本（请参阅高级凭证配置）"
+        "zh": "Run your own command that prints AWS credentials as JSON, so Claude Code can call Amazon Bedrock with credentials that don't live in your .aws directory. Claude Code accepts the aws sts output shape and the flat aws configure export-credentials shape, and scopes the credentials to its own Bedrock client, so the shell commands Claude runs still see your ambient credentials."
       }
     },
     {
@@ -508,7 +508,23 @@
       "enumValues": [],
       "description": {
         "en": "Render screen-reader friendly output: flat text without decorative borders or animations. Screen-reader mode uses the classic renderer, so the tui setting has no effect while it is active; attached background sessions still render fullscreen. Requires Claude Code v2.1.181 or later.",
-        "zh": "渲染屏幕阅读器友好的输出：没有装饰性边框或动画的平面文本。屏幕阅读器模式使用经典渲染器，因此在其活跃时 tui 设置无效；附加的后台会话仍渲染全屏。CLAUDE_AX_SCREEN_READER 环境变量和 --ax-screen-reader 标志优先。需要 Claude Code v2.1.181 或更高版本"
+        "zh": "Render screen-reader friendly output: flat text without decorative borders or animations. Screen-reader mode uses the classic renderer, so the tui setting has no effect while it is active; attached background sessions still render fullscreen. Requires Claude Code v2.1.181 or later."
+      }
+    },
+    {
+      "key": "bashEditDiffEnabled",
+      "path": [
+        "bashEditDiffEnabled"
+      ],
+      "scope": "User or managed. A true counts only from your user settings, JSON passed with --settings, or managed settings, so a true in a repository's .claude/settings.json or .claude/settings.local.json can't turn the recording on. A false in either repository file still turns it off unless a higher-precedence file sets true.",
+      "type": "Boolean",
+      "default": "unset, so Claude Code records changes in auto mode and bypassPermissions mode when it directs Claude to edit files through Bash",
+      "example": "{\n  \"bashEditDiffEnabled\": true\n}",
+      "valueKind": "boolean",
+      "enumValues": [],
+      "description": {
+        "en": "Choose whether Claude Code records the files a Bash command changes in a Git repository. When it records them, you see their diff in the terminal after the command, and your PostToolUse Bash hooks receive the changed-file list.",
+        "zh": "Choose whether Claude Code records the files a Bash command changes in a Git repository. When it records them, you see their diff in the terminal after the command, and your PostToolUse Bash hooks receive the changed-file list."
       }
     },
     {
@@ -540,7 +556,7 @@
       "enumValues": [],
       "description": {
         "en": "Block plugin marketplace sources for your organization. Claude Code checks the blocklist on marketplace add and on plugin install, update, refresh, and auto-update, so a marketplace someone added before you set the policy can't be used to fetch plugins either. Blocked sources are checked before download, so they never touch the filesystem.",
-        "zh": "（仅 Managed 设置）市场源的阻止列表。在市场添加和插件安装、更新、刷新和自动更新时强制执行，因此在设置策略之前添加的市场无法用于获取插件。被阻止的源在下载前被检查，因此它们永远不会接触文件系统。请参阅 Managed 市场限制"
+        "zh": "Block plugin marketplace sources for your organization. Claude Code checks the blocklist on marketplace add and on plugin install, update, refresh, and auto-update, so a marketplace someone added before you set the policy can't be used to fetch plugins either. Blocked sources are checked before download, so they never touch the filesystem."
       }
     },
     {
@@ -556,7 +572,7 @@
       "enumValues": [],
       "description": {
         "en": "Stop Claude from using its tools to read or act on external pages in the desktop app's Browser pane. People in your organization can still open external sites themselves, and local dev server previews keep working with Claude's tools. The desktop app reads this key; the terminal CLI ignores it.",
-        "zh": "（仅 Managed 设置）设置为 \"disabled\" 以防止 Claude 使用工具读取或作用于桌面应用浏览器窗格中的外部页面。用户仍可以自己导航到外部站点，本地开发服务器预览不受影响"
+        "zh": "Stop Claude from using its tools to read or act on external pages in the desktop app's Browser pane. People in your organization can still open external sites themselves, and local dev server previews keep working with Claude's tools. The desktop app reads this key; the terminal CLI ignores it."
       }
     },
     {
@@ -572,7 +588,7 @@
       "enumValues": [],
       "description": {
         "en": "Allow channels for your organization. On claude.ai Team and Enterprise plans, Claude Code blocks channels until you set this to true. For Anthropic Console accounts that authenticate with an API key, channels are allowed by default. If your organization deploys managed settings, Claude Code blocks channels on those accounts too until you set this key to true.",
-        "zh": "（仅 Managed 设置）为组织允许 channels。在 claude.ai Team 和 Enterprise 计划上，当此项未设置或为 false 时，channels 被阻止。对于使用 API 密钥身份验证的 Anthropic Console 账户，channels 默认被允许，除非您的组织部署 managed 设置，在这种情况下此键必须设置为 true"
+        "zh": "Allow channels for your organization. On claude.ai Team and Enterprise plans, Claude Code blocks channels until you set this to true. For Anthropic Console accounts that authenticate with an API key, channels are allowed by default. If your organization deploys managed settings, Claude Code blocks channels on those accounts too until you set this key to true."
       }
     },
     {
@@ -588,7 +604,7 @@
       "enumValues": [],
       "description": {
         "en": "Inject CLAUDE.md-style instructions as organization-managed memory without deploying a separate file. Claude Code loads the text as a managed memory entry ahead of user and project CLAUDE.md files.",
-        "zh": "（仅 Managed 设置）CLAUDE.md 风格的说明，作为组织管理的内存注入。仅在 managed 或策略设置中设置时被尊重，在用户、项目和本地设置中被忽略。请参阅组织范围的 CLAUDE.md"
+        "zh": "Inject CLAUDE.md-style instructions as organization-managed memory without deploying a separate file. Claude Code loads the text as a managed memory entry ahead of user and project CLAUDE.md files."
       }
     },
     {
@@ -604,7 +620,7 @@
       "enumValues": [],
       "description": {
         "en": "Skip specific CLAUDE.md files when Claude Code loads memory. In a large monorepo, use it to skip CLAUDE.md files from other teams that aren't relevant to your work; Exclude irrelevant CLAUDE.md files in the large-codebases guide walks through that case. Patterns match against absolute file paths.",
-        "zh": "加载内存时要跳过的 CLAUDE.md 文件的 Glob 模式或绝对路径。模式与绝对文件路径匹配。仅适用于用户、项目和本地内存；managed 策略文件无法被排除"
+        "zh": "Skip specific CLAUDE.md files when Claude Code loads memory. In a large monorepo, use it to skip CLAUDE.md files from other teams that aren't relevant to your work; Exclude irrelevant CLAUDE.md files in the large-codebases guide walks through that case. Patterns match against absolute file paths."
       }
     },
     {
@@ -620,7 +636,7 @@
       "enumValues": [],
       "description": {
         "en": "Set how many days Claude Code keeps session transcripts and other application data before deleting them. Claude Code runs the deletion as a background sweep after a session starts, as long as it can safely determine the retention period.",
-        "zh": "默认：30 天，最少 1。Claude Code 删除会话文件和其他应用程序数据早于此期间的在启动时。设置 0 会被拒绝并显示验证错误。相同的年龄截止也适用于孤立 worktrees 在启动时自动删除。如果 Claude Code 无法读取或解析设置文件，它会暂停保留清理扫描并在 /status 中显示警告，直到您修复文件，除非 managed 设置提供 cleanupPeriodDays，在这种情况下扫描以 managed 值运行。在 v2.1.203 之前，清理以 30 天默认值在该状态下运行，可能删除较长 cleanupPeriodDays 打算保留的记录；30 天以上的文件从未被删除。要完全禁用记录写入，请设置 CLAUDE_CODE_SKIP_PROMPT_HISTORY 环境变量。在非交互模式中，与 -p 一起传递 --no-session-persistence 或在 Agent SDK 中设置 persistSession: false。"
+        "zh": "Set how many days Claude Code keeps session transcripts and other application data before deleting them. Claude Code runs the deletion as a background sweep after a session starts, as long as it can safely determine the retention period."
       }
     },
     {
@@ -636,7 +652,7 @@
       "enumValues": [],
       "description": {
         "en": "Show your organization's announcements to users at startup. When you list more than one, Claude Code picks one at random for each session; on a person's very first launch it shows the first entry.",
-        "zh": "在启动时显示给用户的公告。如果提供多个公告，它们将随机循环显示。"
+        "zh": "Show your organization's announcements to users at startup. When you list more than one, Claude Code picks one at random for each session; on a person's very first launch it shows the first entry."
       }
     },
     {
@@ -675,7 +691,7 @@
       ],
       "description": {
         "en": "Choose whether Bash or PowerShell runs the shell commands you type with the ! prefix in the input box, the ones Claude Code runs directly and adds to the session.",
-        "zh": "默认：\"bash\"，或在 Bash 不可用时在 Windows 上为 \"powershell\"。输入框 ! 命令的默认 shell。接受 \"bash\" 或 \"powershell\"。设置 \"powershell\" 会在 Windows 上通过 PowerShell 路由交互式 ! 命令。需要 CLAUDE_CODE_USE_POWERSHELL_TOOL=1。请参阅 PowerShell tool"
+        "zh": "Choose whether Bash or PowerShell runs the shell commands you type with the ! prefix in the input box, the ones Claude Code runs directly and adds to the session."
       }
     },
     {
@@ -691,7 +707,7 @@
       "enumValues": [],
       "description": {
         "en": "Block specific MCP servers. Claude Code refuses to load a matching server wherever it's defined, including plugin servers, servers passed with --mcp-config, servers from managed-mcp.json, servers from managedMcpServers, and the claude.ai connectors it fetches itself. In-process type: \"sdk\" servers are exempt; the app that started the session registers them.",
-        "zh": "在 managed-settings.json 中设置时，明确阻止的 MCP servers 的拒绝列表。适用于所有作用域，包括 managed servers。拒绝列表优先于允许列表。请参阅 Managed MCP 配置"
+        "zh": "Block specific MCP servers. Claude Code refuses to load a matching server wherever it's defined, including plugin servers, servers passed with --mcp-config, servers from managed-mcp.json, servers from managedMcpServers, and the claude.ai connectors it fetches itself. In-process type: \"sdk\" servers are exempt; the app that started the session registers them."
       }
     },
     {
@@ -739,7 +755,7 @@
       "enumValues": [],
       "description": {
         "en": "Turn off background agents and agent view: claude agents, --bg, /background, and the on-demand supervisor. Set it in managed settings to enforce it for an organization.",
-        "zh": "设置为 true 以关闭后台代理和代理视图：claude agents、--bg、/background 和按需主管。通常在 managed 设置中设置。等同于将 CLAUDE_CODE_DISABLE_AGENT_VIEW 设置为 1"
+        "zh": "Turn off background agents and agent view: claude agents, --bg, /background, and the on-demand supervisor. Set it in managed settings to enforce it for an organization."
       }
     },
     {
@@ -755,7 +771,7 @@
       "enumValues": [],
       "description": {
         "en": "Turn off hooks, any custom status line, and any custom file suggestion command. Use it to turn all of these off temporarily without deleting them from your settings.",
-        "zh": "禁用所有 hooks 和任何自定义状态行"
+        "zh": "Turn off hooks, any custom status line, and any custom file suggestion command. Use it to turn all of these off temporarily without deleting them from your settings."
       }
     },
     {
@@ -771,7 +787,7 @@
       "enumValues": [],
       "description": {
         "en": "Use enableArtifact instead to turn off the Artifact tool, which publishes session output as a private web page on claude.ai. When you turn the Artifacts row off in /config, Claude Code writes enableArtifact to your user settings and clears this key.",
-        "zh": "设置为 true 以禁用 Artifact 工具，该工具将会话输出发布为 claude.ai 上的私有网页。等同于将 CLAUDE_CODE_DISABLE_ARTIFACT 设置为 1"
+        "zh": "Use enableArtifact instead to turn off the Artifact tool, which publishes session output as a private web page on claude.ai. When you turn the Artifacts row off in /config, Claude Code writes enableArtifact to your user settings and clears this key."
       }
     },
     {
@@ -787,7 +803,7 @@
       "enumValues": [],
       "description": {
         "en": "Remove auto mode from the Shift+Tab cycle. Any session that would otherwise start in auto mode, whether from --permission-mode auto, a settings file, or the built-in default, starts in default instead. Administrators set it in managed settings to prevent developers in their organization from using auto mode.",
-        "zh": "设置为 \"disable\" 以防止自动模式被激活。从 Shift+Tab 循环中删除 auto 并在启动时拒绝 --permission-mode auto。在managed 设置中最有用，用户无法覆盖它"
+        "zh": "Remove auto mode from the Shift+Tab cycle. Any session that would otherwise start in auto mode, whether from --permission-mode auto, a settings file, or the built-in default, starts in default instead. Administrators set it in managed settings to prevent developers in their organization from using auto mode."
       }
     },
     {
@@ -803,7 +819,7 @@
       "enumValues": [],
       "description": {
         "en": "Turn off external browsing in the desktop app's Browser pane for people and Claude alike. Localhost dev server previews keep working. The desktop app reads this key; the terminal CLI ignores it.",
-        "zh": "（仅 Managed 设置）设置为 true 以关闭桌面应用浏览器窗格中的外部浏览。用户和 Claude 都无法导航到外部站点，localhost 开发服务器预览不受影响。值必须是 JSON 布尔值 true；字符串 \"true\" 被忽略"
+        "zh": "Turn off external browsing in the desktop app's Browser pane for people and Claude alike. Localhost dev server previews keep working. The desktop app reads this key; the terminal CLI ignores it."
       }
     },
     {
@@ -819,7 +835,7 @@
       "enumValues": [],
       "description": {
         "en": "Turn off the skills and workflows included with Claude Code. Claude Code removes bundled skills and workflows entirely, while built-in commands such as /init stay typable but are hidden from the model.",
-        "zh": "设置为 true 以禁用 Claude Code 附带的 skills 和工作流：捆绑的 skills 和工作流被完全删除，而内置斜杠命令（如 /init）保持可键入但对模型隐藏。/doctor 保持可键入，如内置命令；用 DISABLE_DOCTOR_COMMAND 隐藏它。来自插件、.claude/skills/ 和 .claude/commands/ 的 skills 不受影响。等同于将 CLAUDE_CODE_DISABLE_BUNDLED_SKILLS 设置为 1"
+        "zh": "Turn off the skills and workflows included with Claude Code. Claude Code removes bundled skills and workflows entirely, while built-in commands such as /init stay typable but are hidden from the model."
       }
     },
     {
@@ -835,7 +851,7 @@
       "enumValues": [],
       "description": {
         "en": "Turn off the claude.ai MCP connectors Claude Code fetches itself, so it neither fetches nor connects them. A true in any settings file applies: a checked-in project .claude/settings.json can opt a repository out of those connectors, but a project-level false can't override a user- or managed-level true. Requires Claude Code v2.1.182 or later.",
-        "zh": "禁用 claude.ai MCP connectors，以便它们不被自动获取或连接。在任何设置作用域中设置。任何源中的 true 优先，因此已检入的项目 .claude/settings.json 可以选择存储库退出云连接器，但项目级 false 无法覆盖用户或策略级 true。通过 --mcp-config 显式传递的 servers 不受影响。要拒绝单个连接器而不是所有连接器，请改用 deniedMcpServers。需要 Claude Code v2.1.182 或更高版本"
+        "zh": "Turn off the claude.ai MCP connectors Claude Code fetches itself, so it neither fetches nor connects them. A true in any settings file applies: a checked-in project .claude/settings.json can opt a repository out of those connectors, but a project-level false can't override a user- or managed-level true. Requires Claude Code v2.1.182 or later."
       }
     },
     {
@@ -867,7 +883,7 @@
       "enumValues": [],
       "description": {
         "en": "Stop Claude Code from registering the claude-cli:// protocol handler with the operating system, which it otherwise does after you send the first prompt of an interactive session. Deep links let external tools open a Claude Code session with a pre-filled prompt. Set this in environments where protocol handler registration is restricted or managed separately.",
-        "zh": "设置为 \"disable\" 以防止 Claude Code 在启动时向操作系统注册 claude-cli:// 协议处理程序。深链接让外部工具通过预填充的提示打开 Claude Code 会话。在协议处理程序注册受限或单独管理的环境中很有用"
+        "zh": "Stop Claude Code from registering the claude-cli:// protocol handler with the operating system, which it otherwise does after you send the first prompt of an interactive session. Deep links let external tools open a Claude Code session with a pre-filled prompt. Set this in environments where protocol handler registration is restricted or managed separately."
       }
     },
     {
@@ -899,7 +915,7 @@
       "enumValues": [],
       "description": {
         "en": "Reject specific servers defined in a project's .mcp.json file so Claude Code never connects them or asks you to approve them. A rejection in any settings file applies, including a project .claude/settings.json checked into the repository.",
-        "zh": "要拒绝的 .mcp.json 文件中特定 MCP servers 的列表"
+        "zh": "Reject specific servers defined in a project's .mcp.json file so Claude Code never connects them or asks you to approve them. A rejection in any settings file applies, including a project .claude/settings.json checked into the repository."
       }
     },
     {
@@ -931,7 +947,7 @@
       "enumValues": [],
       "description": {
         "en": "Turn off Remote Control: Claude Code then refuses claude remote-control, the --remote-control flag, auto-start, and the in-session toggle, and reports that your organization's policy disabled it. Place it in managed settings for per-device MDM enforcement.",
-        "zh": "禁用远程控制：阻止 claude remote-control、--remote-control 标志、自动启动和会话内切换。通常放在managed 设置中用于每设备 MDM 强制执行，但适用于任何作用域。需要 Claude Code v2.1.128 或更高版本"
+        "zh": "Turn off Remote Control: Claude Code then refuses claude remote-control, the --remote-control flag, auto-start, and the in-session toggle, and reports that your organization's policy disabled it. Place it in managed settings for per-device MDM enforcement."
       }
     },
     {
@@ -947,7 +963,7 @@
       "enumValues": [],
       "description": {
         "en": "Reject the --plugin-dir, --plugin-url, --agents, and --mcp-config CLI flags at startup, which users could otherwise pass to bypass strictKnownMarketplaces for a single run. Claude Code exits with an error naming the rejected flags, and applies the same check to surfaces that start the CLI with these flags internally, currently Cowork local sessions in the desktop app. In cloud sessions, Claude Code drops the MCP servers the server delivered through --mcp-config, other than in-process type: \"sdk\" entries, and starts the session. Requires Claude Code v2.1.193 or later.",
-        "zh": "（仅 Managed 设置）在启动时拒绝 --plugin-dir、--plugin-url、--agents 和 --mcp-config CLI 标志，用户可能会传递这些标志以绕过单次运行的 strictKnownMarketplaces。也拒绝从任何内部生成带有它们的 CLI 的表面这些标志，当前 Cowork 桌面应用中的本地会话。其服务器都是进程内 type: \"sdk\" 条目的 --mcp-config 仍被接受，因此 Agent SDK 和 VS Code 扩展保持工作。不阻止 claude mcp add、.mcp.json 或 SDK setMcpServers()；与 allowedMcpServers 配对以获得每个 server 的 MCP 控制。需要 Claude Code v2.1.193 或更高版本"
+        "zh": "Reject the --plugin-dir, --plugin-url, --agents, and --mcp-config CLI flags at startup, which users could otherwise pass to bypass strictKnownMarketplaces for a single run. Claude Code exits with an error naming the rejected flags, and applies the same check to surfaces that start the CLI with these flags internally, currently Cowork local sessions in the desktop app. In cloud sessions, Claude Code drops the MCP servers the server delivered through --mcp-config, other than in-process type: \"sdk\" entries, and starts the session. Requires Claude Code v2.1.193 or later."
       }
     },
     {
@@ -963,7 +979,7 @@
       "enumValues": [],
       "description": {
         "en": "Turn off inline shell execution for ` !... and ``! blocks in skills and custom commands from user, project, plugin, or additional-directory sources. Claude Code replaces each command with [shell command execution disabled by policy] instead of running it.",
-        "zh": "禁用 skills 和来自用户、项目、插件或额外目录源的自定义命令中的 ` !... 和 ``! 块的内联 shell 执行。命令被替换为 [shell command execution disabled by policy] 而不是被运行。捆绑和 managed skills 不受影响。在managed 设置中最有用，用户无法覆盖它 | true"
+        "zh": "Turn off inline shell execution for ` !... and ``! blocks in skills and custom commands from user, project, plugin, or additional-directory sources. Claude Code replaces each command with [shell command execution disabled by policy] instead of running it."
       }
     },
     {
@@ -979,7 +995,7 @@
       "enumValues": [],
       "description": {
         "en": "Turn off dynamic workflows and the bundled workflow commands for everyone your settings reach, such as an organization through managed settings. To turn workflows on or off just for yourself, use enableWorkflows instead, which the Dynamic workflows toggle in /config writes to your user settings.",
-        "zh": "默认：false。禁用动态工作流和捆绑的工作流命令。等同于将 CLAUDE_CODE_DISABLE_WORKFLOWS 设置为 1"
+        "zh": "Turn off dynamic workflows and the bundled workflow commands for everyone your settings reach, such as an organization through managed settings. To turn workflows on or off just for yourself, use enableWorkflows instead, which the Dynamic workflows toggle in /config writes to your user settings."
       }
     },
     {
@@ -998,7 +1014,7 @@
       ],
       "description": {
         "en": "Choose the key binding mode for the input prompt.",
-        "zh": "默认：\"normal\"。输入提示的快捷键模式：\"normal\" 或 \"vim\"。在 /config 中显示为快捷键模式"
+        "zh": "Choose the key binding mode for the input prompt."
       }
     },
     {
@@ -1019,7 +1035,7 @@
       ],
       "description": {
         "en": "Set a default effort level for models you haven't saved a level for. Lower levels are faster and cheaper on straightforward tasks, and higher levels reason more deeply on complex problems.",
-        "zh": "跨会话持久化努力级别。接受 \"low\"、\"medium\"、\"high\" 或 \"xhigh\"。当您运行 /effort 时自动写入，带有这些值之一。--effort 和 CLAUDE_CODE_EFFORT_LEVEL 覆盖此用于一个会话。请参阅调整努力级别了解支持的模型"
+        "zh": "Set a default effort level for models you haven't saved a level for. Lower levels are faster and cheaper on straightforward tasks, and higher levels reason more deeply on complex problems."
       }
     },
     {
@@ -1051,7 +1067,7 @@
       "enumValues": [],
       "description": {
         "en": "Approve every MCP server defined in project .mcp.json files without a prompt. Claude Code writes this key to .claude/settings.local.json when you choose to approve all servers in the approval dialog.",
-        "zh": "自动批准项目 .mcp.json 文件中定义的所有 MCP servers。从 v2.1.196 开始，claude mcp list 和 claude mcp get 仅在未检入存储库的设置文件中的不受信任的文件夹中尊重此键"
+        "zh": "Approve every MCP server defined in project .mcp.json files without a prompt. Claude Code writes this key to .claude/settings.local.json when you choose to approve all servers in the approval dialog."
       }
     },
     {
@@ -1067,7 +1083,7 @@
       "enumValues": [],
       "description": {
         "en": "Turn off the Artifact tool, which publishes session output as a private web page on claude.ai. When you turn the Artifacts row off in /config, Claude Code writes this key to your user settings, so you don't usually edit it by hand. Requires Claude Code v2.1.196 or later.",
-        "zh": "为此用户启用或禁用 Artifact 工具。未设置时，默认遵循该功能对您账户的可用性。/config 中的Artifacts 行写入此键。managed disableArtifact 和您的组织的管理员设置优先，该键在项目和本地设置（.claude/settings.json、.claude/settings.local.json）中被忽略，存储库可能会检入。需要 Claude Code v2.1.196 或更高版本"
+        "zh": "Turn off the Artifact tool, which publishes session output as a private web page on claude.ai. When you turn the Artifacts row off in /config, Claude Code writes this key to your user settings, so you don't usually edit it by hand. Requires Claude Code v2.1.196 or later."
       }
     },
     {
@@ -1083,7 +1099,7 @@
       "enumValues": [],
       "description": {
         "en": "Approve specific servers defined in project .mcp.json files so Claude Code connects them without asking. Claude Code writes this key to .claude/settings.local.json when you approve a server in the approval dialog.",
-        "zh": "要批准的 .mcp.json 文件中特定 MCP servers 的列表。从 v2.1.196 开始，claude mcp list 和 claude mcp get 仅在未检入存储库的设置文件中的不受信任的文件夹中尊重此键"
+        "zh": "Approve specific servers defined in project .mcp.json files so Claude Code connects them without asking. Claude Code writes this key to .claude/settings.local.json when you approve a server in the approval dialog."
       }
     },
     {
@@ -1131,7 +1147,7 @@
       "enumValues": [],
       "description": {
         "en": "The /model picker has a Default option that resolves to your organization default model when one applies, and otherwise to your account type's default. An availableModels allowlist limits the models you can name, but on its own it leaves Default alone, so Default can still resolve to a model outside the list. This key closes that gap. Requires Claude Code v2.1.175 or later.",
-        "zh": "将 availableModels 允许列表扩展到默认模型。当在 managed 设置中为 true 且 availableModels 是非空数组时，默认选项回退到第一个可用的允许列表条目，但仅当默认模型会解析为的模型（当应用组织默认时，否则账户类型默认）不在允许列表中时；允许列表默认保持原样。当 availableModels 未设置或为空时无效。请参阅为默认模型强制执行允许列表。需要 Claude Code v2.1.175 或更高版本"
+        "zh": "The /model picker has a Default option that resolves to your organization default model when one applies, and otherwise to your account type's default. An availableModels allowlist limits the models you can name, but on its own it leaves Default alone, so Default can still resolve to a model outside the list. This key closes that gap. Requires Claude Code v2.1.175 or later."
       }
     },
     {
@@ -1163,7 +1179,7 @@
       "enumValues": [],
       "description": {
         "en": "Name backup models for Claude Code to try, in order, when your primary model is overloaded or unavailable. Claude Code switches to the next available model in the chain for the rest of the turn and shows a notice. Without a chain, Claude Code retries the same model and then surfaces the server's error, and you retry or switch models yourself.",
-        "zh": "当主模型过载或不可用时按顺序尝试的备用模型。Claude Code 为该轮的其余部分切换到链中的下一个可用模型并显示通知。\"default\" 扩展为默认模型。链限制为三个模型；额外条目被忽略。与大多数数组设置不同，此键不跨设置文件合并：定义它的最高优先级文件提供整个链。--fallback-model 标志覆盖此用于一个会话。请参阅备用模型链"
+        "zh": "Name backup models for Claude Code to try, in order, when your primary model is overloaded or unavailable. Claude Code switches to the next available model in the chain for the rest of the turn and shows a notice. Without a chain, Claude Code retries the same model and then surfaces the server's error, and you retry or switch models yourself."
       }
     },
     {
@@ -1179,7 +1195,7 @@
       "enumValues": [],
       "description": {
         "en": "Turn fast mode on for sessions where it's available, for interactive work like rapid iteration or live debugging where you want speed at a higher cost per token. You don't usually edit this key by hand: running /fast writes fastMode: true to ~/.claude/settings.json, and running it again to turn fast mode off removes the key. Fast mode runs only on Opus 5 and Opus 4.8: turning it on from another model switches you to Opus, and switching to an unsupported model turns it off. See Switch models while fast mode is on.",
-        "zh": "为可用的会话打开快速模式。使用 /fast 切换会在用户设置中写入 true，当您关闭快速模式时删除键"
+        "zh": "Turn fast mode on for sessions where it's available, for interactive work like rapid iteration or live debugging where you want speed at a higher cost per token. You don't usually edit this key by hand: running /fast writes fastMode: true to ~/.claude/settings.json, and running it again to turn fast mode off removes the key. Fast mode runs only on Opus 5 and Opus 4.8: turning it on from another model switches you to Opus, and switching to an unsupported model turns it off. See Switch models while fast mode is on."
       }
     },
     {
@@ -1195,7 +1211,7 @@
       "enumValues": [],
       "description": {
         "en": "Normally, running /fast saves fastMode to a person's user settings, so fast mode is on at the start of every later session. Set this key to true to stop that: a saved fastMode: true no longer turns fast mode on at session start, and each person has to run /fast in each session they want it. Claude Code leaves the fastMode key in their file, so turning this key off restores the old behavior. Owners on Team or Enterprise plans can deploy it organization-wide through server-managed settings.",
-        "zh": "当为 true 时，快速模式不会跨会话持久化。每个会话都以快速模式关闭开始，需要用户使用 /fast 启用它。用户的快速模式偏好仍被保存。请参阅需要每个会话的选择加入"
+        "zh": "Normally, running /fast saves fastMode to a person's user settings, so fast mode is on at the start of every later session. Set this key to true to stop that: a saved fastMode: true no longer turns fast mode on at session start, and each person has to run /fast in each session they want it. Claude Code leaves the fastMode key in their file, so turning this key off restores the old behavior. Owners on Team or Enterprise plans can deploy it organization-wide through server-managed settings."
       }
     },
     {
@@ -1231,7 +1247,7 @@
       "enumValues": [],
       "description": {
         "en": "Set the probability that the session quality survey appears when a session is eligible for it. Set 0 to keep the survey from appearing.",
-        "zh": "概率（0–1）会话质量调查在符合条件时出现。设置为 0 以完全抑制，或在 env 中设置 CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY。在使用 Amazon Bedrock、Google Cloud 的 Agent Platform 或 Microsoft Foundry 时很有用，其中默认采样率不适用"
+        "zh": "Set the probability that the session quality survey appears when a session is eligible for it. Set 0 to keep the survey from appearing."
       }
     },
     {
@@ -1247,7 +1263,7 @@
       "enumValues": [],
       "description": {
         "en": "Have Claude Code snapshot files before each edit so /rewind can restore them. Appears in /config as Rewind code (checkpoints), and toggling it there writes this key to your user settings.",
-        "zh": "默认：true。在每次编辑前快照文件，以便 /rewind 可以恢复它们。在 /config 中显示为回退代码（checkpoints）。要通过环境变量禁用，请在 env 中设置 CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING"
+        "zh": "Have Claude Code snapshot files before each edit so /rewind can restore them. Appears in /config as Rewind code (checkpoints), and toggling it there writes this key to your user settings."
       }
     },
     {
@@ -1263,7 +1279,7 @@
       "enumValues": [],
       "description": {
         "en": "Run your own command to supply @ file path autocomplete instead of the built-in file suggestion. The built-in suggestion uses fast filesystem traversal; a large monorepo may do better with project-specific indexing such as a pre-built file index.",
-        "zh": "为 @ 文件自动完成配置自定义脚本。请参阅文件建议设置"
+        "zh": "Run your own command to supply @ file path autocomplete instead of the built-in file suggestion. The built-in suggestion uses fast filesystem traversal; a large monorepo may do better with project-specific indexing such as a pre-built file index."
       }
     },
     {
@@ -1278,8 +1294,8 @@
       "valueKind": "array",
       "enumValues": [],
       "description": {
-        "en": "Render extra clickable badges in the footer below the input box when a regex matches turn output: tool results, including file contents and fetched pages, and Claude's own responses. Use it to turn IDs printed by project CLIs, such as review tools and issue trackers, into session links. Requires Claude Code v2.1.176 or later.",
-        "zh": "当正则表达式匹配轮次输出时渲染额外的可点击徽章在页脚中。每个条目有一个 pattern、一个 URL 模板，其中 {name} 占位符从命名捕获组填充，以及一个可选的 label。仅从用户、--settings 标志和 managed 设置读取。请参阅页脚链接徽章了解 URL 约束、方案允许列表和限制。需要 Claude Code v2.1.176 或更高版本"
+        "en": "Render extra clickable badges in the footer below the input box when a regex matches turn output: tool results, including file contents and fetched pages, and Claude's own responses. Use it to turn IDs printed by project CLIs, such as review tools and issue trackers, into session links.",
+        "zh": "Render extra clickable badges in the footer below the input box when a regex matches turn output: tool results, including file contents and fetched pages, and Claude's own responses. Use it to turn IDs printed by project CLIs, such as review tools and issue trackers, into session links."
       }
     },
     {
@@ -1295,7 +1311,7 @@
       "enumValues": [],
       "description": {
         "en": "Set the gateway URL the /login Cloud gateway screen connects to, so people reach your cloud gateway without typing its address. The screen has no URL field: with this key set, it shows your gateway URL and connects when the person presses Enter; without it, it tells them to contact their IT administrator.",
-        "zh": "在 /login 云网关屏幕上预填充并锁定网关 URL。此键或 forceLoginMethod: \"gateway\" 中的任一个都会显示该屏幕；同时设置两者以便 URL 被填充。仅在 managed 策略层受尊重；在用户和项目设置中被忽略。请参阅 Claude apps gateway"
+        "zh": "Set the gateway URL the /login Cloud gateway screen connects to, so people reach your cloud gateway without typing its address. The screen has no URL field: with this key set, it shows your gateway URL and connects when the person presses Enter; without it, it tells them to contact their IT administrator."
       }
     },
     {
@@ -1315,7 +1331,7 @@
       ],
       "description": {
         "en": "Restrict which kind of account people can log in with. Set \"claudeai\" to allow only claude.ai accounts, \"console\" to allow only Claude Console accounts, or \"gateway\" to send people to a cloud gateway instead of a first-party login. Administrators set it in managed settings and pair it with forceLoginOrgUUID to keep developers' claude.ai logins inside one organization. If you set it to \"claudeai\" or \"console\" in any settings file, Claude Code also stops offering the keyless Console sign-in in the sessions that file applies to.",
-        "zh": "使用 claudeai 限制登录到 Claude.ai 账户，console 限制登录到 Claude Console 账户，或 gateway 限制登录到云网关；请参阅 Claude apps gateway。在 managed 设置中设置为任何值时，由 ANTHROPIC_API_KEY、ANTHROPIC_AUTH_TOKEN 或 apiKeyHelper 进行身份验证的会话在启动时被阻止，因为环境凭证无法满足所需的登录方法。第三方提供商会话（如 Amazon Bedrock、Google Cloud 的 Agent Platform 和 Microsoft Foundry）不被阻止：它们针对您的云提供商而不是 Anthropic 进行身份验证"
+        "zh": "Restrict which kind of account people can log in with. Set \"claudeai\" to allow only claude.ai accounts, \"console\" to allow only Claude Console accounts, or \"gateway\" to send people to a cloud gateway instead of a first-party login. Administrators set it in managed settings and pair it with forceLoginOrgUUID to keep developers' claude.ai logins inside one organization. If you set it to \"claudeai\" or \"console\" in any settings file, Claude Code also stops offering the keyless Console sign-in in the sessions that file applies to."
       }
     },
     {
@@ -1331,7 +1347,7 @@
       "enumValues": [],
       "description": {
         "en": "From a managed source, require claude.ai account logins to belong to one Anthropic organization, given as a single UUID, or to any of several organizations, given as an array. From any settings file, Claude Code also uses a single UUID to pre-select that organization during a claude.ai or Claude Console login, and pre-selects nothing for an array. If you set the key in any settings file, Claude Code also stops offering the keyless Console sign-in in the sessions that file applies to and creates an API key instead.",
-        "zh": "要求登录属于特定 Anthropic 组织。接受单个 UUID 字符串（也在登录期间预选该组织）或 UUID 数组，其中任何列出的组织都被接受而无需预选。在 managed 设置中设置时，如果经过身份验证的账户不属于列出的组织，登录失败；由 ANTHROPIC_API_KEY、ANTHROPIC_AUTH_TOKEN 或 apiKeyHelper 进行身份验证的会话在启动时被阻止，因为无法为它们验证组织成员身份。第三方提供商会话（如 Amazon Bedrock、Google Cloud 的 Agent Platform 和 Microsoft Foundry）不被阻止：使用您的云 IAM 限制哪些云账户可以被使用。空数组失败关闭并使用配置错误消息阻止登录"
+        "zh": "From a managed source, require claude.ai account logins to belong to one Anthropic organization, given as a single UUID, or to any of several organizations, given as an array. From any settings file, Claude Code also uses a single UUID to pre-select that organization during a claude.ai or Claude Console login, and pre-selects nothing for an array. If you set the key in any settings file, Claude Code also stops offering the keyless Console sign-in in the sessions that file applies to and creates an API key instead."
       }
     },
     {
@@ -1347,7 +1363,23 @@
       "enumValues": [],
       "description": {
         "en": "Block CLI startup until Claude Code has freshly fetched server-managed settings. If the fetch fails, Claude Code exits instead of continuing with cached or no settings. Set it when your environment can't accept even a brief window in which a session runs without its managed policy.",
-        "zh": "（仅 Managed 设置）阻止 CLI 启动，直到从服务器新鲜获取远程 managed 设置。如果获取失败，CLI 退出而不是继续使用缓存或无设置。未设置时，启动继续而不等待远程设置。请参阅失败关闭强制执行"
+        "zh": "Block CLI startup until Claude Code has freshly fetched server-managed settings. If the fetch fails, Claude Code exits instead of continuing with cached or no settings. Set it when your environment can't accept even a brief window in which a session runs without its managed policy."
+      }
+    },
+    {
+      "key": "gatewayInternalNetworks",
+      "path": [
+        "gatewayInternalNetworks"
+      ],
+      "scope": "Managed. Read only from a source on the machine: managed-settings.json, the macOS plist or Windows HKLM registry, or a policy helper. Claude Code ignores it in HKCU and server-managed settings.",
+      "type": "array of strings, at most four IPv4 CIDR blocks, each /8 to /32, not overlapping one another, and none overlapping private space.",
+      "default": "unset, so /login accepts only gateways on private addresses",
+      "example": "{\n  \"gatewayInternalNetworks\": [\"203.0.113.0/24\"]\n}",
+      "valueKind": "array",
+      "enumValues": [],
+      "description": {
+        "en": "Declare the public IPv4 blocks that your organization numbers its internal network from, so /login accepts a cloud gateway there. Requires Claude Code v2.1.268 or later.",
+        "zh": "Declare the public IPv4 blocks that your organization numbers its internal network from, so /login accepts a cloud gateway there. Requires Claude Code v2.1.268 or later."
       }
     },
     {
@@ -1363,7 +1395,7 @@
       "enumValues": [],
       "description": {
         "en": "Run your own command to refresh Google Cloud Application Default Credentials when Claude Code finds they've expired or can't be loaded, so Google Cloud's Agent Platform requests keep working without you re-authenticating by hand.",
-        "zh": "当 GCP Application Default Credentials 过期或无法加载时刷新它们的自定义脚本。请参阅高级凭证配置"
+        "zh": "Run your own command to refresh Google Cloud Application Default Credentials when Claude Code finds they've expired or can't be loaded, so Google Cloud's Agent Platform requests keep working without you re-authenticating by hand."
       }
     },
     {
@@ -1379,7 +1411,7 @@
       "enumValues": [],
       "description": {
         "en": "Run your own commands, prompts, agents, HTTP requests, or MCP tools as hooks at points in Claude Code's lifecycle, such as before a tool call or when a session starts; the hooks reference lists every event, its payload, and its exit codes. Each event maps to a list of matcher groups, and each group lists the handlers to run when the matcher applies.",
-        "zh": "配置自定义命令以在生命周期事件处运行。请参阅 hooks 文档 了解格式"
+        "zh": "Run your own commands, prompts, agents, HTTP requests, or MCP tools as hooks at points in Claude Code's lifecycle, such as before a tool call or when a session starts; the hooks reference lists every event, its payload, and its exit codes. Each event maps to a list of matcher groups, and each group lists the handlers to run when the matcher applies."
       }
     },
     {
@@ -1395,7 +1427,7 @@
       "enumValues": [],
       "description": {
         "en": "An HTTP hook can put the value of an environment variable into a request header, for example an Authorization: Bearer $HOOK_TOKEN header, but only for variables the hook lists in its own allowedEnvVars. This key sets an outer limit on that list for every HTTP hook: a hook can use a variable only if both its own allowedEnvVars and this key name it. Use it to stop a hook from reading a secret it shouldn't, even when the hook's definition asks for it.",
-        "zh": "HTTP hooks 可能插入到标头中的环境变量名称的允许列表。设置后，每个 hook 的有效 allowedEnvVars 是与此列表的交集。未定义 = 无限制。数组跨设置源合并。请参阅 Hook 配置"
+        "zh": "An HTTP hook can put the value of an environment variable into a request header, for example an Authorization: Bearer $HOOK_TOKEN header, but only for variables the hook lists in its own allowedEnvVars. This key sets an outer limit on that list for every HTTP hook: a hook can use a variable only if both its own allowedEnvVars and this key name it. Use it to stop a hook from reading a secret it shouldn't, even when the hook's definition asks for it."
       }
     },
     {
@@ -1427,7 +1459,7 @@
       "enumValues": [],
       "description": {
         "en": "At session start, Claude Code adds two git-related pieces to Claude's prompt: its built-in instructions for how to write commits and pull requests, in the Bash tool's description, and a git status snapshot of your repository in the system prompt, meaning the current branch, the main branch, git status output, and recent commits. Set this key to false to leave both out, for example when you use your own git workflow skills.",
-        "zh": "默认：true。在 Claude 的系统提示中包含内置提交和 PR 工作流说明和 git 状态快照。设置为 false 以删除这两者，例如在使用您自己的 git 工作流 skills 时。CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS 环境变量在设置时优先于此设置"
+        "zh": "At session start, Claude Code adds two git-related pieces to Claude's prompt: its built-in instructions for how to write commits and pull requests, in the Bash tool's description, and a git status snapshot of your repository in the system prompt, meaning the current branch, the main branch, git status output, and recent commits. Set this key to false to leave both out, for example when you use your own git workflow skills."
       }
     },
     {
@@ -1443,7 +1475,7 @@
       "enumValues": [],
       "description": {
         "en": "Get a push notification on your phone when a permission prompt or question is waiting for your input. Claude Code sends these only while Remote Control is connected. Appears in /config as Push when actions required.",
-        "zh": "默认：false。当远程控制已连接时，当权限提示或问题等待您的输入时向您的手机发送推送通知。在 /config 中显示为需要操作时推送。请参阅移动推送通知。需要 Claude Code v2.1.119 或更高版本"
+        "zh": "Get a push notification on your phone when a permission prompt or question is waiting for your input. Claude Code sends these only while Remote Control is connected. Appears in /config as Push when actions required."
       }
     },
     {
@@ -1491,7 +1523,7 @@
       "enumValues": [],
       "description": {
         "en": "Have Claude respond in a language other than English by default. There is no fixed list for responses: Claude Code adds the value verbatim to the system prompt as an instruction to always respond in that language, so any language name Claude can read works. Claude Code doesn't check the value, so a misspelled name reaches Claude as written rather than producing an error. The same value sets the language for voice dictation, which does have a fixed list of supported dictation languages, and for auto-generated session titles.",
-        "zh": "配置 Claude 的首选响应语言（例如 \"japanese\"、\"spanish\"、\"french\"）。Claude 将默认以此语言响应。也设置语音听写语言和自动生成的会话标题。从 v2.1.176 开始，未设置时，会话标题与您的对话语言匹配"
+        "zh": "Have Claude respond in a language other than English by default. There is no fixed list for responses: Claude Code adds the value verbatim to the system prompt as an instruction to always respond in that language, so any language name Claude can read works. Claude Code doesn't check the value, so a misspelled name reaches Claude as written rather than producing an error. The same value sets the language for voice dictation, which does have a fixed list of supported dictation languages, and for auto-generated session titles."
       }
     },
     {
@@ -1525,8 +1557,8 @@
         "merge"
       ],
       "description": {
-        "en": "Choose whether Claude Code applies only the highest-priority managed source your organization delivers, or combines every admin source it delivers. By default Claude Code takes the highest-priority source that carries a policy key and ignores the rest. A policy key is any settings key other than this one and wslInheritsWindowsSettings. So once server-managed settings or an MDM policy deliver a policy key, a managed-settings.json file contributes only the keys Claude Code reads from every admin source. With \"merge\", every admin source you deliver contributes its keys to one combined policy. Requires Claude Code v2.1.242 or later.",
-        "zh": "Choose whether Claude Code applies only the highest-priority managed source your organization delivers, or combines every admin source it delivers. By default Claude Code takes the highest-priority source that carries a policy key and ignores the rest. A policy key is any settings key other than this one and wslInheritsWindowsSettings. So once server-managed settings or an MDM policy deliver a policy key, a managed-settings.json file contributes only the keys Claude Code reads from every admin source. With \"merge\", every admin source you deliver contributes its keys to one combined policy. Requires Claude Code v2.1.242 or later."
+        "en": "Choose whether Claude Code applies only the highest-priority managed source your organization delivers, or combines every admin source it delivers. By default Claude Code takes the highest-priority source that carries a policy key and ignores the rest. A policy key is any settings key other than this one and wslInheritsWindowsSettings. Under that default, once server-managed settings or an MDM policy deliver a policy key, a managed-settings.json file contributes only the keys Claude Code reads from every admin source. With \"merge\", every admin source you deliver contributes its keys to one combined policy. Requires Claude Code v2.1.242 or later.",
+        "zh": "Choose whether Claude Code applies only the highest-priority managed source your organization delivers, or combines every admin source it delivers. By default Claude Code takes the highest-priority source that carries a policy key and ignores the rest. A policy key is any settings key other than this one and wslInheritsWindowsSettings. Under that default, once server-managed settings or an MDM policy deliver a policy key, a managed-settings.json file contributes only the keys Claude Code reads from every admin source. With \"merge\", every admin source you deliver contributes its keys to one combined policy. Requires Claude Code v2.1.242 or later."
       }
     },
     {
@@ -1541,8 +1573,8 @@
       "valueKind": "object",
       "enumValues": [],
       "description": {
-        "en": "Cap the effort level a session can use, leaving lower levels available. Any higher level runs at the cap instead, including one from /effort, the /model picker, --effort, CLAUDE_CODE_EFFORT_LEVEL, or the model's own default. Claude Code applies the cap itself before each request, so it holds on every provider, including Amazon Bedrock, Google Cloud's Agent Platform, and Microsoft Foundry. Requires Claude Code v2.1.267 or later.",
-        "zh": "Cap the effort level a session can use, leaving lower levels available. Any higher level runs at the cap instead, including one from /effort, the /model picker, --effort, CLAUDE_CODE_EFFORT_LEVEL, or the model's own default. Claude Code applies the cap itself before each request, so it holds on every provider, including Amazon Bedrock, Google Cloud's Agent Platform, and Microsoft Foundry. Requires Claude Code v2.1.267 or later."
+        "en": "Cap the effort level a session can use, leaving lower levels available. Any higher level runs at the cap instead, including one from /effort, the /model picker, --effort, CLAUDE_CODE_EFFORT_LEVEL, a skill's or subagent's effort frontmatter, or the model's own default. Claude Code applies the cap itself before each request, so it holds on every provider, including Amazon Bedrock, Google Cloud's Agent Platform, and Microsoft Foundry. Requires Claude Code v2.1.267 or later.",
+        "zh": "Cap the effort level a session can use, leaving lower levels available. Any higher level runs at the cap instead, including one from /effort, the /model picker, --effort, CLAUDE_CODE_EFFORT_LEVEL, a skill's or subagent's effort frontmatter, or the model's own default. Claude Code applies the cap itself before each request, so it holds on every provider, including Amazon Bedrock, Google Cloud's Agent Platform, and Microsoft Foundry. Requires Claude Code v2.1.267 or later."
       }
     },
     {
@@ -1558,7 +1590,7 @@
       "enumValues": [],
       "description": {
         "en": "Keep background auto-updates and claude update from installing any version below this one, so moving to the \"stable\" channel doesn't downgrade you from a newer \"latest\" build. Claude Code writes this key for you when you choose to stay on your current version while switching channels in /config, and clears it when you switch back to \"latest\".",
-        "zh": "防止后台自动更新和 claude update 安装低于此版本的版本。从 \"latest\" 渠道切换到 \"stable\" 时通过 /config 提示您保持在当前版本或允许降级。选择保持设置此值。也在managed 设置中有用，以固定组织范围的最低版本。对于阻止启动的硬下限，请参阅 requiredMinimumVersion"
+        "zh": "Keep background auto-updates and claude update from installing any version below this one, so moving to the \"stable\" channel doesn't downgrade you from a newer \"latest\" build. Claude Code writes this key for you when you choose to stay on your current version while switching channels in /config, and clears it when you switch back to \"latest\"."
       }
     },
     {
@@ -1574,7 +1606,7 @@
       "enumValues": [],
       "description": {
         "en": "Set the model every new session uses, so you don't have to pick one with /model each time. Setting it here doesn't stop you from switching mid-session. If your admin set an organization default model to override user selection, you get that model even when you set this key in user, project, or local settings.",
-        "zh": "覆盖用于 Claude Code 的默认模型。--model 和 ANTHROPIC_MODEL 覆盖此用于一个会话"
+        "zh": "Set the model every new session uses, so you don't have to pick one with /model each time. Setting it here doesn't stop you from switching mid-session. If your admin set an organization default model to override user selection, you get that model even when you set this key in user, project, or local settings."
       }
     },
     {
@@ -1590,7 +1622,7 @@
       "enumValues": [],
       "description": {
         "en": "Map Anthropic model IDs to provider-specific model IDs, such as Amazon Bedrock inference profile ARNs. Each model picker entry then uses its mapped value when calling the provider API. Administrators use this on Amazon Bedrock, Google Cloud's Agent Platform, and Microsoft Foundry to route each model version to a specific inference profile, version name, or deployment for governance, cost allocation, or regional routing.",
-        "zh": "将 Anthropic 模型 ID 映射到特定于提供商的模型 ID，例如 Amazon Bedrock 推理配置文件 ARN。每个模型选择器条目在调用提供商 API 时使用其映射值。请参阅按版本覆盖模型 ID"
+        "zh": "Map Anthropic model IDs to provider-specific model IDs, such as Amazon Bedrock inference profile ARNs. Each model picker entry then uses its mapped value when calling the provider API. Administrators use this on Amazon Bedrock, Google Cloud's Agent Platform, and Microsoft Foundry to route each model version to a specific inference profile, version name, or deployment for governance, cost allocation, or regional routing."
       }
     },
     {
@@ -1654,7 +1686,7 @@
       "enumValues": [],
       "description": {
         "en": "Run your own command to generate the headers Claude Code sends with OpenTelemetry exports, for backends whose tokens rotate. Claude Code runs it at startup and periodically after that, and expects a JSON object of string header values on stdout.",
-        "zh": "生成动态 OpenTelemetry 标头的脚本。在启动时和定期运行。使用 CLAUDE_CODE_OTEL_HEADERS_HELPER_DEBOUNCE_MS 设置刷新间隔。请参阅动态标头"
+        "zh": "Run your own command to generate the headers Claude Code sends with OpenTelemetry exports, for backends whose tokens rotate. Claude Code runs it at startup and periodically after that, and expects a JSON object of string header values on stdout."
       }
     },
     {
@@ -1670,7 +1702,7 @@
       "enumValues": [],
       "description": {
         "en": "Select an output style by name. An output style is a saved set of instructions that changes Claude's role, tone, and output format, such as the built-in Explanatory and Learning styles or one you wrote yourself.",
-        "zh": "配置输出样式以调整系统提示。请参阅输出样式文档"
+        "zh": "Select an output style by name. An output style is a saved set of instructions that changes Claude's role, tone, and output format, such as the built-in Explanatory and Learning styles or one you wrote yourself."
       }
     },
     {
@@ -1689,7 +1721,7 @@
       ],
       "description": {
         "en": "Choose whether Claude Code applies managed settings supplied by an embedding host process, such as the Agent SDK or an IDE extension, when an admin-deployed managed tier is also present. With \"first-wins\", Claude Code drops the host-supplied settings; with \"merge\", it applies them under the admin tier through a restrictive-only filter. Set \"merge\" when a host needs to pass its own restrictions to the sessions it launches, for example Claude Desktop delivering a gateway's egress allowlist.",
-        "zh": "（仅 Managed 设置）默认：\"first-wins\"。控制由嵌入主机进程（例如 Agent SDK 或 IDE 扩展）以编程方式提供的 managed 设置在同时存在管理员部署的 managed 层时是否应用。\"first-wins\"：父级提供的设置被丢弃，仅应用管理员层。\"merge\"：父级提供的设置在管理员层下应用，经过筛选以便它们可以收紧策略但不能放松策略。当未部署管理员层时无效。需要 Claude Code v2.1.133 或更高版本"
+        "zh": "Choose whether Claude Code applies managed settings supplied by an embedding host process, such as the Agent SDK or an IDE extension, when an admin-deployed managed tier is also present. With \"first-wins\", Claude Code drops the host-supplied settings; with \"merge\", it applies them under the admin tier through a restrictive-only filter. Set \"merge\" when a host needs to pass its own restrictions to the sessions it launches, for example Claude Desktop delivering a gateway's egress allowlist."
       }
     },
     {
@@ -1705,7 +1737,7 @@
       "enumValues": [],
       "description": {
         "en": "Control which tools Claude can use without asking, which ones always prompt, and which ones are blocked, and set the permission mode a session starts in. Every permissions.* key below nests under this object.",
-        "zh": "请参阅下表了解权限的结构。"
+        "zh": "Control which tools Claude can use without asking, which ones always prompt, and which ones are blocked, and set the permission mode a session starts in. Every permissions.* key below nests under this object."
       }
     },
     {
@@ -1814,8 +1846,8 @@
       "valueKind": "array",
       "enumValues": [],
       "description": {
-        "en": "List the tool uses Claude Code blocks. Use it for files that hold API keys, secrets, or environment values: Claude Code excludes matching files from file discovery and search results, denies reads of them, and blocks the Edit and Write tools on the matching paths. Read and Edit deny rules apply to Claude's built-in file tools, to file commands Claude Code recognizes in Bash, such as cat, head, tail, and sed, and to the targets of Bash redirections such as > file and < file; they don't apply to a command that reads files without naming them, such as grep -r pattern ., or to arbitrary subprocesses, so for OS-level enforcement enable the sandbox.",
-        "zh": "List the tool uses Claude Code blocks. Use it for files that hold API keys, secrets, or environment values: Claude Code excludes matching files from file discovery and search results, denies reads of them, and blocks the Edit and Write tools on the matching paths. Read and Edit deny rules apply to Claude's built-in file tools, to file commands Claude Code recognizes in Bash, such as cat, head, tail, and sed, and to the targets of Bash redirections such as > file and < file; they don't apply to a command that reads files without naming them, such as grep -r pattern ., or to arbitrary subprocesses, so for OS-level enforcement enable the sandbox."
+        "en": "List the tool uses Claude Code blocks. Use it for files that hold API keys, secrets, or environment values: Claude Code excludes matching files from file discovery and search results, denies reads of them, and blocks the Edit and Write tools on the matching paths.",
+        "zh": "List the tool uses Claude Code blocks. Use it for files that hold API keys, secrets, or environment values: Claude Code excludes matching files from file discovery and search results, denies reads of them, and blocks the Edit and Write tools on the matching paths."
       }
     },
     {
@@ -1848,7 +1880,7 @@
       "enumValues": [],
       "description": {
         "en": "Choose where Claude Code stores the plan files it writes in plan mode. Claude Code resolves the path relative to the project root and keeps the default when the path resolves outside it.",
-        "zh": "默认：~/.claude/plans。自定义 Plan Mode 文件的存储位置。路径相对于项目根目录。"
+        "zh": "Choose where Claude Code stores the plan files it writes in plan mode. Claude Code resolves the path relative to the project root and keeps the default when the path resolves outside it."
       }
     },
     {
@@ -1880,7 +1912,7 @@
       "enumValues": [],
       "description": {
         "en": "Name the marketplaces whose plugins can appear as contextual install suggestions, in spinner tips and pinned at the top of the /plugin Discover tab. The built-in first-party frontend-design tip is unaffected. Suggestions come from each plugin's relevance declaration in its marketplace entry.",
-        "zh": "（仅 Managed 设置）其插件可以显示为上下文安装建议的市场名称。无市场声明的建议出现而不需要此允许列表；内置的第一方前端设计提示不受影响。建议来自每个插件在其市场条目中的 relevance 声明。名称仅在市场在机器上注册且其注册源也在 managed 设置中声明时才生效，作为该名称的 extraKnownMarketplaces 条目或 strictKnownMarketplaces 的条目。从不同源注册的市场在允许列表名称下被忽略。官方市场豁免于源要求：仅允许列表其名称就足够了，因为该名称只能从官方 Anthropic 源注册。"
+        "zh": "Name the marketplaces whose plugins can appear as contextual install suggestions, in spinner tips and pinned at the top of the /plugin Discover tab. The built-in first-party frontend-design tip is unaffected. Suggestions come from each plugin's relevance declaration in its marketplace entry."
       }
     },
     {
@@ -1896,7 +1928,7 @@
       "enumValues": [],
       "description": {
         "en": "Add your organization's own text to the plugin trust warning Claude Code shows before installation, for example to confirm that plugins from your internal marketplace are vetted.",
-        "zh": "（仅 Managed 设置）在安装前显示的插件信任警告中附加的自定义消息。使用此添加组织特定的上下文，例如确认来自您内部市场的插件已获批准。"
+        "zh": "Add your organization's own text to the plugin trust warning Claude Code shows before installation, for example to confirm that plugins from your internal marketplace are vetted."
       }
     },
     {
@@ -1912,7 +1944,7 @@
       "enumValues": [],
       "description": {
         "en": "Run an executable you deploy that computes managed settings at startup, so you can derive policy from device posture, identity, or a remote service instead of a static file. Claude Code runs the helper before it accepts the first prompt and treats the settings it emits as the managed settings for the session.",
-        "zh": "管理员部署的可执行文件，在启动时动态计算 managed 设置。仅从 MDM 或系统 managed-settings.json 文件受尊重。请参阅使用策略助手计算 managed 设置。需要 Claude Code v2.1.136 或更高版本"
+        "zh": "Run an executable you deploy that computes managed settings at startup, so you can derive policy from device posture, identity, or a remote service instead of a static file. Claude Code runs the helper before it accepts the first prompt and treats the settings it emits as the managed settings for the session."
       }
     },
     {
@@ -1987,7 +2019,7 @@
       ],
       "description": {
         "en": "Choose how Claude Code notifies you when a task completes or a permission prompt is waiting. Appears in /config as Local notifications.",
-        "zh": "默认：\"auto\"。任务完成和权限提示通知的方法：\"auto\"、\"terminal_bell\"、\"iterm2\"、\"iterm2_with_bell\"、\"kitty\"、\"ghostty\" 或 \"notifications_disabled\"。\"auto\" 在 iTerm2、Ghostty 和 Kitty 中发送桌面通知，在其他终端中不执行任何操作。设置 \"terminal_bell\" 以在任何终端中响铃。在 /config 中显示为通知。请参阅获取终端铃声或通知"
+        "zh": "Choose how Claude Code notifies you when a task completes or a permission prompt is waiting. Appears in /config as Local notifications."
       }
     },
     {
@@ -2003,7 +2035,7 @@
       "enumValues": [],
       "description": {
         "en": "Reduce or turn off interface animations such as the spinner, shimmer, and flash effects. Appears in /config as Reduce motion.",
-        "zh": "减少或禁用 UI 动画（微调器、闪烁、闪光效果）以实现可访问性"
+        "zh": "Reduce or turn off interface animations such as the spinner, shimmer, and flash effects. Appears in /config as Reduce motion."
       }
     },
     {
@@ -2070,7 +2102,7 @@
       "enumValues": [],
       "description": {
         "en": "Point the PR links Claude Code renders, in the footer badge and in tool-result summaries, at an internal code-review tool instead of github.com. Claude Code substitutes {host}, {owner}, {repo}, {number}, and {url} from the PR URL. GitLab merge request links on both surfaces keep their GitLab URL.",
-        "zh": "PR 徽章的 URL 模板，显示在页脚和工具结果摘要中。替换来自 gh 报告的 PR URL 中的 {host}、{owner}、{repo}、{number} 和 {url}。使用指向内部代码审查工具而不是 github.com 的 PR 链接。不影响 Claude 散文中的 #123 自动链接"
+        "zh": "Point the PR links Claude Code renders, in the footer badge and in tool-result summaries, at an internal code-review tool instead of github.com. Claude Code substitutes {host}, {owner}, {repo}, {number}, and {url} from the PR URL. GitLab merge request links on both surfaces keep their GitLab URL."
       }
     },
     {
@@ -2103,7 +2135,7 @@
       "enumValues": [],
       "description": {
         "en": "Connect Remote Control automatically when each interactive session starts, instead of waiting for /remote-control. Set it to true to turn auto-connect on, false to turn it off. Appears in /config as Enable Remote Control for all sessions.",
-        "zh": "当每个交互式会话启动时自动连接远程控制，而不是等待 /remote-control。设置为 true 以始终自动连接，false 以从不自动连接，或保留未设置以遵循您的组织的默认值。在 /config 中显示为为所有会话启用远程控制。请参阅为所有会话启用远程控制"
+        "zh": "Connect Remote Control automatically when each interactive session starts, instead of waiting for /remote-control. Set it to true to turn auto-connect on, false to turn it off. Appears in /config as Enable Remote Control for all sessions."
       }
     },
     {
@@ -2119,7 +2151,7 @@
       "enumValues": [],
       "description": {
         "en": "Set the newest Claude Code version your organization allows to start. When the running version is newer, Claude Code exits at startup and tells the user to install an approved version through your organization's approved method; claude install may also work. Requires Claude Code v2.1.163 or later.",
-        "zh": "仅 Managed 设置。允许启动的最大 Claude Code 版本。如果运行版本较新，Claude Code 在启动时退出并指示用户通过组织的批准方法安装批准的版本；claude install 也可能有效。后台自动更新和 claude update 跳过高于上限的版本，因此在范围内的安装保持在范围内。claude update、claude install 和 claude doctor 在上限以上保持工作，以便用户可以恢复。早于此设置的版本忽略它"
+        "zh": "Set the newest Claude Code version your organization allows to start. When the running version is newer, Claude Code exits at startup and tells the user to install an approved version through your organization's approved method; claude install may also work. Requires Claude Code v2.1.163 or later."
       }
     },
     {
@@ -2135,7 +2167,7 @@
       "enumValues": [],
       "description": {
         "en": "Set the oldest Claude Code version your organization allows to start. When the running version is older, Claude Code exits at startup and tells the user to update through your organization's approved method. The check runs at startup only, so a session that's already running continues. Requires Claude Code v2.1.163 or later.",
-        "zh": "仅 Managed 设置。启动所需的最小 Claude Code 版本。如果运行版本较旧，Claude Code 在启动时退出并指示用户通过组织的批准方法更新。claude update、claude install 和 claude doctor 在下限以下保持工作，以便用户可以恢复。与 minimumVersion 不同，后者防止降级但从不阻止启动。早于此设置的版本忽略它"
+        "zh": "Set the oldest Claude Code version your organization allows to start. When the running version is older, Claude Code exits at startup and tells the user to update through your organization's approved method. The check runs at startup only, so a session that's already running continues. Requires Claude Code v2.1.163 or later."
       }
     },
     {
@@ -2151,7 +2183,7 @@
       "enumValues": [],
       "description": {
         "en": "Control whether the @ file picker leaves out files that match .gitignore patterns. Appears in /config as Respect .gitignore in file picker.",
-        "zh": "默认：true。控制 @ 文件选择器是否尊重 .gitignore 模式。当为 true 时，匹配 .gitignore 模式的文件被排除在建议之外"
+        "zh": "Control whether the @ file picker leaves out files that match .gitignore patterns. Appears in /config as Respect .gitignore in file picker."
       }
     },
     {
@@ -2167,7 +2199,7 @@
       "enumValues": [],
       "description": {
         "en": "Choose whether Claude responds after you run a shell command with the ! prefix in the input box. By default, Claude Code adds the command's output to the conversation and Claude replies to it. Set this key to false to add the output to context without a reply, so you can run several commands and ask about them together. Requires Claude Code v2.1.186 or later.",
-        "zh": "默认：true。Claude 在输入框 ! shell 命令运行后是否响应。设置为 false 以将命令输出添加到上下文而不响应。请参阅带 ! 前缀的 Shell 模式。需要 Claude Code v2.1.186 或更高版本"
+        "zh": "Choose whether Claude responds after you run a shell command with the ! prefix in the input box. By default, Claude Code adds the command's output to the conversation and Claude replies to it. Set this key to false to add the output to context without a reply, so you can run several commands and ask about them together. Requires Claude Code v2.1.186 or later."
       }
     },
     {
@@ -2853,7 +2885,7 @@
       "enumValues": [],
       "description": {
         "en": "When Claude finishes a plan in plan mode, it shows an approval menu. Planning can use a lot of context, so this key adds a first option to that menu, Yes, clear context and …, that approves the plan, clears the conversation context, and starts implementing from the plan alone. The rest of the label names the permission mode the session continues in, and shows how much of your context the planning used.",
-        "zh": "默认：false。在 Plan Mode 接受屏幕上显示\"清除上下文\"选项。设置为 true 以恢复该选项"
+        "zh": "When Claude finishes a plan in plan mode, it shows an approval menu. Planning can use a lot of context, so this key adds a first option to that menu, Yes, clear context and …, that approves the plan, clears the conversation context, and starts implementing from the plan alone. The rest of the label names the permission mode the session continues in, and shows how much of your context the planning used."
       }
     },
     {
@@ -2869,7 +2901,7 @@
       "enumValues": [],
       "description": {
         "en": "See summaries of Claude's extended thinking in interactive sessions. Set it if you want the full summaries when you expand thinking with Ctrl+O. When unset or false, the Anthropic API redacts thinking blocks and Claude Code shows a collapsed stub; third-party providers don't redact.",
-        "zh": "默认：false。在交互式会话中显示扩展思考摘要。未设置或 false 时，思考块由 API 编辑并显示为折叠的存根。编辑仅改变您看到的内容，而不是模型生成的内容：要减少思考支出，降低预算或禁用思考。此设置在非交互模式（-p）、Agent SDK 或 IDE 扩展（如 VS Code）中无效"
+        "zh": "See summaries of Claude's extended thinking in interactive sessions. Set it if you want the full summaries when you expand thinking with Ctrl+O. When unset or false, the Anthropic API redacts thinking blocks and Claude Code shows a collapsed stub; third-party providers don't redact."
       }
     },
     {
@@ -2885,7 +2917,7 @@
       "enumValues": [],
       "description": {
         "en": "Show or hide the turn duration message after each response, such as \"Cooked for 1m 6s · done 6:05 PM\". The clock after \"done\" shows when the turn finished; timeFormat and timeZone control its format and zone. Appears in /config as Show turn duration.",
-        "zh": "默认：true。在响应后显示轮次持续时间消息，例如\"Cooked for 1m 6s\"。在 /config 中显示为显示轮次持续时间"
+        "zh": "Show or hide the turn duration message after each response, such as \"Cooked for 1m 6s · done 6:05 PM\". The clock after \"done\" shows when the turn finished; timeFormat and timeZone control its format and zone. Appears in /config as Show turn duration."
       }
     },
     {
@@ -2901,7 +2933,7 @@
       "enumValues": [],
       "description": {
         "en": "Each turn, Claude sees a listing of your skills with their descriptions, and Claude Code caps that listing at a share of the context window. When the listing is over the cap, Claude Code keeps every skill's name but drops the descriptions of the least-used skills, so Claude can still invoke those skills but is less likely to choose one on its own. Raise this key to keep more descriptions visible at the cost of more context per turn.",
-        "zh": "默认：0.01。为skill 列表预留的模型上下文窗口的分数，Claude 每轮看到。当列表超过预算时，最少使用的 skills 的描述被删除，仅列出其名称，以便 Claude 仍可以调用它们但不会看到它们的作用。提高以保持更多描述可见，代价是每轮更多上下文。/doctor 估计列表成本与预算"
+        "zh": "Each turn, Claude sees a listing of your skills with their descriptions, and Claude Code caps that listing at a share of the context window. When the listing is over the cap, Claude Code keeps every skill's name but drops the descriptions of the least-used skills, so Claude can still invoke those skills but is less likely to choose one on its own. Raise this key to keep more descriptions visible at the cost of more context per turn."
       }
     },
     {
@@ -2917,7 +2949,7 @@
       "enumValues": [],
       "description": {
         "en": "Each turn, Claude sees a listing of your skills that shows each skill's description and when_to_use text. This key caps how many characters of that text Claude Code shows per skill; longer text is cut at the cap.",
-        "zh": "默认：1536。skill 列表中每个 skill 的 description 和 when_to_use 文本组合的字符上限。超过此长度的文本被截断。提高以保持长描述完整，代价是每轮更多上下文；降低以在 skillListingBudgetFraction 下适应更多 skills"
+        "zh": "Each turn, Claude sees a listing of your skills that shows each skill's description and when_to_use text. This key caps how many characters of that text Claude Code shows per skill; longer text is cut at the cap."
       }
     },
     {
@@ -2938,7 +2970,7 @@
       ],
       "description": {
         "en": "Hide or collapse a skill without editing its SKILL.md. Claude Code applies the value under each skill's name to the skill list Claude sees and to your / autocomplete.",
-        "zh": "按 skill 名称键入的每个 skill 可见性覆盖。值为 \"on\"、\"name-only\"、\"user-invocable-only\" 或 \"off\"。让您隐藏或折叠 skill 而无需编辑其 SKILL.md。不适用于插件 skills，这些通过 /plugin 管理。/skills 菜单将这些写入 .claude/settings.local.json。请参阅从设置覆盖 skill 可见性。需要 Claude Code v2.1.129 或更高版本"
+        "zh": "Hide or collapse a skill without editing its SKILL.md. Claude Code applies the value under each skill's name to the skill list Claude sees and to your / autocomplete."
       }
     },
     {
@@ -2970,7 +3002,7 @@
       "enumValues": [],
       "description": {
         "en": "Skip the confirmation dialog Claude Code shows before a session enters bypassPermissions mode, whether from --dangerously-skip-permissions or from defaultMode: \"bypassPermissions\". Claude Code writes true here in your user settings when you accept that dialog once.",
-        "zh": "跳过通过 --dangerously-skip-permissions 或 defaultMode: \"bypassPermissions\" 进入 bypass permissions 模式前显示的确认提示。在项目设置（.claude/settings.json）中设置时被忽略，以防止不受信任的存储库自动绕过提示"
+        "zh": "Skip the confirmation dialog Claude Code shows before a session enters bypassPermissions mode, whether from --dangerously-skip-permissions or from defaultMode: \"bypassPermissions\". Claude Code writes true here in your user settings when you accept that dialog once."
       }
     },
     {
@@ -2986,7 +3018,7 @@
       "enumValues": [],
       "description": {
         "en": "Skip the WebFetch domain safety check, which sends each requested hostname to api.anthropic.com before fetching. Set true in environments that block traffic to Anthropic, such as Amazon Bedrock, Google Cloud's Agent Platform, or Microsoft Foundry deployments with restrictive egress.",
-        "zh": "跳过WebFetch 域安全检查，该检查在获取前将每个请求的主机名发送到 api.anthropic.com。在阻止到 Anthropic 的流量的环境中设置为 true，例如 Amazon Bedrock、Google Cloud 的 Agent Platform 或 Microsoft Foundry 部署，具有限制性出站。跳过时，WebFetch 尝试任何 URL 而不咨询阻止列表"
+        "zh": "Skip the WebFetch domain safety check, which sends each requested hostname to api.anthropic.com before fetching. Set true in environments that block traffic to Anthropic, such as Amazon Bedrock, Google Cloud's Agent Platform, or Microsoft Foundry deployments with restrictive egress."
       }
     },
     {
@@ -3018,7 +3050,7 @@
       "enumValues": [],
       "description": {
         "en": "While Claude works, the spinner line rotates through short tips about Claude Code features, such as \"Use Plan Mode to prepare for a complex request before making changes. Press Shift+Tab twice to enable.\" Set this key to false to hide them. Appears in /config as Show tips.",
-        "zh": "默认：true。在 Claude 工作时在微调器中显示提示。设置为 false 以禁用提示"
+        "zh": "While Claude works, the spinner line rotates through short tips about Claude Code features, such as \"Use Plan Mode to prepare for a complex request before making changes. Press Shift+Tab twice to enable.\" Set this key to false to hide them. Appears in /config as Show tips."
       }
     },
     {
@@ -3034,7 +3066,7 @@
       "enumValues": [],
       "description": {
         "en": "Add your own tips to the spinner tips that Claude Code shows while Claude works, or replace the built-in tips with yours. Claude Code puts your tips in the same rotation as the built-in ones: it picks the tip that has gone unshown the longest, skips tips still in their cooldown, and breaks ties by priority.",
-        "zh": "使用自定义字符串覆盖微调器提示。tips：提示字符串数组。excludeDefault：如果为 true，仅显示自定义提示；如果为 false 或不存在，自定义提示与内置提示合并"
+        "zh": "Add your own tips to the spinner tips that Claude Code shows while Claude works, or replace the built-in tips with yours. Claude Code puts your tips in the same rotation as the built-in ones: it picks the tip that has gone unshown the longest, skips tips still in their cooldown, and breaks ties by priority."
       }
     },
     {
@@ -3053,7 +3085,7 @@
       ],
       "description": {
         "en": "While a turn is in progress, the spinner shows a rotating verb such as \"Accomplishing\", \"Architecting\", or \"Baking\". Use this key to add your own verbs to that rotation or replace the built-in list with yours.",
-        "zh": "自定义在微调器中显示的操作动词。将 mode 设置为 \"replace\" 以仅使用您的动词，或 \"append\" 以将它们添加到默认值"
+        "zh": "While a turn is in progress, the spinner shows a rotating verb such as \"Accomplishing\", \"Architecting\", or \"Baking\". Use this key to add your own verbs to that rotation or replace the built-in list with yours."
       }
     },
     {
@@ -3069,7 +3101,7 @@
       "enumValues": [],
       "description": {
         "en": "Add SSH connections to the Desktop environment dropdown. Administrators use it to distribute shared connections to a team. Connections you define in managed settings show as managed, so users can select them but can't edit or delete them in the app.",
-        "zh": "要在桌面环境下拉菜单中显示的 SSH 连接。每个条目需要 id、name 和 sshHost；sshPort、sshIdentityFile 和 startDirectory 是可选的。在 managed 设置中设置时，连接对用户是只读的。仅从 managed 和用户设置读取"
+        "zh": "Add SSH connections to the Desktop environment dropdown. Administrators use it to distribute shared connections to a team. Connections you define in managed settings show as managed, so users can select them but can't edit or delete them in the app."
       }
     },
     {
@@ -3101,7 +3133,7 @@
       "enumValues": [],
       "description": {
         "en": "Run your own command to render a status line below the prompt with context such as the model, cost, or git branch. Optional fields adjust spacing, add periodic re-runs, and hide the built-in vim mode indicator when your script renders vim.mode itself.",
-        "zh": "配置自定义状态行以显示上下文。对象的可选 padding、refreshInterval 和 hideVimModeIndicator 字段控制间距、定期重新运行和是否隐藏提示下方的内置 vim 模式指示器。请参阅statusLine 文档"
+        "zh": "Run your own command to render a status line below the prompt with context such as the model, cost, or git branch. Optional fields adjust spacing, add periodic re-runs, and hide the built-in vim mode indicator when your script renders vim.mode itself."
       }
     },
     {
@@ -3117,7 +3149,7 @@
       "enumValues": [],
       "description": {
         "en": "Restrict which plugin marketplace sources people in your organization can add and install plugins from. Claude Code enforces the allowlist on marketplace add and on plugin install, update, refresh, and auto-update, before any network or filesystem operation, so a marketplace someone added before you set the policy can't be used to fetch plugins once its source no longer matches. Blocked users see an error naming the managed policy.",
-        "zh": "（仅 Managed 设置）插件市场源的允许列表。未定义 = 无限制，空数组 = 锁定。在市场添加和插件安装、更新、刷新和自动更新时强制执行，因此在设置策略之前添加的市场无法用于获取插件。请参阅 Managed 市场限制"
+        "zh": "Restrict which plugin marketplace sources people in your organization can add and install plugins from. Claude Code enforces the allowlist on marketplace add and on plugin install, update, refresh, and auto-update, before any network or filesystem operation, so a marketplace someone added before you set the policy can't be used to fetch plugins once its source no longer matches. Blocked users see an error naming the managed policy."
       }
     },
     {
@@ -3133,7 +3165,7 @@
       "enumValues": [],
       "description": {
         "en": "Block skills, agents, hooks, and MCP servers from user and project sources, so they can come only from plugins or managed settings. Combine it with strictKnownMarketplaces to control the full customization supply chain: the marketplace allowlist controls which plugins users can install.",
-        "zh": "（仅 Managed 设置）阻止 skills、agents、hooks 和 MCP servers 来自用户和项目源，因此它们只能来自插件或 managed 设置。true 锁定所有四个表面；数组仅锁定命名的表面。请参阅 strictPluginOnlyCustomization"
+        "zh": "Block skills, agents, hooks, and MCP servers from user and project sources, so they can come only from plugins or managed settings. Combine it with strictKnownMarketplaces to control the full customization supply chain: the marketplace allowlist controls which plugins users can install."
       }
     },
     {
@@ -3284,7 +3316,7 @@
       "enumValues": [],
       "description": {
         "en": "Claude Code colors code by language in the diffs, code blocks, and file previews it shows in the terminal, with its built-in highlighter; no plugin or language server is involved. Set this key to true to show them as plain text instead, for example if the colors clash with your terminal theme or slow a screen reader.",
-        "zh": "禁用 diffs、代码块和文件预览中的语法高亮"
+        "zh": "Claude Code colors code by language in the diffs, code blocks, and file previews it shows in the terminal, with its built-in highlighter; no plugin or language server is involved. Set this key to true to show them as plain text instead, for example if the colors clash with your terminal theme or slow a screen reader."
       }
     },
     {
@@ -3321,7 +3353,7 @@
       ],
       "description": {
         "en": "Choose where Claude Code shows agent team teammates: inside your main terminal pane, or in split panes when your terminal supports them. See Choose a display mode.",
-        "zh": "默认：in-process。agent team 队友的显示方式：in-process、auto（在 tmux 或 iTerm2 中选择分割窗格，否则进程内）、tmux（使用 tmux 或 iTerm2 选择分割窗格，从您的终端检测）或 }iterm2（iTerm2 本机分割窗格通过 it2 CLI，在 v2.1.186 中添加）。默认在 v2.1.179 中从 auto 更改。--teammate-mode 覆盖此用于一个会话。请参阅选择显示模式"
+        "zh": "Choose where Claude Code shows agent team teammates: inside your main terminal pane, or in split panes when your terminal supports them. See Choose a display mode."
       }
     },
     {
@@ -3337,7 +3369,7 @@
       "enumValues": [],
       "description": {
         "en": "Some terminals can show a progress indicator on the tab or in the taskbar for the program running in them. While Claude is working, Claude Code reports an in-progress state to the terminal, so you can see from another tab or window whether the session is still busy. The indicator stays visible after the turn ends while background subagents or dynamic workflows are still running, and clears once the session is idle.",
-        "zh": "默认：true。在支持的终端中显示终端进度条：ConEmu、Ghostty 1.2.0+ 和 iTerm2 3.6.6+。在 /config 中显示为终端进度条"
+        "zh": "Some terminals can show a progress indicator on the tab or in the taskbar for the program running in them. While Claude is working, Claude Code reports an in-progress state to the terminal, so you can see from another tab or window whether the session is still busy. The indicator stays visible after the turn ends while background subagents or dynamic workflows are still running, and clears once the session is idle."
       }
     },
     {
@@ -3378,7 +3410,7 @@
       ],
       "description": {
         "en": "Pick the color theme for the interface. Appears in /config as Theme.",
-        "zh": "默认：\"dark\"。界面的颜色主题：\"auto\"、\"dark\"、\"light\"、\"dark-daltonized\"、\"light-daltonized\"、\"dark-ansi\"、\"light-ansi\" 或自定义主题参考，如 \"custom:\" 或 \"custom::\"。请参阅创建自定义主题。在 /config 中显示为主题"
+        "zh": "Pick the color theme for the interface. Appears in /config as Theme."
       }
     },
     {
@@ -3434,7 +3466,7 @@
       ],
       "description": {
         "en": "Choose the terminal UI renderer. Use \"fullscreen\" for the flicker-free alt-screen renderer with virtualized scrollback, or \"default\" for the classic main-screen renderer. Running /tui fullscreen or /tui default writes this key for you.",
-        "zh": "终端 UI 渲染器。使用 \"fullscreen\" 获取无闪烁的替代屏幕渲染器，具有虚拟化滚动条。使用 \"default\" 获取经典主屏幕渲染器。通过 /tui 设置。您也可以设置 CLAUDE_CODE_NO_FLICKER 环境变量。后台会话从代理视图打开始终使用全屏渲染器，无论此设置如何"
+        "zh": "Choose the terminal UI renderer. Use \"fullscreen\" for the flicker-free alt-screen renderer with virtualized scrollback, or \"default\" for the classic main-screen renderer. Running /tui fullscreen or /tui default writes this key for you."
       }
     },
     {
@@ -3450,7 +3482,7 @@
       "enumValues": [],
       "description": {
         "en": "Start sessions with ultracode on. With it on, Claude plans a workflow for each substantive task instead of waiting for you to ask. Claude plans workflows only when dynamic workflows are enabled for you, your model supports xhigh effort, and no effort cap below xhigh applies. Either way, ultracode: true runs the session at xhigh effort, or at the cap when an effort cap is lower. Claude Code reads this key but never writes it: /effort ultracode turns ultracode on for the current session only.",
-        "zh": "为会话打开 ultracode。此键不从 settings.json 读取。通过 /effort ultracode、--settings 或 Agent SDK 控制请求设置。要启动已打开 ultracode 的会话，使用 claude --effort ultracode 启动，需要 Claude Code v2.1.203 或更高版本"
+        "zh": "Start sessions with ultracode on. With it on, Claude plans a workflow for each substantive task instead of waiting for you to ask. Claude plans workflows only when dynamic workflows are enabled for you, your model supports xhigh effort, and no effort cap below xhigh applies. Either way, ultracode: true runs the session at xhigh effort, or at the cap when an effort cap is lower. Claude Code reads this key but never writes it: /effort ultracode turns ultracode on for the current session only."
       }
     },
     {
@@ -3466,7 +3498,7 @@
       "enumValues": [],
       "description": {
         "en": "Choose whether Claude Code uses the auto mode classifier to review shell commands in plan mode. With the default true, the classifier reviews each command during planning when auto mode is available and you see no prompt. Set false to get a permission prompt for every command outside the built-in read-only set. Appears in /config as Use auto mode during plan.",
-        "zh": "默认：true。Plan Mode 在自动模式可用时是否使用自动模式语义。不从共享项目设置读取。在 /config 中显示为\"在计划期间使用自动模式\""
+        "zh": "Choose whether Claude Code uses the auto mode classifier to review shell commands in plan mode. With the default true, the classifier reviews each command during planning when auto mode is available and you see no prompt. Set false to get a permission prompt for every command outside the built-in read-only set. Appears in /config as Use auto mode during plan."
       }
     },
     {
@@ -3482,7 +3514,7 @@
       "enumValues": [],
       "description": {
         "en": "By default, the transcript collapses each tool call to a short summary, such as the command Claude ran and a line count of its output, and you press Ctrl+O to switch the whole transcript to the expanded view when you want the details. Set this key to true to show every tool call's full input and output inline as it happens, which is useful when you're debugging a hook, an MCP server, or a long shell command. Appears in /config as Verbose output.",
-        "zh": "默认：false。显示完整工具输出而不是截断的摘要。在 /config 中显示为详细输出。--verbose 标志覆盖此用于一个会话"
+        "zh": "By default, the transcript collapses each tool call to a short summary, such as the command Claude ran and a line count of its output, and you press Ctrl+O to switch the whole transcript to the expanded view when you want the details. Set this key to true to show every tool call's full input and output inline as it happens, which is useful when you're debugging a hook, an MCP server, or a long shell command. Appears in /config as Verbose output."
       }
     },
     {
@@ -3502,7 +3534,7 @@
       ],
       "description": {
         "en": "Set the transcript view Claude Code starts in: \"default\", \"verbose\", or \"focus\". When set, it overrides both the sticky /focus selection and the verbose setting.",
-        "zh": "启动时的默认记录视图模式：\"default\"、\"verbose\" 或 \"focus\"。设置时覆盖粘性 /focus 选择。--verbose 标志覆盖此用于一个会话"
+        "zh": "Set the transcript view Claude Code starts in: \"default\", \"verbose\", or \"focus\". When set, it overrides both the sticky /focus selection and the verbose setting."
       }
     },
     {
@@ -3518,7 +3550,7 @@
       "enumValues": [],
       "description": {
         "en": "Map two-key INSERT-mode sequences to Escape in vim editor mode. Each key is exactly two printable characters typed in sequence, and \"\" is the only supported target; Claude Code ignores other entries. Requires Claude Code v2.1.208 or later.",
-        "zh": "将两键 INSERT 模式序列映射到 Escape 在vim 编辑器模式中。每个键恰好是两个按顺序键入的可打印字符，\"\" 是唯一支持的目标；其他条目被忽略。仅从用户、--settings 标志和 managed 设置读取，因此存储库的已检入设置无法重新映射您的按键。除非 editorMode 为 \"vim\"，否则无效。请参阅重新映射 INSERT 模式键序列。需要 Claude Code v2.1.208 或更高版本"
+        "zh": "Map two-key INSERT-mode sequences to Escape in vim editor mode. Each key is exactly two printable characters typed in sequence, and \"\" is the only supported target; Claude Code ignores other entries. Requires Claude Code v2.1.208 or later."
       }
     },
     {
@@ -3537,7 +3569,7 @@
       ],
       "description": {
         "en": "Turn on voice dictation and choose how the dictation key behaves. Claude Code writes this object for you when you run /voice.",
-        "zh": "语音听写设置：enabled 打开听写，mode 选择 \"hold\" 或 \"tap\"，autoSubmit 在保持模式下按键释放时发送提示。当您运行 /voice 时自动写入。需要 Claude.ai 账户"
+        "zh": "Turn on voice dictation and choose how the dictation key behaves. Claude Code writes this object for you when you run /voice."
       }
     },
     {
@@ -3553,7 +3585,7 @@
       "enumValues": [],
       "description": {
         "en": "Turn voice dictation on with the single Boolean form that predates the voice object. When both are set, voice.enabled applies.",
-        "zh": "voice.enabled 的旧别名。优先使用 voice 对象"
+        "zh": "Turn voice dictation on with the single Boolean form that predates the voice object. When both are set, voice.enabled applies."
       }
     },
     {
@@ -3568,8 +3600,8 @@
       "valueKind": "boolean",
       "enumValues": [],
       "description": {
-        "en": "Accelerate mouse-wheel scroll speed during fast scrolls in fullscreen rendering. Set it to false for a constant scroll rate per wheel notch. Requires Claude Code v2.1.174 or later.",
-        "zh": "默认：true。在全屏渲染中，加速鼠标滚轮滚动速度在快速滚动期间。设置为 false 以获得每个滚轮缺口的恒定滚动速率。需要 Claude Code v2.1.174 或更高版本"
+        "en": "Accelerate mouse-wheel scroll speed during fast scrolls in fullscreen rendering. Set it to false for a constant scroll rate per wheel notch.",
+        "zh": "Accelerate mouse-wheel scroll speed during fast scrolls in fullscreen rendering. Set it to false for a constant scroll rate per wheel notch."
       }
     },
     {
@@ -3585,7 +3617,7 @@
       "enumValues": [],
       "description": {
         "en": "Choose whether typing the keyword ultracode in a prompt triggers a dynamic workflow. Set it to false to type the word without triggering one.",
-        "zh": "默认：true。提示中的单词 ultracode 是否触发动态工作流。设置为 false 以键入单词而不触发一个。Ultracode 努力设置、/workflows 和保存的工作流命令不受影响。在 /config 中显示为Ultracode 关键字触发。在 v2.1.157 中添加；在 v2.1.160 之前触发关键字是 workflow"
+        "zh": "Choose whether typing the keyword ultracode in a prompt triggers a dynamic workflow. Set it to false to type the word without triggering one."
       }
     },
     {
@@ -3595,7 +3627,7 @@
       ],
       "scope": "Any file. A value there takes precedence over the Dynamic workflow size choice in /config, which Claude Code stores in ~/.claude.json, and Claude Code hides that row while a settings file sets the key.",
       "type": "string, one of:",
-      "default": "\"medium\"",
+      "default": "\"medium\", or \"small\" when you're signed in on a Pro plan with Claude Code v2.1.271 or later",
       "example": "{\n  \"workflowSizeGuideline\": \"small\"\n}",
       "valueKind": "string",
       "enumValues": [
@@ -3605,8 +3637,8 @@
         "large"
       ],
       "description": {
-        "en": "Set the agent count Claude aims for in the dynamic workflows it writes. Claude Code sends the value to Claude as advice, not an enforced cap: \"small\" asks for fewer than 5 agents, \"medium\" fewer than 15, and \"large\" fewer than 50. Choose \"small\" when you want to bound what a workflow spends. Requires Claude Code v2.1.219 or later.",
-        "zh": "默认：unrestricted，不发送指南。设置动态工作流中 Claude 针对的代理计数。Claude Code 将值作为建议而不是强制上限发送给 Claude。接受 unrestricted、small、medium 或 large。在 /config 中显示为动态工作流大小。您也可以使用 /config workflowSizeGuideline=small 直接设置它。需要 Claude Code v2.1.202 或更高版本。指南的代理计数也替换Large workflow 警告的默认阈值；该行为需要 Claude Code v2.1.203 或更高版本"
+        "en": "Set the agent count Claude aims for in the dynamic workflows it writes. Claude Code sends the value to Claude as advice, not an enforced cap: \"small\" asks for fewer than 5 agents, \"medium\" fewer than 10, and \"large\" fewer than 50. Choose \"small\" when you want to bound what a workflow spends. Requires Claude Code v2.1.219 or later.",
+        "zh": "Set the agent count Claude aims for in the dynamic workflows it writes. Claude Code sends the value to Claude as advice, not an enforced cap: \"small\" asks for fewer than 5 agents, \"medium\" fewer than 10, and \"large\" fewer than 50. Choose \"small\" when you want to bound what a workflow spends. Requires Claude Code v2.1.219 or later."
       }
     },
     {
@@ -3642,7 +3674,7 @@
       ],
       "description": {
         "en": "Choose which ref new worktrees branch from. \"fresh\" branches from origin/ for a clean tree matching the remote; \"head\" branches from your current local HEAD, so unpushed commits and feature-branch state are present in the worktree.",
-        "zh": "新 worktrees 分支的参考。\"fresh\"（默认）从 origin/ 分支以获得与远程匹配的干净树。\"head\" 从您当前的本地 HEAD 分支，因此未推送的提交和特性分支状态存在于 worktree 中。在 linked worktree 内，\"head\" 解析为该 worktree 的 HEAD，而不是主检出的。适用于 --worktree、EnterWorktree 工具和 subagent 隔离"
+        "zh": "Choose which ref new worktrees branch from. \"fresh\" branches from origin/ for a clean tree matching the remote; \"head\" branches from your current local HEAD, so unpushed commits and feature-branch state are present in the worktree."
       }
     },
     {
@@ -3662,7 +3694,7 @@
       ],
       "description": {
         "en": "Choose how background sessions isolate their file edits. With \"worktree\", Claude Code blocks Edit and Write in the main checkout until the session calls EnterWorktree; with \"none\", background jobs edit the working copy directly. Set \"none\" for a repository where git worktrees are impractical.",
-        "zh": "后台会话的隔离模式。\"worktree\"（默认）在调用 EnterWorktree 之前阻止主检出中的 Edit/Write。在 git 存储库外，失败的 WorktreeCreate hook 释放块，以便会话可以就地编辑工作目录；需要 Claude Code v2.1.203 或更高版本。\"none\" 让后台作业直接编辑工作副本。需要 Claude Code v2.1.143 或更高版本"
+        "zh": "Choose how background sessions isolate their file edits. With \"worktree\", Claude Code blocks Edit and Write in the main checkout until the session calls EnterWorktree; with \"none\", background jobs edit the working copy directly. Set \"none\" for a repository where git worktrees are impractical."
       }
     },
     {
@@ -3679,7 +3711,7 @@
       "enumValues": [],
       "description": {
         "en": "Check out only the listed directories in each worktree through git sparse-checkout. Claude Code writes only those directories plus root-level files to disk, which is faster in large monorepos; see Check out only the directories you need.",
-        "zh": "通过 git sparse-checkout 在每个 worktree 中检出的目录。仅将列出的目录加上根级文件写入磁盘，在大型 monorepos 中更快。当 sparse worktree 存在时，git 在存储库的共享 .git/config 中启用 extensions.worktreeConfig；请参阅仅检出您需要的目录"
+        "zh": "Check out only the listed directories in each worktree through git sparse-checkout. Claude Code writes only those directories plus root-level files to disk, which is faster in large monorepos; see Check out only the directories you need."
       }
     },
     {
@@ -3696,7 +3728,7 @@
       "enumValues": [],
       "description": {
         "en": "Symlink directories from the main repository into each worktree so you don't duplicate large directories on disk.",
-        "zh": "要从主存储库符号链接到每个 worktree 的目录，以避免在磁盘上复制大型目录。默认情况下不符号链接任何目录"
+        "zh": "Symlink directories from the main repository into each worktree so you don't duplicate large directories on disk."
       }
     },
     {
@@ -3712,7 +3744,7 @@
       "enumValues": [],
       "description": {
         "en": "Have Claude Code on WSL read managed settings from the Windows policy chain, with HKLM and the Windows managed settings file taking priority over /etc/claude-code and HKCU below it. While the chain is on, Claude Code reads /etc/claude-code only when no managed settings file or drop-in under C:\\Program Files\\ClaudeCode\\ delivers a policy key. Set it to extend the policy you already deploy on Windows to WSL sessions on the same machine, so they follow the same rules as host sessions. Claude Code honors it only when set in the HKLM registry key or in a managed settings file or drop-in under C:\\Program Files\\ClaudeCode\\, both of which require Windows admin to write.",
-        "zh": "（仅 Windows managed 设置）当为 true 时，WSL 上的 Claude Code 除了 /etc/claude-code 外还从 Windows 策略链读取 managed 设置，Windows 源优先。仅在 HKLM 注册表项或 C:\\Program Files\\ClaudeCode\\managed-settings.json 中设置时被尊重，两者都需要 Windows 管理员权限才能写入。为了让 HKCU 策略也在 WSL 上应用，该标志还必须在 HKCU 本身中设置。对本机 Windows 无效"
+        "zh": "Have Claude Code on WSL read managed settings from the Windows policy chain, with HKLM and the Windows managed settings file taking priority over /etc/claude-code and HKCU below it. While the chain is on, Claude Code reads /etc/claude-code only when no managed settings file or drop-in under C:\\Program Files\\ClaudeCode\\ delivers a policy key. Set it to extend the policy you already deploy on Windows to WSL sessions on the same machine, so they follow the same rules as host sessions. Claude Code honors it only when set in the HKLM registry key or in a managed settings file or drop-in under C:\\Program Files\\ClaudeCode\\, both of which require Windows admin to write."
       }
     }
   ],
@@ -4199,7 +4231,7 @@
       "example": "1",
       "valueKind": "boolean-string",
       "description": {
-        "en": "Set to 1 to force claude --cloud to bundle and upload your local repository even when GitHub access is available",
+        "en": "Set to 1 to force claude --cloud to bundle and upload your local repository instead of cloning from its remote",
         "zh": "设置为 1 以强制 claude --cloud 捆绑并上传您的本地存储库，即使 GitHub 访问可用"
       }
     },
@@ -4435,6 +4467,15 @@
       "description": {
         "en": "Time in milliseconds Claude Code waits for the AWS default credential provider chain to produce credentials before the request fails with AWS default-chain credential resolve timed out (default: 60000). Raise it when a step in your chain legitimately needs longer, such as a browser-based SSO sign-in with MFA through a wrapper like aws-vault. Applies wherever Claude Code signs with the default chain: Amazon Bedrock, Claude Platform on AWS, and the Mantle endpoint. Requires Claude Code v2.1.207 or later",
         "zh": "Claude Code 等待 AWS 默认凭证提供商链生成凭证的时间（毫秒），然后请求失败，显示 AWS default-chain credential resolve timed out（默认值：60000）。当链中的步骤合法需要更长时间时提高它，例如通过 aws-vault 等包装器进行基于浏览器的 SSO 登录和 MFA。适用于 Claude Code 使用默认链签名的任何地方：Amazon Bedrock、AWS 上的 Claude Platform 和 Mantle 端点。需要 Claude Code v2.1.207 或更高版本"
+      }
+    },
+    {
+      "key": "CLAUDE_CODE_BASH_EDIT_DIFF",
+      "example": "0",
+      "valueKind": "boolean-string",
+      "description": {
+        "en": "Set to 0 to turn off the diff of the files a Bash command changed, or 1 to record it in every permission mode. Takes precedence over the bashEditDiffEnabled setting. Requires Claude Code v2.1.269 or later",
+        "zh": "Set to 0 to turn off the diff of the files a Bash command changed, or 1 to record it in every permission mode. Takes precedence over the bashEditDiffEnabled setting. Requires Claude Code v2.1.269 or later"
       }
     },
     {
@@ -4991,7 +5032,7 @@
       "example": "1",
       "valueKind": "boolean-string",
       "description": {
-        "en": "Set to 1 to get the task-tracking tools on the models listed under Task tool availability, where Claude Code otherwise leaves them out. CLAUDE_CODE_ENABLE_TASKS still selects the Task tools or TodoWrite. Requires Claude Code v2.1.233 or later",
+        "en": "Set to 1 to get the task-tracking tools on every model. Without it, Claude Code provides them by default only on the models listed under Task tool availability. CLAUDE_CODE_ENABLE_TASKS still selects the Task tools or TodoWrite. Requires Claude Code v2.1.233 or later",
         "zh": "设置为 1 以在 任务工具可用性 下列出的模型上获取任务跟踪工具，Claude Code 否则会将其排除。CLAUDE_CODE_ENABLE_TASKS 仍选择 Task 工具或 TodoWrite。需要 Claude Code v2.1.233 或更高版本"
       }
     },
@@ -5073,7 +5114,7 @@
       "valueKind": "boolean-string",
       "description": {
         "en": "Set to 1 to emit subagent text and thinking blocks in claude -p --output-format stream-json output, the same behavior as the --forward-subagent-text flag. Use the variable when a harness invokes claude and can't pass the flag itself. Unlike the flag, which exits with an error outside non-interactive mode with stream-json output, the variable is ignored there so that nested invocations keep working when it's set process-wide. Requires Claude Code v2.1.211 or later",
-        "zh": "设置为 1 以在 claude -p --output-format stream-json 输出中发出 子代理 文本和思考块，与 --forward-subagent-text 标志相同的行为。当工具调用 claude 的工具无法自己传递标志时使用该变量。与标志不同，标志在非交互模式下使用 stream-json 输出时以错误退出，变量在那里被忽略，以便嵌套调用在设置进程范围时继续工作。需要 Claude Code v2.1.211 或更高版本"
+        "zh": "设置为 1 以在 claude -p --output-format stream-json 输出中发出 子代理 文本和思考块，与 --forward-subagent-text 标志相同的行为。当某个外部工具（harness）调用 claude 而自身无法传递该标志时，请使用该变量。与标志不同，标志在带 stream-json 输出的非交互模式之外使用时会以错误退出，而变量在那里会被忽略，以便在进程范围内设置该变量时嵌套调用仍能继续工作。需要 Claude Code v2.1.211 或更高版本"
       }
     },
     {
@@ -5594,7 +5635,7 @@
       "example": "1",
       "valueKind": "boolean-string",
       "description": {
-        "en": "Set to 1 for unattended sessions such as eval harnesses, CI jobs, or remote workers. Retries 429 and 529 capacity errors indefinitely instead of failing after CLAUDE_CODE_MAX_RETRIES attempts. Claude Code fails at once on a 429 that reports a spend limit or exhausted usage credits, even one from a gateway spend cap that resets on a schedule. Before v2.1.239, the watchdog retried these indefinitely. The watchdog backs off up to 5 minutes between attempts, or until the limit resets when the response carries a rate-limit reset time, so a session that hits a usage limit waits out the remaining window. On v2.1.199 or later it also raises the default retry count for other transient errors, such as server errors, timeouts, and dropped connections, to 300, roughly three hours of backoff, and removes the cap of 15 on CLAUDE_CODE_MAX_RETRIES if you set that variable explicitly. Requires Claude Code v2.1.186 or later",
+        "en": "Set to 1 for unattended sessions such as eval harnesses, CI jobs, or remote workers. Retries 429 and 529 capacity errors indefinitely instead of failing after CLAUDE_CODE_MAX_RETRIES attempts. Claude Code fails at once when a standard-speed request gets a 429 that reports a spend limit or exhausted usage credits, even one from a gateway spend cap that resets on a schedule. Before v2.1.239, the watchdog retried these indefinitely. For fast mode requests, see Handle rate limits. The watchdog backs off up to 5 minutes between attempts, or until the limit resets when the response carries a rate-limit reset time, so a session that hits a usage limit waits out the remaining window. On v2.1.199 or later it also raises the default retry count for other transient errors, such as server errors, timeouts, and dropped connections, to 300, roughly three hours of backoff, and removes the cap of 15 on CLAUDE_CODE_MAX_RETRIES if you set that variable explicitly. Requires Claude Code v2.1.186 or later",
         "zh": "对于无人值守的会话（如 eval 工具、CI 作业或远程工作者），设置为 1。重试 429 和 529 容量错误无限期而不是在 CLAUDE_CODE_MAX_RETRIES 尝试后失败。Claude Code 在报告支出限制或耗尽使用信用的 429 上立即失败，即使来自 网关支出上限 按计划重置的。在 v2.1.239 之前，监视狗无限期重试这些。监视狗在尝试之间退避最多 5 分钟，或直到限制重置（当响应携带速率限制重置时间时），因此达到使用限制的会话等待剩余窗口。在 v2.1.199 或更高版本上，它也为其他瞬时错误（如服务器错误、超时和丢弃的连接）提高默认重试计数为 300，大约三小时的退避，如果您显式设置该变量，则删除 CLAUDE_CODE_MAX_RETRIES 上的 15 上限。需要 Claude Code v2.1.186 或更高版本"
       }
     },
@@ -5648,7 +5689,7 @@
       "example": "300000",
       "valueKind": "number-string",
       "description": {
-        "en": "Override the time budget in milliseconds for SessionEnd hooks. Applies to session exit, /clear, and switching sessions via interactive /resume. By default the budget is 1.5 seconds, automatically raised to the highest per-hook timeout configured in settings files, up to 60 seconds. Timeouts on plugin-provided hooks do not raise the budget",
+        "en": "Override the time budget in milliseconds for SessionEnd hooks. The value is also the timeout for each hook that sets no timeout of its own. Applies to session exit, /clear, and switching sessions via interactive /resume. By default the budget is 1.5 seconds, automatically raised to the highest per-hook timeout configured in settings files, up to 60 seconds. Timeouts on plugin-provided hooks do not raise the budget",
         "zh": "覆盖 SessionEnd hooks 的时间预算（毫秒）。适用于会话退出、/clear 和通过交互式 /resume 切换会话。默认情况下预算为 1.5 秒，自动提高到设置文件中配置的最高每个 hook timeout，最多 60 秒。插件提供的 hooks 上的超时不会提高预算"
       }
     },
@@ -5810,7 +5851,7 @@
       "example": "1",
       "valueKind": "boolean-string",
       "description": {
-        "en": "Set to 1 to strip credentials from subprocess environments (Bash tool, hooks, MCP stdio servers): Anthropic and cloud provider credentials, any other variable that Claude Code recognizes as a credential, and credentials embedded in package registry URLs. The parent Claude process keeps these credentials for API calls, but child processes cannot read them, reducing exposure to prompt injection attacks that attempt to exfiltrate secrets via shell expansion. On Linux, this also runs Bash subprocesses in an isolated PID namespace so they cannot read host process environments via /proc; as a side effect, ps, pgrep, and kill cannot see or signal host processes. claude-code-action sets this automatically when allowed_non_write_users is configured",
+        "en": "Set to 1 to strip credentials from subprocess environments (Bash tool, hooks, MCP stdio servers): Anthropic and cloud provider credentials, any other variable that Claude Code recognizes as a credential, and credentials embedded in package registry URLs. The parent Claude process keeps these credentials for API calls, but child processes cannot read them, reducing exposure to prompt injection attacks that attempt to exfiltrate secrets via shell expansion. On v2.1.251 or later, the scrub also removes Claude Code's own configuration-store pointer variables (such as CLAUDE_CONFIG_DIR), so a child process cannot locate a relocated configuration directory. Leave the scrub unset if a subprocess needs these variables. On Linux, this also runs Bash subprocesses in an isolated PID namespace so they cannot read host process environments via /proc; as a side effect, ps, pgrep, and kill cannot see or signal host processes. claude-code-action sets this automatically when allowed_non_write_users is configured",
         "zh": "设置为 1 以从子进程环境中删除凭证（Bash 工具、hooks、MCP stdio 服务器）：Anthropic 和云提供商凭证、Claude Code 识别为凭证的任何其他变量以及包含在包注册表 URL 中的凭证。父 Claude 进程保留这些凭证用于 API 调用，但子进程无法读取它们，减少了试图通过 shell 扩展窃取秘密的提示注入攻击的暴露。在 Linux 上，这也在隔离的 PID 命名空间中运行 Bash 子进程，以便它们无法通过 /proc 读取主机进程环境；作为副作用，ps、pgrep 和 kill 无法看到或信号主机进程。claude-code-action 在配置 allowed_non_write_users 时自动设置此项"
       }
     },
@@ -5837,7 +5878,7 @@
       "example": "1",
       "valueKind": "boolean-string",
       "description": {
-        "en": "Set to 1 to download your enabled claude.ai skills into ~/.claude/skills/synced/ and resync every 10 minutes. Before it runs the first query, Claude Code waits up to CLAUDE_CODE_SYNC_SKILLS_WAIT_TIMEOUT_MS for the list of your skills. The downloads themselves finish in the background, and Claude waits for a skill's download when it invokes that skill. The synced folder name is reserved for this download. Before v2.1.227, the skills downloaded into ~/.claude/skills/ directly. Applies only in non-interactive mode with the -p flag. Requires claude.ai authentication. Claude Code on the web sessions receive your enabled claude.ai skills automatically; you don't need to set this there. Claude Code applies extra rules to the downloaded skills, such as not running their ! commands on your machine",
+        "en": "Set to 1 to download your enabled claude.ai skills into ~/.claude/skills/synced/ and resync every 10 minutes. Before it runs the first query, Claude Code waits up to CLAUDE_CODE_SYNC_SKILLS_WAIT_TIMEOUT_MS for the list of your skills. The downloads themselves finish in the background, and Claude waits for a skill's download when it invokes that skill. The synced folder name is reserved for this download. Before v2.1.227, the skills downloaded into ~/.claude/skills/ directly. Applies only in non-interactive mode with the -p flag. Requires claude.ai authentication. Cloud sessions receive your enabled claude.ai skills automatically; you don't need to set this there. Claude Code applies extra rules to the downloaded skills, such as not running their ! commands on your machine",
         "zh": "设置为 1 以将您启用的 claude.ai skills 下载到 ~/.claude/skills/synced/ 并每 10 分钟重新同步一次。在运行第一个查询之前，Claude Code 等待最多 CLAUDE_CODE_SYNC_SKILLS_WAIT_TIMEOUT_MS 以获取您的 skills 列表。下载本身在后台完成，Claude 在调用 skill 时等待 skill 的下载。synced 文件夹名称是 为此下载保留的。在 v2.1.227 之前，skills 直接下载到 ~/.claude/skills/ 中。仅适用于非交互模式，使用 -p 标志。需要 claude.ai 身份验证。Claude Code on the web 会话自动接收您启用的 claude.ai skills；您不需要在那里设置此项。Claude Code 对下载的 skills 应用 额外规则，例如不在您的机器上运行它们的 ! 命令"
       }
     },
@@ -6001,6 +6042,15 @@
       "description": {
         "en": "Set to the number of milliseconds WebFetch keeps each fetched URL's response cached. The default is 900000, which is 15 minutes. Takes plain digits only; 0, a decimal, or any other spelling keeps the default. Claude Code reads the value once per launch, so a change in a settings env block applies when you next launch claude. Requires Claude Code v2.1.233 or later",
         "zh": "设置为 WebFetch 保持每个获取 URL 响应缓存的毫秒数。默认值为 900000，即 15 分钟。仅接受纯数字；0、小数或任何其他拼写保持默认值。Claude Code 每次启动读取一次值，因此设置 env 块中的更改在您下次启动 claude 时适用。需要 Claude Code v2.1.233 或更高版本"
+      }
+    },
+    {
+      "key": "CLAUDE_CODE_WEBFETCH_DEADLINE_MS",
+      "example": "0",
+      "valueKind": "boolean-string",
+      "description": {
+        "en": "Upper bound in milliseconds on how long WebFetch waits for a page to download, including any redirects it follows. A download that hasn't completed by then fails with a deadline error. The default is 300000, which is five minutes. Set to 0 to remove the limit. Takes plain digits only; a decimal or any other spelling keeps the default. Requires Claude Code v2.1.268 or later",
+        "zh": "WebFetch 等待页面下载的上限（毫秒），包括它遵循的任何重定向。未在此时间内完成的下载失败，显示截止时间错误。默认值为 300000，即五分钟。设置为 0 以删除限制。仅接受纯数字；小数或任何其他拼写保持默认值。需要 Claude Code v2.1.268 或更高版本"
       }
     },
     {
@@ -6513,7 +6563,7 @@
       "valueKind": "boolean-string",
       "description": {
         "en": "Controls whether startup waits for MCP servers to connect before the first query. MCP startup is non-blocking by default: servers connect in the background and their tools become available as they finish. Set to 0 to make Claude Code wait for servers to connect before the first query. Servers configured with alwaysLoad: true still make startup wait regardless, except when served from the discovery cache, since their tools must be present when the first prompt is built. In non-interactive mode (-p), Claude Code also waits for still-pending servers before the first turn regardless of this variable, with a longer deadline when you pass --mcp-config explicitly; see that flag's entry for the cached-server exception",
-        "zh": "控制启动是否在第一个查询之前等待 MCP 服务器连接。MCP 启动默认非阻塞：服务器在后台连接，它们的工具在完成时变为可用。设置为 0 以使 Claude Code 在第一个查询之前等待服务器连接。配置为 alwaysLoad: true 的服务器仍使启动等待，除非从 发现缓存 提供，因为它们的工具必须在构建第一个提示时存在。在非交互模式（-p）中，Claude Code 也在第一个转之前等待仍待处理的服务器，当您显式传递 --mcp-config 时有更长的截止时间；请参阅该标志的条目了解缓存服务器异常"
+        "zh": "控制启动是否在第一个查询之前等待 MCP 服务器连接。MCP 启动默认非阻塞：服务器在后台连接，它们的工具在完成时变为可用。设置为 0 以使 Claude Code 在第一个查询之前等待服务器连接。配置为 alwaysLoad: true 的服务器仍使启动等待，除非从 发现缓存 提供，因为它们的工具必须在构建第一个提示时存在。在非交互模式（-p）中，Claude Code 也在第一个转之前等待仍待处理的服务器，当您显式传递 --mcp-config 时有更长的截止时间；请参阅该标志的条目了解缓存服务器的例外情况"
       }
     },
     {
@@ -6567,7 +6617,7 @@
       "valueKind": "string",
       "description": {
         "en": "On the v2 MCP client runtime only, whether Claude Code probes servers for MCP protocol revision 2026-07-28. Set auto to probe HTTP, claude.ai connector, and stdio servers; a server that doesn't answer the probe connects on the earlier protocol instead, as SSE and WebSocket servers always do. Set legacy to skip the probe for every server. Without the variable, Claude Code probes HTTP and claude.ai connector servers on Claude Code v2.1.232 or later, with the exceptions the MCP client runtimes section lists. Any other value is ignored with a warning in the debug log. Requires Claude Code v2.1.221 or later",
-        "zh": "仅在 v2 MCP 客户端运行时 上，Claude Code 是否探测服务器以获取 MCP 协议修订版 2026-07-28。设置 auto 以探测 HTTP、claude.ai 连接器和 stdio 服务器；不回答探测的服务器在较早的协议上连接，SSE 和 WebSocket 服务器始终这样做。设置 legacy 以跳过每个服务器的探测。没有变量，Claude Code 在 Claude Code v2.1.232 或更高版本上探测 HTTP 和 claude.ai 连接器服务器，除了 MCP 客户端运行时 部分列出的异常。任何其他值被忽略并在调试日志中显示警告。需要 Claude Code v2.1.221 或更高版本"
+        "zh": "仅在 v2 MCP 客户端运行时 上，Claude Code 是否探测服务器以获取 MCP 协议修订版 2026-07-28。设置 auto 以探测 HTTP、claude.ai 连接器和 stdio 服务器；不回答探测的服务器在较早的协议上连接，SSE 和 WebSocket 服务器始终这样做。设置 legacy 以跳过每个服务器的探测。没有变量，Claude Code 在 Claude Code v2.1.232 或更高版本上探测 HTTP 和 claude.ai 连接器服务器，但 MCP 客户端运行时 部分列出的例外情况除外。任何其他值被忽略并在调试日志中显示警告。需要 Claude Code v2.1.221 或更高版本"
       }
     },
     {
@@ -6694,6 +6744,15 @@
       "description": {
         "en": "Set to true to include the session entrypoint in metrics attributes (default: excluded). Added in v2.1.152. See Monitoring",
         "zh": "设置为 true 以在指标属性中包含会话入口点（默认值：排除）。在 v2.1.152 中添加。请参阅 监控"
+      }
+    },
+    {
+      "key": "OTEL_METRICS_INCLUDE_REPOSITORY",
+      "example": "true",
+      "valueKind": "boolean-string",
+      "description": {
+        "en": "Set to true to tag OpenTelemetry metrics and events with vcs.* attributes identifying the session's repository (default: excluded). Requires Claude Code v2.1.269 or later. See Repository attributes",
+        "zh": "设置为 true 以使用 vcs.* 属性标记 OpenTelemetry 指标和事件，识别会话的存储库（默认值：排除）。需要 Claude Code v2.1.269 或更高版本。请参阅 存储库属性"
       }
     },
     {
