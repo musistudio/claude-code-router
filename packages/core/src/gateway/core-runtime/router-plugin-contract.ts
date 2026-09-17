@@ -2,6 +2,7 @@ import type { RouterFallbackConfig } from "@ccr/core/contracts/app";
 
 export const ccrRouterPluginKey = "ccr-router";
 export const ccrRouterRequestTransformKey = "ccr-router-request-transform";
+export const ccrAnthropicReasoningResponseHookKey = "ccr-anthropic-reasoning-response-hook";
 export const ccrCodexBridgeRequestTransformKey = "ccr-codex-bridge-request-transform";
 export const ccrCodexBridgeResponseHookKey = "ccr-codex-bridge-response-hook";
 export const ccrCodexBridgeStreamHookKey = "ccr-codex-bridge-stream-hook";

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
 import {
+  ccrAnthropicReasoningResponseHookKey,
   ccrCodexApplyPatchBridgeHeader,
   ccrCodexBridgeRequestTransformKey,
   ccrCodexBridgeResponseHookKey,
@@ -19,6 +20,7 @@ import {
   ccrRouterRouteResolverKey,
   ccrRouterRequestTransformKey
 } from "@ccr/core/gateway/core-runtime/router-plugin-contract.ts";
+import { coalesceAnthropicReasoningResponse } from "@ccr/core/gateway/features/anthropic-reasoning-response.ts";
 import { coreGatewayAuthHeader } from "@ccr/core/gateway/internal/shared.ts";
 import { ccrRemoteControlPathPrefix } from "@ccr/core/gateway/remote-control-service.ts";
 import { gatewayRuntimeConfigControlPath, gatewayRuntimeConfigRevision } from "@ccr/core/gateway/runtime-config-control.ts";
@@ -385,6 +387,37 @@ test("CCR router core plugin applies Codex bridge request and response hooks", a
   assert.equal(streamed.headers.get("content-length"), null);
   assert.match(streamText, /"type":"custom_tool_call"/);
   assert.match(streamText, /"name":"apply_patch"/);
+});
+
+test("CCR router core plugin coalesces adjacent unsigned Anthropic thinking fragments", async () => {
+  const payload = {
+    id: "msg_reasoning",
+    type: "message",
+    role: "assistant",
+    content: [
+      { type: "thinking", thinking: "Choose " },
+      { type: "thinking", thinking: "carefully." },
+      { type: "text", text: "California." },
+      { type: "thinking", thinking: "signed", signature: "signature-1" },
+      { type: "thinking", thinking: "separate" }
+    ]
+  };
+
+  const transformed = coalesceAnthropicReasoningResponse(payload);
+  assert.equal(transformed.changed, true);
+  assert.deepEqual(transformed.value.content, [
+    { type: "thinking", thinking: "Choose carefully." },
+    { type: "text", text: "California." },
+    { type: "thinking", thinking: "signed", signature: "signature-1" },
+    { type: "thinking", thinking: "separate" }
+  ]);
+
+  const config = createDefaultAppConfig();
+  const plugin = await createGatewayPlugin({ plugin: { config: { appConfig: config } } });
+  const responseHook = plugin.responseHooks.find((item) => item.key === ccrAnthropicReasoningResponseHookKey);
+  assert.ok(responseHook);
+  const hookResult = await responseHook.transformResponse({ responsePayload: payload, statusCode: 200 });
+  assert.deepEqual(hookResult.responsePayload, transformed.value);
 });
 
 test("CCR router core plugin skips Codex bridge for native Responses passthrough", async () => {

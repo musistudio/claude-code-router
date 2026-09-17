@@ -13,6 +13,7 @@ import {
   type ClaudeCodeRouteDecision
 } from "@ccr/core/gateway/claude-code-router-plugin";
 import {
+  ccrAnthropicReasoningResponseHookKey,
   ccrCodexApplyPatchBridgeHeader,
   ccrCodexBridgeRequestTransformKey,
   ccrCodexBridgeResponseHookKey,
@@ -42,6 +43,7 @@ import {
   encodeCcrRouteFallbackHeader,
   type CcrRouterPluginRouteRequest
 } from "@ccr/core/gateway/core-runtime/router-plugin-contract";
+import { coalesceAnthropicReasoningResponse } from "@ccr/core/gateway/features/anthropic-reasoning-response";
 import { coreGatewayAuthHeader, rawTraceSyncHeader, rawTraceSyncPath, sdkCompatibleTokenHeaderNames } from "@ccr/core/gateway/internal/shared";
 import { gatewayRuntimeConfigControlPath, gatewayRuntimeConfigRevision } from "@ccr/core/gateway/runtime-config-control";
 import {
@@ -444,6 +446,12 @@ export async function createGatewayPlugin(input: GatewayPluginFactoryInput = {})
         applyCodexBridgeRequestTransform(config, requestInput)
     }],
     responseHooks: [{
+      key: ccrAnthropicReasoningResponseHookKey,
+      transformResponse: (responseInput: GatewayResponseHookInput) => {
+        const transformed = coalesceAnthropicReasoningResponse(responseInput.responsePayload);
+        return transformed.changed ? { responsePayload: transformed.value } : undefined;
+      }
+    }, {
       key: ccrCodexBridgeResponseHookKey,
       transformResponse: (responseInput: GatewayResponseHookInput) =>
         applyCodexBridgeResponseTransform(responseInput)
