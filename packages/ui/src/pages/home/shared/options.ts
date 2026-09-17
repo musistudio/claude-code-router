@@ -51,6 +51,7 @@ import deepseekProviderIconUrl from "@/assets/provider-icons/deepseek.ico";
 import fennoProviderIconUrl from "@/assets/provider-icons/fenno.jpg";
 import geminiProviderIconUrl from "@/assets/provider-icons/gemini.svg";
 import infistarAiProviderIconUrl from "@/assets/provider-icons/infistar-ai.jpg";
+import kunavoProviderIconUrl from "@/assets/provider-icons/kunavo.svg";
 import minimaxProviderIconUrl from "@/assets/provider-icons/minimax.ico";
 import mistralProviderIconUrl from "@/assets/provider-icons/mistral.webp";
 import moonshotProviderIconUrl from "@/assets/provider-icons/moonshot.ico";
@@ -378,6 +379,7 @@ export const providerPresetIconUrls: Record<string, string> = {
   gemini: geminiProviderIconUrl,
   "infistar-ai": infistarAiProviderIconUrl,
   "kimi-coding": moonshotProviderIconUrl,
+  kunavo: kunavoProviderIconUrl,
   "minimax-cn": minimaxProviderIconUrl,
   "minimax-global": minimaxProviderIconUrl,
   mistral: mistralProviderIconUrl,
