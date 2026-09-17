@@ -103,6 +103,30 @@ ToolHub 会合并 **ToolHub 页面配置的 MCP servers** 和兼容旧配置中�
 
 如果远程服务启动慢或请求耗时长，可以单独调高该 server 的 **Startup timeout** 或 **Request timeout**。
 
+### Parallel Search 示例
+
+[Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp) 提供公开网页搜索（`web_search`）和网页内容提取（`web_fetch`），无需 Parallel 账号或 API Key。免费访问有速率限制。
+
+在 **设置 → ToolHub** 中，使用 **导入 JSON** 添加此远程服务：
+
+```json
+{
+  "mcpServers": [
+    {
+      "name": "parallel-search",
+      "transport": "streamable-http",
+      "url": "https://search.parallel.ai/mcp"
+    }
+  ]
+}
+```
+
+匿名访问时，将 **API key**、**API key env** 和 **Headers** 留空。保留已配置的解析模型，启用 ToolHub，保存设置后从 CCR 重新打开 Agent。解析模型仍使用其供应商凭据；无需 API Key 仅适用于 Parallel 的 MCP 服务。
+
+让 Agent 查找并阅读一个公开网页。ToolHub 会发现该服务的工具，为任务选择所需工具，再通过 `tool_hub.invoke` 调用它们。这使用 ToolHub 的远程 MCP 通道，不依赖 CCR Desktop 的内置浏览器，也不会改变 Fusion 的内置搜索供应商。
+
+启用后，Agent 可以在执行任务时调用这些工具。搜索词、请求的 URL，以及提供的目标或上下文会发送给 Parallel。要移除此连接，请从 ToolHub 的 MCP Server 列表删除 `parallel-search`，保存设置并重新打开 Agent，使其加载更新后的配置。
+
 ## JSON 示例
 
 桌面 App 的 SQLite 配置是当前生效来源，建议优先通过 UI 修改。下面字段适用于备份、迁移或排查时理解 ToolHub 配置结构：
