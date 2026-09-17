@@ -18,6 +18,7 @@ import { qiniuAiProviderPreset } from "@ccr/core/providers/presets/qiniu-ai/inde
 import { runApiProviderPreset } from "@ccr/core/providers/presets/runapi/index";
 import { siliconFlowProviderPreset } from "@ccr/core/providers/presets/siliconflow/index";
 import { teamoRouterProviderPreset } from "@ccr/core/providers/presets/teamorouter/index";
+import { daoxeProviderPreset } from "@ccr/core/providers/presets/daoxe/index";
 import { unity2ProviderPreset } from "@ccr/core/providers/presets/unity2/index";
 import {
   xiaomiMimoProviderPreset,
@@ -69,6 +70,7 @@ export const providerPresets: ProviderPreset[] = [
   infistarAiProviderPreset,
   runApiProviderPreset,
   teamoRouterProviderPreset,
+  daoxeProviderPreset,
   unity2ProviderPreset,
   code0ProviderPreset,
   claudeApiProviderPreset
