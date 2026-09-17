@@ -48,6 +48,7 @@ import { claudeClientDiscoveryPayloads, createClaudeCliAutoCompactWindows } from
 import { claudeCodeOneMillionContextSuffix } from "@ccr/core/gateway/internal/shared";
 import { normalizeRouteSelector } from "@ccr/core/gateway/claude-code-router-plugin";
 import { findModelCatalogEntry, modelCatalogMaxInputTokens, readCatalogCapability, type ModelCatalogEntry } from "@ccr/core/gateway/model-catalog";
+import { windowsBatchEscapeValue as cmdValue, windowsBatchSetLine as cmdSetLine } from "@ccr/core/platform/windows-batch";
 import {
   TOOL_HUB_MCP_RUNTIME_FILE_NAME,
   TOOL_HUB_MCP_SERVER_NAME,
@@ -4245,21 +4246,8 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
-function cmdSetLine(key: string, value: string, indent = ""): string {
-  return `${indent}set "${key}=${cmdValue(value)}"`;
-}
-
 function cmdQuote(value: string): string {
   return `"${cmdValue(value)}"`;
-}
-
-function cmdValue(value: string): string {
-  return value
-    .replace(/\r?\n/g, " ")
-    .replace(/\^/g, "^^")
-    .replace(/%/g, "%%")
-    .replace(/"/g, '^"')
-    .replace(/[&|<>()]/g, "^$&");
 }
 
 function trimLeadingBlankLines(value: string): string {
