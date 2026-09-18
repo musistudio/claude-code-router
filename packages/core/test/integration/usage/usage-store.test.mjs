@@ -358,6 +358,43 @@ test("UsageStore prices the routed upstream model when the response echoes a rul
   }
 });
 
+test("#1791 UsageStore records DeepSeek-native prompt cache hits", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-deepseek-cache-test-"));
+  try {
+    const store = new UsageStore(path.join(dir, "usage.sqlite"));
+    await store.recordCapture({
+      bodyText: JSON.stringify({
+        model: "deepseek-v4.1-flash",
+        usage: {
+          completion_tokens: 10,
+          prompt_cache_hit_tokens: 800,
+          prompt_cache_miss_tokens: 200,
+          prompt_tokens: 1000,
+          prompt_tokens_details: {},
+          total_tokens: 1010
+        }
+      }),
+      durationMs: 40,
+      fallbackModel: "deepseek-v4.1-flash",
+      method: "POST",
+      path: "/v1/messages",
+      providerName: "OpenCode Go",
+      providerProtocol: "openai_chat_completions",
+      requestId: "deepseek-native-cache-usage",
+      responseHeaders: new Headers({ "content-type": "application/json" }),
+      statusCode: 200
+    });
+
+    const stats = await store.getStats("today", { includeProxy: true });
+    assert.equal(stats.totals.inputTokens, 200);
+    assert.equal(stats.totals.cacheTokens, 800);
+    assert.equal(stats.totals.outputTokens, 10);
+    assert.equal(stats.totals.totalTokens, 1010);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("UsageStore attributes Claude App encoded response model IDs to the routed upstream model", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-claude-app-encoded-model-test-"));
   try {

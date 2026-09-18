@@ -696,6 +696,51 @@ test("RequestLogStore redacts secrets and records CCR metadata", async () => {
   }
 });
 
+test("#1791 RequestLogStore records DeepSeek-native prompt cache hits", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-deepseek-cache-test-"));
+  let store;
+  try {
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const startedAt = new Date().toISOString();
+    await store.record({
+      completedAt: startedAt,
+      durationMs: 75,
+      method: "POST",
+      path: "/v1/messages",
+      providerName: "OpenCode Go",
+      providerProtocol: "openai_chat_completions",
+      requestBody: Buffer.from(JSON.stringify({ model: "deepseek-v4.1-flash" }), "utf8"),
+      requestHeaders: { "content-type": "application/json" },
+      requestId: "request-log-deepseek-cache",
+      responseBodyText: JSON.stringify({
+        model: "deepseek-v4.1-flash",
+        usage: {
+          completion_tokens: 10,
+          prompt_cache_hit_tokens: 800,
+          prompt_cache_miss_tokens: 200,
+          prompt_tokens: 1000,
+          prompt_tokens_details: {},
+          total_tokens: 1010
+        }
+      }),
+      responseHeaders: { "content-type": "application/json" },
+      startedAt,
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/messages"
+    });
+
+    const page = await store.list({ pageSize: 25 });
+    const detail = await store.getDetail({ id: page.items[0].id });
+    assert.equal(detail?.inputTokens, 200);
+    assert.equal(detail?.cacheReadTokens, 800);
+    assert.equal(detail?.outputTokens, 10);
+    assert.equal(detail?.totalTokens, 1010);
+  } finally {
+    await store?.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("RequestLogStore marks interrupted successful-status streams as errors", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-interrupted-stream-test-"));
   let store;

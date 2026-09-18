@@ -60,7 +60,9 @@ test("#1791 actual gateway reports OpenCode Go cache reads to Anthropic clients"
           prompt_tokens: promptTokens,
           completion_tokens: 1,
           total_tokens: promptTokens + 1,
-          prompt_tokens_details: { cached_tokens: cacheReadTokens }
+          prompt_cache_hit_tokens: cacheReadTokens,
+          prompt_cache_miss_tokens: promptTokens - cacheReadTokens,
+          prompt_tokens_details: {}
         }
       })}\n\n`);
       response.end("data: [DONE]\n\n");
@@ -78,7 +80,9 @@ test("#1791 actual gateway reports OpenCode Go cache reads to Anthropic clients"
         prompt_tokens: promptTokens,
         completion_tokens: 1,
         total_tokens: promptTokens + 1,
-        prompt_tokens_details: { cached_tokens: cacheReadTokens }
+        prompt_cache_hit_tokens: cacheReadTokens,
+        prompt_cache_miss_tokens: promptTokens - cacheReadTokens,
+        prompt_tokens_details: {}
       }
     }));
   });
@@ -161,6 +165,7 @@ test("#1791 actual gateway reports OpenCode Go cache reads to Anthropic clients"
     };
     const headers = {
       "content-type": "application/json",
+      "user-agent": "claude-cli/2.1.220",
       "x-claude-code-session-id": sessionId,
       "x-target-provider": "opencode-go-chat"
     };
@@ -205,6 +210,7 @@ test("#1791 actual gateway reports OpenCode Go cache reads to Anthropic clients"
     assert.equal(captured.length, 3);
     for (const request of captured) {
       assert.equal(request.headers["x-opencode-session"], sessionId);
+      assert.equal(request.headers["user-agent"], "claude-cli/2.1.220");
     }
     assert.equal(captured[0].path, "/zen/go/v1/chat/completions");
     assert.equal(captured[1].path, "/zen/go/v1/chat/completions");

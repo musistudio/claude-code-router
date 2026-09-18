@@ -1178,6 +1178,7 @@ function extractUsageSnapshot(payload: unknown): UsageSnapshot | undefined {
     inputDetails?.cached_tokens !== undefined ||
     inputDetails?.cache_creation_tokens !== undefined ||
     usage.cached_tokens !== undefined ||
+    usage.prompt_cache_hit_tokens !== undefined ||
     usage.prompt_tokens !== undefined;
   const cacheCreation = isRecord(usage.cache_creation) ? usage.cache_creation : undefined;
   const cacheWrite5mTokens = asNumber(cacheCreation?.ephemeral_5m_input_tokens);
@@ -1188,7 +1189,8 @@ function extractUsageSnapshot(payload: unknown): UsageSnapshot | undefined {
       asNumber(usage.cache_read_tokens) ??
       asNumber(usage.cache_read_input_tokens) ??
       asNumber(usage.cached_tokens) ??
-      asNumber(inputDetails?.cached_tokens),
+      asNumber(inputDetails?.cached_tokens) ??
+      asNumber(usage.prompt_cache_hit_tokens),
     cacheWrite1hTokens,
     cacheWrite5mTokens,
     cacheWriteTokens:

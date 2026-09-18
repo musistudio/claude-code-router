@@ -72,7 +72,8 @@ After import:
 2. OpenCode Go uses its own catalog entry and endpoint, defaulting to `https://opencode.ai/zen/go/v1`, and uses the `opencode-go` credential resolved as described above.
 3. Model IDs and display names come from the matching OpenCode provider catalog. Each model is grouped under the protocol declared by its AI SDK package, including mixed OpenAI Responses, Chat Completions, Anthropic, and Gemini catalogs.
 4. For requests sent to the official OpenCode Go endpoint, CCR forwards `x-claude-code-session-id` (or the legacy `x-claude-session-id`) as `x-opencode-session`. If the client supplies neither header, CCR uses the request's `metadata.user_id` when present and otherwise a stable `ccr-<uuid>` generated once per process, which is a last-resort value for clients that send no session identity; explicit `x-opencode-session` configuration takes precedence. This header is not added to Zen or unrelated providers.
-5. OpenCode Go account usage reads `GET https://opencode.ai/zen/go/v1/usage` with the imported `opencode-go` key and shows the 5-hour, weekly, and monthly windows as remaining percent. Zen has no equivalent account usage endpoint, so only Go is fetched automatically.
+5. CCR preserves the coding agent's `User-Agent` and accepts both OpenAI-compatible `prompt_tokens_details.cached_tokens` and DeepSeek-native `prompt_cache_hit_tokens` on Go Chat responses. If the upstream omits both fields, cache-read usage is unavailable and CCR does not estimate it from the prompt size.
+6. OpenCode Go account usage reads `GET https://opencode.ai/zen/go/v1/usage` with the imported `opencode-go` key and shows the 5-hour, weekly, and monthly windows as remaining percent. Zen has no equivalent account usage endpoint, so only Go is fetched automatically.
 
 If OpenCode Go is unavailable or does not appear as an import option, connect `OpenCode Go` in OpenCode first and let OpenCode refresh its local model cache, then return to CCR and rescan.
 
