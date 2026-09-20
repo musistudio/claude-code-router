@@ -164,13 +164,15 @@ ccr profile-id -- --help
 | 路径 | 用途 |
 | --- | --- |
 | `config.sqlite` | 当前应用配置。 |
-| `app-data/` | API Key、用量、请求日志、证书等运行数据。 |
+| `app-data/`（macOS/Linux）或配置根目录（Windows） | API Key、用量、请求日志、证书等运行数据。 |
 | `service.json` | 后台 CLI 服务状态和私有 Token。 |
-| `gateway.config.json` | 生成的网关运行配置。 |
+| `gateway-runtime.json` | 网关内部运行时标记。 |
 | `profiles/` | 按 Agent 配置隔离的文件。 |
 | `bin/` | CCR 生成的 Agent 启动包装器。 |
 
 不要在 CCR 运行时直接编辑或复制活跃 SQLite 文件。优先使用 **Settings → Export data**；文件级备份前先停止 CLI 和桌面应用。
+
+各平台完整目录布局（含 WSL、Windows 与 Linux 路径差异，以及配置目录下每个文件的说明），见 [配置数据库位置](../../configuration/configuration-file/)。
 
 ## 环境变量与远程访问
 
