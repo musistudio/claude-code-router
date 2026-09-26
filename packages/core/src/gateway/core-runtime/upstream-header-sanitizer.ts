@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { applyMetaTokenFloor } from "@ccr/core/gateway/core-runtime/meta-token-floor";
+import { dropNonReplayableReasoningItems } from "@ccr/core/gateway/core-runtime/responses-reasoning-filter";
+import type { ResponsesReasoningFilterInput } from "@ccr/core/gateway/core-runtime/responses-reasoning-filter";
 import { applyResponsesSessionAffinity, inboundMetadataUserId, resolveResponsesSessionKey } from "@ccr/core/gateway/core-runtime/responses-session-affinity";
 import type { ResponsesSessionAffinityInput } from "@ccr/core/gateway/core-runtime/responses-session-affinity";
 import { applyResponsesToolStrictness } from "@ccr/core/gateway/core-runtime/responses-tool-strictness";
@@ -298,6 +300,14 @@ export function createGatewayPlugin() {
         return {
           ok: true as const,
           value: applyResponsesToolStrictness(input)
+        };
+      }
+    }, {
+      key: "ccr-responses-reasoning-filter",
+      transformRequest(input: ResponsesReasoningFilterInput) {
+        return {
+          ok: true as const,
+          value: dropNonReplayableReasoningItems(input)
         };
       }
     }]
