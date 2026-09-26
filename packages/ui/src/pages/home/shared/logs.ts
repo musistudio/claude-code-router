@@ -57,6 +57,13 @@ export function formatLogTokenSummary(entry: RequestLogEntry, t: (value: string)
 }
 
 export function logRequestModel(entry: RequestLogEntry): string {
+  // `clientModel` is the only field that holds what the client actually asked
+  // for: `requestedModel` is post-routing, so on a rerouted request it equals
+  // the resolved model and the "asked -> used" display showed one model twice.
+  // Normalized like the resolved side so the pair reads symmetrically.
+  if (entry.clientModel) {
+    return logRouteModelName(entry.clientModel);
+  }
   return entry.requestedModel || logBodyModel(entry.requestBody) || entry.model || "unknown";
 }
 

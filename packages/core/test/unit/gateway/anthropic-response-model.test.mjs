@@ -8,6 +8,7 @@ import {
   shouldRewriteAnthropicMessageStartModel
 } from "@ccr/core/gateway/features/anthropic-response-model.ts";
 import { GatewayRequestPipeline } from "@ccr/core/gateway/request/pipeline.ts";
+import { encodeCcrClientModelHeader } from "@ccr/core/gateway/core-runtime/router-plugin-contract.ts";
 
 async function streamText(stream) {
   const chunks = [];
@@ -94,6 +95,7 @@ test("gateway pipeline preserves Claude Code hex model id in Anthropic SSE respo
 
 test("gateway pipeline strips client supplied CCR route headers", async () => {
   const result = await runAnthropicPipelineModelRewrite("kimi-test/k3", {
+    "x-ccr-client-model": encodeCcrClientModelHeader("Other/forged"),
     "x-ccr-route-fallback": "forged-fallback",
     "x-ccr-route-stage": "forged-stage",
     "x-ccr-routed-model": "Other/forged"
@@ -102,6 +104,8 @@ test("gateway pipeline strips client supplied CCR route headers", async () => {
   assert.equal(result.upstreamHeaders?.["x-ccr-route-fallback"], undefined);
   assert.equal(result.upstreamHeaders?.["x-ccr-route-stage"], undefined);
   assert.equal(result.upstreamHeaders?.["x-ccr-routed-model"], "kimi-test/k3");
+  // A forged ask is replaced by the trusted one, which the raw trace records.
+  assert.equal(result.upstreamHeaders?.["x-ccr-client-model"], encodeCcrClientModelHeader("kimi-test/k3"));
 });
 
 async function runAnthropicPipelineModelRewrite(requestModel, requestHeaders = {}) {

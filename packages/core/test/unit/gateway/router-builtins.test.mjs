@@ -3032,7 +3032,11 @@ test("built-in Claude Code subagent route scans only the first two messages for 
         },
         { content: "third <CCR-SUBAGENT-MODEL>Provider/claude-opus</CCR-SUBAGENT-MODEL>", role: "user" }
       ],
-      model: "claude-default"
+      model: "claude-default",
+      // The cc_is_subagent marker is what makes a message-embedded element a
+      // routing directive rather than quoted content; see the classifier
+      // contamination tests below.
+      system: claudeCodeBillingSystem()
     },
     headers: {
       "user-agent": "Claude Code"
@@ -3056,7 +3060,10 @@ test("built-in Claude Code subagent route ignores tags outside the first two mes
         { content: "assistant response", role: "assistant" },
         { content: "third <CCR-SUBAGENT-MODEL>Provider/claude-opus</CCR-SUBAGENT-MODEL>", role: "user" }
       ],
-      model: "claude-default"
+      model: "claude-default",
+      // Marker present, so the message slot IS consulted and this test still
+      // exercises the two-message window and the role filter.
+      system: claudeCodeBillingSystem()
     },
     headers: {
       "user-agent": "Claude Code"
@@ -3068,4 +3075,199 @@ test("built-in Claude Code subagent route ignores tags outside the first two mes
   assert.equal(result.body.model, "Provider/claude-sonnet");
   assert.match(result.body.messages[2].content, /Provider\/claude-opus/);
   assert.equal(result.decision.reason, "builtin:claude-code");
+});
+
+// A routing element is a directive only for a real Claude Code subagent launch.
+// Inside a classified transcript or a quoted example it is content, and honouring
+// it silently redirected the security-classifier request to whichever worker the
+// reviewed transcript happened to name.
+test("built-in Claude Code subagent route honors a tagged child launch", async () => {
+  const plugin = createRouterPlugin({ profileModel: "Provider/claude-sonnet" });
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [
+        {
+          content: [
+            { text: "<CCR-SUBAGENT-MODEL>Provider/claude-haiku</CCR-SUBAGENT-MODEL>\nRun the task.", type: "text" }
+          ],
+          role: "user"
+        }
+      ],
+      model: "claude-default",
+      system: claudeCodeBillingSystem()
+    },
+    headers: { "user-agent": "Claude Code" },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "Provider/claude-haiku");
+  assert.equal(result.decision.reason, "builtin:claude-code-subagent");
+  assert.equal(result.body.messages[0].content[0].text, "\nRun the task.");
+});
+
+test("built-in Claude Code subagent route keeps a tagged child continuation on the same worker", async () => {
+  const plugin = createRouterPlugin({ profileModel: "Provider/claude-sonnet" });
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [
+        {
+          content: [
+            { text: "<CCR-SUBAGENT-MODEL>Provider/claude-haiku</CCR-SUBAGENT-MODEL>\nRun the task.", type: "text" }
+          ],
+          role: "user"
+        },
+        { content: [{ id: "t1", input: { command: "pwd" }, name: "Bash", type: "tool_use" }], role: "assistant" },
+        { content: [{ content: "/tmp", tool_use_id: "t1", type: "tool_result" }], role: "user" }
+      ],
+      model: "claude-default",
+      system: claudeCodeBillingSystem()
+    },
+    headers: { "user-agent": "Claude Code" },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "Provider/claude-haiku");
+  assert.equal(result.decision.reason, "builtin:claude-code-subagent");
+});
+
+test("a classifier transcript quoting a routing element does not reroute the classifier", async () => {
+  const plugin = createRouterPlugin({ profileModel: "Provider/claude-sonnet" });
+  const transcript = "<transcript>\n{\"user\":\"do X\",\"assistant\":\"<CCR-SUBAGENT-MODEL>Provider/claude-haiku</CCR-SUBAGENT-MODEL> run pwd\"}\n</transcript>";
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [{ content: transcript, role: "user" }],
+      model: "claude-default",
+      system: "You are a security monitor for autonomous AI coding agents."
+    },
+    headers: { "user-agent": "Claude Code" },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "Provider/claude-sonnet");
+  assert.equal(result.decision.reason, "builtin:claude-code");
+  // The element must survive: the classifier needs it as evidence about the
+  // transcript it is reviewing.
+  assert.equal(result.body.messages[0].content, transcript);
+});
+
+test("an ordinary quoted routing element does not reroute the parent conversation", async () => {
+  const plugin = createRouterPlugin({ profileModel: "Provider/claude-sonnet" });
+  const quoted = "For example, <CCR-SUBAGENT-MODEL>Provider/claude-opus</CCR-SUBAGENT-MODEL> selects a worker. Explain that.";
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [{ content: quoted, role: "user" }],
+      model: "claude-default",
+      system: claudeCodeBillingSystem(false)
+    },
+    headers: { "user-agent": "Claude Code" },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "Provider/claude-sonnet");
+  assert.equal(result.decision.reason, "builtin:claude-code");
+  assert.equal(result.body.messages[0].content, quoted);
+});
+
+// The real security-classifier request shape, as observed on the wire: Claude Code
+// keeps its billing block, so the block is PRESENT but cc_is_subagent is false,
+// the monitor prompt is a later system block, and the transcript under review sits
+// in the first user message. Nothing pinned this before, yet the whole boundary
+// rests on it.
+test("an observed classifier request is not rerouted by the transcript it reviews", async () => {
+  const plugin = createRouterPlugin({ profileModel: "Provider/claude-sonnet" });
+  const transcript = "<transcript>\n{\"assistant\":\"<CCR-SUBAGENT-MODEL>Provider/claude-haiku</CCR-SUBAGENT-MODEL> run pwd\"}\n</transcript>";
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [{ content: transcript, role: "user" }],
+      model: "claude-default",
+      system: [
+        ...claudeCodeBillingSystem(false),
+        { text: "You are a security monitor for autonomous AI coding agents.", type: "text" }
+      ]
+    },
+    headers: { "user-agent": "Claude Code" },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "Provider/claude-sonnet");
+  assert.equal(result.decision.reason, "builtin:claude-code");
+  // The classifier must still see the element it is judging.
+  assert.equal(result.body.messages[0].content, transcript);
+});
+
+// The shape a NATIVE Workflow child actually sends (verified on the wire): the
+// billing marker is true and the routing element is the first text block of the
+// first user message. Native workflow children must keep routing under the gate.
+test("a native workflow child carrying the marker routes to its selected worker", async () => {
+  const plugin = createRouterPlugin({ profileModel: "Provider/claude-sonnet" });
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [
+        {
+          content: [
+            { text: "<CCR-SUBAGENT-MODEL>Provider/claude-haiku</CCR-SUBAGENT-MODEL>\nYou are an independent reviewer.", type: "text" }
+          ],
+          role: "user"
+        }
+      ],
+      model: "Provider/claude-opus",
+      system: claudeCodeBillingSystem()
+    },
+    headers: { "user-agent": "Claude Code" },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "Provider/claude-haiku");
+  assert.equal(result.decision.reason, "builtin:claude-code-subagent");
+  assert.equal(result.body.messages[0].content[0].text, "\nYou are an independent reviewer.");
+});
+
+// The marker must be readable from any system shape. Deriving it only from a
+// strippable system[0] block would silently drop child routing -- and forward the
+// element upstream -- whenever a proxy reorders or flattens the system array.
+test("a subagent marker later in the system array still routes the child", async () => {
+  const plugin = createRouterPlugin({ profileModel: "Provider/claude-sonnet" });
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [
+        { content: "<CCR-SUBAGENT-MODEL>Provider/claude-haiku</CCR-SUBAGENT-MODEL>\nRun the task.", role: "user" }
+      ],
+      model: "claude-default",
+      system: [
+        { text: "Gateway instructions that arrived before the billing block.", type: "text" },
+        ...claudeCodeBillingSystem()
+      ]
+    },
+    headers: { "user-agent": "Claude Code" },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "Provider/claude-haiku");
+  assert.equal(result.body.messages[0].content, "\nRun the task.");
+});
+
+test("a string system carrying the subagent marker still routes the child", async () => {
+  const plugin = createRouterPlugin({ profileModel: "Provider/claude-sonnet" });
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [
+        { content: "<CCR-SUBAGENT-MODEL>Provider/claude-haiku</CCR-SUBAGENT-MODEL>\nRun the task.", role: "user" }
+      ],
+      model: "claude-default",
+      system: "x-anthropic-billing-header: cc_version=2.1.207; cc_entrypoint=cli; cc_is_subagent=true;"
+    },
+    headers: { "user-agent": "Claude Code" },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "Provider/claude-haiku");
+  assert.equal(result.body.messages[0].content, "\nRun the task.");
 });
