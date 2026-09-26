@@ -6952,6 +6952,27 @@ function normalizeUpstreamOutcome(value: unknown): RequestLogUpstreamOutcome {
  * `http_status`. An abruptly truncated stream without a marker is likewise not
  * cancellation — it cannot be told apart from an ordinary failure.
  */
+/**
+ * Resolve the upstream outcome of a raw-trace bundle for a writer that does not
+ * go through `record()`, such as the raw-trace usage capture. It applies the
+ * same evidence as the standalone request-log conversion, so a stream that
+ * failed after HTTP 200 or a bundle with no upstream response is not reduced
+ * to its status code.
+ */
+export function resolveRawTraceUpstreamOutcome(input: {
+  responseBodyText: string;
+  responseContentType?: string;
+  statusCode: number | undefined;
+  upstreamResponseReceived: boolean | undefined;
+}): RequestLogUpstreamOutcome {
+  return resolveUpstreamOutcome({
+    cancellation: detectSseCancellation(input.responseBodyText, input.responseContentType),
+    statusCode: input.statusCode,
+    streamFailure: detectSseError(input.responseBodyText, input.responseContentType) !== undefined,
+    upstreamResponseReceived: input.upstreamResponseReceived
+  });
+}
+
 function isCancellationSignal(error: string | undefined): boolean {
   return normalizeFilterValue(error) === clientDisconnectMessage;
 }

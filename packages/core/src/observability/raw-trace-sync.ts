@@ -11,7 +11,8 @@ import {
   enqueueGatewayRequestLogFromRawTrace,
   type RequestLogRawTraceFile,
   type RequestLogRawTraceFiles,
-  type RequestLogRawTraceUpdateInput
+  type RequestLogRawTraceUpdateInput,
+  resolveRawTraceUpstreamOutcome
 } from "@ccr/core/observability/request-log-store";
 import {
   suppressRequestLogRawTraceBodies,
@@ -1520,8 +1521,10 @@ async function recordUsageCaptureFromRawTrace(
   }
 
   const responseHeaders = headersFromRawTrace(input.responseHeaders);
+  const bodyText = await rawTraceUsageBodyText(input, files.responseBody);
+  const statusCode = numberValue(input.statusCode) ?? 0;
   await recordGatewayUsageCaptureIfMissing({
-    bodyText: await rawTraceUsageBodyText(input, files.responseBody),
+    bodyText,
     config,
     durationMs: numberValue(input.durationMs) ?? 0,
     fallbackModel: input.model,
@@ -1531,7 +1534,19 @@ async function recordUsageCaptureFromRawTrace(
     providerProtocol: resolveResponseProviderProtocol(responseHeaders, config),
     requestId: input.requestId,
     responseHeaders,
-    statusCode: numberValue(input.statusCode) ?? 0
+    statusCode,
+    // Resolved here, while the bundle's body is still at hand: this usage row is
+    // written before the request-log row, so the request log cannot repair a
+    // stream failure or transport failure that a bare status code hides.
+    upstreamOutcome: resolveRawTraceUpstreamOutcome({
+      responseBodyText: bodyText,
+      responseContentType: input.responseBodyContentType ??
+        files.responseBody?.contentType ??
+        responseHeaders.get("content-type") ??
+        undefined,
+      statusCode,
+      upstreamResponseReceived: input.upstreamResponseReceived
+    })
   });
 }
 

@@ -13,6 +13,7 @@ import type {
   AppConfig,
   GatewayProviderProtocol,
   ProviderModelPricing,
+  RequestLogUpstreamOutcome,
   UsageComparisonRow,
   UsageStatsFilter,
   UsageSeriesPoint,
@@ -52,6 +53,12 @@ export type UsageEventInput = {
   pricing?: ProviderModelPricing;
   requestId?: string;
   statusCode: number;
+  /**
+   * How the upstream attempt actually ended, when the caller knows more than
+   * the status: a stream that failed after HTTP 200, or a transport failure
+   * that never produced a status. Omitted, it is derived from the status alone.
+   */
+  upstreamOutcome?: RequestLogUpstreamOutcome;
   usage?: UsageNumbers;
 };
 
@@ -68,6 +75,7 @@ export type UsageCaptureInput = {
   requestId?: string;
   responseHeaders: Headers;
   statusCode: number;
+  upstreamOutcome?: RequestLogUpstreamOutcome;
 };
 
 type UsageStatsQueryOptions = {
@@ -112,6 +120,11 @@ type UsageSnapshot = UsageNumbers & {
 };
 
 const usageOutcomeBackfillBatchSize = 500;
+const usageFailureOutcomes: ReadonlySet<string> = new Set<RequestLogUpstreamOutcome>([
+  "cancelled",
+  "stream_failure",
+  "transport_failure"
+]);
 
 const usageEvents = new EventEmitter();
 const usageStatsRanges = new Set<UsageStatsRange>(["today", "24h", "7d", "30d"]);
@@ -221,11 +234,13 @@ export class UsageStore {
       costUsd ?? null,
       costSource,
       // This writer is the one that actually runs on a single-gateway install;
-      // the request-log backfill below produces no rows there. It only knows the
-      // status, so it records the honest subset of the outcome vocabulary: a
-      // positive status is a real HTTP result, and a zero status means the
-      // upstream status was never captured -- undecided, not failed.
-      normalizeCount(event.statusCode) > 0 ? "http_status" : "unknown"
+      // the request-log backfill below produces no rows there. A caller that
+      // resolved the outcome (the raw-trace path sees stream and transport
+      // failures) passes it through. Otherwise only the status is known, so it
+      // records the honest subset of the outcome vocabulary: a positive status
+      // is a real HTTP result, and a zero status means the upstream status was
+      // never captured -- undecided, not failed.
+      event.upstreamOutcome ?? (normalizeCount(event.statusCode) > 0 ? "http_status" : "unknown")
     );
     usageEvents.emit("recorded");
   }
@@ -278,6 +293,7 @@ export class UsageStore {
       credentialId: readCredentialId(input.responseHeaders),
       requestId: input.requestId,
       statusCode: input.statusCode,
+      ...(input.upstreamOutcome ? { upstreamOutcome: input.upstreamOutcome } : {}),
       usage
     });
   }
@@ -837,7 +853,11 @@ const usageTotalsSelect = `
             END), 0) AS computed_total_tokens,
             COALESCE(SUM(COALESCE(cost_usd, 0)), 0) AS cost_usd,
             COALESCE(SUM(duration_ms), 0) AS duration_ms,
-            COALESCE(SUM(CASE WHEN status_code >= 200 AND status_code < 400 THEN 1 ELSE 0 END), 0) AS success_count,
+            COALESCE(SUM(CASE
+              WHEN status_code >= 200 AND status_code < 400
+                AND upstream_outcome NOT IN ('stream_failure', 'transport_failure', 'cancelled') THEN 1
+              ELSE 0
+            END), 0) AS success_count,
             COALESCE(SUM(CASE WHEN status_code = 0 AND upstream_outcome = 'unknown' THEN 1 ELSE 0 END), 0) AS undecided_count,
             COALESCE(SUM(CASE
               WHEN total_tokens - output_tokens > input_tokens + cache_read_tokens + cache_write_tokens THEN total_tokens - output_tokens
@@ -1137,7 +1157,7 @@ function buildTotals(events: StoredUsageEvent[]): UsageTotals {
   const costUsd = sum(events, (event) => event.costUsd);
   const totalTokens = sum(events, totalTokenCount);
   const promptTokens = sum(events, promptTokenCount);
-  const successfulRequests = events.filter((event) => event.statusCode >= 200 && event.statusCode < 400).length;
+  const successfulRequests = events.filter(isSuccessfulUsageEvent).length;
   // Same rule as the SQL totals: an uncaptured upstream status is undecided, so
   // it is neither an error nor part of the success-rate denominator.
   const undecidedRequests = events.filter(isUndecidedUsageEvent).length;
@@ -1156,6 +1176,15 @@ function buildTotals(events: StoredUsageEvent[]): UsageTotals {
     successRate: decidedRequests > 0 ? successfulRequests / decidedRequests : 0,
     totalTokens
   };
+}
+
+// Same rule as the SQL totals: a 2xx/3xx status is a success only when the
+// outcome does not record a failure the status cannot show, such as a stream
+// that errored after HTTP 200.
+function isSuccessfulUsageEvent(event: StoredUsageEvent): boolean {
+  return event.statusCode >= 200 &&
+    event.statusCode < 400 &&
+    !usageFailureOutcomes.has(event.upstreamOutcome);
 }
 
 function isUndecidedUsageEvent(event: StoredUsageEvent): boolean {

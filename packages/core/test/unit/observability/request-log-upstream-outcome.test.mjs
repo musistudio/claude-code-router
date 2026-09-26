@@ -10,7 +10,11 @@ import {
   applyRawTraceRequestLogPolicy,
   readRawTraceRequestLogBundle
 } from "@ccr/core/observability/raw-trace-sync.ts";
-import { addColumnDuplicateTolerant, RequestLogStore } from "@ccr/core/observability/request-log-store.ts";
+import {
+  addColumnDuplicateTolerant,
+  RequestLogStore,
+  resolveRawTraceUpstreamOutcome
+} from "@ccr/core/observability/request-log-store.ts";
 import { createBetterSqliteDatabase } from "@ccr/core/storage/sqlite-native.ts";
 
 // The producer (@the-next-ai/ai-gateway) serializes an undefined upstream
@@ -427,6 +431,41 @@ test("raw trace records a stream failure after HTTP 200 without rewriting the st
   } finally {
     rmSync(dir, { force: true, recursive: true });
   }
+});
+
+// The raw-trace usage capture writes its row before the request log does, so it
+// resolves the outcome from the same bundle evidence instead of the bare status.
+test("the raw-trace usage outcome keeps the failure a status code hides", () => {
+  const sse = "text/event-stream";
+  assert.equal(resolveRawTraceUpstreamOutcome({
+    responseBodyText: streamFailureBody,
+    responseContentType: sse,
+    statusCode: 200,
+    upstreamResponseReceived: true
+  }), "stream_failure");
+  assert.equal(resolveRawTraceUpstreamOutcome({
+    responseBodyText: cancelledStreamBody,
+    responseContentType: sse,
+    statusCode: 200,
+    upstreamResponseReceived: true
+  }), "cancelled");
+  assert.equal(resolveRawTraceUpstreamOutcome({
+    responseBodyText: toolContinuationStream,
+    responseContentType: sse,
+    statusCode: 200,
+    upstreamResponseReceived: true
+  }), "http_status");
+  assert.equal(resolveRawTraceUpstreamOutcome({
+    responseBodyText: "",
+    statusCode: 0,
+    upstreamResponseReceived: false
+  }), "transport_failure");
+  assert.equal(resolveRawTraceUpstreamOutcome({
+    responseBodyText: toolContinuationStream,
+    responseContentType: sse,
+    statusCode: 0,
+    upstreamResponseReceived: true
+  }), "unknown");
 });
 
 test("raw trace keeps a client disconnect cancelled and never rewrites it to success", async () => {

@@ -877,6 +877,60 @@ test("UsageStore reset clears overview stats and does not backfill old request l
   }
 });
 
+// A stream that fails after HTTP 200 keeps its 200 but is not a success. The
+// raw-trace usage writer runs before the request log, so the outcome has to
+// travel with the usage capture itself, and both totals paths must read it.
+test("UsageStore counts a stream failure after HTTP 200 as an error", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-stream-failure-test-"));
+  try {
+    const store = new UsageStore(path.join(dir, "usage.sqlite"));
+    const capture = (requestId, statusCode, upstreamOutcome) => store.recordCapture({
+      bodyText: "",
+      durationMs: 10,
+      fallbackModel: "vendor/model-a",
+      method: "POST",
+      path: "/v1/messages",
+      providerName: "vendor",
+      requestId,
+      responseHeaders: new Headers(),
+      statusCode,
+      ...(upstreamOutcome ? { upstreamOutcome } : {})
+    });
+    await capture("ok-1", 200);
+    await capture("stream-failed-1", 200, "stream_failure");
+    await capture("transport-failed-1", 0, "transport_failure");
+    await capture("unknown-1", 0, "unknown");
+
+    const database = createBetterSqliteDatabase(path.join(dir, "usage.sqlite"));
+    try {
+      assert.deepEqual(database.prepare(
+        "SELECT request_id, status_code, upstream_outcome FROM usage_events ORDER BY request_id"
+      ).all(), [
+        { request_id: "ok-1", status_code: 200, upstream_outcome: "http_status" },
+        { request_id: "stream-failed-1", status_code: 200, upstream_outcome: "stream_failure" },
+        { request_id: "transport-failed-1", status_code: 0, upstream_outcome: "transport_failure" },
+        { request_id: "unknown-1", status_code: 0, upstream_outcome: "unknown" }
+      ], "the capture keeps the resolved outcome next to the unchanged status");
+    } finally {
+      database.close();
+    }
+
+    const stats = await store.getStats("30d");
+    assert.equal(stats.totals.requestCount, 4);
+    // Decided: the clean 200, the failed stream and the transport failure.
+    assert.equal(stats.totals.errorCount, 2, "the failed stream and the transport failure are errors");
+    assert.equal(stats.totals.successRate, 1 / 3);
+
+    // Recent requests are totalled in memory and must apply the same rule.
+    const recent = stats.recentRequests;
+    assert.equal(recent.length, 4);
+    assert.equal(recent.filter((row) => row.errorCount === 1).length, 2);
+    assert.equal(recent.filter((row) => row.successRate === 1).length, 1, "only the clean 200 is a success");
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 // A request whose upstream status was never captured is undecided, not failed.
 // Overview used to derive errorCount as requestCount - successCount, so those
 // rows inflated the error count and depressed the success rate.
