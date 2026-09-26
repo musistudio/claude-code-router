@@ -103,6 +103,39 @@ test("Core gateway config strips the static Claude Code OAuth bearer so the live
   });
 });
 
+// Strip is scoped to the local-login import plugin key only. API-key and other
+// Claude providers keep their configured static bearer after compile.
+test("Core gateway config keeps the static bearer for non-OAuth Claude providers", async () => {
+  const config = createDefaultAppConfig();
+  config.providerPlugins = [
+    {
+      auth: {
+        headers: {
+          authorization: "Bearer sk-ant-user-api-key"
+        },
+        strict: true
+      },
+      key: "anthropic-user-api-key",
+      providerName: "Anthropic API"
+    }
+  ];
+  config.Providers = [
+    {
+      api_base_url: "https://api.anthropic.com",
+      api_key: "sk-ant-user-api-key",
+      id: "anthropic-api",
+      models: ["claude-sonnet-5"],
+      name: "Anthropic API",
+      type: "anthropic_messages"
+    }
+  ];
+
+  const compiled = await compileCoreGatewayConfig(config, "raw-trace-token", "billing-usage-token", "core-auth-token");
+  const plugin = compiled.providerPlugins.find((item) => item.key === "anthropic-user-api-key");
+
+  assert.equal(plugin.auth.headers.authorization, "Bearer sk-ant-user-api-key");
+});
+
 // Claude Code >= 2.1 writes the credential item under the current $USER and
 // leaves any pre-2.1 item (account "unknown") in place on the same service
 // name. A lookup without `-a` matches the stale one, which only carries MCP

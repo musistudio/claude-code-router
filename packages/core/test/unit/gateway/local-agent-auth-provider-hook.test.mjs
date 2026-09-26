@@ -251,6 +251,88 @@ test("core gateway config removes Grok unsupported Responses options through dec
   });
 });
 
+// ai-gateway registers module providerHooks first, then static config plugins
+// last with overwrite:true (index.ts applyStaticRuntimeConfig). Both steps must
+// keep distinct keys, and the stripped static auth must not clear the live
+// bearer when the static authenticate runs after the live hook.
+test("live Claude Code OAuth hook survives static provider plugin registration order", async () => {
+  await withClaudeCodeHome(async (home) => {
+    await withPlatform("darwin", async () => {
+      await withFakeSecurityFailure(async () => {
+        writeClaudeCredentials(home, {
+          accessToken: "rotated-live-access-token",
+          refreshToken: "rotated-refresh-token"
+        });
+
+        // Compiled static plugin after withClaudeCodeOauthRuntimeDefaults: no
+        // authorization header, anthropic-beta and removeHeaders preserved.
+        const staticPlugin = {
+          auth: {
+            headers: {
+              "anthropic-beta": {
+                default: "oauth-2025-04-20",
+                from: "request.headers.anthropic-beta"
+              }
+            },
+            removeHeaders: ["x-api-key"],
+            strict: true
+          },
+          key: "ccr-local-agent-claude-code-api-claude-code-oauth",
+          providerName: "Claude Code API"
+        };
+
+        const [liveHook] = createGatewayPlugin({
+          config: {
+            providerPlugins: [claudeCodeOauthProviderPlugin()]
+          }
+        }).providerHooks;
+
+        // Mirror ProviderPluginRegistry: insertion order is module hooks, then
+        // config: static plugins with overwrite. Distinct keys must both survive.
+        const registry = new Map();
+        registry.set(liveHook.key, liveHook);
+        registry.set(`config:${staticPlugin.key}`, {
+          key: `config:${staticPlugin.key}`,
+          authenticate: (input) => applyStaticAuthHeaders(input, staticPlugin)
+        });
+
+        assert.equal(registry.size, 2);
+        assert.equal(registry.get(liveHook.key), liveHook);
+        assert.equal(liveHook.key, "module:ccr-local-agent-claude-code-api-claude-code-oauth");
+
+        let upstreamRequest = {
+          headers: {
+            "content-type": "application/json",
+            "x-api-key": "client-key"
+          },
+          method: "POST",
+          url: "https://api.anthropic.com/v1/messages"
+        };
+
+        for (const plugin of registry.values()) {
+          const result = await plugin.authenticate({ upstreamRequest });
+          assert.equal(result.ok, true);
+          upstreamRequest = result.value;
+        }
+
+        assert.equal(upstreamRequest.headers.authorization, "Bearer rotated-live-access-token");
+        assert.equal(upstreamRequest.headers["x-api-key"], undefined);
+      });
+    });
+  });
+});
+
+// Same-key collision is the original bug: static overwrite drops the live hook.
+test("static config registration overwrites a colliding live hook key", () => {
+  const liveHook = { key: "config:ccr-local-agent-claude-code-api-claude-code-oauth" };
+  const staticHook = { key: "config:ccr-local-agent-claude-code-api-claude-code-oauth" };
+  const registry = new Map();
+  registry.set(liveHook.key, liveHook);
+  registry.set(staticHook.key, staticHook);
+  assert.equal(registry.size, 1);
+  assert.equal(registry.get(liveHook.key), staticHook);
+});
+
 test("local agent OAuth plugin detector only matches managed OAuth imports", () => {
   assert.equal(isLocalAgentOauthProviderPlugin(grokOauthProviderPlugin()), true);
   assert.equal(isLocalAgentOauthProviderPlugin({
@@ -371,6 +453,31 @@ async function withGrokHome(t, run) {
     restoreEnv("GROK_CLI_VERSION", previousGrokCliVersion);
     rmSync(grokHome, { force: true, recursive: true });
   }
+}
+
+// Stands in for ai-gateway's configured-plugin authenticate: applies auth.headers
+// and removeHeaders without touching headers the static plugin no longer carries.
+function applyStaticAuthHeaders(input, plugin) {
+  const headers = { ...(input.upstreamRequest.headers ?? {}) };
+  for (const name of plugin.auth.removeHeaders ?? []) {
+    for (const key of Object.keys(headers)) {
+      if (key.trim().toLowerCase() === String(name).trim().toLowerCase()) {
+        delete headers[key];
+      }
+    }
+  }
+  for (const [name, value] of Object.entries(plugin.auth.headers ?? {})) {
+    if (typeof value === "string" && value) {
+      headers[name] = value;
+    }
+  }
+  return {
+    ok: true,
+    value: {
+      ...input.upstreamRequest,
+      headers
+    }
+  };
 }
 
 function restoreEnv(name, value) {
