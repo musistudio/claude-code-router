@@ -86,6 +86,69 @@ test("OpenRouter provider catalog loads endpoint providers for a model", async (
   }
 });
 
+test("OpenRouter provider catalog issues the providers request with an abort signal", async () => {
+  const originalFetch = globalThis.fetch;
+  let signalSeen = null;
+  try {
+    globalThis.fetch = async (_url, init) => {
+      signalSeen = init?.signal ?? null;
+      return new Response(JSON.stringify({ data: [] }), {
+        headers: { "content-type": "application/json" },
+        status: 200
+      });
+    };
+
+    await getOpenRouterProviderCatalog({ baseUrl: "https://openrouter-signal.test/api/v1" });
+
+    assert.ok(
+      signalSeen instanceof AbortSignal,
+      "providers fetch must pass an AbortSignal so a stalled endpoint cannot hang the request"
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("OpenRouter provider catalog aborts instead of hanging on a stalled endpoint", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalTimeout = process.env.CCR_OPENROUTER_CATALOG_TIMEOUT_MS;
+  process.env.CCR_OPENROUTER_CATALOG_TIMEOUT_MS = "50";
+  try {
+    globalThis.fetch = (_url, init) => new Promise((_resolve, reject) => {
+      const signal = init?.signal;
+      if (signal instanceof AbortSignal) {
+        if (signal.aborted) {
+          reject(signal.reason ?? new Error("aborted"));
+          return;
+        }
+        signal.addEventListener("abort", () => {
+          reject(signal.reason ?? new Error("aborted"));
+        });
+      }
+      // No signal, or signal never fires: the endpoint stalls forever.
+    });
+
+    const call = getOpenRouterProviderCatalog({ baseUrl: "https://openrouter-stall.test/api/v1" });
+    const outcome = await Promise.race([
+      call.then(() => "resolved", () => "rejected"),
+      new Promise((resolve) => setTimeout(() => resolve("hung"), 1_000))
+    ]);
+
+    assert.equal(
+      outcome,
+      "rejected",
+      "a stalled OpenRouter endpoint must abort the catalog fetch, not hang indefinitely"
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalTimeout === undefined) {
+      delete process.env.CCR_OPENROUTER_CATALOG_TIMEOUT_MS;
+    } else {
+      process.env.CCR_OPENROUTER_CATALOG_TIMEOUT_MS = originalTimeout;
+    }
+  }
+});
+
 test("OpenRouter provider catalog loads model endpoints without an API key", async () => {
   const originalFetch = globalThis.fetch;
   const requestedUrls = [];
