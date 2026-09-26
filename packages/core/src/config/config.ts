@@ -330,6 +330,10 @@ export async function loadAppConfig(): Promise<AppConfig> {
       toolHub: {
         ...DEFAULT_CONFIG.toolHub,
         ...(picked.toolHub ?? {}),
+        jev: {
+          ...DEFAULT_CONFIG.toolHub.jev,
+          ...(picked.toolHub?.jev ?? {})
+        },
         llm: {
           ...DEFAULT_CONFIG.toolHub.llm,
           ...(picked.toolHub?.llm ?? {})
@@ -1013,6 +1017,10 @@ function parseToolHub(value: unknown): Partial<ToolHubConfig> | undefined {
   if (typeof browserAutomation === "boolean") {
     toolHub.browserAutomation = browserAutomation;
   }
+  const resolverMode = value.resolverMode ?? value.resolver_mode;
+  if (resolverMode === "jev" || resolverMode === "llm") {
+    toolHub.resolverMode = resolverMode;
+  }
   const maxTools = readNumber(value.maxTools ?? value.max_tools);
   if (maxTools !== undefined) {
     toolHub.maxTools = clampNumber(maxTools, 1, 20);
@@ -1044,7 +1052,41 @@ function parseToolHub(value: unknown): Partial<ToolHubConfig> | undefined {
     toolHub.llm = llm as ToolHubConfig["llm"];
   }
 
+  const rawJev = isObject(value.jev) ? value.jev : {};
+  const jev: Partial<ToolHubConfig["jev"]> = {};
+  const jevApiKey = readString(rawJev.apiKey) || readString(rawJev.api_key);
+  if (jevApiKey !== undefined) {
+    jev.apiKey = jevApiKey;
+  }
+  const endpoint = readString(rawJev.endpoint);
+  if (endpoint !== undefined) {
+    jev.endpoint = endpoint;
+  }
+  const jevModel = readString(rawJev.model);
+  if (jevModel !== undefined) {
+    jev.model = jevModel;
+  }
+  const gateThreshold = readNumber(rawJev.gateThreshold ?? rawJev.gate_threshold);
+  if (gateThreshold !== undefined) {
+    jev.gateThreshold = clampNumber(gateThreshold, 0, 1);
+  }
+  const fitThreshold = readNumber(rawJev.fitThreshold ?? rawJev.fit_threshold);
+  if (fitThreshold !== undefined) {
+    jev.fitThreshold = clampNumber(fitThreshold, 0, 1);
+  }
+  const shortlistSize = readNumber(rawJev.shortlistSize ?? rawJev.shortlist_size);
+  if (shortlistSize !== undefined) {
+    jev.shortlistSize = clampNumber(shortlistSize, 1, 64);
+  }
+  if (Object.keys(jev).length > 0) {
+    toolHub.jev = jev as ToolHubConfig["jev"];
+  }
+
   return Object.keys(toolHub).length ? toolHub : undefined;
+}
+
+export function toolHubConfigFromRawForTest(value: unknown): Partial<ToolHubConfig> | undefined {
+  return parseToolHub(value);
 }
 
 function parseMediaTools(value: unknown): Partial<MediaToolsConfig> | undefined {

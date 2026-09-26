@@ -36,9 +36,18 @@ export type AppCopy = {
     toolHubDescription: string;
     toolHubEnabled: string;
     toolHubEnabledDescription: string;
+    toolHubJevApiKey: string;
+    toolHubJevEndpoint: string;
+    toolHubJevFitThreshold: string;
+    toolHubJevGateThreshold: string;
+    toolHubJevModel: string;
+    toolHubJevShortlistSize: string;
     toolHubMaxTools: string;
     toolHubModel: string;
     toolHubModelPlaceholder: string;
+    toolHubResolverMode: string;
+    toolHubResolverModeJev: string;
+    toolHubResolverModeLlm: string;
     toolHubTimeout: string;
     tray: string;
     trayBalanceProgressAccount: string;
@@ -152,9 +161,18 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       toolHubDescription: "Route configured MCP servers through ToolHub, where the model finds the tools needed for each task.",
       toolHubEnabled: "Enable ToolHub",
       toolHubEnabledDescription: "Expose a compact ToolHub MCP server instead of all configured MCP tools.",
+      toolHubJevApiKey: "TypeSafe API key",
+      toolHubJevEndpoint: "TypeSafe endpoint",
+      toolHubJevFitThreshold: "Tool fit threshold",
+      toolHubJevGateThreshold: "Any-tool gate threshold",
+      toolHubJevModel: "Jev model",
+      toolHubJevShortlistSize: "Jev shortlist size",
       toolHubMaxTools: "Max tools",
       toolHubModel: "Resolver model",
       toolHubModelPlaceholder: "Select a configured model",
+      toolHubResolverMode: "Resolver mode",
+      toolHubResolverModeJev: "TypeSafe Jev",
+      toolHubResolverModeLlm: "LLM",
       toolHubTimeout: "Timeout ms",
       tray: "Tray",
       trayBalanceProgressAccount: "Account",
@@ -783,9 +801,18 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       toolHubDescription: "将已配置的 MCP servers 交给 ToolHub，由模型负责检索需要的工具。",
       toolHubEnabled: "启用 ToolHub",
       toolHubEnabledDescription: "向 Agent 暴露紧凑的 ToolHub MCP，而不是所有已配置 MCP 工具。",
+      toolHubJevApiKey: "TypeSafe API 密钥",
+      toolHubJevEndpoint: "TypeSafe 接口地址",
+      toolHubJevFitThreshold: "工具匹配阈值",
+      toolHubJevGateThreshold: "是否需要工具阈值",
+      toolHubJevModel: "Jev 模型",
+      toolHubJevShortlistSize: "Jev 候选工具数",
       toolHubMaxTools: "最大工具数",
       toolHubModel: "检索模型",
       toolHubModelPlaceholder: "选择已配置模型",
+      toolHubResolverMode: "检索模式",
+      toolHubResolverModeJev: "TypeSafe Jev",
+      toolHubResolverModeLlm: "LLM",
       toolHubTimeout: "超时毫秒",
       tray: "托盘",
       trayBalanceProgressAccount: "账户",

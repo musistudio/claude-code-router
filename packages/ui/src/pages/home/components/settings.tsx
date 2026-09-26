@@ -641,6 +641,22 @@ function ToolHubSettingsPage({
     }));
   };
 
+  const patchJev = (patch: Partial<AppConfig["toolHub"]["jev"]>) => {
+    onChange({
+      jev: normalizeToolHubConfig({
+        ...toolHub,
+        jev: { ...toolHub.jev, ...patch }
+      }).jev
+    });
+  };
+
+  const patchJevNumber = (key: "fitThreshold" | "gateThreshold" | "shortlistSize", raw: string) => {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed)) {
+      patchJev({ [key]: parsed });
+    }
+  };
+
   const openAddMcpDialog = () => {
     setMcpDialogDraft(createMcpServerDraft(toolHub.mcpServers));
     setMcpDialogError("");
@@ -731,14 +747,81 @@ function ToolHubSettingsPage({
             onChange={(browserAutomation) => onChange({ browserAutomation })}
           />
           <div className="grid grid-cols-1 gap-3 rounded-md border border-border/70 bg-card/70 p-3 md:grid-cols-2">
-            <Field className="md:col-span-2" label={copy.settings.toolHubModel}>
-              <ModelSelector
-                onChange={selectProviderModel}
-                placeholder={copy.settings.toolHubModelPlaceholder}
-                providers={providers}
-                value={selectedProviderModel}
+            <Field className="md:col-span-2" label={copy.settings.toolHubResolverMode}>
+              <SelectControl
+                onChange={(value) => onChange({ resolverMode: value === "jev" ? "jev" : "llm" })}
+                options={[
+                  { label: copy.settings.toolHubResolverModeLlm, value: "llm" },
+                  { label: copy.settings.toolHubResolverModeJev, value: "jev" }
+                ]}
+                value={toolHub.resolverMode}
               />
             </Field>
+            {toolHub.resolverMode === "jev" ? (
+              <>
+                <Field label={copy.settings.toolHubJevApiKey}>
+                  <Input
+                    autoComplete="off"
+                    onChange={(event) => patchJev({ apiKey: event.target.value })}
+                    placeholder="TYPESAFE_API_KEY"
+                    type="password"
+                    value={toolHub.jev.apiKey}
+                  />
+                </Field>
+                <Field label={copy.settings.toolHubJevModel}>
+                  <Input
+                    onChange={(event) => patchJev({ model: event.target.value })}
+                    placeholder="jev-latest"
+                    value={toolHub.jev.model}
+                  />
+                </Field>
+                <Field className="md:col-span-2" label={copy.settings.toolHubJevEndpoint}>
+                  <Input
+                    onChange={(event) => patchJev({ endpoint: event.target.value })}
+                    placeholder="https://api.typesafe.ai/v1/systemone"
+                    value={toolHub.jev.endpoint}
+                  />
+                </Field>
+                <Field label={copy.settings.toolHubJevGateThreshold}>
+                  <Input
+                    min={0}
+                    max={1}
+                    onChange={(event) => patchJevNumber("gateThreshold", event.target.value)}
+                    step={0.01}
+                    type="number"
+                    value={String(toolHub.jev.gateThreshold)}
+                  />
+                </Field>
+                <Field label={copy.settings.toolHubJevFitThreshold}>
+                  <Input
+                    min={0}
+                    max={1}
+                    onChange={(event) => patchJevNumber("fitThreshold", event.target.value)}
+                    step={0.01}
+                    type="number"
+                    value={String(toolHub.jev.fitThreshold)}
+                  />
+                </Field>
+                <Field className="md:col-span-2" label={copy.settings.toolHubJevShortlistSize}>
+                  <Input
+                    min={1}
+                    max={64}
+                    onChange={(event) => patchJevNumber("shortlistSize", event.target.value)}
+                    type="number"
+                    value={String(toolHub.jev.shortlistSize)}
+                  />
+                </Field>
+              </>
+            ) : (
+              <Field className="md:col-span-2" label={copy.settings.toolHubModel}>
+                <ModelSelector
+                  onChange={selectProviderModel}
+                  placeholder={copy.settings.toolHubModelPlaceholder}
+                  providers={providers}
+                  value={selectedProviderModel}
+                />
+              </Field>
+            )}
             <Field label={copy.settings.toolHubMaxTools}>
               <Input
                 min={1}

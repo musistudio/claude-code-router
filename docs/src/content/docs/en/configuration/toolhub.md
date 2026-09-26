@@ -17,7 +17,9 @@ Use ToolHub for tools that are useful occasionally but do not need to stay loade
 ## How it works
 
 1. Enable ToolHub in **Settings → ToolHub**.
-2. Select a configured model as the **Resolver model**. It reads the MCP tool catalog and chooses the tools needed for the task. Prefer `deepseek-v4-flash`, or another stable lightweight model in a similar flash-price tier.
+2. Choose a **Resolver mode**:
+   - **TypeSafe Jev**: enter a TypeSafe API key. Jev first decides whether the task needs any MCP tool, then independently filters the shortlisted tools that are actually required. A no-match result is returned normally.
+   - **Current LLM resolver**: select a configured **Resolver model**. Prefer `deepseek-v4-flash`, or another stable lightweight model in a similar flash-price tier.
 3. Add or import backend MCP servers. ToolHub supports `stdio`, `streamable-http`, and `sse`.
 4. Open Claude Code or Codex from CCR. CCR writes the `ccr-toolhub` MCP server into that agent config.
 5. When the agent receives a request about external services, installed MCP capabilities, or business APIs, it calls `tool_hub.resolve` first, then uses `tool_hub.invoke` to run the selected tools.
@@ -75,7 +77,12 @@ The extension reads only the domains listed in the CCR import job. It does not e
 | --- | --- |
 | Enable ToolHub | Exposes `ccr-toolhub` to agents. If no backend MCP server is available, CCR does not generate a ToolHub MCP config. |
 | Built-in browser automation | Shown only after ToolHub is enabled. Lets agents use CCR Desktop's built-in browser for web tasks. |
+| Resolver mode | Switches between the existing LLM resolver and TypeSafe Jev. The default remains `llm` for backward compatibility. |
 | Resolver model | Choose from configured provider models. Prefer `deepseek-v4-flash`, or another stable lightweight model in a similar flash-price tier with enough tool-description understanding. |
+| TypeSafe API key / endpoint / Jev model | Shown only in Jev mode. The default endpoint is `https://api.typesafe.ai/v1/systemone`; the default model is `jev-latest`. The key is passed only to the ToolHub child process and TypeSafe endpoint. |
+| Any-tool gate threshold | Jev's first-stage gate. Values below it return no match; default `0.65`. |
+| Tool fit threshold | Jev's independent judgment threshold for every shortlisted tool; default `0.75`. |
+| Jev shortlist size | Candidate count sent to the second-stage judgments. Range `1` to `64`, default `16`. |
 | Max tools | Maximum tools returned by one resolve call. Range `1` to `20`, default `10`. |
 | Timeout ms | Base timeout for ToolHub resolving and invocation. Range `8000` to `300000`, default `60000`. If a backend MCP server needs a longer request timeout, CCR raises the effective invocation timeout to match the backend. |
 | MCP servers | Backend tool sources. Each server needs a unique name plus transport, command or URL, environment variables, headers, and timeouts. |
@@ -112,6 +119,15 @@ The desktop app's SQLite config is the effective source, so prefer editing throu
   "toolHub": {
     "enabled": true,
     "browserAutomation": true,
+    "resolverMode": "jev",
+    "jev": {
+      "apiKey": "typesafe-...",
+      "endpoint": "https://api.typesafe.ai/v1/systemone",
+      "model": "jev-latest",
+      "gateThreshold": 0.65,
+      "fitThreshold": 0.75,
+      "shortlistSize": 16
+    },
     "llm": {
       "apiKey": "sk-...",
       "baseUrl": "https://api.openai.com/v1",
@@ -160,7 +176,7 @@ The import dialog also accepts common MCP JSON:
 ## Troubleshooting
 
 - Agent cannot see ToolHub: make sure ToolHub is enabled and at least one backend MCP server is configured or **Built-in browser automation** is turned on, then reopen Claude Code or Codex from CCR.
-- Missing resolver model or API key: select a configured resolver model and confirm the provider credential works.
+- Missing credentials: in LLM mode, select a configured resolver model and confirm its provider credential works; in Jev mode, enter a TypeSafe API key, or provide `TYPESAFE_API_KEY` when launching the runtime directly.
 - The agent cannot use built-in browser automation: make sure you are using CCR Desktop, turned on **Built-in browser automation** in **Settings → ToolHub**, and reopened Claude Code or Codex from CCR. CLI, server deployments, and pure web environments do not include this built-in capability.
 - Chrome login import confirmation keeps waiting for the extension: make sure the unpacked `extension/chrome` extension is loaded in Chrome and has site access for the target domains. Open the confirmation URL in Chrome manually.
 - No tools are resolved: confirm the MCP server can list tools, improve tool names and descriptions, or increase **Max tools**.

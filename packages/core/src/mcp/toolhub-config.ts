@@ -112,7 +112,14 @@ export function toolHubMcpRuntimeConfig(
       TOOLHUB_OPENAI_API_KEY: options.resolver?.apiKey ?? toolHub.llm?.apiKey ?? "",
       TOOLHUB_OPENAI_BASE_URL: options.resolver?.baseUrl ?? toolHub.llm?.baseUrl ?? "https://api.openai.com/v1",
       TOOLHUB_OPENAI_MODEL: options.resolver?.model ?? toolHub.llm?.model ?? "",
-      TOOLHUB_REQUEST_TIMEOUT_MS: String(requestTimeoutMs)
+      TOOLHUB_REQUEST_TIMEOUT_MS: String(requestTimeoutMs),
+      TOOLHUB_RESOLVER_MODE: toolHub.resolverMode ?? "llm",
+      TOOLHUB_TYPESAFE_API_KEY: toolHub.jev?.apiKey ?? "",
+      TOOLHUB_TYPESAFE_ENDPOINT: toolHub.jev?.endpoint ?? "https://api.typesafe.ai/v1/systemone",
+      TOOLHUB_TYPESAFE_FIT_THRESHOLD: String(toolHub.jev?.fitThreshold ?? 0.75),
+      TOOLHUB_TYPESAFE_GATE_THRESHOLD: String(toolHub.jev?.gateThreshold ?? 0.65),
+      TOOLHUB_TYPESAFE_MODEL: toolHub.jev?.model ?? "jev-latest",
+      TOOLHUB_TYPESAFE_SHORTLIST_SIZE: String(toolHub.jev?.shortlistSize ?? 16)
     }
   };
 }

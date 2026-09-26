@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import os from "node:os";
 import path from "node:path";
 import OpenAI from "openai";
+import { ToolHubJevResolver } from "./toolhub-jev-resolver";
 
 type JsonPrimitive = boolean | null | number | string;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -139,7 +140,8 @@ type CodeToolSessionState = {
   }>;
 };
 
-type LlmToolResolution = {
+type ToolResolution = {
+  noMatch?: boolean;
   plannedSteps?: string[];
   referencedTokens?: string[];
   selectedTools: CatalogEntry[];
@@ -151,6 +153,7 @@ type ResolveOutput = {
   alreadyResolved?: boolean;
   executionPlanInstructions?: string;
   executionPlanJs?: string;
+  noMatch?: boolean;
   nextAction?: {
     confirmationRequiredFor: string[];
     firstAction: {
@@ -168,7 +171,7 @@ type ResolveOutput = {
   plannedSteps?: string[];
   reasoningSummary: string;
   referencedTokens?: string[];
-  retriever?: "llm" | "local";
+  retriever?: "jev" | "llm" | "local";
   runtimeContext?: {
     availableContextKeys: string[];
     summary: string[];
@@ -177,6 +180,7 @@ type ResolveOutput = {
   selectedTools: CatalogEntry[];
   tsDefinitions?: string;
   usedLlm?: boolean;
+  usedJev?: boolean;
   workflowSketch?: string;
 };
 
@@ -476,11 +480,15 @@ class ToolHubRuntime {
     timeoutMs?: number;
     withoutSideEffects: boolean;
   }): Promise<ResolveOutput> {
-    let resolution: LlmToolResolution;
-    let retriever: NonNullable<ResolveOutput["retriever"]> = "llm";
-    let usedLlm = true;
+    let resolution: ToolResolution;
+    const configuredRetriever = toolHubResolverMode();
+    let retriever: NonNullable<ResolveOutput["retriever"]> = configuredRetriever;
+    let usedLlm = configuredRetriever === "llm";
+    let usedJev = configuredRetriever === "jev";
     try {
-      resolution = await this.resolveCatalogWithLlm(input);
+      resolution = configuredRetriever === "jev"
+        ? await this.resolveCatalogWithJev(input)
+        : await this.resolveCatalogWithLlm(input);
     } catch (error) {
       resolution = this.resolveCatalogLocally({ ...input, error });
       if (resolution.selectedTools.length === 0) {
@@ -488,6 +496,7 @@ class ToolHubRuntime {
       }
       retriever = "local";
       usedLlm = false;
+      usedJev = false;
     }
 
     let selectedTools = expandToolBundleWithCompanionTools(
@@ -501,6 +510,21 @@ class ToolHubRuntime {
       selectedTools = selectedTools.filter((tool) => !tool.invocation.sideEffect);
     }
     if (selectedTools.length === 0) {
+      if (resolution.noMatch) {
+        return {
+          noMatch: true,
+          reasoningSummary: resolution.summary,
+          retriever,
+          runtimeContext: {
+            availableContextKeys: ["selectedTools"],
+            summary: ["No configured MCP tool materially helps this task. Continue without invoking ToolHub tools."]
+          },
+          selectedToolNames: [],
+          selectedTools: [],
+          usedJev,
+          usedLlm
+        };
+      }
       throw new Error("ToolHub could not resolve any matching MCP tools for this task.");
     }
 
@@ -512,8 +536,43 @@ class ToolHubRuntime {
       plannedSteps: resolution.plannedSteps,
       referencedTokens: resolution.referencedTokens,
       retriever,
+      usedJev,
       usedLlm,
       workflowSketch: executionPlanJs
+    };
+  }
+
+  private async resolveCatalogWithJev(input: {
+    catalog: CatalogEntry[];
+    context?: Record<string, unknown>;
+    maxTools: number;
+    observations: CodeToolSessionState["recentObservations"];
+    task: string;
+    timeoutMs?: number;
+  }): Promise<ToolResolution> {
+    const resolver = new ToolHubJevResolver();
+    const result = await resolver.resolve({
+      catalog: input.catalog.map((tool) => ({
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+        serverLabel: tool.serverLabel,
+        serverName: tool.serverName,
+        tags: tool.tags,
+        title: tool.title,
+        toolName: tool.toolName
+      })),
+      context: input.context,
+      maxTools: input.maxTools,
+      observations: input.observations,
+      task: input.task,
+      timeoutMs: input.timeoutMs ?? envNumber("TOOLHUB_REQUEST_TIMEOUT_MS", defaultRequestTimeoutMs)
+    });
+    return {
+      noMatch: result.noMatch,
+      selectedTools: result.selectedToolNames
+        .map((toolName) => this.resolveCatalogEntry(toolName, input.catalog))
+        .filter((entry): entry is CatalogEntry => Boolean(entry)),
+      summary: result.summary
     };
   }
 
@@ -524,7 +583,7 @@ class ToolHubRuntime {
     observations: CodeToolSessionState["recentObservations"];
     task: string;
     timeoutMs?: number;
-  }): Promise<LlmToolResolution> {
+  }): Promise<ToolResolution> {
     const searchAgent = new OpenAiToolHubSearchAgent({
       openAiApiKey: env("TOOLHUB_OPENAI_API_KEY"),
       openAiBaseUrl: env("TOOLHUB_OPENAI_BASE_URL") || "https://api.openai.com/v1",
@@ -560,7 +619,7 @@ class ToolHubRuntime {
     maxTools: number;
     observations: CodeToolSessionState["recentObservations"];
     task: string;
-  }): LlmToolResolution {
+  }): ToolResolution {
     const taskText = [
       input.task,
       input.context ? JSON.stringify(input.context) : "",
@@ -2907,6 +2966,10 @@ function env(name: string): string {
 function envNumber(name: string, fallback: number): number {
   const parsed = Number(process.env[name]);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function toolHubResolverMode(): "jev" | "llm" {
+  return env("TOOLHUB_RESOLVER_MODE").toLowerCase() === "jev" ? "jev" : "llm";
 }
 
 function normalizeMaxTools(value: unknown): number {

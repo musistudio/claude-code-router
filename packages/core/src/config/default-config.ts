@@ -223,6 +223,14 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions = {}): A
     toolHub: {
       browserAutomation: false,
       enabled: false,
+      jev: {
+        apiKey: "",
+        endpoint: "https://api.typesafe.ai/v1/systemone",
+        fitThreshold: 0.75,
+        gateThreshold: 0.65,
+        model: "jev-latest",
+        shortlistSize: 16
+      },
       llm: {
         apiKey: "",
         baseUrl: "https://api.openai.com/v1",
@@ -230,7 +238,8 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions = {}): A
       },
       mcpServers: [],
       maxTools: 10,
-      requestTimeoutMs: 60000
+      requestTimeoutMs: 60000,
+      resolverMode: "llm"
     },
     virtualModelProfiles: []
   };

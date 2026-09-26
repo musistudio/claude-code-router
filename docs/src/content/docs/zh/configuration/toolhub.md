@@ -17,7 +17,9 @@ lead: 将多个 MCP server 收束成一个紧凑入口，让 Agent 按任务懒�
 ## 工作方式
 
 1. 在 **设置 → ToolHub** 中启用 ToolHub。
-2. 选择一个已配置模型作为 **检索模型**。它负责阅读 MCP 工具目录并挑选本轮任务需要的工具；建议使用 `deepseek-v4-flash`，或同等 Flash 价位、响应稳定的轻量模型。
+2. 选择 **检索模式**：
+   - **TypeSafe Jev**：填写 TypeSafe API Key。Jev 先判断任务是否需要任何 MCP 工具，再从候选工具中独立筛选本轮真正需要的工具；没有匹配工具时会正常返回空结果。
+   - **当前 LLM 检索器**：选择一个已配置模型作为 **检索模型**。建议使用 `deepseek-v4-flash`，或同等 Flash 价位、响应稳定的轻量模型。
 3. 添加或导入后端 MCP server。ToolHub 支持 `stdio`、`streamable-http` 和 `sse`。
 4. 从 CCR 打开 Claude Code 或 Codex。CCR 会在对应 Agent 配置中写入 `ccr-toolhub`。
 5. Agent 遇到外部服务、已安装 MCP 能力或业务 API 相关请求时，先调用 `tool_hub.resolve`，再用 `tool_hub.invoke` 执行选中的工具。
@@ -75,7 +77,12 @@ ToolHub 会合并 **ToolHub 页面配置的 MCP servers** 和兼容旧配置中�
 | --- | --- |
 | 启用 ToolHub | 开启后才会向 Agent 暴露 `ccr-toolhub`。如果没有可用后端 MCP server，CCR 不会生成 ToolHub MCP 配置。 |
 | 内置浏览器自动化 | 仅在启用 ToolHub 后显示。开启后让 Agent 可以使用 CCR Desktop 的内置浏览器完成网页操作。 |
+| 检索模式 | 在现有 LLM 检索器和 TypeSafe Jev 之间切换。默认保持 `llm`，兼容旧配置。 |
 | 检索模型 | 从已配置供应商模型中选择。建议使用 `deepseek-v4-flash`，或同等 Flash 价位、响应稳定、工具理解能力足够的轻量模型。 |
+| TypeSafe API 密钥 / 接口 / Jev 模型 | 仅 Jev 模式显示。默认接口为 `https://api.typesafe.ai/v1/systemone`，默认模型为 `jev-latest`。API Key 只传给 ToolHub 子进程和 TypeSafe 接口。 |
+| 是否需要工具阈值 | Jev 的第一层门控，低于此值直接返回无匹配，默认 `0.65`。 |
+| 工具匹配阈值 | Jev 对 shortlist 中每个工具的独立判定阈值，默认 `0.75`。 |
+| Jev 候选工具数 | 进入第二层独立判定的候选数，范围 `1` 到 `64`，默认 `16`。 |
 | 最大工具数 | 单次解析最多返回的工具数量，范围 `1` 到 `20`，默认 `10`。 |
 | 超时毫秒 | ToolHub 解析和调用的基础超时时间，范围 `8000` 到 `300000`，默认 `60000`。如果后端 MCP server 需要更长 request timeout，CCR 会按后端超时自动抬高实际调用超时。 |
 | MCP servers | 后端工具来源。每个 server 需要唯一名称，并配置 transport、命令或 URL、环境变量、headers 和超时。 |
@@ -112,6 +119,15 @@ ToolHub 会合并 **ToolHub 页面配置的 MCP servers** 和兼容旧配置中�
   "toolHub": {
     "enabled": true,
     "browserAutomation": true,
+    "resolverMode": "jev",
+    "jev": {
+      "apiKey": "typesafe-...",
+      "endpoint": "https://api.typesafe.ai/v1/systemone",
+      "model": "jev-latest",
+      "gateThreshold": 0.65,
+      "fitThreshold": 0.75,
+      "shortlistSize": 16
+    },
     "llm": {
       "apiKey": "sk-...",
       "baseUrl": "https://api.openai.com/v1",
@@ -160,7 +176,7 @@ ToolHub 会合并 **ToolHub 页面配置的 MCP servers** 和兼容旧配置中�
 ## 排查
 
 - Agent 看不到 ToolHub：确认已启用 ToolHub，并且至少配置了一个后端 MCP server 或开启了 **内置浏览器自动化**，然后从 CCR 重新打开 Claude Code 或 Codex。
-- 提示缺少检索模型或 API Key：在 **检索模型** 中选择已配置模型，并确认供应商凭据可用。
+- 提示缺少凭据：LLM 模式需选择已配置检索模型并确认供应商凭据可用；Jev 模式需填写 TypeSafe API Key，或在直接启动 runtime 时提供 `TYPESAFE_API_KEY`。
 - Agent 无法使用内置浏览器自动化：确认正在使用 CCR Desktop，并且已在 **设置 → ToolHub** 中开启 **内置浏览器自动化**，然后从 CCR 重新打开 Claude Code 或 Codex。CLI、服务器部署或纯 Web 环境没有这项内置能力。
 - Chrome 登录态导入确认页一直等待扩展：确认已在 Chrome 中加载 `extension/chrome` 解包扩展，并允许扩展访问要导入的目标域名。请使用 Chrome 打开确认页 URL。
 - 解析不到工具：检查 MCP server 是否能正常列出工具，工具名称和描述是否足够清楚，必要时提高 **最大工具数**。

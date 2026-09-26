@@ -976,13 +976,26 @@ export type ToolHubLlmConfig = {
   model: string;
 };
 
+export type ToolHubJevConfig = {
+  apiKey: string;
+  endpoint: string;
+  fitThreshold: number;
+  gateThreshold: number;
+  model: string;
+  shortlistSize: number;
+};
+
+export type ToolHubResolverMode = "jev" | "llm";
+
 export type ToolHubConfig = {
   browserAutomation: boolean;
   enabled: boolean;
+  jev: ToolHubJevConfig;
   llm: ToolHubLlmConfig;
   mcpServers: GatewayMcpServerConfig[];
   maxTools: number;
   requestTimeoutMs: number;
+  resolverMode: ToolHubResolverMode;
 };
 
 export type ContextArchiveConfig = {

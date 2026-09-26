@@ -148,11 +148,30 @@ export function normalizeToolHubConfig(config: Partial<AppConfig["toolHub"]> | u
   const requestTimeoutMs = typeof config?.requestTimeoutMs === "number" && Number.isFinite(config.requestTimeoutMs)
     ? Math.min(Math.max(Math.floor(config.requestTimeoutMs), 8000), 300000)
     : fallbackConfig.toolHub.requestTimeoutMs;
+  const clampProbability = (value: unknown, fallback: number) =>
+    typeof value === "number" && Number.isFinite(value) ? Math.min(Math.max(value, 0), 1) : fallback;
+  const shortlistSize = typeof config?.jev?.shortlistSize === "number" && Number.isFinite(config.jev.shortlistSize)
+    ? Math.min(Math.max(Math.floor(config.jev.shortlistSize), 1), 64)
+    : fallbackConfig.toolHub.jev.shortlistSize;
   return {
     ...fallbackConfig.toolHub,
     ...(config || {}),
     browserAutomation: Boolean(config?.browserAutomation),
     enabled: Boolean(config?.enabled),
+    jev: {
+      ...fallbackConfig.toolHub.jev,
+      ...(config?.jev || {}),
+      apiKey: typeof config?.jev?.apiKey === "string" ? config.jev.apiKey : "",
+      endpoint: typeof config?.jev?.endpoint === "string" && config.jev.endpoint.trim()
+        ? config.jev.endpoint.trim()
+        : fallbackConfig.toolHub.jev.endpoint,
+      fitThreshold: clampProbability(config?.jev?.fitThreshold, fallbackConfig.toolHub.jev.fitThreshold),
+      gateThreshold: clampProbability(config?.jev?.gateThreshold, fallbackConfig.toolHub.jev.gateThreshold),
+      model: typeof config?.jev?.model === "string" && config.jev.model.trim()
+        ? config.jev.model.trim()
+        : fallbackConfig.toolHub.jev.model,
+      shortlistSize
+    },
     llm: {
       ...fallbackConfig.toolHub.llm,
       ...(config?.llm || {}),
@@ -164,7 +183,8 @@ export function normalizeToolHubConfig(config: Partial<AppConfig["toolHub"]> | u
     },
     mcpServers: Array.isArray(config?.mcpServers) ? normalizeMcpServers(config.mcpServers) : fallbackConfig.toolHub.mcpServers,
     maxTools,
-    requestTimeoutMs
+    requestTimeoutMs,
+    resolverMode: config?.resolverMode === "jev" ? "jev" : "llm"
   };
 }
 

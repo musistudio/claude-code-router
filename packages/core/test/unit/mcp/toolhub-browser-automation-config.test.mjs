@@ -187,3 +187,39 @@ test("ToolHub runtime skips built-in browser automation until enabled", () => {
   assert.equal(browserAutomationMcpEnabled(config), false);
   assert.equal(toolHubMcpRuntimeConfig(config), undefined);
 });
+
+test("ToolHub runtime maps Jev resolver settings to isolated TypeSafe environment variables", () => {
+  const config = createDefaultAppConfig();
+  config.toolHub = {
+    ...config.toolHub,
+    enabled: true,
+    jev: {
+      apiKey: "typesafe-secret",
+      endpoint: "https://typesafe.example/v1/systemone",
+      fitThreshold: 0.78,
+      gateThreshold: 0.66,
+      model: "jev-1.13.0",
+      shortlistSize: 12
+    },
+    mcpServers: [{
+      headers: {},
+      name: "demo",
+      protocolVersion: "2024-11-05",
+      requestTimeoutMs: 10000,
+      startupTimeoutMs: 10000,
+      transport: "streamable-http",
+      url: "http://127.0.0.1:9999/mcp"
+    }],
+    resolverMode: "jev"
+  };
+
+  const runtime = toolHubMcpRuntimeConfig(config);
+  assert.ok(runtime);
+  assert.equal(runtime.env.TOOLHUB_RESOLVER_MODE, "jev");
+  assert.equal(runtime.env.TOOLHUB_TYPESAFE_API_KEY, "typesafe-secret");
+  assert.equal(runtime.env.TOOLHUB_TYPESAFE_ENDPOINT, "https://typesafe.example/v1/systemone");
+  assert.equal(runtime.env.TOOLHUB_TYPESAFE_FIT_THRESHOLD, "0.78");
+  assert.equal(runtime.env.TOOLHUB_TYPESAFE_GATE_THRESHOLD, "0.66");
+  assert.equal(runtime.env.TOOLHUB_TYPESAFE_MODEL, "jev-1.13.0");
+  assert.equal(runtime.env.TOOLHUB_TYPESAFE_SHORTLIST_SIZE, "12");
+});

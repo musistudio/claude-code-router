@@ -659,6 +659,120 @@ test("built ToolHub MCP runtime keeps resolve cache scoped by task", async (t) =
   assert.deepEqual(second.result.selectedToolNames, ["mcp.multi_mcp.campaign-calendar"]);
 });
 
+test("built ToolHub MCP runtime uses Jev mode and treats no-match as a valid result", async (t) => {
+  const runtime = toolHubRuntimePath();
+  if (!existsSync(runtime)) {
+    t.skip("ToolHub MCP runtime has not been built.");
+    return;
+  }
+
+  const backend = createMcpHttpServer({
+    serverName: "multi-mcp",
+    tools: [
+      {
+        description: "查询指定城市的天气预报。",
+        inputSchema: { required: ["city"], type: "object" },
+        name: "weather-forecast"
+      },
+      {
+        description: "查询麦当劳中国当月的营销活动日历。",
+        inputSchema: { type: "object" },
+        name: "campaign-calendar"
+      }
+    ]
+  });
+  const typeSafe = createTypeSafeResolverServer();
+  try {
+    await Promise.all([listen(backend), listen(typeSafe)]);
+  } catch (error) {
+    backend.close();
+    typeSafe.close();
+    t.skip(`Local HTTP listen is unavailable: ${error.message}`);
+    return;
+  }
+  t.after(() => {
+    backend.close();
+    typeSafe.close();
+  });
+
+  const child = spawn(process.execPath, [runtime], {
+    env: {
+      ...process.env,
+      TOOLHUB_MCP_SERVERS_JSON: JSON.stringify([
+        {
+          name: "multi-mcp",
+          transport: "streamable-http",
+          url: `http://127.0.0.1:${backend.address().port}/mcp`
+        }
+      ]),
+      TOOLHUB_REQUEST_TIMEOUT_MS: "10000",
+      TOOLHUB_RESOLVER_MODE: "jev",
+      TOOLHUB_TYPESAFE_API_KEY: "typesafe-test-key",
+      TOOLHUB_TYPESAFE_ENDPOINT: `http://127.0.0.1:${typeSafe.address().port}/v1/systemone`,
+      TOOLHUB_TYPESAFE_FIT_THRESHOLD: "0.75",
+      TOOLHUB_TYPESAFE_GATE_THRESHOLD: "0.65",
+      TOOLHUB_TYPESAFE_MODEL: "jev-test",
+      TOOLHUB_TYPESAFE_SHORTLIST_SIZE: "16"
+    },
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+  t.after(() => child.kill());
+  const stderr = [];
+  child.stderr.on("data", (chunk) => stderr.push(chunk.toString("utf8")));
+  const reader = jsonLineReader(child);
+  writeJsonLine(child, {
+    id: 1,
+    jsonrpc: "2.0",
+    method: "initialize",
+    params: {
+      capabilities: {},
+      clientInfo: { name: "jev-mode-test", version: "1.0.0" },
+      protocolVersion: "2024-11-05"
+    }
+  });
+  await reader.nextMessage(1);
+  writeJsonLine(child, { jsonrpc: "2.0", method: "notifications/initialized", params: {} });
+
+  writeJsonLine(child, {
+    id: 2,
+    jsonrpc: "2.0",
+    method: "tools/call",
+    params: {
+      name: "tool_hub.resolve",
+      arguments: { task: "查询麦当劳这个月有什么优惠活动" }
+    }
+  });
+  const selected = await reader.nextMessage(2, 12_000).catch((error) => {
+    error.message += ` stderr: ${stderr.join("")}`;
+    throw error;
+  });
+  assert.equal(selected.error, undefined);
+  assert.equal(selected.result.retriever, "jev");
+  assert.equal(selected.result.usedJev, true);
+  assert.equal(selected.result.usedLlm, false);
+  assert.deepEqual(selected.result.selectedToolNames, ["mcp.multi_mcp.campaign-calendar"]);
+
+  writeJsonLine(child, {
+    id: 3,
+    jsonrpc: "2.0",
+    method: "tools/call",
+    params: {
+      name: "tool_hub.resolve",
+      arguments: { task: "写一首关于秋天的短诗，不要使用任何工具" }
+    }
+  });
+  const noMatch = await reader.nextMessage(3, 12_000).catch((error) => {
+    error.message += ` stderr: ${stderr.join("")}`;
+    throw error;
+  });
+  assert.equal(noMatch.error, undefined);
+  assert.equal(noMatch.result.noMatch, true);
+  assert.equal(noMatch.result.retriever, "jev");
+  assert.deepEqual(noMatch.result.selectedToolNames, []);
+  assert.equal(typeSafe.requests.length, 3, "tool task uses two Jev stages; no-match exits after the gate stage");
+  assert.equal(typeSafe.requests.every((request) => request.authorization === "Bearer typesafe-test-key"), true);
+});
+
 function toolHubRuntimePath() {
   return path.join(process.cwd(), ".test-dist", "core", "runtime", "toolhub-mcp.js");
 }
@@ -826,6 +940,44 @@ function createFixedResolverServer(toolNames) {
     response.statusCode = 404;
     response.end("not found");
   });
+}
+
+function createTypeSafeResolverServer() {
+  const requests = [];
+  const server = createServer(async (request, response) => {
+    const payload = await readJsonBody(request);
+    requests.push({
+      authorization: request.headers.authorization,
+      payload
+    });
+    const tools = Array.isArray(payload.state?.tools) ? payload.state.tools : [];
+    const noMatch = /不要使用任何工具/.test(String(payload.state?.task ?? ""));
+    let answers;
+    if (payload.questions?.primary_tool) {
+      const targetIndex = tools.findIndex((tool) => String(tool?.name).endsWith("campaign-calendar"));
+      const probabilities = Object.fromEntries(tools.map((_, index) => [`t${index}`, index === targetIndex ? 0.96 : 0.02]));
+      probabilities.none = noMatch ? 0.97 : 0.02;
+      answers = {
+        any_tool: { noul: noMatch ? 0.08 : 0.94, type: "noul" },
+        primary_tool: {
+          choice: noMatch || targetIndex < 0 ? "none" : `t${targetIndex}`,
+          confidence: 0.95,
+          probabilities,
+          type: "choice"
+        }
+      };
+    } else {
+      answers = Object.fromEntries(Object.keys(payload.questions ?? {}).map((id) => {
+        const index = Number(id.slice(1));
+        const matches = String(tools[index]?.name).endsWith("campaign-calendar");
+        return [id, { noul: matches ? 0.93 : 0.09, type: "noul" }];
+      }));
+    }
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ answers, model: "jev-test" }));
+  });
+  server.requests = requests;
+  return server;
 }
 
 function readResolverQuery(payload) {
