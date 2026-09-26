@@ -56,7 +56,7 @@ test("Claude Code local provider falls back to file credentials when Keychain is
   });
 });
 
-test("Core gateway config replaces imported Claude Code OAuth token with live macOS Keychain token", { skip: process.platform === "win32" }, async () => {
+test("Core gateway config strips the static Claude Code OAuth bearer so the live hook owns the token", { skip: process.platform === "win32" }, async () => {
   await withClaudeCodeHome(async (home) => {
     await withPlatform("darwin", async () => {
       await withFakeSecurityOutput({
@@ -91,7 +91,9 @@ test("Core gateway config replaces imported Claude Code OAuth token with live ma
         const compiled = await compileCoreGatewayConfig(config, "raw-trace-token", "billing-usage-token", "core-auth-token");
         const plugin = compiled.providerPlugins.find((item) => item.key === "ccr-local-agent-claude-code-api-claude-code-oauth");
 
-        assert.equal(plugin.auth.headers.authorization, "Bearer keychain-runtime-token");
+        // Static plugin must not bake a bearer: the live module: hook re-reads
+        // .credentials.json per request so token rotation works without reset.
+        assert.equal(plugin.auth.headers.authorization, undefined);
         assert.deepEqual(plugin.auth.headers["anthropic-beta"], {
           default: "oauth-2025-04-20",
           from: "request.headers.anthropic-beta"
@@ -99,6 +101,39 @@ test("Core gateway config replaces imported Claude Code OAuth token with live ma
       });
     });
   });
+});
+
+// Strip is scoped to the local-login import plugin key only. API-key and other
+// Claude providers keep their configured static bearer after compile.
+test("Core gateway config keeps the static bearer for non-OAuth Claude providers", async () => {
+  const config = createDefaultAppConfig();
+  config.providerPlugins = [
+    {
+      auth: {
+        headers: {
+          authorization: "Bearer sk-ant-user-api-key"
+        },
+        strict: true
+      },
+      key: "anthropic-user-api-key",
+      providerName: "Anthropic API"
+    }
+  ];
+  config.Providers = [
+    {
+      api_base_url: "https://api.anthropic.com",
+      api_key: "sk-ant-user-api-key",
+      id: "anthropic-api",
+      models: ["claude-sonnet-5"],
+      name: "Anthropic API",
+      type: "anthropic_messages"
+    }
+  ];
+
+  const compiled = await compileCoreGatewayConfig(config, "raw-trace-token", "billing-usage-token", "core-auth-token");
+  const plugin = compiled.providerPlugins.find((item) => item.key === "anthropic-user-api-key");
+
+  assert.equal(plugin.auth.headers.authorization, "Bearer sk-ant-user-api-key");
 });
 
 // Claude Code >= 2.1 writes the credential item under the current $USER and

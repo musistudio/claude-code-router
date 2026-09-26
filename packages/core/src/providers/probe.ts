@@ -14,7 +14,9 @@ import type {
 } from "@ccr/core/contracts/app";
 import { codexDefaultBaseUrl, readCodexAuth } from "@ccr/core/agents/local-providers/codex";
 import { opencodeCatalogProtocolModelMap } from "@ccr/core/agents/local-providers/opencode";
+import { readClaudeCodeOauth } from "@ccr/core/agents/local-providers/service";
 import { localAgentProviderApiKey } from "@ccr/core/agents/local-providers/shared";
+import { isLocalClaudeCodeOauthProviderPlugin } from "@ccr/core/providers/oauth-plugin";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue } from "@ccr/core/providers/presets/index";
 import { getProviderCatalogModels } from "@ccr/core/providers/model-catalog";
 import { fetchWithSystemProxy } from "@ccr/core/proxy/system-proxy-fetch";
@@ -938,6 +940,7 @@ async function providerProbeAuthRequest(
   if (auth) {
     request = providerProbeStaticAuthRequest(request.url, request.init, auth);
   }
+  request = providerProbeLiveClaudeCodeOauthRequest(request, providerPlugins, apiKey);
 
   if (codexOauth) {
     request = await providerProbeCodexOauthRequest(request.url, request.init, codexOauth);
@@ -996,6 +999,35 @@ function isCodexProbeEndpoint(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+// Only the local-login import path (apiKey === localAgentProviderApiKey plus a
+// claude-code-oauth plugin) may replace the bearer with .credentials.json.
+// Explicit API keys and every other credential mode keep their configured auth.
+function providerProbeLiveClaudeCodeOauthRequest(
+  request: { init: RequestInit; url: string },
+  providerPlugins: unknown[],
+  apiKey: string | undefined
+): { init: RequestInit; url: string } {
+  if (apiKey !== localAgentProviderApiKey) {
+    return request;
+  }
+  if (!providerPlugins.some(isLocalClaudeCodeOauthProviderPlugin)) {
+    return request;
+  }
+  const accessToken = readClaudeCodeOauth()?.accessToken;
+  if (!accessToken) {
+    return request;
+  }
+  const headers = new Headers(request.init.headers);
+  headers.set("authorization", `Bearer ${accessToken}`);
+  return {
+    ...request,
+    init: {
+      ...request.init,
+      headers
+    }
+  };
 }
 
 function providerProbeStaticAuthRequest(
