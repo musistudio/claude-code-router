@@ -43,7 +43,7 @@ test("Grok local agent auth hook refreshes live login state before authenticatin
         providerPlugins: [grokOauthProviderPlugin()]
       }
     }).providerHooks;
-    assert.equal(hook.key, "config:ccr-local-agent-grok-cli-api-grok-cli-oauth");
+    assert.equal(hook.key, "module:ccr-local-agent-grok-cli-api-grok-cli-oauth");
 
     const patch = "*** Begin Patch\n*** Add File: grok.txt\n+hi\n*** End Patch\n";
     const upstreamRequest = {
@@ -123,7 +123,7 @@ test("Claude Code local agent auth hook re-reads the on-disk access token on eve
             providerPlugins: [claudeCodeOauthProviderPlugin()]
           }
         }).providerHooks;
-        assert.equal(hook.key, "config:ccr-local-agent-claude-code-api-claude-code-oauth");
+        assert.equal(hook.key, "module:ccr-local-agent-claude-code-api-claude-code-oauth");
 
         const upstreamRequest = {
           headers: {

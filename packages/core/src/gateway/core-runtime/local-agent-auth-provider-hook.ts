@@ -8,6 +8,9 @@ import { isRecord, stringValue } from "@ccr/core/gateway/internal/value";
 import { mergeAnthropicBetaValues } from "@ccr/core/providers/oauth-plugin";
 
 const configProviderPluginKeyPrefix = "config:";
+// Distinct from ai-gateway's configured plugin prefix (`config:`) so the live
+// re-read hook is never overwritten by the static providerPlugins registration.
+const liveProviderPluginKeyPrefix = "module:";
 const localAgentProviderPluginKeyPrefix = "ccr-local-agent-";
 
 type HeaderRecord = Record<string, string>;
@@ -90,7 +93,7 @@ function localAgentOauthProviderHook(plugin: unknown): ProviderHook | undefined 
   }
 
   const hook: ProviderHook = {
-    key: `${configProviderPluginKeyPrefix}${key}`,
+    key: `${liveProviderPluginKeyPrefix}${key}`,
     provider: stringValue(plugin.provider),
     providerName: stringValue(plugin.providerName)
   };

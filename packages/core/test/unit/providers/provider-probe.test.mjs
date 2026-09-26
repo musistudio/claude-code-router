@@ -383,6 +383,67 @@ test("connectivity probe applies provider plugin auth for local agent imports", 
   assert.equal(report.results[0]?.supported, true);
 });
 
+test("connectivity probe uses the live Claude Code OAuth token instead of the import snapshot", async (t) => {
+  const previousFetch = globalThis.fetch;
+  const previousHome = process.env.HOME;
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "ccr-probe-claude-code-"));
+  const seen = [];
+
+  process.env.HOME = home;
+  fs.mkdirSync(path.join(home, ".claude"), { recursive: true });
+  fs.writeFileSync(path.join(home, ".claude", ".credentials.json"), JSON.stringify({
+    accessToken: "rotated-live-access-token",
+    refreshToken: "rotated-refresh-token"
+  }));
+
+  globalThis.fetch = async (input, init) => {
+    const headers = new Headers(init?.headers);
+    seen.push(headers.get("authorization"));
+    return new Response(JSON.stringify({ id: "ok" }), {
+      headers: { "content-type": "application/json" },
+      status: 200
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+    if (previousHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = previousHome;
+    }
+    fs.rmSync(home, { force: true, recursive: true });
+  });
+
+  const report = await checkGatewayProviderConnectivity({
+    apiKey: "ccr-local-agent-login",
+    candidates: [{
+      baseUrl: "https://api.anthropic.com/v1",
+      name: "Claude Code API",
+      protocols: ["anthropic_messages"],
+      source: "preset"
+    }],
+    forceRefresh: true,
+    models: ["claude-sonnet-5"],
+    providerPlugins: [{
+      auth: {
+        headers: {
+          authorization: "Bearer stale-import-snapshot-token",
+          "anthropic-beta": "oauth-2025-04-20"
+        },
+        removeHeaders: ["x-api-key"],
+        strict: true
+      },
+      key: "ccr-local-agent-claude-code-api-claude-code-oauth",
+      providerName: "Claude Code API"
+    }],
+    protocols: ["anthropic_messages"]
+  });
+
+  assert.ok(seen.length > 0);
+  assert.ok(seen.every((value) => value === "Bearer rotated-live-access-token"));
+  assert.equal(report.passed.length + report.failed.length > 0, true);
+});
+
 test("connectivity probe applies provider plugin request transforms", async (t) => {
   const previousFetch = globalThis.fetch;
   let called = false;

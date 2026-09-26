@@ -3,7 +3,7 @@
  */
 import { isGatewayProviderEnabled } from "@ccr/core/contracts/app";
 import type { AppConfig, GatewayProviderConfig, GatewayProviderProtocol, VirtualModelProfileConfig } from "@ccr/core/contracts/app";
-import { codexDefaultBaseUrl, kimiAccessTokenExpired, kimiIdentityHeaders, localAgentProviderApiKey, readClaudeCodeOauth, readCodexAuth, readGrokAuth, readKimiAuth, resolveGrokAuth, resolveKimiAuth } from "@ccr/core/agents/local-providers/service";
+import { codexDefaultBaseUrl, kimiAccessTokenExpired, kimiIdentityHeaders, localAgentProviderApiKey, readCodexAuth, readGrokAuth, readKimiAuth, resolveGrokAuth, resolveKimiAuth } from "@ccr/core/agents/local-providers/service";
 import { grokAccessTokenExpired, grokClientVersion } from "@ccr/core/agents/local-providers/grok";
 import { pluginService } from "@ccr/core/plugins/service";
 import { normalizeRouteSelector, providerRuntimeId } from "@ccr/core/routing/model-registry";
@@ -571,25 +571,24 @@ function withClaudeCodeOauthRuntimeDefaults(providerPlugins: unknown[]): unknown
   if (!providerPlugins.some(isLocalClaudeCodeOauthProviderPlugin)) {
     return providerPlugins;
   }
-  const oauth = readClaudeCodeOauth();
-  if (!oauth?.accessToken) {
-    return providerPlugins;
-  }
 
+  // Strip any baked bearer from the static plugin. The live local-agent hook
+  // (module: prefix) re-reads .credentials.json per request; a compile-time
+  // snapshot would win on registration order and send a stale token after refresh.
   return providerPlugins.map((plugin) => {
     if (!isLocalClaudeCodeOauthProviderPlugin(plugin)) {
       return plugin;
     }
     const currentAuth = isRecord(plugin.auth) ? plugin.auth : {};
     const currentHeaders = isRecord(currentAuth.headers) ? currentAuth.headers : {};
+    const headers = Object.fromEntries(
+      Object.entries(currentHeaders).filter(([name]) => name.trim().toLowerCase() !== "authorization")
+    );
     return {
       ...plugin,
       auth: {
         ...currentAuth,
-        headers: {
-          ...currentHeaders,
-          authorization: `Bearer ${oauth.accessToken}`
-        }
+        headers
       }
     };
   });
