@@ -43,7 +43,7 @@ test("Grok local agent auth hook refreshes live login state before authenticatin
         providerPlugins: [grokOauthProviderPlugin()]
       }
     }).providerHooks;
-    assert.equal(hook.key, "config:ccr-local-agent-grok-cli-api-grok-cli-oauth");
+    assert.equal(hook.key, "module:ccr-live-auth:ccr-local-agent-grok-cli-api-grok-cli-oauth");
 
     const patch = "*** Begin Patch\n*** Add File: grok.txt\n+hi\n*** End Patch\n";
     const upstreamRequest = {
@@ -118,12 +118,14 @@ test("Claude Code local agent auth hook re-reads the on-disk access token on eve
           refreshToken: "stale-refresh-token"
         });
 
-        const [hook] = createGatewayPlugin({
-          config: {
-            providerPlugins: [claudeCodeOauthProviderPlugin()]
-          }
-        }).providerHooks;
-        assert.equal(hook.key, "config:ccr-local-agent-claude-code-api-claude-code-oauth");
+        const config = createDefaultAppConfig();
+        config.Providers = [{ name: "Claude Code API", id: "claude-code-api", api_base_url: "https://api.anthropic.com", models: ["claude-test"], type: "anthropic_messages" }];
+        config.providerPlugins = [claudeCodeOauthProviderPlugin()];
+        const compiled = await compileCoreGatewayConfig(config, "trace", "billing", "auth");
+        const modulePlugin = compiled.plugins.find((plugin) => plugin.key === "ccr-local-agent-auth-provider-hooks");
+        assert.ok(compiled.providerPlugins.every((plugin) => !plugin.auth));
+        const [hook] = createGatewayPlugin({ config: compiled, plugin: modulePlugin }).providerHooks;
+        assert.equal(hook.key, "module:ccr-live-auth:ccr-local-agent-claude-code-api-claude-code-oauth");
 
         const upstreamRequest = {
           headers: {

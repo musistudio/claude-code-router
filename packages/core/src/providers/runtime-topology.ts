@@ -270,12 +270,12 @@ function lockedProviderPresetProtocols(
 
 function providerCapabilityPriority(capability: GatewayProviderCapability): number {
   if (capability.source === "preset") {
-    return 0;
-  }
-  if (capability.source === "detected") {
     return 2;
   }
-  return 1;
+  if (capability.source === "detected") {
+    return 1;
+  }
+  return 0;
 }
 
 export function providerCapabilityInternalName(provider: GatewayProviderConfig, protocol: GatewayProviderCapabilityProtocol): string {

@@ -1016,6 +1016,31 @@ test("only explicit or structural compact signals create archives", async () => 
   assert.doesNotMatch(handoffText, /Your task is to create a detailed summary of the conversation so far/);
 });
 
+test("Claude Code auto compact handoff keeps the trailing tool_result paired with its tool_use", async () => {
+  const toolResult = { content: "file contents", tool_use_id: "toolu_1", type: "tool_result" };
+  const auto = await prepareContextArchiveRequest({
+    body: Buffer.from(JSON.stringify({
+      messages: [
+        { content: "Read the file.", role: "user" },
+        { content: [{ id: "toolu_1", input: {}, name: "Read", type: "tool_use" }], role: "assistant" },
+        { content: [toolResult, { text: claudeAutoCompactPrompt(), type: "text" }], role: "user" }
+      ],
+      model: "claude-test"
+    })),
+    config: testConfig(),
+    headers: { "x-session-id": "claude-auto-tool-result" },
+    method: "POST",
+    path: "/v1/messages",
+    protocol: "anthropic_messages",
+    requestId: "claude-auto-tool-result"
+  });
+  assert.ok(auto);
+  const content = JSON.parse(auto.body.toString("utf8")).messages.at(-1).content;
+  assert.deepEqual(content[0], toolResult);
+  assert.equal(content.length, 2);
+  assert.match(content[1].text, /CCR compact handoff task/);
+});
+
 test("compact refuses unresolved tool-call boundaries instead of trimming them", async () => {
   const config = testConfig();
   await assert.rejects(() => prepareContextArchiveRequest({

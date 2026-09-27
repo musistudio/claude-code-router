@@ -15,6 +15,8 @@ import type {
 import { codexDefaultBaseUrl, readCodexAuth } from "@ccr/core/agents/local-providers/codex";
 import { opencodeCatalogProtocolModelMap } from "@ccr/core/agents/local-providers/opencode";
 import { localAgentProviderApiKey } from "@ccr/core/agents/local-providers/shared";
+import { readClaudeCodeOauth } from "@ccr/core/agents/local-providers/service";
+import { isLocalClaudeCodeOauthProviderPlugin, mergeAnthropicBetaValues } from "@ccr/core/providers/oauth-plugin";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue } from "@ccr/core/providers/presets/index";
 import { getProviderCatalogModels } from "@ccr/core/providers/model-catalog";
 import { fetchWithSystemProxy } from "@ccr/core/proxy/system-proxy-fetch";
@@ -499,7 +501,8 @@ function providerProbeCapabilities(
   ));
   const detectedCapabilities = mergeProviderCapabilities(probe.capabilities ?? [])
     .filter((capability) => allowedProtocols.has(capability.type));
-  const presetCapabilities = providerProbePresetCapabilities(candidate);
+  const presetCapabilities = providerProbePresetCapabilities(candidate)
+    .filter((preset) => !detectedCapabilities.some((detected) => detected.type === preset.type));
   return mergeProviderCapabilities(detectedCapabilities, presetCapabilities);
 }
 
@@ -957,6 +960,17 @@ async function providerProbeAuthRequest(
 
   if (requestTransform) {
     request = providerProbeRequestTransformRequest(request.url, request.init, requestTransform, context);
+  }
+
+  if (apiKey === localAgentProviderApiKey && providerPlugins.some(isLocalClaudeCodeOauthProviderPlugin)) {
+    const token = readClaudeCodeOauth()?.accessToken;
+    if (token) {
+      const headers = new Headers(request.init.headers);
+      headers.set("authorization", `Bearer ${token}`);
+      headers.delete("x-api-key");
+      headers.set("anthropic-beta", mergeAnthropicBetaValues(headers.get("anthropic-beta") ?? undefined, "oauth-2025-04-20"));
+      request = { ...request, init: { ...request.init, headers } };
+    }
   }
 
   return request;

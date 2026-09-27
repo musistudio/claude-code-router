@@ -245,3 +245,7 @@ OpenCode 导入会同时读取本机认证文件、OpenCode 配置和模型目�
 | `local-estimate` | 不请求远程接口，基于本地窗口配置展示估算额度。 |
 
 点击 `插入示例` 会填入一个包含 `standard`、`http-json`、`webcontent-json`、`plugin` 和 `local-estimate` 的示例 connector 数组。
+
+### 本地模型的用量与价格
+
+本地兼容服务（如 llama.cpp）也会按配置中的供应商名称汇总 Token 用量。运行时协议/凭据别名会归一为该名称。GGUF 文件别名通常不在云端价格目录中，因此需要在模型元数据的 `pricing` 配置 `inputUsdPerMillionTokens` 和 `outputUsdPerMillionTokens` 才能计算自定义费用；两项均为每百万 Token 的美元价格。设置为 `0` 可明确表示本地推理不计 API 费用。没有价格时不推测机器、电力或托管成本；修复不会自动改写历史记录。

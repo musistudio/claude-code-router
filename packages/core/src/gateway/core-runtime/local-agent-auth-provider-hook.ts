@@ -6,7 +6,7 @@ import { claudeCodeOauthBetaHeader, claudeCodeOauthRequiredBeta } from "@ccr/cor
 import { isRecord, stringValue } from "@ccr/core/gateway/internal/value";
 import { mergeAnthropicBetaValues } from "@ccr/core/providers/oauth-plugin";
 
-const configProviderPluginKeyPrefix = "config:";
+const liveProviderPluginKeyPrefix = "module:ccr-live-auth:";
 const localAgentProviderPluginKeyPrefix = "ccr-local-agent-";
 
 type HeaderRecord = Record<string, string>;
@@ -45,9 +45,9 @@ type ProviderHook = {
 
 type LocalAgentOauthKind = "claude-code" | "grok" | "kimi";
 
-export function createGatewayPlugin(input: { config?: Record<string, unknown> } = {}) {
+export function createGatewayPlugin(input: { config?: Record<string, unknown>; plugin?: { config?: Record<string, unknown> } } = {}) {
   return {
-    providerHooks: localAgentOauthProviderHooks(input.config)
+    providerHooks: localAgentOauthProviderHooks(input.plugin?.config ?? input.config)
   };
 }
 
@@ -76,7 +76,7 @@ function localAgentOauthProviderHook(plugin: unknown): ProviderHook | undefined 
   }
 
   const hook: ProviderHook = {
-    key: `${configProviderPluginKeyPrefix}${key}`,
+    key: `${liveProviderPluginKeyPrefix}${key}`,
     provider: stringValue(plugin.provider),
     providerName: stringValue(plugin.providerName)
   };

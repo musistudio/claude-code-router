@@ -1,0 +1,306 @@
+From c6cba47ffe2d9349112d14675d83fc5cdd937bff Mon Sep 17 00:00:00 2001
+From: musistudio <m@musiiot.top>
+Date: Sun, 27 Sep 2026 06:43:11 +0800
+Subject: [PATCH] Fix Anthropic tool IDs and Fusion stream raw trace capture
+
+---
+ .../builtins/anthropic-tool-id.test.ts        | 39 +++++++++++++++++++
+ src/adapters/builtins/anthropic-tool-id.ts    |  8 ++++
+ src/adapters/builtins/source/formatters.ts    |  3 +-
+ .../builtins/target/anthropic-messages.ts     |  9 +++--
+ src/gateway/handler.ts                        | 27 +++++++++----
+ src/gateway/routes.test.ts                    | 17 +++++++-
+ src/gateway/streaming-conversion.ts           |  3 +-
+ 7 files changed, 92 insertions(+), 14 deletions(-)
+ create mode 100644 src/adapters/builtins/anthropic-tool-id.test.ts
+ create mode 100644 src/adapters/builtins/anthropic-tool-id.ts
+
+diff --git a/src/adapters/builtins/anthropic-tool-id.test.ts b/src/adapters/builtins/anthropic-tool-id.test.ts
+new file mode 100644
+index 0000000..479b045
+--- /dev/null
++++ b/src/adapters/builtins/anthropic-tool-id.test.ts
+@@ -0,0 +1,39 @@
++import { expect, it } from 'vitest';
++import { anthropicToolId } from './anthropic-tool-id';
++import { formatAnthropicMessagesResponse } from './source/formatters';
++import { anthropicMessagesTargetAdapter } from './target/anthropic-messages';
++import { createOptimisticOpenAIChatStreamRelay, relayOptimisticOpenAIChatStreamToolCalls } from '../../gateway/streaming-conversion';
++
++it('preserves valid IDs and maps distinct invalid IDs deterministically', () => {
++  expect(anthropicToolId('toolu_valid-1')).toBe('toolu_valid-1');
++  expect(anthropicToolId('Bash:0')).toMatch(/^[A-Za-z0-9_-]+$/);
++  expect(anthropicToolId('Bash:0')).not.toBe(anthropicToolId('Bash/0'));
++  expect(anthropicToolId('Bash:0')).toBe(anthropicToolId('Bash:0'));
++});
++
++it('sanitizes JSON and streamed Anthropic tool calls and pairs replayed results', () => {
++  const call = { type: 'function_call', id: 'Bash:0', call_id: 'Bash:0', name: 'Bash', arguments: '{}', status: 'completed' } as const;
++  const response = { id: 'message', model: 'model', object: 'response', status: 'completed', output: [call], usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } } as any;
++  const formatted = formatAnthropicMessagesResponse(response) as any;
++  const id = formatted.content[0].id;
++  expect(id).toBe(anthropicToolId('Bash:0'));
++  const relay = createOptimisticOpenAIChatStreamRelay({ adapterKey: 'anthropic_messages' } as any, { model: 'model', input: 'hello' });
++  expect(relay).toBeTruthy();
++  const frames = relayOptimisticOpenAIChatStreamToolCalls(relay!, [call]).join('');
++  expect(frames).toContain(`"id":"${id}"`);
++  expect(frames).not.toContain('Bash:0');
++  const built = anthropicMessagesTargetAdapter.buildRequestFromStandard({
++    request: { headers: {} } as any,
++    standardRequest: { model: 'model', input: [
++      { type: 'message', role: 'assistant', content: [{ type: 'tool_use', id: 'Bash:0', name: 'Bash', input: {} }] },
++      { type: 'message', role: 'user', content: [{ type: 'tool_result', tool_use_id: 'Bash:0', content: 'ok' }] }
++    ] },
++    config: { anthropicApiKey: 'test', anthropicBaseUrl: 'https://example.test' } as any
++  });
++  expect(built.ok).toBe(true);
++  if (built.ok) {
++    const body = built.value.body as any;
++    expect(body.messages[0].content[0].id).toBe(id);
++    expect(body.messages[1].content[0].tool_use_id).toBe(id);
++  }
++});
+diff --git a/src/adapters/builtins/anthropic-tool-id.ts b/src/adapters/builtins/anthropic-tool-id.ts
+new file mode 100644
+index 0000000..5c40e80
+--- /dev/null
++++ b/src/adapters/builtins/anthropic-tool-id.ts
+@@ -0,0 +1,8 @@
++import { createHash, randomUUID } from 'node:crypto';
++
++/** Keep calls and results paired, including when replaying a different protocol's history. */
++export function anthropicToolId(value: string | undefined): string {
++  if (!value) return `toolu_${randomUUID().replace(/-/g, '')}`;
++  if (/^[A-Za-z0-9_-]+$/.test(value)) return value;
++  return `toolu_ccr_${createHash('sha256').update(value).digest('hex').slice(0, 48)}`;
++}
+diff --git a/src/adapters/builtins/source/formatters.ts b/src/adapters/builtins/source/formatters.ts
+index a415dec..63ff75a 100644
+--- a/src/adapters/builtins/source/formatters.ts
++++ b/src/adapters/builtins/source/formatters.ts
+@@ -1,4 +1,5 @@
+ import type { StandardResponse, StandardResponseReasoning } from '../../../types';
++import { anthropicToolId } from '../anthropic-tool-id';
+ import { anthropicInputTokens } from '../../../shared/usage';
+ import {
+   mapFinishReasonToAnthropic,
+@@ -196,7 +197,7 @@ function collectAnthropicContentBlocks(response: StandardResponse): Array<Record
+ 
+     const block: Record<string, unknown> = {
+       type: 'tool_use',
+-      id: item.call_id || item.id,
++      id: anthropicToolId(item.call_id || item.id),
+       name: item.name,
+       input: parseFunctionArguments(item.arguments)
+     };
+diff --git a/src/adapters/builtins/target/anthropic-messages.ts b/src/adapters/builtins/target/anthropic-messages.ts
+index 337f274..8440d86 100644
+--- a/src/adapters/builtins/target/anthropic-messages.ts
++++ b/src/adapters/builtins/target/anthropic-messages.ts
+@@ -359,7 +359,7 @@ function standardContentToAnthropicBlocks(
+     if (item.type === 'tool_use') {
+       blocks.push({
+         type: 'tool_use',
+-        id: item.id,
++        id: anthropicToolId(item.id),
+         name: mapStandardToolNameToTargetName(item.name, toolContext.functionTools),
+         input: isObject(item.input) ? item.input : {}
+       });
+@@ -369,7 +369,7 @@ function standardContentToAnthropicBlocks(
+     if (item.type === 'tool_search_call') {
+       blocks.push({
+         type: 'tool_use',
+-        id: item.call_id,
++        id: anthropicToolId(item.call_id),
+         name: 'ToolSearch',
+         input: normalizeAnthropicToolInput(item.arguments)
+       });
+@@ -384,7 +384,7 @@ function standardContentToAnthropicBlocks(
+       }));
+       blocks.push({
+         type: 'tool_result',
+-        tool_use_id: item.call_id,
++        tool_use_id: anthropicToolId(item.call_id),
+         content: references.length > 0 ? references : serializeStandardToolSearchOutput(item)
+       });
+       continue;
+@@ -417,7 +417,7 @@ function standardContentToAnthropicBlocks(
+       : [];
+     const toolResultBlock: Record<string, unknown> = {
+       type: 'tool_result',
+-      tool_use_id: item.tool_use_id,
++      tool_use_id: anthropicToolId(item.tool_use_id),
+       content:
+         referenceBlocks.length > 0
+           ? [
+@@ -732,3 +732,4 @@ function isAnthropicToolChoiceNone(toolChoice: unknown): boolean {
+ 
+   return asString(toolChoice.type) === 'none';
+ }
++import { anthropicToolId } from '../anthropic-tool-id';
+diff --git a/src/gateway/handler.ts b/src/gateway/handler.ts
+index 21e0fe1..b92ba3f 100644
+--- a/src/gateway/handler.ts
++++ b/src/gateway/handler.ts
+@@ -3218,7 +3218,8 @@ async function handleVirtualModelRequest(
+         isStreaming,
+         model,
+         rewrittenBaseRequest,
+-        lastUpstreamRequest
++        lastUpstreamRequest,
++        upstreamResponse
+       );
+       }
+ 
+@@ -3277,7 +3278,8 @@ async function handleVirtualModelRequest(
+         isStreaming,
+         model,
+         rewrittenBaseRequest,
+-        lastUpstreamRequest
++        lastUpstreamRequest,
++        upstreamResponse
+       );
+       }
+ 
+@@ -4587,7 +4589,8 @@ async function* runOptimisticVirtualModelStream(input: {
+         publishOptimisticVirtualModelBillingEvent(
+           input,
+           finalResponse,
+-          lastAttemptSequence
++          lastAttemptSequence,
++          buildUpstreamRawTraceCapture(upstreamRequest, upstreamResponse, finalResponse)
+         );
+         const visibleFunctionCalls = extractFunctionCallsFromStandardResponse(finalResponse);
+         if (usesNativeAnthropicTarget) {
+@@ -4619,7 +4622,8 @@ async function* runOptimisticVirtualModelStream(input: {
+         publishOptimisticVirtualModelBillingEvent(
+           input,
+           finalResponse,
+-          lastAttemptSequence
++          lastAttemptSequence,
++          buildUpstreamRawTraceCapture(upstreamRequest, upstreamResponse, finalResponse)
+         );
+         if (usesNativeAnthropicTarget) {
+           yield* relayOptimisticAnthropicDeferredContent(relay, turnResult, []);
+@@ -4764,7 +4768,8 @@ function publishOptimisticVirtualModelBillingEvent(
+     model: string;
+   },
+   response: StandardResponse,
+-  attemptSequence: number
++  attemptSequence: number,
++  rawTraceCapture: GatewayRawTraceCapture
+ ): void {
+   recordGatewaySchedulingUsage({
+     config: input.config,
+@@ -4775,6 +4780,8 @@ function publishOptimisticVirtualModelBillingEvent(
+   });
+ 
+   if (!input.config.billing.enabled || !input.reply) {
++    publishRawTraceCaptureSafe(input.request, input.config, input.targetProvider,
++      response.model || input.model, input.targetProviderConfig, rawTraceCapture);
+     return;
+   }
+ 
+@@ -4813,7 +4820,8 @@ function publishOptimisticVirtualModelBillingEvent(
+     buildGatewayBillingTraceSnapshot(input.request, input.reply, {
+       billingTrace: input.config.billing.trace,
+       standardResponse: response
+-    })
++    }),
++    rawTraceCapture
+   ).catch(() => undefined);
+ }
+ 
+@@ -4831,7 +4839,8 @@ async function sendVirtualModelResponse(
+   streaming: boolean,
+   model: string,
+   standardRequest?: StandardRequest,
+-  upstreamRequest?: UpstreamRequest
++  upstreamRequest?: UpstreamRequest,
++  upstreamResponse?: Response
+ ) {
+   attachTargetRoutingHeaders(reply, targetProvider, targetProviderConfig?.name, fallbackAttempts, targetProviderConfig);
+ 
+@@ -4864,6 +4873,8 @@ async function sendVirtualModelResponse(
+       }),
+       {
+         upstreamRequest,
++        upstreamResponseStatus: upstreamResponse?.status,
++        upstreamResponseHeaders: upstreamResponse ? normalizeHeadersForRawTrace(upstreamResponse.headers) : undefined,
+         upstreamResponseBody: sourcePayload
+       }
+     );
+@@ -4889,6 +4900,8 @@ async function sendVirtualModelResponse(
+     }),
+     {
+       upstreamRequest,
++      upstreamResponseStatus: upstreamResponse?.status,
++      upstreamResponseHeaders: upstreamResponse ? normalizeHeadersForRawTrace(upstreamResponse.headers) : undefined,
+       upstreamResponseBody: sourceStandardResponse
+     }
+   );
+diff --git a/src/gateway/routes.test.ts b/src/gateway/routes.test.ts
+index 73aec02..692b7fc 100644
+--- a/src/gateway/routes.test.ts
++++ b/src/gateway/routes.test.ts
+@@ -11351,7 +11351,7 @@ export function createGatewayPlugin() {
+     }
+   });
+ 
+-  it('optimistically streams virtual model content while intercepting internal tool calls', async () => {
++  it.each([true, false])('optimistically streams virtual model content and records raw trace with billing=%s', async (billingEnabled) => {
+     const firstStream = [
+       'data: {"id":"chatcmpl_virtual_websearch_optimistic_1","object":"chat.completion.chunk","model":"glm-5","choices":[{"index":0,"delta":{"role":"assistant"}}]}\n\n',
+       'data: {"id":"chatcmpl_virtual_websearch_optimistic_1","object":"chat.completion.chunk","model":"glm-5","choices":[{"index":0,"delta":{"reasoning_content":"think "}}]}\n\n',
+@@ -11452,6 +11452,11 @@ export function createGatewayPlugin() {
+       ]
+     );
+ 
++    const spoolDir = await mkdtemp(join(tmpdir(), 'gateway-fusion-trace-'));
++    config.billing.enabled = billingEnabled;
++    config.rawTrace = { ...config.rawTrace, enabled: true, mode: 'wire_raw', spoolDir, sync: { ...config.rawTrace.sync, enabled: false } };
++    await initializeRawTraceManager(config.rawTrace);
++
+     const app = Fastify({ logger: false });
+     registerGatewayRoutes(app, config, createGatewayRuntime(config, toolProvider as any));
+     await app.ready();
+@@ -11499,8 +11504,18 @@ export function createGatewayPlugin() {
+       expect(completedLine).toBeDefined();
+       const completedEvent = JSON.parse(String(completedLine).slice('data: '.length));
+       expect(completedEvent.response.id).toBe('chatcmpl_virtual_websearch_optimistic_1');
++      const { bundleDir, manifest } = await waitForRawTraceManifest(spoolDir);
++      const parts = manifest.parts as Array<{ partType: string; filePath: string }>;
++      const metadata = JSON.parse(await readFile(parts.find(p => p.partType === 'upstream_response_metadata')!.filePath, 'utf8'));
++      const body = JSON.parse(await readFile(join(bundleDir, 'upstream_response.json'), 'utf8'));
++      expect(metadata.statusCode).toBe(200);
++      expect(body.usage.input_tokens).toBe(11);
++      expect(body.usage.output_tokens).toBe(7);
++      expect(body.output_text).toBe('fresh answer');
+     } finally {
++      await closeRawTraceManager();
+       await app.close();
++      await rm(spoolDir, { recursive: true, force: true });
+     }
+   });
+ 
+diff --git a/src/gateway/streaming-conversion.ts b/src/gateway/streaming-conversion.ts
+index b3c4fa4..85f9757 100644
+--- a/src/gateway/streaming-conversion.ts
++++ b/src/gateway/streaming-conversion.ts
+@@ -5600,7 +5600,7 @@ function buildAnthropicToolUseStartFrame(toolCall: PendingAnthropicToolCall): st
+     index: toolCall.blockIndex,
+     content_block: {
+       type: 'tool_use',
+-      id: toolCall.id,
++      id: anthropicToolId(toolCall.id),
+       name: toolCall.name,
+       input: {}
+     }
+@@ -6930,3 +6930,4 @@ function encodeSseDataLines(data: unknown): string {
+   const lines = serialized.split('\n');
+   return lines.map((line) => `data: ${line}`).join('\n');
+ }
++import { anthropicToolId } from '../adapters/builtins/anthropic-tool-id';
+-- 
+2.50.1 (Apple Git-155)
+

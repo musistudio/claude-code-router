@@ -29,14 +29,16 @@ test("saving an old settings snapshot cannot restore a revoked key", async () =>
 test("interleaved settings saves preserve key rotations and updated limits", async () => {
   const stale = await configApi.saveApiKeysConfig([retained, revoked]);
   const rotated = { ...retained, key: "rotated-token", limits: { rpm: 2 } };
-  await Promise.all([
+  const results = await Promise.allSettled([
     configApi.saveAppConfig({ ...stale, autoStart: false }),
     configApi.saveApiKeysConfig([rotated]),
     configApi.saveAppConfig({ ...stale, autoStart: true })
   ]);
+  assert.equal(results[2].status, "rejected");
+  assert.match(results[2].reason.message, /Configuration changed/);
 
   const current = await configApi.loadAppConfig();
-  assert.equal(current.autoStart, true);
+  assert.equal(current.autoStart, false);
   assert.equal(current.APIKEY, rotated.key);
   assert.deepEqual(current.APIKEYS, [rotated]);
 });

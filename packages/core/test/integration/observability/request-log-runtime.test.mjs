@@ -15,6 +15,39 @@ const workerFile = [
 ].find(existsSync);
 assert.ok(workerFile, "compiled request-log-worker.js must exist");
 
+test("#1807 worker crashes have bounded retries and do not block healthy records", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-writer-crash-"));
+  const crashingWorker = path.join(dir, "worker.cjs");
+  writeFileSync(crashingWorker, `
+    const { parentPort, resourceLimits } = require('node:worker_threads');
+    if (resourceLimits.maxOldGenerationSizeMb !== 64) throw new Error('missing heap limit');
+    parentPort.on('message', (message) => {
+      if (message.type === 'batch') {
+        if (message.commands.some(c => c.input.requestId === 'poison')) throw new Error('simulated worker OOM');
+        parentPort.postMessage({ type: 'ack', batchId: message.batchId });
+      } else if (message.type === 'request') {
+        parentPort.postMessage({ type: 'response', requestId: message.requestId });
+        if (message.method === 'shutdown') parentPort.close();
+      }
+    });
+    parentPort.postMessage({ type: 'ready' });
+  `);
+  const runtime = createRequestLogRuntime({ dbFile: path.join(dir, "logs.sqlite"), workerFile: crashingWorker, writerHeapLimitMb: 64 });
+  try {
+    runtime.enqueueRecord(createRecord("poison"));
+    runtime.enqueueRecord(createRecord("healthy"));
+    const result = await runtime.flush({ timeoutMs: 10000 });
+    assert.equal(result.timedOut, false);
+    assert.equal(runtime.metrics().dropped, 1);
+    assert.equal(runtime.metrics().committed, 1);
+    assert.equal(runtime.metrics().writerRestarts, 3);
+    assert.equal(runtime.metrics().queueBytes, 0);
+  } finally {
+    await runtime.close({ timeoutMs: 1000 });
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("RequestLogRuntime writes through a worker and reads through the query worker", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-runtime-test-"));
   const runtime = createRuntime(dir);

@@ -328,7 +328,7 @@ test("UsageStore prices the routed upstream model when the response echoes a rul
       fallbackModel: `${providerRuntimeId(provider)}::anthropic_messages/Vendor/some-model`,
       method: "POST",
       path: "/v1/messages",
-      providerName: "ProviderA",
+      providerName: `${providerRuntimeId(provider)}::anthropic_messages`,
       requestId: "alias-pricing-request",
       responseHeaders: new Headers({ "content-type": "application/json" }),
       statusCode: 200
@@ -912,4 +912,19 @@ test("UsageStore reset clears overview stats and does not backfill old request l
   } finally {
     rmSync(dir, { force: true, recursive: true });
   }
+});
+
+test("#1801 unknown HTTP status is excluded from failure and success rate counts", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-outcome-"));
+  try {
+    const store = new UsageStore(path.join(dir, "usage.sqlite"));
+    for (const statusCode of [0, 200, 500]) {
+      await store.record({ createdAt: new Date().toISOString(), durationMs: 5, method: "POST", model: "local", path: "/v1/messages", provider: "local", requestId: `status-${statusCode}`, statusCode, usage: { inputTokens: 1, outputTokens: 1 } });
+    }
+    const stats = await store.getStats("today");
+    assert.equal(stats.totals.requestCount, 3);
+    assert.equal(stats.totals.errorCount, 1);
+    assert.equal(stats.totals.successRate, 0.5);
+    assert.equal(stats.models[0].successRate, 0.5);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

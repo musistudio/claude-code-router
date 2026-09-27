@@ -1,5 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+
+test("#1819 verified endpoints outrank synthesized presets while explicit choices win", () => {
+  const preset = { type: "openai_chat_completions", baseUrl: "https://example.test/api/compatible", source: "preset" };
+  const detected = { type: "openai_chat_completions", baseUrl: "https://example.test/api/v3", source: "detected" };
+  const manual = { type: "openai_chat_completions", baseUrl: "https://example.test/manual" };
+  for (const capabilities of [[preset, detected], [detected, preset]]) {
+    assert.deepEqual(normalizedProviderCapabilities({ name: "custom", models: ["model"], capabilities }), [detected]);
+  }
+  assert.deepEqual(normalizedProviderCapabilities({ name: "custom", models: ["model"], capabilities: [preset, detected, manual] }), [manual]);
+});
 import {
   normalizeProviderPresetCapabilitiesForTest
 } from "@ccr/core/config/config.ts";

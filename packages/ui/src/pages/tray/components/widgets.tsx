@@ -216,6 +216,8 @@ function TokenActivityGrid({
   const t = useTrayText();
   const gridFrameRef = useRef<HTMLDivElement>(null);
   const gridFrameSize = useMeasuredElementSize(gridFrameRef);
+  const monthLabelsRef = useRef<HTMLDivElement>(null);
+  const monthLabelsSize = useMeasuredElementSize(monthLabelsRef);
   const dayLabels = [t("M"), "", t("W"), "", t("F"), "", ""];
   const cellGap = 3;
   const labelColumnWidth = 14;
@@ -226,7 +228,7 @@ function TokenActivityGrid({
     fallbackCellSize: 8,
     labelColumnWidth,
     monthLabelGap: 4,
-    monthLabelHeight: 8,
+    monthLabelHeight: monthLabelsSize.height || 20,
     weekCount: activity.weekCount
   });
   const activityColumns = `repeat(${activity.weekCount}, ${cellSize}px)`;
@@ -239,6 +241,7 @@ function TokenActivityGrid({
         <div className="w-full max-w-full" style={{ width: `${gridWidth}px` }}>
           <div
             className="mb-1 grid text-[8px] font-medium leading-none text-slate-500"
+            ref={monthLabelsRef}
             style={{
               columnGap: `${cellGap}px`,
               gridTemplateColumns

@@ -245,3 +245,7 @@ Field paths use CCR's lightweight JSONPath syntax:
 | `local-estimate` | Shows estimated quota from local time-window config without a remote request. |
 
 `Insert example` fills an example connector array containing `standard`, `http-json`, `webcontent-json`, `plugin`, and `local-estimate` connectors.
+
+### Local model usage and pricing
+
+Local compatible services such as llama.cpp also group token usage under the configured provider name. Runtime protocol and credential aliases are normalized to that name. A GGUF filename alias usually has no cloud catalog price. To calculate custom costs, set `inputUsdPerMillionTokens` and `outputUsdPerMillionTokens` in the model metadata's `pricing` object; both are USD per million tokens. Set both to `0` to explicitly record no API charge. Without a configured price, CCR does not infer hardware, electricity, or hosting costs. Existing historical records are not automatically rewritten.

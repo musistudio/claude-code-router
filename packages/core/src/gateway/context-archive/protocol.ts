@@ -236,7 +236,12 @@ function replaceClaudeCodeAutoCompactPrompt(
     }
     const nextMessage = cloneJsonObject(message);
     nextMessage.content = protocol === "anthropic_messages"
-      ? [{ text: claudeCodeCompactHandoffTask(task), type: "text" }]
+      ? [
+          ...(Array.isArray(message.content) ? message.content : []).filter(
+            (block) => isRecord(block) && block.type === "tool_result"
+          ),
+          { text: claudeCodeCompactHandoffTask(task), type: "text" }
+        ]
       : claudeCodeCompactHandoffTask(task);
     messages[index] = nextMessage;
     body.messages = messages;

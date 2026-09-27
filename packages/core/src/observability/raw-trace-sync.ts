@@ -25,6 +25,8 @@ import { maxUsageCaptureBytes, rawTraceSyncHeader, rawTraceSyncPath } from "@ccr
 import type { RawTracePartText } from "@ccr/core/gateway/internal/shared";
 import { resolveResponseProviderProtocol } from "@ccr/core/providers/runtime-topology";
 import { recordGatewayUsageCaptureIfMissing } from "@ccr/core/usage/store";
+import { modelRegistryForConfig } from "@ccr/core/routing/model-registry";
+import { providerModelPricingForUsage } from "@ccr/core/models/pricing-service";
 
 type RawTraceSynchronizerDependencies = {
   enqueueUpdate?: (
@@ -374,6 +376,7 @@ export class RawTraceSynchronizer {
       return true;
     }
 
+    let deliveryAttemptStarted = false;
     try {
       const config = this.dependencies.getConfig();
       if (!config) {
@@ -406,6 +409,16 @@ export class RawTraceSynchronizer {
         ? { cleanupDirectory: bundle.files.cleanupDirectory, maxBodyBytes }
         : { ...bundle.files, maxBodyBytes };
       const enqueueUpdate = this.dependencies.enqueueUpdate ?? enqueueGatewayRequestLogFromRawTrace;
+      // Persist before handing ownership to the writer: a successful enqueue
+      // can be committed and its directory removed immediately. Writing after
+      // enqueue races that cleanup and loses retry budgets on worker crashes.
+      stored.delivery = {
+        ...stored.delivery,
+        attempts: stored.delivery.attempts + 1,
+        lastAttemptAt: now
+      };
+      deliveryAttemptStarted = true;
+      await writeDurableDeliveryState(stored.directory, stored.delivery);
       const enqueueResult = await enqueueUpdate(policy.update, files);
       const result: RequestLogEnqueueResult = typeof enqueueResult === "boolean"
         ? { accepted: enqueueResult, degraded: false, ...(enqueueResult ? {} : { reason: "queue_full" }) }
@@ -418,8 +431,6 @@ export class RawTraceSynchronizer {
         const pendingAttempts = retryState.pendingAttempts + 1;
         stored.delivery = {
           ...stored.delivery,
-          attempts: stored.delivery.attempts + 1,
-          lastAttemptAt: now,
           lastError: "record_pending"
         };
         this.retryStates.set(stored.bundleId, {
@@ -430,17 +441,13 @@ export class RawTraceSynchronizer {
           ),
           pendingAttempts
         });
-        // Persist the transition once so restart diagnostics retain the reason,
-        // but keep subsequent attempt counters in memory to avoid fsync on
-        // every admission poll.
+        // Attempt counts are already durable; persist the reason on transition.
         if (previousError !== "record_pending") {
           await writeDurableDeliveryState(stored.directory, stored.delivery);
         }
       } else if (!result.accepted) {
         stored.delivery = {
           ...stored.delivery,
-          attempts: stored.delivery.attempts + 1,
-          lastAttemptAt: now,
           lastError: result.reason ?? "enqueue_rejected"
         };
         this.retryStates.set(stored.bundleId, {
@@ -451,8 +458,6 @@ export class RawTraceSynchronizer {
       } else {
         stored.delivery = {
           ...stored.delivery,
-          attempts: stored.delivery.attempts + 1,
-          lastAttemptAt: now,
           lastError: undefined
         };
         this.retryStates.set(stored.bundleId, {
@@ -464,7 +469,7 @@ export class RawTraceSynchronizer {
     } catch (error) {
       stored.delivery = {
         ...stored.delivery,
-        attempts: stored.delivery.attempts + 1,
+        attempts: stored.delivery.attempts + (deliveryAttemptStarted ? 0 : 1),
         lastAttemptAt: now,
         lastError: formatError(error)
       };
@@ -1484,6 +1489,8 @@ export function applyRawTraceRequestLogPolicy(
         : "defer";
   const policyInput: RequestLogRawTraceUpdateInput = {
     ...input,
+    provider: modelRegistryForConfig(config).findProvider(input.provider)?.name ?? input.provider,
+    pricing: providerModelPricingForUsage(config, input.provider, input.model),
     bodyCapturePolicy,
     // An upstream trace never owns the final request outcome. Even an HTTP 2xx
     // can be followed by a downstream disconnect or response write failure.

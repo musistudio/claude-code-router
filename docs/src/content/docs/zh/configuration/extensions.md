@@ -296,3 +296,44 @@ curl -H "x-api-key: <CCR_API_KEY>" http://127.0.0.1:3456/plugins/hello
 - 扩展写入文件时优先使用 `ctx.paths.pluginDataDir`。
 - 对 `readJson` 得到的外部输入做类型校验。
 - 代理转发到外部 upstream 时，明确处理 header 白名单，避免把本地鉴权信息转发到不可信服务。
+
+## 分发扩展与市场清单
+
+**安装本地目录是受支持的第三方分发方式。** 可以发布包含 `plugin.json`、入口 JS 文件及运行依赖的 ZIP 或 Git 仓库。用户解压后在 **扩展 → 安装本地目录** 选择目录、确认运行面与权限、保存并重启网关。CCR 直接加载所选目录，因此安装后需要保留该目录；依赖应事先安装或打包。Release 附件不是本地安装或市场加载的必要条件。
+
+截至 2026-09-26，默认市场仓库 `musistudio/ccr-extensions` 的公开 URL 返回 404。此时可用本地安装；该状态不代表第三方插件格式有误。CCR 会尝试已缓存的市场清单，没有缓存时市场列表为空。市场仓库的公开与投稿安排需要仓库维护者确认。
+
+市场作者可参考 [JSON Schema](/schemas/plugin-marketplace.schema.json)。这是推荐字段的编写格式；运行时也兼容部分旧字段别名。最小目录示例：
+
+```text
+marketplace/plugins.json
+plugins/example-usage/index.cjs
+```
+
+`marketplace/plugins.json`：
+
+```json
+{
+  "plugins": [
+    {
+      "id": "example-usage",
+      "name": "Example account usage",
+      "description": "Provider account usage connector",
+      "module": "../plugins/example-usage/index.cjs",
+      "surfaces": { "apps": false, "gateway": false, "provider": true },
+      "permissions": ["trusted-code", "provider-account-connectors"]
+    }
+  ]
+}
+```
+
+- 清单与模块地址必须使用 HTTPS；模块相对路径以清单 URL 为基准，支持 `.cjs`、`.mjs`、`.js`。
+- `module` 应是自包含构建产物：市场下载器只获取这个文件，不会安装 npm 依赖或相邻文件。多文件扩展可先用本地目录分发。
+- 建议加 `integrity`，值为实际模块的 64 位十六进制 SHA-256，或 `sha256-<base64>`。修改模块后必须同步更新摘要。可使用 `shasum -a 256 index.cjs` 计算。
+- `dependencies` 可列依赖插件 ID，或带 `id`、`module`、`integrity`、`permissions`、`surfaces` 的对象。它表示插件依赖，不是 npm 安装清单。
+- `apps` 可列 `{ "id": "status", "name": "Status", "url": "/plugins/status" }`；只有 App 入口时可以省略 `module`。`capabilities` 为描述字符串数组。
+- 自建市场可在启动 CCR 前设置 `CCR_PLUGIN_MARKETPLACE_URL` 为自己的 HTTPS 清单地址。
+
+### 桌面插件调用外部 CLI
+
+桌面进程的 PATH 可能与终端不同。发现 CLI 时允许用户配置绝对路径，并检查可执行文件是否存在。对于已确认的 Node.js 入口脚本，可以用 `process.execPath` 执行，并在 Electron 宿主下传入 `ELECTRON_RUN_AS_NODE=1`；原生二进制应直接执行。使用 `execFile`/`spawn` 的参数数组，避免把凭据放进 shell 命令字符串或日志。

@@ -1572,12 +1572,14 @@ function OverviewActivityGrid({
   const t = useAppText();
   const gridFrameRef = useRef<HTMLDivElement>(null);
   const gridFrameSize = useElementSize(gridFrameRef);
+  const monthLabelsRef = useRef<HTMLDivElement>(null);
+  const monthLabelsSize = useElementSize(monthLabelsRef);
   const showDayLabels = dimensions.width >= 2;
   const showMonthLabels = dimensions.height >= 2;
   const dayLabels = [t("M"), "", t("W"), "", t("F"), "", ""];
   const cellGap = dimensions.height <= 1 ? 2 : dimensions.width >= 3 ? 4 : 3;
   const labelColumnWidth = showDayLabels ? 20 : 0;
-  const monthLabelHeight = showMonthLabels ? 10 : 0;
+  const monthLabelHeight = showMonthLabels ? monthLabelsSize.height || 20 : 0;
   const monthLabelGap = showMonthLabels ? 4 : 0;
   const cellSize = activityGridCellSize({
     availableHeight: gridFrameSize.height,
@@ -1601,6 +1603,7 @@ function OverviewActivityGrid({
             {showMonthLabels ? (
               <div
                 className="mb-1 grid text-[10px] font-medium leading-none text-muted-foreground"
+                ref={monthLabelsRef}
                 style={{
                   columnGap: `${cellGap}px`,
                   gridTemplateColumns: activityColumns,

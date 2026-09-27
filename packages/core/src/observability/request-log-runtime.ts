@@ -69,6 +69,7 @@ export type RequestLogRuntimeOptions = {
   pendingAdmissionTtlMs?: number;
   rawTraceSpoolDir?: string;
   workerFile?: string;
+  writerHeapLimitMb?: number;
 };
 
 type ResolvedRuntimeOptions = Required<Omit<RequestLogRuntimeOptions, "admissionDbFile" | "rawTraceSpoolDir" | "workerFile">> & {
@@ -161,6 +162,7 @@ export class RequestLogRuntime {
   private readonly runtimeId = randomUUID();
   private readonly writerRequests = new Map<number, PendingRpc>();
   private writerRestartCount = 0;
+  private writerRestartTimer?: NodeJS.Timeout;
   private writerWorker?: Worker;
   private writerWorkerReady?: Promise<void>;
 
@@ -191,7 +193,8 @@ export class RequestLogRuntime {
       queueMaxBytes: positiveInteger(options.queueMaxBytes, defaultQueueMaxBytes),
       queueMaxItems: positiveInteger(options.queueMaxItems, 2_000),
       rawTraceSpoolDir: options.rawTraceSpoolDir ?? RAW_TRACE_SPOOL_DIR,
-      workerFile: options.workerFile ?? path.join(__dirname, "request-log-worker.js")
+      workerFile: options.workerFile ?? path.join(__dirname, "request-log-worker.js"),
+      writerHeapLimitMb: positiveInteger(options.writerHeapLimitMb, 512)
     };
   }
 
@@ -363,6 +366,8 @@ export class RequestLogRuntime {
   async close(options: { timeoutMs: number }): Promise<void> {
     if (this.closed) return;
     this.closed = true;
+    if (this.writerRestartTimer) clearTimeout(this.writerRestartTimer);
+    this.writerRestartTimer = undefined;
     if (this.flushTimer) clearTimeout(this.flushTimer);
     await this.flush(options).catch(() => undefined);
     await Promise.all([
@@ -681,6 +686,9 @@ export class RequestLogRuntime {
     } catch {
       return;
     }
+    // Several pumps can await the same worker startup. Recheck after await so
+    // only one batch is in flight, including while isolating a poison record.
+    if (this.inFlight.size > 0 || this.queue.length === 0 || !this.writerWorker) return;
     const commands: QueuedCommand[] = [];
     let bytes = 0;
     const isolatedBatch = Boolean(this.queue[0]?.isolated);
@@ -706,6 +714,7 @@ export class RequestLogRuntime {
     if (this.writerWorkerReady) return this.writerWorkerReady;
     this.writerWorkerReady = new Promise<void>((resolve, reject) => {
       const worker = new Worker(this.options.workerFile, {
+        resourceLimits: { maxOldGenerationSizeMb: this.options.writerHeapLimitMb },
         workerData: {
           dbFile: this.options.dbFile,
           mode: "writer",
@@ -727,7 +736,8 @@ export class RequestLogRuntime {
       });
       worker.on("error", (error) => this.handleWriterFailure(worker, error));
       worker.on("exit", (code) => {
-        if (!this.closed && code !== 0) this.handleWriterFailure(worker, new Error(`request log writer exited with ${code}`));
+        reject(new Error(`request log writer exited with ${code} before becoming ready`));
+        if (!this.closed) this.handleWriterFailure(worker, new Error(`request log writer exited with ${code}`));
       });
     });
     return this.writerWorkerReady;
@@ -757,7 +767,7 @@ export class RequestLogRuntime {
     settleRpc(this.writerRequests, message);
   }
 
-  private handleBatchError(message: WorkerResponse): void {
+  private handleBatchError(message: WorkerResponse, schedule = true): void {
     if (message.batchId === undefined) {
       this.handleWriterFailure(this.writerWorker, new Error(message.error || "request log batch failed"));
       return;
@@ -767,7 +777,7 @@ export class RequestLogRuntime {
     this.inFlight.delete(message.batchId);
     if (batch.commands.length > 1) {
       this.queue.unshift(...batch.commands.map((command) => ({ ...command, isolated: true })));
-      this.schedulePump(true);
+      if (schedule) this.schedulePump(true);
       return;
     }
 
@@ -791,7 +801,7 @@ export class RequestLogRuntime {
         `${command.writeAttempts} failed write attempts: ${message.error || "request log batch failed"}`
       );
     }
-    this.schedulePump(true);
+    if (schedule) this.schedulePump(true);
   }
 
   private handleWriterFailure(worker: Worker | undefined, error: Error): void {
@@ -799,16 +809,23 @@ export class RequestLogRuntime {
     this.writerWorker = undefined;
     this.writerWorkerReady = undefined;
     void worker.terminate().catch(() => undefined);
-    for (const [, batch] of [...this.inFlight].reverse()) this.queue.unshift(...batch.commands);
-    this.inFlight.clear();
+    // A worker crash is also a failed write attempt. Split the batch, then
+    // bound retries for each command so an OOM cannot block healthy records.
+    for (const [batchId] of [...this.inFlight].reverse()) {
+      this.handleBatchError({ batchId, error: formatRuntimeError(error), type: "batch-error" }, false);
+    }
     rejectPending(this.writerRequests, error);
     if (this.closed) return;
     this.writerRestartCount += 1;
+    console.warn(`[request-log] Writer restarted after failure: ${formatRuntimeError(error)}`);
     const delayMs = Math.min(5_000, 100 * (2 ** Math.min(6, this.writerRestartCount - 1)));
-    const timer = setTimeout(() => {
+    if (this.writerRestartTimer) clearTimeout(this.writerRestartTimer);
+    this.writerRestartTimer = setTimeout(() => {
+      this.writerRestartTimer = undefined;
+      if (this.closed) return;
       this.ensureWriter().then(() => this.schedulePump(true)).catch(() => undefined);
     }, delayMs);
-    timer.unref?.();
+    this.writerRestartTimer.unref?.();
   }
 
   private scheduleRawTraceCleanup(commands: QueuedCommand[]): void {

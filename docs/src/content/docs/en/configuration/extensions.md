@@ -296,3 +296,31 @@ Proxy route matching rules:
 - Prefer `ctx.paths.pluginDataDir` for files written by your extension.
 - Validate all external input returned by `readJson`.
 - When proxying to external upstreams, handle headers explicitly so local auth material is not forwarded to untrusted services.
+
+## Distribution and marketplace manifests
+
+**Installing a local directory is a supported distribution method.** Ship `plugin.json`, the JavaScript entry, and runtime dependencies in a ZIP or repository. Users unpack it, select **Extensions → Install local directory**, review surfaces and permissions, save, and restart the gateway. Keep the directory in place: CCR loads it directly. Install dependencies beforehand or bundle them. Release attachments are optional.
+
+On 2026-09-26 the public URL for the default `musistudio/ccr-extensions` marketplace returned 404. Use local installation while its availability and submission process are being confirmed by the repository maintainer. CCR falls back to its cached catalog, or an empty list when no cache exists.
+
+See the [canonical authoring JSON Schema](/schemas/plugin-marketplace.schema.json). The runtime also accepts legacy field aliases. For `marketplace/plugins.json`, a provider usage connector entry can be:
+
+```json
+{
+  "plugins": [{
+    "id": "example-usage",
+    "name": "Example account usage",
+    "module": "../plugins/example-usage/index.cjs",
+    "surfaces": { "apps": false, "gateway": false, "provider": true },
+    "permissions": ["trusted-code", "provider-account-connectors"]
+  }]
+}
+```
+
+Catalogs and modules require HTTPS. Relative module paths resolve against the catalog URL. Modules must be `.cjs`, `.mjs`, or `.js` files with dependencies bundled: the downloader fetches one file without installing npm packages or neighboring files. Prefer an `integrity` field containing the module's actual 64-character hexadecimal SHA-256 or `sha256-<base64>` digest; update it whenever the module changes. Compute it with `shasum -a 256 index.cjs`.
+
+`dependencies` lists plugin IDs or objects with `id`, `module`, `integrity`, `permissions`, and `surfaces`; these are plugin dependencies, not npm packages. `apps` contains entries such as `{ "id": "status", "name": "Status", "url": "/plugins/status" }`; app-only entries can omit `module`. `capabilities` is a string array. Set `CCR_PLUGIN_MARKETPLACE_URL` before starting CCR to use your own HTTPS catalog.
+
+### External CLIs in desktop plugins
+
+A desktop process may have a different PATH from a terminal. Support explicit executable paths and check their existence. For a confirmed Node.js entry script, use `process.execPath` and set `ELECTRON_RUN_AS_NODE=1` when running in Electron. Run native executables directly. Pass arguments as an array to `execFile` or `spawn`; avoid putting credentials in shell strings or logs.

@@ -2,11 +2,13 @@ import { createHash, randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import {
+  AppConfigConflictError,
+  appConfigRevision,
   archiveLegacyJsonConfigFiles,
   loadPersistedApiKeys,
   loadPersistedAppConfig,
   replacePersistedApiKeys,
-  replacePersistedAppConfig,
+  updatePersistedAppConfig,
   replacePersistedConfigSnapshot
 } from "@ccr/core/config/config-repository";
 import { LEGACY_ACTIVE_CONFIG_FILE, LEGACY_CONFIG_FILE, LEGACY_WINDOWS_CONFIG_FILE } from "@ccr/core/config/constants";
@@ -341,7 +343,11 @@ export async function loadAppConfig(): Promise<AppConfig> {
     const shouldRepairProviderCapabilities = hasUnsupportedNvidiaCapabilities(value.Providers);
     const shouldRepairKnownPlugins = pluginMigration.changed;
     if (loadedRawConfig.source !== "sqlite" || shouldPersistApiKeys || shouldRepairProviderCapabilities || shouldRepairKnownPlugins) {
-      await replacePersistedConfigSnapshot(sanitizeConfigForDisk(config), apiKeys);
+      const sanitized = sanitizeConfigForDisk(config);
+      await replacePersistedConfigSnapshot(sanitized, apiKeys, appConfigRevision(loadedRawConfig.source === "sqlite" ? rawValue : undefined));
+      config.configRevision = appConfigRevision(sanitized);
+    } else {
+      config.configRevision = appConfigRevision(rawValue);
     }
     if (loadedRawConfig.source === "legacy-json" && loadedRawConfig.legacyJsonFile) {
       await archiveLegacyJsonConfigFiles([loadedRawConfig.legacyJsonFile]).catch((archiveError) => {
@@ -350,6 +356,7 @@ export async function loadAppConfig(): Promise<AppConfig> {
     }
     return config;
   } catch (error) {
+    if (error instanceof AppConfigConflictError) return loadAppConfig();
     console.warn(`[config] Failed to load config: ${formatError(error)}`);
     const persistedApiKeys = await loadPersistedApiKeys().catch((storeError) => {
       console.warn(`[config] Failed to load API keys: ${formatError(storeError)}`);
@@ -370,7 +377,6 @@ export async function loadAppConfig(): Promise<AppConfig> {
 }
 
 let appConfigWriteQueue: Promise<void> = Promise.resolve();
-let appThemePreferenceOverride: AppConfig["theme"] | undefined;
 
 /** Save settings; change gateway credentials through saveApiKeysConfig instead. */
 export async function saveAppConfig(config: AppConfig): Promise<AppConfig> {
@@ -379,13 +385,9 @@ export async function saveAppConfig(config: AppConfig): Promise<AppConfig> {
 
 export async function saveAppThemePreference(theme: unknown): Promise<AppConfig["theme"]> {
   const normalizedTheme = normalizeAppThemePreference(theme);
-  appThemePreferenceOverride = normalizedTheme;
   return enqueueAppConfigWrite(async () => {
-    const currentConfig = await loadAppConfig();
-    await writeSanitizedConfig({
-      ...currentConfig,
-      theme: normalizedTheme
-    });
+    await loadAppConfig();
+    await updatePersistedAppConfig((current) => ({ ...(isObject(current) ? current : {}), theme: normalizedTheme }));
     return normalizedTheme;
   });
 }
@@ -398,7 +400,6 @@ async function saveAppConfigNow(config: AppConfig): Promise<AppConfig> {
   // a key revocation or rotation, so it must never replace the credential table.
   await writeSanitizedConfig({
     ...normalizedConfig,
-    theme: appThemePreferenceOverride ?? normalizedConfig.theme,
     plugins: pluginMigration.plugins
   });
   return loadAppConfig();
@@ -716,13 +717,20 @@ function readLegacyJsonConfig(): LegacyJsonConfigLoadResult | undefined {
 }
 
 async function writeSanitizedConfig(config: AppConfig): Promise<void> {
-  await replacePersistedAppConfig(sanitizeConfigForDisk(config));
+  const sanitized = sanitizeConfigForDisk(config);
+  await updatePersistedAppConfig((current) => {
+    if (current !== undefined && config.configRevision !== appConfigRevision(current)) {
+      throw new AppConfigConflictError();
+    }
+    return { ...sanitized, theme: isObject(current) && current.theme !== undefined ? current.theme : config.theme };
+  });
 }
 
 function sanitizeConfigForDisk(config: AppConfig): Record<string, unknown> {
+  const { configRevision: _revision, ...settings } = config;
   const { coreHost: _coreHost, corePort: _corePort, ...gateway } = config.gateway;
   return {
-    ...config,
+    ...settings,
     APIKEY: "",
     APIKEYS: [],
     gateway,

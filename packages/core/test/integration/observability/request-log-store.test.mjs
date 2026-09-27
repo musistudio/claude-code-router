@@ -2136,3 +2136,19 @@ test("RequestLogStore does not identify an unknown client as OpenCode from its m
     rmSync(dir, { force: true, recursive: true });
   }
 });
+
+test("#1801 unknown raw trace status is neutral while transport and HTTP errors remain failures", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-log-outcome-"));
+  const store = new RequestLogStore(path.join(dir, "logs.sqlite"));
+  try {
+    for (const [requestId, statusCode, error] of [["unknown", 0, undefined], ["success", 200, undefined], ["http-error", 500, undefined], ["transport-error", 0, "connection reset"]]) {
+      const now = new Date().toISOString();
+      await store.record({ completedAt: now, startedAt: now, durationMs: 1, error, method: "POST", path: "/v1/messages", requestId, statusCode, url: "/v1/messages", requestHeaders: {}, responseHeaders: {}, requestBody: Buffer.from("{}"), responseBodyText: "{}" });
+    }
+    const errors = await store.list({ status: "error" });
+    assert.deepEqual(errors.items.map(item => item.requestId).sort(), ["http-error", "transport-error"]);
+    const analysis = await store.analyze({ range: "30d" });
+    assert.equal(analysis.totals.errorCount, 2);
+    assert.equal(analysis.totals.successRate, 1 / 3);
+  } finally { await store.close(); rmSync(dir, { recursive: true, force: true }); }
+});

@@ -246,7 +246,7 @@ async function handleRpcRequest(request: IncomingMessage, response: ServerRespon
     const value = await handler(...(Array.isArray(payload.args) ? payload.args : []));
     sendJson(response, 200, { ok: true, value });
   } catch (error) {
-    sendJson(response, 500, { error: { message: formatError(error) }, ok: false });
+    sendJson(response, error instanceof Error && error.name === "AppConfigConflictError" ? 409 : 500, { error: { message: formatError(error) }, ok: false });
   }
 }
 

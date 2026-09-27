@@ -5,6 +5,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import test from "node:test";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
+import { providerRuntimeId } from "@ccr/core/routing/model-registry.ts";
 import { rawTraceSyncHeader } from "@ccr/core/gateway/internal/shared.ts";
 import { rawTraceHardMaxBodyBytes, rawTraceMaxPartBytes } from "@ccr/core/observability/request-log-limits.ts";
 import {
@@ -15,6 +16,18 @@ import {
   readRawTraceRequestLogBundle,
   RawTraceSynchronizer
 } from "@ccr/core/observability/raw-trace-sync.ts";
+
+test("#1809 raw trace resolves runtime provider aliases and custom pricing", () => {
+  const config = createConfig();
+  const pricing = { inputUsdPerMillionTokens: 2, outputUsdPerMillionTokens: 6 };
+  const provider = { name: "Local Ollama", type: "openai_chat_completions", baseUrl: "http://localhost:11434/v1", models: ["local-model"], modelMetadata: { "local-model": { pricing } } };
+  config.Providers = [provider];
+  const policy = applyRawTraceRequestLogPolicy(config, {
+    model: "local-model", provider: `${providerRuntimeId(provider)}::openai_chat_completions`, requestId: "local-alias", statusCode: 200
+  });
+  assert.equal(policy.update.provider, "Local Ollama");
+  assert.deepEqual(policy.update.pricing, pricing);
+});
 
 test("raw trace applies metadata-only body privacy while retaining original sizes", () => {
   const config = createConfig();
@@ -373,6 +386,7 @@ test("raw trace replay recovers an inbox bundle after the accepting process cras
     await first.handle(request, response);
     const inbox = path.join(spoolDirectory, ".ccr-inbox");
     await waitFor(() => readdirSync(inbox).length === 1);
+    await first.stop();
 
     let replayed = 0;
     const second = new RawTraceSynchronizer({
@@ -713,7 +727,7 @@ test("raw trace moves permanently pending bundles to bounded dead letter after m
   }
 });
 
-test("raw trace backs off record-pending retries without repeatedly persisting attempts", async () => {
+test("raw trace persists the delivery budget across record-pending retries", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-raw-trace-pending-backoff-test-"));
   const spoolDirectory = path.join(dir, "spool");
   const bundleDirectory = path.join(spoolDirectory, "pending-backoff-bundle");
@@ -746,12 +760,12 @@ test("raw trace backs off record-pending retries without repeatedly persisting a
     const storedDirectory = path.join(inboxDirectory, readdirSync(inboxDirectory)[0]);
     const deliveryFile = path.join(storedDirectory, ".ccr-delivery.json");
     await waitFor(() => JSON.parse(readFileSync(deliveryFile, "utf8")).lastError === "record_pending");
-    const firstPersistedState = readFileSync(deliveryFile, "utf8");
 
-    await new Promise((resolve) => setTimeout(resolve, 80));
-    assert.ok(attempts >= 2);
-    assert.ok(attempts <= 3);
-    assert.equal(readFileSync(deliveryFile, "utf8"), firstPersistedState);
+    await waitFor(() => attempts >= 2);
+    // A retry reserves its budget before enqueue. Drain that work before
+    // comparing durable reservations with completed enqueue calls.
+    await synchronizer.stop();
+    assert.equal(JSON.parse(readFileSync(deliveryFile, "utf8")).attempts, attempts);
   } finally {
     await synchronizer.stop();
     rmSync(dir, { force: true, recursive: true });
@@ -993,3 +1007,38 @@ async function sendRawTrace(synchronizer, manifest, onResponse) {
   await synchronizer.handle(request, response);
   return result;
 }
+
+test("#1807 accepted but uncommitted bundles retain their retry budget after restart", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-raw-trace-restart-budget-"));
+  const spoolDirectory = path.join(dir, "spool");
+  const bundleDirectory = path.join(spoolDirectory, "poison-bundle");
+  mkdirSync(bundleDirectory, { recursive: true });
+  const bodyFile = path.join(bundleDirectory, "upstream_request.json");
+  writeFileSync(bodyFile, "{}");
+  writeFileSync(path.join(bundleDirectory, "manifest.json"), JSON.stringify({
+    parts: [{ filePath: bodyFile, partType: "upstream_request" }], requestId: "restart-budget", turnKey: "restart-request"
+  }));
+  let attempts = 0;
+  const options = { bundleMaxAttempts: 1, getConfig: createConfig, replayIntervalMs: 10000, retryCooldownMs: 10000, spoolDirectory,
+    enqueueUpdate: async () => { attempts += 1; return { accepted: true, degraded: false }; } };
+  const first = new RawTraceSynchronizer(options);
+  const second = new RawTraceSynchronizer(options);
+  try {
+    await first.start();
+    await waitFor(() => {
+      const inbox = path.join(spoolDirectory, ".ccr-inbox");
+      if (!existsSync(inbox)) return false;
+      return readdirSync(inbox).some(name => {
+        const file = path.join(inbox, name, ".ccr-delivery.json");
+        return existsSync(file) && JSON.parse(readFileSync(file, "utf8")).attempts === 1;
+      });
+    });
+    await first.stop();
+    await second.start();
+    await waitFor(() => {
+      const dead = path.join(spoolDirectory, ".ccr-dead-letter");
+      return existsSync(dead) && readdirSync(dead).length === 1;
+    });
+    assert.equal(attempts, 1);
+  } finally { await first.stop(); await second.stop(); rmSync(dir, { recursive: true, force: true }); }
+});
