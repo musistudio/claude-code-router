@@ -4,7 +4,7 @@ import { standardProviderAccountConfig } from "@ccr/core/providers/presets/types
 export const minimaxGlobalProviderPreset: ProviderPreset = {
   account: standardProviderAccountConfig,
   aliases: ["minimax", "minimax global"],
-  defaultModels: ["MiniMax-M3"],
+  defaultModels: ["MiniMax-M3", "MiniMax-M2.7"],
   endpoints: [
     {
       baseUrl: "https://api.minimax.io/v1",
@@ -12,7 +12,7 @@ export const minimaxGlobalProviderPreset: ProviderPreset = {
       websiteUrl: "https://platform.minimax.io/docs"
     },
     {
-      baseUrl: "https://api.minimax.io/anthropic/v1",
+      baseUrl: "https://api.minimax.io/anthropic",
       protocols: ["anthropic_messages"],
       websiteUrl: "https://platform.minimax.io/docs"
     }
@@ -25,7 +25,7 @@ export const minimaxGlobalProviderPreset: ProviderPreset = {
 export const minimaxChinaProviderPreset: ProviderPreset = {
   account: standardProviderAccountConfig,
   aliases: ["minimax", "minimaxi", "minimax china"],
-  defaultModels: ["MiniMax-M3"],
+  defaultModels: ["MiniMax-M3", "MiniMax-M2.7"],
   endpoints: [
     {
       baseUrl: "https://api.minimaxi.com/v1",
@@ -33,7 +33,7 @@ export const minimaxChinaProviderPreset: ProviderPreset = {
       websiteUrl: "https://platform.minimaxi.com/docs"
     },
     {
-      baseUrl: "https://api.minimaxi.com/anthropic/v1",
+      baseUrl: "https://api.minimaxi.com/anthropic",
       protocols: ["anthropic_messages"],
       websiteUrl: "https://platform.minimaxi.com/docs"
     }
