@@ -25,6 +25,8 @@ export type ResponsesSessionAffinityInput = {
 
 const sessionIdHeaderNames = ["x-claude-code-session-id", "x-claude-session-id"];
 const codexUpstreamUrlMarkers = ["chatgpt.com/backend-api/codex", "/backend-api/codex"];
+// OpenCode Zen cache reads stall past ~100k tokens when prompt_cache_key is set.
+const openCodeZenUpstreamUrlMarker = "opencode.ai/zen/";
 
 /**
  * Copies the Claude Code session identity onto outbound OpenAI Responses
@@ -52,7 +54,7 @@ export function applyResponsesSessionAffinity(input: ResponsesSessionAffinityInp
 
   const inboundUserId = inboundMetadataUserId(input.request?.body);
   const changes: Record<string, unknown> = {};
-  if (!stringValue(body.prompt_cache_key)) {
+  if (!stringValue(body.prompt_cache_key) && !upstreamRequest.url.toLowerCase().includes(openCodeZenUpstreamUrlMarker)) {
     const sessionKey = resolveResponsesSessionKey(input.request?.headers, inboundUserId);
     if (sessionKey) {
       changes.prompt_cache_key = sessionKey;
