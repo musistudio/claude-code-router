@@ -1707,6 +1707,11 @@ function App() {
       return false;
     }
 
+    if (providerDraft.presetUsesTemplateEndpoints && !providerDraft.baseUrl.trim()) {
+      setProviderProbeError(t("Enter the workspace ID and select a service region."));
+      return false;
+    }
+
     const probe = providerProbe;
 
     const usesCatalog = Boolean(probe?.models.length);
