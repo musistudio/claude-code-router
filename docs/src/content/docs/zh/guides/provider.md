@@ -45,6 +45,7 @@ lead: "页面顶部的交互式面板可直接连到你正在运行的 CCR 添�
 ## 相关页面
 
 - [安装并启动 CCR](../install/)
+- [自部署 OpenAI 兼容模型](../self-hosted-models/)
 - [接入 Agent 配置](../agent-profile/)
 - [供应商配置](../../configuration/providers/)
 - [智能路由](../../configuration/routing/)

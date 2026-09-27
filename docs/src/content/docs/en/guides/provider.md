@@ -45,6 +45,7 @@ For full details on credential limits and usage field mapping, see [Provider con
 ## Related pages
 
 - [Install and start CCR](../install/)
+- [Self-hosted OpenAI-compatible models](../self-hosted-models/)
 - [Connect Agent Config](../agent-profile/)
 - [Provider config](../../configuration/providers/)
 - [Routing](../../configuration/routing/)
