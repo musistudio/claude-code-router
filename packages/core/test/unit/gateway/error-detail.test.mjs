@@ -29,6 +29,19 @@ function aggregateErrorPayload() {
   };
 }
 
+test("#1819 final model-resolution errors retain earlier CCR fallback failures", () => {
+  const payload = { error: { message: "All target providers failed.", attempts: [{ stage: "model_resolution", status: 400, message: "Unknown final model" }] } };
+  const previous = [{ model: "Primary/model", statusCode: 429 }, { model: "Wrong endpoint/model", statusCode: 404 }];
+  const enriched = appendAggregateErrorAttemptSummary(JSON.stringify(payload), previous);
+  const parsed = JSON.parse(enriched);
+  assert.deepEqual(parsed.error.attempts.map(attempt => attempt.status), [429, 404, 400]);
+  assert.deepEqual(parsed.error.attempts.slice(0, 2).map(attempt => attempt.fallbackReason), ["http:429", "http:404"]);
+  assert.match(parsed.error.message, /Primary\/model: HTTP 429/);
+  assert.match(parsed.error.message, /Wrong endpoint\/model: HTTP 404/);
+  assert.match(parsed.error.message, /Unknown final model/);
+  assert.equal(appendAggregateErrorAttemptSummary(enriched, previous), undefined);
+});
+
 test("appendAggregateErrorAttemptSummary appends per-attempt summaries to the message", () => {
   const enriched = appendAggregateErrorAttemptSummary(JSON.stringify(aggregateErrorPayload()));
   assert.ok(enriched);

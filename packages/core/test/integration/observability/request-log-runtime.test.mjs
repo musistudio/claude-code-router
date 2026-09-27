@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -14,6 +14,81 @@ const workerFile = [
   path.resolve(__dirname, "../../runtime/request-log-worker.js")
 ].find(existsSync);
 assert.ok(workerFile, "compiled request-log-worker.js must exist");
+
+// Reproduce #1807 with V8's actual heap-limit termination, not a thrown error.
+// The poison allocation is confined to a worker with a 16 MB old-space limit.
+test("#1807 real worker OOM isolates poison and drains the healthy backlog", { timeout: 20000 }, async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-real-oom-"));
+  const fixture = path.join(dir, "oom.cjs");
+  writeFileSync(fixture, `
+    const { parentPort } = require('node:worker_threads');
+    parentPort.on('message', message => {
+      if (message.type === 'batch') {
+        if (message.commands.some(c => c.input.requestId === 'poison')) {
+          const retained = [];
+          while (true) retained.push(new Array(131072).fill(42));
+        }
+        parentPort.postMessage({ type: 'ack', batchId: message.batchId });
+      } else {
+        parentPort.postMessage({ type: 'response', requestId: message.requestId });
+        if (message.method === 'shutdown') parentPort.close();
+      }
+    });
+    parentPort.postMessage({ type: 'ready' });
+  `);
+  const runtime = createRequestLogRuntime({ dbFile: path.join(dir, "logs.sqlite"), workerFile: fixture, writerHeapLimitMb: 16 });
+  const warnings = [];
+  const warn = console.warn;
+  console.warn = (...args) => warnings.push(args.join(" "));
+  try {
+    runtime.enqueueRecord(createRecord("poison"));
+    for (let i = 0; i < 100; i++) assert.equal(runtime.enqueueRecord(createRecord(`healthy-${i}`)).accepted, true);
+    assert.equal((await runtime.flush({ timeoutMs: 15000 })).timedOut, false);
+    assert.equal(runtime.metrics().dropped, 1);
+    assert.equal(runtime.metrics().committed, 100);
+    assert.equal(runtime.metrics().writerRestarts, 3);
+    assert.equal(runtime.metrics().queueBytes, 0);
+    assert.match(warnings.join("\n"), /memory|heap/i);
+  } finally {
+    console.warn = warn;
+    await runtime.close({ timeoutMs: 1000 });
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("#1807 query OOM rejects the request and the next query starts a bounded worker", { timeout: 15000 }, async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-query-oom-"));
+  const fixture = path.join(dir, "query.cjs");
+  writeFileSync(fixture, `
+    const { parentPort, workerData, resourceLimits } = require('node:worker_threads');
+    const fs = require('node:fs');
+    if (workerData.mode === 'query') {
+      fs.appendFileSync(workerData.dbFile + '.starts', 'query\\n');
+      if (resourceLimits.maxOldGenerationSizeMb !== 16) throw new Error('missing query heap limit');
+    }
+    parentPort.on('message', message => {
+      if (message.method === 'list' && !fs.existsSync(workerData.dbFile + '.poisoned')) {
+        fs.writeFileSync(workerData.dbFile + '.poisoned', '1');
+        const retained = [];
+        while (true) retained.push(new Array(131072).fill(42));
+      }
+      parentPort.postMessage({ type: 'response', requestId: message.requestId, result: { items: [] } });
+      if (message.method === 'shutdown') parentPort.close();
+    });
+    parentPort.postMessage({ type: 'ready' });
+  `);
+  const dbFile = path.join(dir, "logs.sqlite");
+  const runtime = createRequestLogRuntime({ dbFile, workerFile: fixture, queryHeapLimitMb: 16 });
+  try {
+    await assert.rejects(runtime.list({}), { code: "ERR_WORKER_OUT_OF_MEMORY" });
+    const pages = await Promise.all([runtime.list({}), runtime.list({})]);
+    assert.deepEqual(pages.map(page => page.items), [[], []]);
+    assert.equal(readFileSync(`${dbFile}.starts`, "utf8"), "query\nquery\n", "concurrent queries must share one replacement worker");
+  } finally {
+    await runtime.close({ timeoutMs: 1000 });
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test("#1807 worker crashes have bounded retries and do not block healthy records", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-writer-crash-"));

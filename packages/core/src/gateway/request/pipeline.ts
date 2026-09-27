@@ -938,7 +938,7 @@ export class GatewayRequestPipeline {
           response.end();
           return;
         }
-        const outboundErrorText = appendAggregateErrorAttemptSummary(bufferedErrorText) ?? bufferedErrorText;
+        const outboundErrorText = appendAggregateErrorAttemptSummary(bufferedErrorText, upstreamResult.failedAttempts) ?? bufferedErrorText;
         if (outboundErrorText !== bufferedErrorText) {
           responseHeaders.delete("content-length");
         }

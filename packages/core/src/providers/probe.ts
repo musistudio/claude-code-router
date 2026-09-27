@@ -408,6 +408,7 @@ function intersectProtocolModels(
 function providerProbeCacheKey(request: GatewayProviderProbeRequest): string {
   return JSON.stringify({
     apiKeyHash: hashSensitiveValue(request.apiKey ?? ""),
+    localClaudeTokenHash: hashSensitiveValue(localClaudeProbeToken(request.apiKey, request.providerPlugins ?? []) ?? ""),
     baseUrl: request.baseUrl.trim(),
     mode: request.mode ?? "protocols",
     models: uniqueStrings(request.models ?? []),
@@ -695,7 +696,7 @@ async function probeProtocols(
     results.push(
       mode === "connectivity" && isChatProtocol(protocol)
         ? await probeProtocolConnectivity(parsed, apiKey, models, protocol, providerPlugins)
-        : await probeProtocolSupport(parsed, apiKey, protocol)
+        : await probeProtocolSupport(parsed, apiKey, protocol, providerPlugins)
     );
   }
 
@@ -705,14 +706,16 @@ async function probeProtocols(
 async function probeProtocolSupport(
   parsed: ParsedProviderUrl,
   apiKey: string | undefined,
-  protocol: GatewayProviderCapabilityProtocol
+  protocol: GatewayProviderCapabilityProtocol,
+  providerPlugins: unknown[] = []
 ): Promise<GatewayProviderProbeProtocolResult> {
   const endpoints = endpointsForProtocol(parsed, protocol, undefined);
   const endpoint = endpoints[0]?.endpoint ?? providerBaseUrlForCapability(parsed, protocol);
   let firstResult: GatewayProviderProbeProtocolResult | undefined;
 
   for (const candidate of endpoints) {
-    const result = await requestJson(candidate.endpoint, requestForProtocolSupport(protocol, apiKey));
+    const request = await providerProbeAuthRequest(candidate.endpoint, requestForProtocolSupport(protocol, apiKey), providerPlugins, apiKey, { model: "" });
+    const result = await requestJson(request.url, request.init);
     const message = readResponseMessage(result);
     const supported = isProviderProtocolEndpointSupportedForProbe(result.status, message, protocol, parsed.hints);
     const probeResult = {
@@ -962,8 +965,8 @@ async function providerProbeAuthRequest(
     request = providerProbeRequestTransformRequest(request.url, request.init, requestTransform, context);
   }
 
-  if (apiKey === localAgentProviderApiKey && providerPlugins.some(isLocalClaudeCodeOauthProviderPlugin)) {
-    const token = readClaudeCodeOauth()?.accessToken;
+  {
+    const token = localClaudeProbeToken(apiKey, providerPlugins);
     if (token) {
       const headers = new Headers(request.init.headers);
       headers.set("authorization", `Bearer ${token}`);
@@ -974,6 +977,12 @@ async function providerProbeAuthRequest(
   }
 
   return request;
+}
+
+function localClaudeProbeToken(apiKey: string | undefined, providerPlugins: unknown[]): string | undefined {
+  return apiKey === localAgentProviderApiKey && providerPlugins.some(isLocalClaudeCodeOauthProviderPlugin)
+    ? readClaudeCodeOauth()?.accessToken
+    : undefined;
 }
 
 function providerProbeLiveCodexOauth(

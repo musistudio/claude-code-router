@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -486,6 +486,30 @@ test("Codex app-server preserves the requested approval reviewer without widenin
       network: { enabled: false, domains: {} }
     }
   });
+});
+
+test("#1795 null upstream requirements with Fast Mode still provide desktop network requirements", { skip: process.platform === "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-null-requirements-"));
+  try {
+    const runtimeFile = writeRuntimeScript(dir);
+    const fakeCodex = path.join(dir, "fake-codex");
+    writeFileSync(fakeCodex, `#!/usr/bin/env node
+      const input = require('node:readline').createInterface({ input: process.stdin });
+      input.on('line', line => { const request = JSON.parse(line); process.stdout.write(JSON.stringify({ id: request.id, result: { requirements: null } }) + '\\n'); });
+    `);
+    chmodSync(fakeCodex, 0o700);
+    const result = spawnSync(process.execPath, [runtimeFile, "app-server"], {
+      encoding: "utf8", timeout: 10000,
+      env: { ...process.env, CODEX_HOME: dir, CCR_REAL_CODEX_CLI_PATH: fakeCodex, CCR_CODEX_REMOTE_FRONTEND_MODE: "app", CCR_CODEX_MODEL_CATALOG: JSON.stringify({ models: [{ slug: "fast-test", supports_fast_mode: true }] }) },
+      input: JSON.stringify({ id: 1, method: "configRequirements/read", params: {} }) + "\n"
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const requirements = JSON.parse(result.stdout.trim()).result.requirements;
+    // Current CCR supplies explicit local network defaults instead of keeping
+    // null. The original fatal condition was a non-null object WITHOUT these.
+    assert.equal(requirements.featureRequirements.fast_mode, true);
+    assert.deepEqual(requirements.application.network, { enabled: false, domains: {} });
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 test("Codex app-server preserves auto-review without an opt-in environment variable", { skip: process.platform === "win32" }, () => {

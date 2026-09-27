@@ -51,7 +51,11 @@ export const maxAggregateErrorDetailBodyBytes = 262_144;
  * it is the failure ultimately returned by the fallback chain. The payload
  * object is copied; the input is never mutated.
  */
-export function appendAggregateErrorAttemptSummary(text: string): string | undefined {
+export function appendAggregateErrorAttemptSummary(text: string, previousAttempts: Array<{
+  error?: string;
+  model?: string;
+  statusCode?: number;
+}> = []): string | undefined {
   let payload: AggregateErrorPayload;
   try {
     const parsed: unknown = JSON.parse(text);
@@ -63,12 +67,35 @@ export function appendAggregateErrorAttemptSummary(text: string): string | undef
     return undefined;
   }
 
-  const error = payload.error;
-  if (typeof error !== "object" || error === null || Array.isArray(error)) {
+  const parsedError = payload.error;
+  if (typeof parsedError !== "object" || parsedError === null || Array.isArray(parsedError)) {
     return undefined;
   }
-  if (typeof error.message !== "string" || !Array.isArray(error.attempts) || error.attempts.length === 0) {
+  if (typeof parsedError.message !== "string" || !Array.isArray(parsedError.attempts) || parsedError.attempts.length === 0) {
     return undefined;
+  }
+  let error = { ...parsedError, message: parsedError.message, attempts: parsedError.attempts as unknown[] };
+
+  // CCR's model-chain wraps multiple core-gateway requests. The final core
+  // error knows only its own attempts; retain earlier HTTP/network failures so
+  // a last model-resolution error cannot hide a real quota or endpoint error.
+  if (previousAttempts.length && !error.attempts.some(attempt =>
+    typeof attempt === "object" && attempt !== null && "stage" in attempt && attempt.stage === "ccr_fallback"
+  )) {
+    error = {
+      ...error,
+      attempts: [
+        ...previousAttempts.slice(-(attemptCountLimit - 1)).map(attempt => ({
+          stage: "ccr_fallback",
+          ...(attempt.statusCode ? { status: attempt.statusCode } : {}),
+          ...(attempt.model ? { model: attempt.model } : {}),
+          fallbackReason: attempt.statusCode ? `http:${attempt.statusCode}` : "network-error",
+          message: `Model ${attempt.model ?? "unknown"}: ${attempt.statusCode ? `HTTP ${attempt.statusCode}` : "network error"}`
+        })),
+        ...error.attempts
+      ]
+    };
+    payload = { ...payload, error };
   }
 
   const contextLimitMessage = finalAttemptContextLimitMessage(error.attempts);

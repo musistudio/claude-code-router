@@ -66,6 +66,7 @@ export type RequestLogRuntimeOptions = {
   dbFile: string;
   queueMaxBytes?: number;
   queueMaxItems?: number;
+  queryHeapLimitMb?: number;
   pendingAdmissionTtlMs?: number;
   rawTraceSpoolDir?: string;
   workerFile?: string;
@@ -192,6 +193,7 @@ export class RequestLogRuntime {
       pendingAdmissionTtlMs: positiveInteger(options.pendingAdmissionTtlMs, 5 * 60 * 1_000),
       queueMaxBytes: positiveInteger(options.queueMaxBytes, defaultQueueMaxBytes),
       queueMaxItems: positiveInteger(options.queueMaxItems, 2_000),
+      queryHeapLimitMb: positiveInteger(options.queryHeapLimitMb, 512),
       rawTraceSpoolDir: options.rawTraceSpoolDir ?? RAW_TRACE_SPOOL_DIR,
       workerFile: options.workerFile ?? path.join(__dirname, "request-log-worker.js"),
       writerHeapLimitMb: positiveInteger(options.writerHeapLimitMb, 512)
@@ -861,8 +863,13 @@ export class RequestLogRuntime {
   private async ensureQueryWorker(): Promise<void> {
     if (this.queryWorkerReady) return await this.queryWorkerReady;
     await this.ensureWriter();
+    // Concurrent queries can wait on the same writer startup. Only the first
+    // may create a reader; otherwise the earlier reader and its RPCs are lost.
+    if (this.closed) throw new Error("Request log runtime is closed.");
+    if (this.queryWorkerReady) return await this.queryWorkerReady;
     this.queryWorkerReady = new Promise<void>((resolve, reject) => {
       const worker = new Worker(this.options.workerFile, {
+        resourceLimits: { maxOldGenerationSizeMb: this.options.queryHeapLimitMb },
         workerData: {
           dbFile: this.options.dbFile,
           mode: "query",
@@ -888,10 +895,12 @@ export class RequestLogRuntime {
         rejectPending(this.queryRequests, error);
       });
       worker.on("exit", (code) => {
+        const error = new Error(`request log query worker exited with ${code}`);
+        reject(error);
         if (worker !== this.queryWorker) return;
         this.queryWorker = undefined;
         this.queryWorkerReady = undefined;
-        if (!this.closed && code !== 0) rejectPending(this.queryRequests, new Error(`request log query worker exited with ${code}`));
+        rejectPending(this.queryRequests, error);
       });
     });
     return await this.queryWorkerReady;
