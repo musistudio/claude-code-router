@@ -4,7 +4,7 @@ import { standardProviderAccountConfig } from "@ccr/core/providers/presets/types
 export const minimaxGlobalProviderPreset: ProviderPreset = {
   account: standardProviderAccountConfig,
   aliases: ["minimax", "minimax global"],
-  defaultModels: ["MiniMax-M3"],
+  defaultModels: ["MiniMax-M3", "MiniMax-M2.7"],
   endpoints: [
     {
       baseUrl: "https://api.minimax.io/v1",
@@ -25,7 +25,7 @@ export const minimaxGlobalProviderPreset: ProviderPreset = {
 export const minimaxChinaProviderPreset: ProviderPreset = {
   account: standardProviderAccountConfig,
   aliases: ["minimax", "minimaxi", "minimax china"],
-  defaultModels: ["MiniMax-M3"],
+  defaultModels: ["MiniMax-M3", "MiniMax-M2.7"],
   endpoints: [
     {
       baseUrl: "https://api.minimaxi.com/v1",
