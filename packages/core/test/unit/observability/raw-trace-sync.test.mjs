@@ -5,6 +5,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import test from "node:test";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
+import { ccrClientIdentityHeader } from "@ccr/core/gateway/core-runtime/router-plugin-contract.ts";
 import { rawTraceSyncHeader } from "@ccr/core/gateway/internal/shared.ts";
 import { rawTraceHardMaxBodyBytes, rawTraceMaxPartBytes } from "@ccr/core/observability/request-log-limits.ts";
 import {
@@ -183,6 +184,42 @@ test("raw trace bundle preserves manifest lifecycle metadata", async () => {
     assert.equal(bundle.update.completedAt, completedAt);
     assert.equal(bundle.update.durationMs, 1234);
     assert.equal(bundle.update.bundleCapturedAt, completedAt);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("raw trace reads the authenticated identity snapshot without persisting client credentials", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-raw-trace-identity-test-"));
+  const bundleDirectory = path.join(dir, "bundle");
+  mkdirSync(bundleDirectory);
+  const metadataFile = path.join(bundleDirectory, "client_request_metadata.json");
+  const manifest = {
+    requestId: "identity-request",
+    parts: [{ filePath: metadataFile, partType: "client_request_metadata" }]
+  };
+  try {
+    const headers = {
+      authorization: "Bearer private-client-key",
+      "x-auth-api-key-id": "forged-id",
+      "x-auth-api-key-name": "Forged name",
+      [ccrClientIdentityHeader]: Buffer.from(JSON.stringify({
+        id: "client-id",
+        name: "研发团队 / Alice"
+      })).toString("base64url")
+    };
+    writeFileSync(metadataFile, JSON.stringify({ headers }));
+    const bundle = await readRawTraceRequestLogBundle(manifest, dir);
+    assert.equal(bundle.update.clientApiKeyId, "client-id");
+    assert.equal(bundle.update.clientApiKeyName, "研发团队 / Alice");
+    assert.equal(JSON.stringify(bundle.update).includes("private-client-key"), false);
+
+    for (const value of [undefined, "invalid-identity", Buffer.from(JSON.stringify({ name: "Admin" })).toString("base64url")]) {
+      writeFileSync(metadataFile, JSON.stringify({ headers: { ...headers, [ccrClientIdentityHeader]: value } }));
+      const unknown = await readRawTraceRequestLogBundle(manifest, dir);
+      assert.equal(unknown.update.clientApiKeyId, undefined);
+      assert.equal(unknown.update.clientApiKeyName, undefined);
+    }
   } finally {
     rmSync(dir, { force: true, recursive: true });
   }

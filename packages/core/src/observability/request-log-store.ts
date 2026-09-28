@@ -118,6 +118,8 @@ export type RequestLogRecordInput = {
   bodyCapturePolicy?: "all" | "errors" | "none";
   captureBody?: boolean;
   client?: string;
+  clientApiKeyId?: string;
+  clientApiKeyName?: string;
   completedAt?: string;
   durationMs: number;
   error?: string;
@@ -156,6 +158,8 @@ export type RequestLogRawTraceUpdateInput = {
   bundleCapturedAt?: string;
   bundleId?: string;
   client?: string;
+  clientApiKeyId?: string;
+  clientApiKeyName?: string;
   completedAt?: string;
   deferBodyCaptureUntilRecord?: boolean;
   deferOutcomeUntilRecord?: boolean;
@@ -224,6 +228,8 @@ type StoredRequestLogEntry = {
   cacheReadTokens: number;
   cacheWriteTokens: number;
   client: string;
+  clientApiKeyId?: string;
+  clientApiKeyName?: string;
   completedAt: string;
   costUsd: number | undefined;
   createdAt: string;
@@ -684,6 +690,8 @@ export class RequestLogStore {
         request_id,
         event_id,
         client,
+        client_api_key_id,
+        client_api_key_name,
         method,
         path,
         url,
@@ -727,7 +735,7 @@ export class RequestLogStore {
         response_body_ref,
         stream_metrics_json,
         error
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     let inserted = false;
@@ -738,6 +746,8 @@ export class RequestLogStore {
         input.requestId ?? "",
         input.eventId ?? "",
         normalizeLabel(input.client, "unknown"),
+        normalizeLabel(input.clientApiKeyId, ""),
+        normalizeLabel(input.clientApiKeyName, ""),
         input.method,
         input.path,
         input.url,
@@ -900,6 +910,17 @@ export class RequestLogStore {
       : undefined;
 
     pushValue("method", normalizeFilterValue(input.method));
+    // Preserve the identity captured by the gateway if a trace arrives later.
+    for (const [column, value] of [
+      ["client_api_key_id", input.clientApiKeyId],
+      ["client_api_key_name", input.clientApiKeyName]
+    ] as const) {
+      const label = normalizeFilterValue(value);
+      if (label) {
+        sets.push(`${column} = CASE WHEN ${column} = '' THEN ? ELSE ${column} END`);
+        params.push(label);
+      }
+    }
     pushValue("path", path);
     pushValue("url", url);
     pushValue("provider", providerFromTrace);
@@ -1083,6 +1104,8 @@ export class RequestLogStore {
             completed_at,
             request_id,
             client,
+            client_api_key_id,
+            client_api_key_name,
             method,
             path,
             url,
@@ -1404,6 +1427,8 @@ export class RequestLogStore {
         request_id TEXT NOT NULL DEFAULT '',
         event_id TEXT NOT NULL DEFAULT '',
         client TEXT NOT NULL DEFAULT 'unknown',
+        client_api_key_id TEXT NOT NULL DEFAULT '',
+        client_api_key_name TEXT NOT NULL DEFAULT '',
         method TEXT NOT NULL,
         path TEXT NOT NULL,
         url TEXT NOT NULL DEFAULT '',
@@ -1671,6 +1696,8 @@ function standaloneRecordInputFromRawTrace(
     bodyCapturePolicy,
     captureBody,
     ...(client ? { client } : {}),
+    clientApiKeyId: input.clientApiKeyId,
+    clientApiKeyName: input.clientApiKeyName,
     completedAt,
     durationMs,
     ...(input.bundleId ? { eventId: `raw-trace:${input.bundleId}` } : {}),
@@ -4436,6 +4463,8 @@ function ensureRequestLogSchema(database: SqlDatabase): void {
   addColumn("request_id", "TEXT NOT NULL DEFAULT ''");
   addColumn("event_id", "TEXT NOT NULL DEFAULT ''");
   addColumn("client", "TEXT NOT NULL DEFAULT 'unknown'");
+  addColumn("client_api_key_id", "TEXT NOT NULL DEFAULT ''");
+  addColumn("client_api_key_name", "TEXT NOT NULL DEFAULT ''");
   addColumn("method", "TEXT NOT NULL DEFAULT ''");
   addColumn("path", "TEXT NOT NULL DEFAULT ''");
   addColumn("url", "TEXT NOT NULL DEFAULT ''");
@@ -5042,6 +5071,8 @@ function readRequestLogById(database: SqlDatabase, id: number): StoredRequestLog
         completed_at,
         request_id,
         client,
+        client_api_key_id,
+        client_api_key_name,
         method,
         path,
         url,
@@ -5118,6 +5149,8 @@ function toRequestLogEntry(row: Record<string, SqlValue>): StoredRequestLogEntry
     cacheReadTokens: normalizeCount(row.cache_read_tokens),
     cacheWriteTokens: normalizeCount(row.cache_write_tokens),
     client: normalizeLabel(String(row.client ?? ""), "unknown"),
+    clientApiKeyId: normalizeFilterValue(String(row.client_api_key_id ?? "")),
+    clientApiKeyName: normalizeFilterValue(String(row.client_api_key_name ?? "")),
     completedAt: String(row.completed_at ?? ""),
     costUsd,
     createdAt: String(row.created_at ?? ""),

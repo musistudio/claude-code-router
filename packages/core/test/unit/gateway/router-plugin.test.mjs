@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
+import { compileCoreGatewayConfig } from "@ccr/core/gateway/core-runtime/config-compiler.ts";
 import {
   ccrCodexApplyPatchBridgeHeader,
   ccrCodexBridgeRequestTransformKey,
   ccrCodexBridgeResponseHookKey,
   ccrCodexBridgeStreamHookKey,
   ccrCodexMultiAgentBridgeHeader,
+  ccrClientIdentityHeader,
   ccrLiveTokenRateConfigMessageType,
   ccrLiveTokenRateSnapshotMessageType,
   ccrLiveTokenRateStreamHookKey,
@@ -610,6 +612,60 @@ test("CCR router core plugin maps SDK-compatible public API key headers before g
   }
 });
 
+test("CCR router core plugin snapshots only authenticated client identity for raw traces", async () => {
+  const config = createDefaultAppConfig();
+  config.APIKEY = "client-key";
+  config.APIKEYS = [{
+    createdAt: new Date(0).toISOString(),
+    id: "client-id",
+    key: "client-key",
+    name: "研发团队 / Alice"
+  }];
+
+  for (const publicGatewayMode of [true, false]) {
+    const plugin = await createGatewayPlugin({ plugin: { config: { appConfig: config, publicGatewayMode } } });
+    const headers = {
+      authorization: "Bearer client-key",
+      "X-CCR-Client-Identity": Buffer.from(JSON.stringify({ id: "forged", name: "Admin" })).toString("base64url"),
+      "x-auth-api-key-name": "Forged name"
+    };
+    await plugin.requestHooks[0].beforeAuth({ request: { headers, method: "POST", url: "/v1/messages" } });
+
+    assert.equal(headers["X-CCR-Client-Identity"], undefined);
+    assert.deepEqual(JSON.parse(Buffer.from(headers[ccrClientIdentityHeader], "base64url").toString("utf8")), {
+      id: "client-id",
+      name: "研发团队 / Alice"
+    });
+  }
+});
+
+test("compiled public runtime retains named client identity alongside static gateway auth", async () => {
+  const config = createDefaultAppConfig();
+  config.APIKEY = "primary-key";
+  config.APIKEYS = [{
+    createdAt: new Date(0).toISOString(), id: "primary", key: "primary-key", name: "Primary user"
+  }, {
+    createdAt: new Date(0).toISOString(), id: "secondary", key: "secondary-key", name: "Secondary user"
+  }];
+  const compiled = await compileCoreGatewayConfig(config, "trace-token", "billing-token", "core-token", undefined, undefined, {
+    publicGatewayMode: true
+  });
+  const routerPlugin = compiled.plugins.find((item) => item.key === "ccr-router");
+  assert.ok(routerPlugin);
+  assert.equal(routerPlugin.config.publicAuthKeys, undefined);
+  const plugin = await createGatewayPlugin({ plugin: routerPlugin });
+
+  for (const apiKey of config.APIKEYS) {
+    assert.ok(compiled.auth.staticApiKeys.keys.includes(apiKey.key));
+    const headers = { authorization: `Bearer ${apiKey.key}` };
+    await plugin.requestHooks[0].beforeAuth({ request: { headers, method: "POST", url: "/v1/messages" } });
+    assert.deepEqual(JSON.parse(Buffer.from(headers[ccrClientIdentityHeader], "base64url").toString("utf8")), {
+      id: apiKey.id,
+      name: apiKey.name
+    });
+  }
+});
+
 test("CCR router core plugin rejects expired public API keys before gateway static auth", async () => {
   const config = createDefaultAppConfig();
   config.APIKEY = "expired-key";
@@ -621,7 +677,7 @@ test("CCR router core plugin rejects expired public API keys before gateway stat
   }];
 
   const plugin = await createGatewayPlugin({ plugin: { config: { appConfig: config, coreAuthToken: "core-token", publicGatewayMode: true } } });
-  const headers = { authorization: "Bearer expired-key" };
+  const headers = { authorization: "Bearer expired-key", [ccrClientIdentityHeader]: "forged-identity" };
   const result = await plugin.requestHooks[0].beforeAuth({ request: { headers, method: "GET", url: "/v1/models" } });
 
   assert.deepEqual(result, {
@@ -631,6 +687,7 @@ test("CCR router core plugin rejects expired public API keys before gateway stat
   });
   assert.equal(headers["x-auth-api-key-id"], undefined);
   assert.equal(headers["x-auth-sub"], undefined);
+  assert.equal(headers[ccrClientIdentityHeader], undefined);
 });
 
 test("CCR router core plugin protects internal route decisions with the core token", async () => {
@@ -727,12 +784,13 @@ test("CCR router core plugin allows internal core auth tokens before public gate
   config.APIKEYS = [{ createdAt: new Date(0).toISOString(), id: "client", key: "client-key" }];
 
   const plugin = await createGatewayPlugin({ plugin: { config: { appConfig: config, coreAuthToken: "core-token", publicGatewayMode: true } } });
-  const headers = { authorization: "Bearer core-token" };
+  const headers = { authorization: "Bearer core-token", [ccrClientIdentityHeader]: "forged-identity" };
   const result = await plugin.requestHooks[0].beforeAuth({ request: { headers, method: "GET", url: "/v1/models" } });
 
   assert.equal(result, undefined);
   assert.equal(headers["x-auth-api-key-id"], undefined);
   assert.equal(headers["x-auth-sub"], undefined);
+  assert.equal(headers[ccrClientIdentityHeader], undefined);
 });
 
 test("CCR router core plugin serves remote control capabilities with query auth", async () => {

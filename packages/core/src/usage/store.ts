@@ -38,6 +38,8 @@ type UsageNumbers = {
 
 export type UsageEventInput = {
   client?: string;
+  clientApiKeyId?: string;
+  clientApiKeyName?: string;
   costSource?: string;
   costUsd?: number;
   createdAt?: string;
@@ -58,6 +60,8 @@ export type UsageEventInput = {
 export type UsageCaptureInput = {
   bodyText: string;
   client?: string;
+  clientApiKeyId?: string;
+  clientApiKeyName?: string;
   config?: Pick<AppConfig, "Providers" | "virtualModelProfiles">;
   durationMs: number;
   fallbackModel?: string;
@@ -68,6 +72,8 @@ export type UsageCaptureInput = {
   requestId?: string;
   responseHeaders: Headers;
   statusCode: number;
+  /** Physical model from the upstream request, before client-facing rewrites. */
+  upstreamModel?: string;
 };
 
 type UsageStatsQueryOptions = {
@@ -178,6 +184,8 @@ export class UsageStore {
         created_at,
         request_id,
         client,
+        client_api_key_id,
+        client_api_key_name,
         method,
         path,
         model,
@@ -193,13 +201,15 @@ export class UsageStore {
         total_tokens,
         cost_usd,
         cost_source
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     statement.run(
       event.createdAt ?? new Date().toISOString(),
       event.requestId ?? "",
       normalizeLabel(event.client, "unknown"),
+      normalizeLabel(event.clientApiKeyId, ""),
+      normalizeLabel(event.clientApiKeyName, ""),
       event.method,
       event.path,
       model,
@@ -246,7 +256,8 @@ export class UsageStore {
       responseAttribution.provider ??
       fallbackAttribution.provider ??
       route.provider;
-    const model = responseAttribution.model ?? fallbackAttribution.model ?? route.model ?? input.fallbackModel;
+    const upstreamModel = normalizeFilterValue(input.upstreamModel);
+    const model = upstreamModel ?? responseAttribution.model ?? fallbackAttribution.model ?? route.model ?? input.fallbackModel;
 
     await this.record({
       durationMs: input.durationMs,
@@ -256,13 +267,15 @@ export class UsageStore {
       modelIsRouteSelector: false,
       path: input.path,
       client: input.client,
+      clientApiKeyId: input.clientApiKeyId,
+      clientApiKeyName: input.clientApiKeyName,
       provider,
       // Price the model that actually served the request. After a rewrite or
       // fallback the display model is still the requested alias.
       pricing: providerModelPricingForUsage(
         input.config,
         provider,
-        fallbackAttribution.model ?? input.fallbackModel ?? model
+        upstreamModel ?? fallbackAttribution.model ?? input.fallbackModel ?? model
       ),
       credentialId: readCredentialId(input.responseHeaders),
       requestId: input.requestId,
@@ -294,6 +307,7 @@ export class UsageStore {
 
     return {
       clientModels: readClientModelRows(database, query),
+      clients: readClientRows(database, query),
       generatedAt: now.toISOString(),
       models: readModelRows(database, query),
       providerModels: readProviderModelRows(database, query),
@@ -349,6 +363,8 @@ export class UsageStore {
         created_at TEXT NOT NULL,
         request_id TEXT NOT NULL DEFAULT '',
         client TEXT NOT NULL DEFAULT 'unknown',
+        client_api_key_id TEXT NOT NULL DEFAULT '',
+        client_api_key_name TEXT NOT NULL DEFAULT '',
         method TEXT NOT NULL,
         path TEXT NOT NULL,
         model TEXT NOT NULL DEFAULT 'unknown',
@@ -411,11 +427,16 @@ export class UsageStore {
   private backfillFromAttachedRequestLog(database: SqlDatabase, requestLogDbFile: string, since: Date): void {
     database.exec(`ATTACH DATABASE ${sqlString(requestLogDbFile)} AS request_log_source`);
     try {
+      const logColumns = new Set(queryRows(database, "PRAGMA request_log_source.table_info(request_logs)").map((row) => String(row.name)));
+      const clientApiKeyId = logColumns.has("client_api_key_id") ? "logs.client_api_key_id" : "''";
+      const clientApiKeyName = logColumns.has("client_api_key_name") ? "logs.client_api_key_name" : "''";
       database.prepare(`
           INSERT INTO usage_events (
             created_at,
             request_id,
             client,
+            client_api_key_id,
+            client_api_key_name,
             method,
             path,
             model,
@@ -436,6 +457,8 @@ export class UsageStore {
             logs.created_at,
             logs.request_id,
             logs.client,
+            ${clientApiKeyId},
+            ${clientApiKeyName},
             logs.method,
             logs.path,
             logs.model,
@@ -469,6 +492,30 @@ export class UsageStore {
               )
             )
         `).run("%/count_tokens%", since.toISOString());
+
+      // Older usage events may predate key attribution. Recover only an exact
+      // request match; a client display name is not a reliable key identity.
+      if (logColumns.has("client_api_key_id")) {
+        const identityMatch = `logs.request_id = usage.request_id
+          AND logs.source_usage_id IS NULL AND logs.client_api_key_id <> ''`;
+        database.prepare(`
+          UPDATE usage_events AS usage
+          SET (client_api_key_id, client_api_key_name) = (
+            SELECT logs.client_api_key_id, ${clientApiKeyName}
+            FROM request_log_source.request_logs AS logs
+            WHERE ${identityMatch}
+            ORDER BY logs.created_at DESC, logs.rowid DESC
+            LIMIT 1
+          )
+          WHERE usage.created_at >= ?
+            AND usage.client_api_key_id = ''
+            AND usage.request_id <> ''
+            AND EXISTS (
+              SELECT 1 FROM request_log_source.request_logs AS logs
+              WHERE ${identityMatch}
+            )
+        `).run(since.toISOString());
+      }
     } finally {
       database.exec("DETACH DATABASE request_log_source");
     }
@@ -494,6 +541,12 @@ function ensureUsageSchema(database: SqlDatabase): void {
   if (!columns.has("client")) {
     database.exec("ALTER TABLE usage_events ADD COLUMN client TEXT NOT NULL DEFAULT 'unknown'");
   }
+  if (!columns.has("client_api_key_id")) {
+    database.exec("ALTER TABLE usage_events ADD COLUMN client_api_key_id TEXT NOT NULL DEFAULT ''");
+  }
+  if (!columns.has("client_api_key_name")) {
+    database.exec("ALTER TABLE usage_events ADD COLUMN client_api_key_name TEXT NOT NULL DEFAULT ''");
+  }
   if (!columns.has("cost_usd")) {
     database.exec("ALTER TABLE usage_events ADD COLUMN cost_usd REAL");
   }
@@ -508,6 +561,7 @@ function ensureUsageSchema(database: SqlDatabase): void {
     database.exec("ALTER TABLE usage_events ADD COLUMN credential_id TEXT NOT NULL DEFAULT ''");
   }
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_client_idx ON usage_events(client)");
+  database.exec("CREATE INDEX IF NOT EXISTS usage_events_client_api_key_created_at_idx ON usage_events(client_api_key_id, created_at DESC, id DESC)");
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_created_at_idx ON usage_events(created_at)");
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_credential_id_idx ON usage_events(credential_id)");
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_model_idx ON usage_events(model)");
@@ -808,6 +862,39 @@ function readModelRows(database: SqlDatabase, query: UsageWhereClause): UsageCom
     model: normalizeLabel(String(row.model ?? ""), "unknown"),
     provider: normalizeLabel(String(row.provider ?? ""), "unknown")
   }));
+  return applyMaxShare(rows, (row) => row.totalTokens || row.requestCount);
+}
+
+function readClientRows(database: SqlDatabase, query: UsageWhereClause): UsageComparisonRow[] {
+  const rows = queryRows(database, `
+    WITH key_usage AS (
+      SELECT client_api_key_id, ${usageTotalsSelect}
+      FROM usage_events
+      WHERE ${query.where}
+      GROUP BY client_api_key_id
+    )
+    SELECT key_usage.*, CASE WHEN key_usage.client_api_key_id <> '' THEN (
+      SELECT client_api_key_name FROM usage_events AS names
+      WHERE names.client_api_key_id = key_usage.client_api_key_id
+        AND names.client_api_key_name <> ''
+      ORDER BY names.created_at DESC, names.id DESC
+      LIMIT 1
+    ) END AS client_api_key_name
+    FROM key_usage
+    ORDER BY computed_total_tokens DESC, request_count DESC, client_api_key_id
+  `, query.params).map((row) => {
+    const clientApiKeyId = normalizeFilterValue(String(row.client_api_key_id ?? ""));
+    const client = clientApiKeyId ? normalizeLabel(String(row.client_api_key_name ?? ""), clientApiKeyId) : "unknown";
+    return {
+      ...usageTotalsFromRow(row),
+      caption: clientApiKeyId ?? "",
+      client,
+      clientApiKeyId,
+      key: clientApiKeyId ? `api-key::${clientApiKeyId}` : "unidentified-api-key",
+      label: client,
+      maxShare: 0
+    };
+  });
   return applyMaxShare(rows, (row) => row.totalTokens || row.requestCount);
 }
 
@@ -1385,6 +1472,7 @@ function sum<T>(items: T[], read: (item: T) => number): number {
 function emptySnapshot(range: UsageStatsRange): UsageStatsSnapshot {
   return {
     clientModels: [],
+    clients: [],
     generatedAt: new Date().toISOString(),
     models: [],
     providerModels: [],
