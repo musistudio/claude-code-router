@@ -73,6 +73,15 @@ test("profile model allowlist keeps existing all-model behavior when unset", () 
   assert.equal(isModelAllowedForProfile(config, profile, "Provider/beta"), true);
 });
 
+test("manually linked API keys inherit profile discovery and model restrictions", () => {
+  const config = testConfig({ availableModels: ["Provider/alpha"] });
+  const profile = config.profile.profiles[0];
+  const key = { createdAt: new Date(0).toISOString(), id: "manual", key: "manual-token", profileId: profile.id };
+  assert.equal(profileForApiKey(config, key), profile);
+  assert.deepEqual(createGatewayModelsResponse(config, {}, key).data.map((model) => model.id), ["Provider/alpha"]);
+  assert.equal(isModelAllowedForProfile(config, profileForApiKey(config, key), "Provider/beta"), false);
+});
+
 test("profile model allowlist does not add implicit defaults to explicit lists", () => {
   const config = testConfig({ availableModels: ["Provider/beta"], model: "" });
   const profile = config.profile.profiles[0];

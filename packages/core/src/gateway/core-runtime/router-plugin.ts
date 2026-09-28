@@ -70,7 +70,7 @@ import type {
   GatewayPluginRequestTransformInput as CcrGatewayPluginRequestTransformInput
 } from "@ccr/core/plugins/service";
 import { isModelAllowedForProfile, profileForApiKey } from "@ccr/core/profiles/model-allowlist";
-import { profileApiKeyId } from "@ccr/core/profiles/api-key";
+import { profileForApiKeyId } from "@ccr/core/profiles/api-key";
 import { adaptRouteRequestBody, restoreRouteRequestBody } from "@ccr/core/routing/protocol-adapter";
 import { requestProtocolForPath, shouldApplyGatewayRouting } from "@ccr/core/routing/protocol-endpoints";
 import { RouteScriptRuntime } from "@ccr/core/routing/route-script-runtime";
@@ -1106,9 +1106,7 @@ function authenticatedProfileProviderName(
   if (!apiKeyId) {
     return undefined;
   }
-  const profile = config.profile.profiles.find((item) =>
-    item.enabled && profileApiKeyId(item) === apiKeyId
-  );
+  const profile = profileForApiKeyId(config, apiKeyId);
   const profileModel = normalizeRouteSelector(profile?.model);
   const explicitProvider = parseProviderModelSelector(profileModel)?.provider;
   if (explicitProvider) {

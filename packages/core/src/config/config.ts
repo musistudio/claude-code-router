@@ -10,6 +10,7 @@ import {
   replacePersistedConfigSnapshot
 } from "@ccr/core/config/config-repository";
 import { LEGACY_ACTIVE_CONFIG_FILE, LEGACY_CONFIG_FILE, LEGACY_WINDOWS_CONFIG_FILE } from "@ccr/core/config/constants";
+import { profileForApiKey } from "@ccr/core/profiles/api-key";
 import { normalizeCodexProviderAccountConfig } from "@ccr/core/agents/local-providers/codex";
 import { normalizeGrokProviderAccountConfig, normalizeGrokProviderMediaCapabilities } from "@ccr/core/agents/local-providers/grok";
 import { removeOpenCodeProviderAccountConfig } from "@ccr/core/agents/local-providers/opencode";
@@ -664,6 +665,15 @@ function providerCredentialApiKey(credential: ProviderCredentialConfig): string 
 export async function saveApiKeysConfig(apiKeys: ApiKeyConfig[]): Promise<AppConfig> {
   const normalized = ensureGatewayApiKeys(normalizeApiKeys(apiKeys, undefined).filter((apiKey) => !isDefaultSeedApiKey(apiKey)));
   return enqueueAppConfigWrite(async () => {
+    const currentConfig = await loadAppConfig();
+    for (const apiKey of normalized) {
+      if (!apiKey.profileId) continue;
+      const previous = currentConfig.APIKEYS.find((item) => item.id === apiKey.id && item.key === apiKey.key);
+      // An inactive existing binding must not block unrelated key edits or deletion.
+      if (previous?.profileId !== apiKey.profileId && !profileForApiKey(currentConfig, apiKey)) {
+        throw new Error("Selected Profile is disabled or no longer exists. Choose an enabled Profile.");
+      }
+    }
     await replacePersistedApiKeys(normalized);
     return loadAppConfig();
   });
@@ -4065,13 +4075,15 @@ function parseApiKeyConfig(value: unknown, index: number): ApiKeyConfig | undefi
   const expiresAt = readString(value.expiresAt);
   const limits = parseApiKeyLimits(value.limits);
   const name = readString(value.name);
+  const profileId = readString(value.profileId);
   return {
     createdAt,
     ...(expiresAt ? { expiresAt } : {}),
     id: readString(value.id) || `key-${index + 1}`,
     key,
     ...(limits ? { limits } : {}),
-    ...(name ? { name } : {})
+    ...(name ? { name } : {}),
+    ...(profileId ? { profileId } : {})
   };
 }
 
@@ -4131,7 +4143,8 @@ function uniqueApiKeyConfigs(values: Array<ApiKeyConfig | undefined>): ApiKeyCon
       id: value.id,
       key: trimmed,
       ...(value.limits ? { limits: value.limits } : {}),
-      ...(value.name ? { name: value.name } : {})
+      ...(value.name ? { name: value.name } : {}),
+      ...(readString(value.profileId) ? { profileId: readString(value.profileId) } : {})
     });
   }
   return result;

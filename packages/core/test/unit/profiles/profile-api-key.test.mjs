@@ -3,6 +3,8 @@ import test from "node:test";
 import {
   pruneInactiveProfileApiKeysFromList,
   profileApiKeyId,
+  profileForApiKey,
+  profileForApiKeyId,
   profileIdFromApiKeyId,
   syncProfileApiKeys
 } from "@ccr/core/profiles/api-key.ts";
@@ -28,6 +30,29 @@ test("profile API key ids expose their sanitized profile key segment", () => {
   assert.equal(profileIdFromApiKeyId(" profile:with-space "), "with-space");
   assert.equal(profileIdFromApiKeyId("general-key"), undefined);
   assert.equal(profileIdFromApiKeyId(undefined), undefined);
+});
+
+test("manual keys share an explicit profile without taking over its generated key", () => {
+  const profile = { agent: "codex", enabled: true, id: "Work / Team", model: "Provider/model", name: "Work" };
+  const manualKeys = ["team-key-a", "team-key-b"].map((id) => ({
+    createdAt: new Date(0).toISOString(), id, key: `${id}-token`, profileId: profile.id
+  }));
+  const synced = syncProfileApiKeys(manualKeys, [profile], { generateKey: () => "generated-token" });
+  const config = { APIKEYS: synced.apiKeys, profile: { enabled: true, profiles: [profile] } };
+
+  assert.equal(synced.apiKeys.length, 3);
+  assert.equal(synced.tokens.get(profile.id), "generated-token");
+  for (const apiKey of synced.apiKeys) {
+    assert.equal(profileForApiKey(config, apiKey), profile);
+    assert.equal(profileForApiKeyId(config, apiKey.id), profile);
+  }
+  assert.equal(profileForApiKey(config, { id: "unlinked" }), undefined);
+  assert.equal(profileForApiKey(config, { id: profileApiKeyId(profile), profileId: "missing" }), undefined);
+
+  profile.enabled = false;
+  assert.equal(profileForApiKeyId(config, manualKeys[0].id), undefined);
+  assert.deepEqual(pruneInactiveProfileApiKeysFromList(synced.apiKeys, [profile]).apiKeys, manualKeys);
+  assert.deepEqual(pruneInactiveProfileApiKeysFromList(synced.apiKeys, []).apiKeys, manualKeys);
 });
 
 test("profile API key sync creates stable independent keys per enabled profile", () => {

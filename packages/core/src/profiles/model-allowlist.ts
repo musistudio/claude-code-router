@@ -1,26 +1,11 @@
-import type { ApiKeyConfig, AppConfig, ProfileConfig } from "@ccr/core/contracts/app";
+import type { AppConfig, ProfileConfig } from "@ccr/core/contracts/app";
 import { resolveClaudeAppGatewayRouteModel } from "@ccr/core/agents/claude-app/gateway-routes";
-import { profileApiKeyId } from "@ccr/core/profiles/api-key";
 import { modelRegistryForConfig, normalizeRouteSelector } from "@ccr/core/routing/model-registry";
+
+export { profileForApiKey } from "@ccr/core/profiles/api-key";
 
 export type ProfileModelAllowlistConfig = Pick<AppConfig, "Providers" | "profile" | "virtualModelProfiles">;
 export type ModelAllowlistResolutionConfig = Pick<AppConfig, "Providers" | "virtualModelProfiles"> & Partial<Pick<AppConfig, "profile">>;
-
-export function profileForApiKey(
-  config: Partial<Pick<AppConfig, "profile">>,
-  apiKey: ApiKeyConfig | undefined
-): ProfileConfig | undefined {
-  if (!config.profile || config.profile.enabled === false) {
-    return undefined;
-  }
-  const apiKeyId = apiKey?.id?.trim();
-  if (!apiKeyId) {
-    return undefined;
-  }
-  return config.profile.profiles.find((profile) =>
-    profile.enabled && profileApiKeyId(profile) === apiKeyId
-  );
-}
 
 export function profileAllowedModels(profile: ProfileConfig | undefined): string[] | undefined {
   const explicit = uniqueModels((profile?.availableModels ?? []).map(normalizeAllowlistModel));

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
-import { authorize, exchangeClaudeCodeWifToken } from "@ccr/core/gateway/auth/api-key-authorizer.ts";
+import { authorize, exchangeClaudeCodeWifToken, reserveApiKeyLimits, resolveApiKeyFromHeaders } from "@ccr/core/gateway/auth/api-key-authorizer.ts";
 
 const authorizerSourceFile = path.join(
   process.cwd(),
@@ -107,6 +107,46 @@ test("gateway authorization separates a missing token from an expired key", asyn
   assert.equal(expired.result.ok, false);
   assert.equal(expired.response.statusCode, 401);
   assert.equal(expired.response.payload.error.message, "API key is expired.");
+});
+
+test("linked keys require an active profile across gateway authentication and WIF exchange", async () => {
+  const key = { createdAt: new Date(0).toISOString(), id: "linked-key", key: "linked-profile-token", profileId: "work" };
+  const config = configWithApiKeys([key]);
+  const profile = { agent: "codex", enabled: true, id: "work", model: "Provider/model", name: "Work" };
+  config.profile = { ...config.profile, enabled: true, profiles: [profile] };
+  const headers = { authorization: `Bearer ${key.key}` };
+  const wifBody = Buffer.from(JSON.stringify({ assertion: key.key, grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer" }));
+
+  assert.equal((await authorizeRequest(config, { headers })).result.apiKey.profileId, "work");
+  assert.equal((await resolveApiKeyFromHeaders(headers, config, { includePersisted: false })).id, key.id);
+  assert.equal((await exchangeClaudeCodeWifToken(config, wifBody, { includePersisted: false })).statusCode, 200);
+
+  for (const state of [
+    { enabled: true, profiles: [{ ...profile, enabled: false }] },
+    { enabled: false, profiles: [profile] },
+    { enabled: true, profiles: [] }
+  ]) {
+    config.profile = { ...config.profile, ...state };
+    const denied = await authorizeRequest(config, { headers });
+    assert.equal(denied.result.ok, false);
+    assert.equal(denied.response.statusCode, 403);
+    assert.equal(await resolveApiKeyFromHeaders(headers, config, { includePersisted: false }), undefined);
+    assert.equal((await exchangeClaudeCodeWifToken(config, wifBody, { includePersisted: false })).statusCode, 401);
+  }
+});
+
+test("keys linked to the same profile keep independent request limits", () => {
+  const keys = ["linked-limit-a", "linked-limit-b"].map((id) => ({
+    createdAt: new Date(0).toISOString(), id, key: `${id}-token`, profileId: "work",
+    limits: { maxRequests: 1, windowMs: 60_000 }
+  }));
+  const request = { method: "POST" };
+  const body = Buffer.from('{"model":"Provider/model"}');
+  assert.equal(reserveApiKeyLimits(keys[0], request, createResponse(), body), true);
+  const denied = createResponse();
+  assert.equal(reserveApiKeyLimits(keys[0], request, denied, body), false);
+  assert.equal(denied.statusCode, 429);
+  assert.equal(reserveApiKeyLimits(keys[1], request, createResponse(), body), true);
 });
 
 test("Claude Code WIF token exchange returns a bearer token for a configured profile key", async () => {

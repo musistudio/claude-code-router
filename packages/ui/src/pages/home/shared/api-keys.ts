@@ -24,7 +24,8 @@ export function normalizeApiKeys(values: unknown, legacyKey?: string): ApiKeyCon
       id: apiKey.id,
       key: trimmed,
       ...(apiKey.limits ? { limits: apiKey.limits } : {}),
-      ...(apiKey.name ? { name: apiKey.name } : {})
+      ...(apiKey.name ? { name: apiKey.name } : {}),
+      ...(apiKey.profileId ? { profileId: apiKey.profileId } : {})
     });
   }
   return result;
@@ -50,13 +51,15 @@ export function normalizeApiKeyConfig(value: unknown, index: number): ApiKeyConf
   }
   const limits = normalizeApiKeyLimits(value.limits);
   const name = stringValue(value.name);
+  const profileId = stringValue(value.profileId);
   return {
     createdAt: stringValue(value.createdAt) || new Date(0).toISOString(),
     ...(stringValue(value.expiresAt) ? { expiresAt: stringValue(value.expiresAt) } : {}),
     id: stringValue(value.id) || `key-${index + 1}`,
     key,
     ...(limits ? { limits } : {}),
-    ...(name ? { name } : {})
+    ...(name ? { name } : {}),
+    ...(profileId ? { profileId } : {})
   };
 }
 
@@ -82,7 +85,10 @@ export function createApiKeyList(config: AppConfig): ApiKeyListItem[] {
     keyValue: key.key,
     limits: key.limits,
     masked: maskApiKey(key.key),
-    name: key.name?.trim() || `API Key ${index + 1}`
+    name: key.name?.trim() || `API Key ${index + 1}`,
+    profileName: key.profileId
+      ? config.profile.profiles.find((profile) => profile.id === key.profileId)?.name || key.profileId
+      : undefined
   }));
 }
 
@@ -91,7 +97,8 @@ export function createApiKeyDraft(): AddApiKeyDraft {
     expirationPreset: "never",
     expiresAt: toDatetimeLocalValue(addDays(new Date(), 30)),
     limitRows: [],
-    name: ""
+    name: "",
+    profileId: ""
   };
 }
 
@@ -100,7 +107,8 @@ export function createApiKeyEditDraft(apiKey: ApiKeyConfig): AddApiKeyDraft {
     expirationPreset: apiKey.expiresAt ? "custom" : "never",
     expiresAt: datetimeLocalValueFromIso(apiKey.expiresAt),
     limitRows: apiKeyLimitRowsFromConfig(apiKey.limits),
-    name: apiKey.name ?? ""
+    name: apiKey.name ?? "",
+    profileId: apiKey.profileId ?? ""
   };
 }
 
@@ -114,6 +122,8 @@ export function apiKeyMatchesQuery(apiKey: ApiKeyListItem, query: string): boole
     apiKey.keyValue,
     apiKey.masked,
     apiKey.key.id,
+    apiKey.key.profileId ?? "",
+    apiKey.profileName ?? "",
     formatApiKeyExpiration(apiKey),
     formatApiKeyLimits(apiKey.limits)
   ].some((value) => value.toLowerCase().includes(query));
@@ -129,7 +139,8 @@ export function createGeneratedApiKey(draft: AddApiKeyDraft): ApiKeyConfig {
     id: generateApiKeyId(),
     key,
     ...(limits ? { limits } : {}),
-    name: draft.name.trim()
+    name: draft.name.trim(),
+    ...(draft.profileId.trim() ? { profileId: draft.profileId.trim() } : {})
   };
 }
 
@@ -141,6 +152,7 @@ export function updateApiKeyEditableConfig(apiKey: ApiKeyConfig, draft: AddApiKe
     id: apiKey.id,
     key: apiKey.key,
     ...(apiKey.name ? { name: apiKey.name } : {}),
+    ...(apiKey.profileId ? { profileId: apiKey.profileId } : {}),
     ...(expiresAt ? { expiresAt } : {}),
     ...(limits ? { limits } : {})
   };

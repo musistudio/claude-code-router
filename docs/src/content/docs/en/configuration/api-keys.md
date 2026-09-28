@@ -9,9 +9,10 @@ lead: Manage API keys that clients use to access the CCR gateway, with expiratio
 
 | Field | Capability |
 | --- | --- |
-| Search API keys | Filters the list by key name or key value. |
+| Search API keys | Filters the list by key name, key value, or linked Profile. |
 | Add API key | Opens the create dialog and generates a new client access key. |
 | Name | Display name for the key. Use it to identify a client, team, purpose, or automation. |
+| Linked Profile | The Profile linked to a manual key, shown below its name. |
 | Key | Masked access key. Use `Copy API key` to copy the full key. |
 | Expires | Expiration time. After expiration, clients can no longer use the key to access CCR. |
 | Limits | Local limit summary. Shows `No limits configured` when no limits are set. |
@@ -25,8 +26,11 @@ lead: Manage API keys that clients use to access the CCR gateway, with expiratio
 | Name | Display name for the new key. Examples: `Claude Code - laptop`, `CI`, or a team name. |
 | Expiration | Selects the validity period: `Never`, `7 days`, `30 days`, `90 days`, or `Custom`. |
 | Expires at | Appears for `Custom` expiration and sets the exact date and time. |
+| Linked Profile (optional) | Select an enabled Profile when creating a key. Defaults to no linked Profile. |
 | API key created | Confirmation dialog after creation. It displays the full key. |
 | Copy this key now. It may not be shown again. | Reminder to copy the key immediately because CCR will not show it again after the dialog closes. |
+
+Linked keys use the Profile's routing and available models. Multiple keys can share a Profile while keeping independent expiration and limits; the Profile's automatically generated key is retained. Disabling or deleting the Profile prevents linked keys from accessing the gateway. Editing a key's expiration or limits preserves its existing association.
 
 ## Advanced settings
 

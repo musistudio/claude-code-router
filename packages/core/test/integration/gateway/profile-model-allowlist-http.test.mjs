@@ -181,6 +181,26 @@ test("gateway HTTP model discovery and request access honor profile model allowl
       method: "POST"
     });
     assert.equal(typeof allowedClaudeAppCountTokens.input_tokens, "number");
+
+    const linkedKey = {
+      createdAt: new Date(0).toISOString(), id: "manual-alpha", key: "manual-alpha-token", profileId: "alpha-profile"
+    };
+    config.APIKEYS.push(linkedKey);
+    const linkedModels = await fetchJson(`${endpoint}/v1/models`, { headers: authHeaders(linkedKey.key) });
+    assert.deepEqual(linkedModels.data.map((model) => model.id), ["Provider/alpha"]);
+    for (const path of ["/v1/messages", "/v1/messages/count_tokens"]) {
+      const linkedDenied = await fetch(`${endpoint}${path}`, {
+        method: "POST",
+        headers: { ...authHeaders(linkedKey.key), "content-type": "application/json" },
+        body: JSON.stringify({ max_tokens: 8, messages: [{ role: "user", content: "hello" }], model: "Provider/beta" })
+      });
+      assert.equal(linkedDenied.status, 403);
+      assert.equal((await linkedDenied.json()).error.code, "profile_model_not_allowed");
+    }
+    config.profile.profiles.find((profile) => profile.id === linkedKey.profileId).enabled = false;
+    const inactive = await fetch(`${endpoint}/v1/models`, { headers: authHeaders(linkedKey.key) });
+    assert.equal(inactive.status, 403);
+    await inactive.text();
   } finally {
     await closeServer(server);
   }

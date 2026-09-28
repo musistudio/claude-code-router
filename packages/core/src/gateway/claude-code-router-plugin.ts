@@ -16,7 +16,7 @@ import { applyCompiledRouteRewrite, isBodyModelCompiledRewrite, type CompiledRou
 import { buildRouteScriptInput } from "@ccr/core/routing/route-script-context";
 import { normalizeRouteScriptResult } from "@ccr/core/routing/route-script-result";
 import type { RouteScriptRuntime } from "@ccr/core/routing/route-script-runtime";
-import { profileApiKeyId } from "@ccr/core/profiles/api-key";
+import { profileForApiKeyId } from "@ccr/core/profiles/api-key";
 import { isModelAllowedForProfile } from "@ccr/core/profiles/model-allowlist";
 
 export { normalizeRouteSelector } from "@ccr/core/routing/model-registry";
@@ -705,17 +705,7 @@ function resolveAuthenticatedAnyProfile(
   request: MutableRequestLike,
   config: AppConfig
 ) {
-  if (config.profile.enabled === false) {
-    return undefined;
-  }
-  const authenticatedApiKeyId = readRequestHeader(request.headers, "x-auth-api-key-id")?.trim();
-  if (!authenticatedApiKeyId) {
-    return undefined;
-  }
-  return config.profile.profiles.find((profile) =>
-    profile.enabled &&
-    profileApiKeyId(profile.id || profile.name || profile.agent) === authenticatedApiKeyId
-  );
+  return profileForApiKeyId(config, readRequestHeader(request.headers, "x-auth-api-key-id"));
 }
 
 function routeAuthContext(

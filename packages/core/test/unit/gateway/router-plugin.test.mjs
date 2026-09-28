@@ -165,7 +165,10 @@ test("CCR router core plugin publishes live token rate snapshots from the single
 test("CCR router core plugin resolves bare Codex companion models through the authenticated profile provider", async () => {
   const config = createDefaultAppConfig();
   config.APIKEY = "bs-key";
-  config.APIKEYS = [{ createdAt: new Date(0).toISOString(), id: "profile:bs-2", key: "bs-key" }];
+  config.APIKEYS = [
+    { createdAt: new Date(0).toISOString(), id: "profile:bs-2", key: "bs-key" },
+    { createdAt: new Date(0).toISOString(), id: "manual-bs", key: "manual-bs-key", profileId: "bs-2" }
+  ];
   config.Providers = [
     {
       id: "zhipu",
@@ -263,6 +266,27 @@ test("CCR router core plugin resolves bare Codex companion models through the au
   assert.equal(resolved.targetProviderName, providerRuntimeId(config.Providers[2]));
   assert.equal(resolved.model, "gpt-5.6-luna");
   assert.equal(resolved.requestBody.model, "gpt-5.6-luna");
+
+  const linkedRequest = {
+    headers: { authorization: "Bearer manual-bs-key", "user-agent": "Codex Desktop/0.153.4" },
+    method: "POST",
+    url: "/v1/responses"
+  };
+  await plugin.requestHooks[0].beforeAuth({ request: linkedRequest });
+  assert.equal(linkedRequest.headers["x-auth-api-key-id"], "manual-bs");
+  const linkedTransform = await plugin.requestTransforms[0].transform({
+    request: linkedRequest,
+    requestBody: { input: "generate a title", model: "gpt-5.6-luna", stream: true },
+    route: { method: "POST", url: "/v1/responses" }
+  });
+  const linkedResolved = resolver.resolve({
+    model: linkedTransform.model,
+    request: { ...linkedRequest, headers: { ...linkedRequest.headers, ...linkedTransform.headers } },
+    requestBody: linkedTransform.requestBody,
+    route: { method: "POST", url: "/v1/responses" }
+  });
+  assert.equal(linkedResolved.targetProviderName, resolved.targetProviderName);
+  assert.equal(linkedResolved.model, resolved.model);
 });
 
 test("CCR router core plugin applies Codex bridge request and response hooks", async () => {

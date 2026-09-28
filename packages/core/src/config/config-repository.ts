@@ -24,6 +24,7 @@ type StoredApiKeyRow = {
   id: string;
   limitsJson: string;
   name: string;
+  profileId: string;
   storedKey: string;
 };
 
@@ -249,7 +250,8 @@ function createSchema(database: SqlDatabase): void {
       encryption TEXT NOT NULL DEFAULT '${plainStorage}',
       created_at TEXT NOT NULL,
       expires_at TEXT NOT NULL DEFAULT '',
-      limits_json TEXT NOT NULL DEFAULT ''
+      limits_json TEXT NOT NULL DEFAULT '',
+      profile_id TEXT NOT NULL DEFAULT ''
     );
     CREATE INDEX IF NOT EXISTS api_keys_created_at_idx ON api_keys(created_at);
 
@@ -320,6 +322,11 @@ function createSchema(database: SqlDatabase): void {
     INSERT OR IGNORE INTO config_schema_migrations (id, applied_at, details_json)
     VALUES ('${cleanupQueueBackfillMigrationId}', '${new Date().toISOString()}', '');
   `);
+  runTransaction(database, () => {
+    if (!queryRows(database, "PRAGMA table_info(api_keys)").some((column) => column.name === "profile_id")) {
+      database.exec("ALTER TABLE api_keys ADD COLUMN profile_id TEXT NOT NULL DEFAULT ''");
+    }
+  });
 }
 
 function migrateLegacySqliteStores(database: SqlDatabase, removeFile: (file: string) => void): void {
@@ -602,7 +609,7 @@ function readLegacyApiKeyRows(): LegacySqliteReadResult<Record<string, SqlValue>
     try {
       database = createBetterSqliteDatabase(dbFile, { fileMustExist: true, readonly: true });
       const rows = queryRows(database, `
-        SELECT id, name, encrypted_key, encryption, created_at, expires_at, limits_json
+        SELECT *
         FROM api_keys
         ORDER BY rowid
       `);
@@ -621,8 +628,8 @@ function readLegacyApiKeyRows(): LegacySqliteReadResult<Record<string, SqlValue>
 function insertRawApiKeyRows(database: SqlDatabase, rows: Array<Record<string, SqlValue>>): void {
   const statement = database.prepare(`
     INSERT OR IGNORE INTO api_keys (
-      id, name, encrypted_key, encryption, created_at, expires_at, limits_json
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      id, name, encrypted_key, encryption, created_at, expires_at, limits_json, profile_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (const row of rows) {
     const stored = toStoredApiKeyRow(row);
@@ -636,7 +643,8 @@ function insertRawApiKeyRows(database: SqlDatabase, rows: Array<Record<string, S
       stored.encryption,
       stored.createdAt,
       stored.expiresAt,
-      stored.limitsJson
+      stored.limitsJson,
+      stored.profileId
     );
   }
 }
@@ -657,7 +665,7 @@ function replaceJsonRow(database: SqlDatabase, table: "app_config" | "runtime_st
 
 function listApiKeys(database: SqlDatabase): ApiKeyConfig[] {
   const rows = queryRows(database, `
-    SELECT id, name, encrypted_key, encryption, created_at, expires_at, limits_json
+    SELECT id, name, encrypted_key, encryption, created_at, expires_at, limits_json, profile_id
     FROM api_keys
     ORDER BY rowid
   `);
@@ -667,8 +675,8 @@ function listApiKeys(database: SqlDatabase): ApiKeyConfig[] {
 function replaceApiKeyRows(database: SqlDatabase, apiKeys: ApiKeyConfig[]): void {
   const statement = database.prepare(`
     INSERT INTO api_keys (
-      id, name, encrypted_key, encryption, created_at, expires_at, limits_json
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      id, name, encrypted_key, encryption, created_at, expires_at, limits_json, profile_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
   database.exec("DELETE FROM api_keys");
   for (const apiKey of apiKeys) {
@@ -679,7 +687,8 @@ function replaceApiKeyRows(database: SqlDatabase, apiKeys: ApiKeyConfig[]): void
       plainStorage,
       apiKey.createdAt,
       apiKey.expiresAt ?? "",
-      apiKey.limits ? JSON.stringify(apiKey.limits) : ""
+      apiKey.limits ? JSON.stringify(apiKey.limits) : "",
+      apiKey.profileId ?? ""
     );
   }
 }
@@ -704,7 +713,8 @@ function toApiKeyConfig(row: Record<string, SqlValue>): ApiKeyConfig | undefined
     id: stored.id,
     key,
     ...(limits ? { limits } : {}),
-    ...(stored.name ? { name: stored.name } : {})
+    ...(stored.name ? { name: stored.name } : {}),
+    ...(stored.profileId ? { profileId: stored.profileId } : {})
   };
 }
 
@@ -721,6 +731,7 @@ function toStoredApiKeyRow(row: Record<string, SqlValue>): StoredApiKeyRow | und
     id,
     limitsJson: readString(row.limits_json) || "",
     name: readString(row.name) || "",
+    profileId: readString(row.profile_id) || "",
     storedKey
   };
 }
@@ -764,7 +775,8 @@ function uniqueApiKeyConfigs(values: Array<ApiKeyConfig | undefined>): ApiKeyCon
       id,
       key,
       ...(value.limits ? { limits: value.limits } : {}),
-      ...(value.name ? { name: value.name } : {})
+      ...(value.name ? { name: value.name } : {}),
+      ...(readString(value.profileId) ? { profileId: readString(value.profileId) } : {})
     });
   }
   return result;

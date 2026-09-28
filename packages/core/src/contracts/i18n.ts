@@ -8,6 +8,7 @@ type PatternTranslator = {
 };
 
 const zhExactErrorMessages: Record<string, string> = {
+  "Selected Profile is disabled or no longer exists. Choose an enabled Profile.": "所选 Profile 已禁用或不存在，请选择已启用的 Profile。",
   "Account endpoint returned a non-object payload.": "账户端点返回的内容不是对象。",
   "Account endpoint returned malformed JSON.": "账户端点返回了格式错误的 JSON。",
   "Base URL is required.": "Base URL 不能为空。",
