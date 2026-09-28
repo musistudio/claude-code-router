@@ -3,8 +3,8 @@ import assert from "node:assert";
 import { Readable } from "node:stream";
 import { createTokenUsageInjectionStream } from "../../../src/gateway/features/token-usage-injection.ts";
 
-async function streamToString(stream: Readable): Promise<string> {
-  const chunks: Buffer[] = [];
+async function streamToString(stream) {
+  const chunks = [];
   for await (const chunk of stream) {
     chunks.push(Buffer.from(chunk));
   }
