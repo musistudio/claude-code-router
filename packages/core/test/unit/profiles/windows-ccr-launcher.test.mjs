@@ -35,3 +35,26 @@ test("Windows CCR launcher prepares CLI profiles before direct TTY dispatch", { 
   assert.equal(directDispatchIndex > prepareIndex, true);
   assert.equal(wrapperIndex > directDispatchIndex, true);
 });
+
+test("Windows CCR launcher keeps quoted cmd values literal", () => {
+  const config = {
+    profile: {
+      profiles: [
+        {
+          agent: "claude-code",
+          enabled: true,
+          id: "claude-work",
+          model: "provider/model",
+          name: "Claude (Work) & 100%",
+          scope: "ccr",
+          surface: "cli"
+        }
+      ]
+    }
+  };
+  const launcher = windowsCcrLauncher("C:\\Program Files (x86)\\CCR\\ccr-cli.js", config);
+
+  assert.match(launcher, /set "CCR_CLI_RUNTIME=C:\\Program Files \(x86\)\\CCR\\ccr-cli\.js"/);
+  assert.match(launcher, /if \/I "%~1"=="Claude \(Work\) & 100%%" goto ccr_profile_0/);
+  assert.doesNotMatch(launcher, /\^/);
+});

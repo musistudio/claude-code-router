@@ -1831,8 +1831,8 @@ function kimiWrapperCmdScript(config: AppConfig, profile: ProfileConfig, profile
   return [
     "@echo off",
     ...envExports,
-    `set "NO_PROXY=%NO_PROXY%,${cmdValue(noProxyHosts)}"`,
-    `set "no_proxy=%no_proxy%,${cmdValue(noProxyHosts)}"`,
+    `set "NO_PROXY=%NO_PROXY%,${cmdQuotedValue(noProxyHosts)}"`,
+    `set "no_proxy=%no_proxy%,${cmdQuotedValue(noProxyHosts)}"`,
     ...kimiSingleModelEnvNames.map((key) => cmdSetLine(key, "")),
     cmdSetLine("KIMI_CODE_HOME", profileHome),
     cmdSetLine("CCR_PROFILE_SURFACE", "cli"),
@@ -1930,8 +1930,8 @@ function piWrapperCmdScript(
   return [
     "@echo off",
     ...envExports,
-    `set "NO_PROXY=%NO_PROXY%,${cmdValue(noProxyHosts)}"`,
-    `set "no_proxy=%no_proxy%,${cmdValue(noProxyHosts)}"`,
+    `set "NO_PROXY=%NO_PROXY%,${cmdQuotedValue(noProxyHosts)}"`,
+    `set "no_proxy=%no_proxy%,${cmdQuotedValue(noProxyHosts)}"`,
     cmdSetLine("PI_CODING_AGENT_DIR", piConfig.profileHome),
     cmdSetLine("PI_CODING_AGENT_SESSION_DIR", piConfig.sessionDir),
     cmdSetLine("PI_SKIP_VERSION_CHECK", profile.env?.PI_SKIP_VERSION_CHECK?.trim() || "1"),
@@ -2271,8 +2271,8 @@ function grokWrapperCmdScript(config: AppConfig, profile: ProfileConfig, token: 
   return [
     "@echo off",
     ...envExports,
-    `set "NO_PROXY=%NO_PROXY%,${cmdValue(noProxyHosts)}"`,
-    `set "no_proxy=%no_proxy%,${cmdValue(noProxyHosts)}"`,
+    `set "NO_PROXY=%NO_PROXY%,${cmdQuotedValue(noProxyHosts)}"`,
+    `set "no_proxy=%no_proxy%,${cmdQuotedValue(noProxyHosts)}"`,
     cmdSetLine("GROK_MODELS_BASE_URL", gatewayBaseUrl),
     cmdSetLine("GROK_MODELS_LIST_URL", `${gatewayBaseUrl}/models`),
     cmdSetLine("XAI_API_KEY", token),
@@ -4223,11 +4223,11 @@ function shellQuote(value: string): string {
 }
 
 function cmdSetLine(key: string, value: string, indent = ""): string {
-  return `${indent}set "${key}=${cmdValue(value)}"`;
+  return `${indent}set "${key}=${cmdQuotedValue(value)}"`;
 }
 
 function cmdQuote(value: string): string {
-  return `"${cmdValue(value)}"`;
+  return `"${cmdQuotedValue(value)}"`;
 }
 
 function cmdValue(value: string): string {
@@ -4237,6 +4237,13 @@ function cmdValue(value: string): string {
     .replace(/%/g, "%%")
     .replace(/"/g, '^"')
     .replace(/[&|<>()]/g, "^$&");
+}
+
+// Inside double quotes cmd expands % but leaves ^ and &|<>() literal.
+function cmdQuotedValue(value: string): string {
+  return value
+    .replace(/\r?\n/g, " ")
+    .replace(/%/g, "%%");
 }
 
 function trimLeadingBlankLines(value: string): string {
