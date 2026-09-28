@@ -37,7 +37,7 @@ export function UsageDetailPanel({
           }
           if (widget.type === "header") {
             return (
-              <div className="flex min-w-0 items-start justify-between gap-2 rounded-[8px] border border-white/10 bg-white/[.04] px-2.5 py-2" key={`${widget.id}-${index}`}>
+              <div className="tray-panel flex min-w-0 items-start justify-between gap-2 px-3 py-2.5" key={`${widget.id}-${index}`}>
                 <div className="min-w-0">
                   <h2 className="truncate text-[13px] font-bold text-slate-50">{t("Usage Detail")}</h2>
                   <p className="mt-0.5 truncate text-[10px] font-medium text-slate-400">{rangeLabel(range, t)} - {provider ? formatProviderName(provider) : t("All providers")}</p>
@@ -61,7 +61,7 @@ export function UsageDetailPanel({
             );
           }
           if (widget.type === "account") {
-            return <AccountSummaryPanel key={`${widget.id}-${index}`} refreshing={accountRefreshing} snapshots={accountSnapshots} variant={(widget.variant ?? defaultTrayWidgetVariant("account")) as TrayComponentVariants["account"]} onRefresh={onRefreshAccount} />;
+            return <AccountSummaryPanel accountProviders={trayWidgetAccountProviderValues(widget)} key={`${widget.id}-${index}`} refreshing={accountRefreshing} snapshots={accountSnapshots} variant={(widget.variant ?? defaultTrayWidgetVariant("account")) as TrayComponentVariants["account"]} onRefresh={onRefreshAccount} />;
           }
           if (widget.type === "token-flow") {
             return (
@@ -71,7 +71,7 @@ export function UsageDetailPanel({
             );
           }
           if (widget.type === "activity") {
-            return <TokenActivityPanel key={`${widget.id}-${index}`} series={activeStats.series} />;
+            return <TokenActivityPanel generatedAt={activeStats.generatedAt} key={`${widget.id}-${index}`} range={activeStats.range} series={activeStats.series} />;
           }
           if (widget.type === "token-mix") {
             return <TokenMixPanel key={`${widget.id}-${index}`} totals={totals} variant={(widget.variant ?? defaultTrayWidgetVariant("token-mix")) as TrayComponentVariants["tokenMix"]} />;
@@ -83,10 +83,18 @@ export function UsageDetailPanel({
         })}
       </div>
       {!hasDetailModule ? (
-        <div className="flex min-h-[260px] items-center justify-center rounded-[10px] border border-white/10 bg-white/[.03] px-4 text-center text-[12px] font-medium text-slate-400">
+        <div className="tray-panel-subtle flex min-h-[260px] items-center justify-center px-4 text-center text-[12px] font-medium text-slate-400">
           {t("No tray modules enabled")}
         </div>
       ) : null}
     </>
   );
+}
+
+function trayWidgetAccountProviderValues(widget: TrayWidgetConfig): string[] | undefined {
+  const values = [
+    ...(widget.accountProviders ?? []),
+    ...(widget.accountProvider ? [widget.accountProvider] : [])
+  ].map((value) => value.trim()).filter(Boolean);
+  return values.length > 0 ? Array.from(new Set(values)) : undefined;
 }

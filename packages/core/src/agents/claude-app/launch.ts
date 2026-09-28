@@ -5,7 +5,8 @@ import path from "node:path";
 import type { AppConfig, ProfileConfig } from "@ccr/core/contracts/app";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import { prepareClaudeAppCdpUserDataDir, reserveClaudeAppCdpPort, scheduleClaudeAppDesignCdp } from "@ccr/core/agents/claude-app/cdp";
-import { claudeCodeUtcTimezoneEnvOverride } from "@ccr/core/agents/claude-code/environment";
+import { prepareClaudeAppVmStorage } from "@ccr/core/agents/claude-app/vm-storage";
+import { claudeCodeModelEnv as claudeCodeProfileModelEnv, claudeCodeUtcTimezoneEnvOverride, isClaudeCodeManagedModelEnvKey } from "@ccr/core/agents/claude-code/environment";
 import { resolveClaudeCodeSettingsFile } from "@ccr/core/profiles/launch-core";
 import { normalizeWindowsDesktopAppCandidate, windowsDesktopAppCandidates } from "@ccr/core/platform/windows-app-discovery";
 
@@ -18,7 +19,6 @@ export type ClaudeAppLaunchResult = {
   child: ChildProcess;
   command: string;
   cdpPort?: number;
-  claudeDesignProxy?: boolean;
   pidIsLauncher?: boolean;
   pid?: number;
   userDataDir: string;
@@ -36,8 +36,12 @@ const windowsClaudeExeNames = [
 ];
 const windowsClaudePackageKeywords = ["claude", "anthropic"];
 
+type ClaudeAppCandidateOptions = {
+  allowGenericExecutable?: boolean;
+};
+
 export async function launchClaudeAppProfile(configDir: string, profile: ProfileConfig, config?: AppConfig): Promise<ClaudeAppLaunchResult> {
-  const lookup = findInstalledClaudeAppExecutable();
+  const lookup = findInstalledClaudeAppExecutable(profile.appPath);
   if (!lookup.executable) {
     throw new Error([
       "Claude App was not found. Install Claude App or set CLAUDE_APP_PATH to its executable, then try again.",
@@ -49,6 +53,10 @@ export async function launchClaudeAppProfile(configDir: string, profile: Profile
   const settingsDir = path.dirname(settingsFile);
   const userDataDir = resolveClaudeAppProfileUserDataDir(configDir, profile);
   mkdirSync(userDataDir, { recursive: true });
+  const vmStorage = prepareClaudeAppVmStorage(configDir, userDataDir);
+  if (vmStorage.action === "skipped" && vmStorage.reason === "clone-failed") {
+    console.warn(`[profile] Failed to clone Claude App VM seed for ${profile.name || profile.id}. Claude App may rebuild its VM in ${vmStorage.targetBundleDir}.`);
+  }
   prepareClaudeAppCdpUserDataDir(userDataDir);
   const shouldOpenDesign = shouldOpenClaudeAppDesign(config);
   const cdpPort = await reserveClaudeAppCdpPort(console, shouldOpenDesign);
@@ -71,8 +79,7 @@ export async function launchClaudeAppProfile(configDir: string, profile: Profile
   delete env.ELECTRON_RUN_AS_NODE;
 
   const designUrl = claudeAppDesignUrl(config);
-  const proxyUrl = claudeAppProxyUrl(config);
-  const launch = claudeAppLaunchCommand(lookup.executable, userDataDir, cdpPort, proxyUrl, appEnv);
+  const launch = claudeAppLaunchCommand(lookup.executable, userDataDir, cdpPort, appEnv);
   const child = spawn(launch.command, launch.args, {
     detached: true,
     env,
@@ -88,7 +95,6 @@ export async function launchClaudeAppProfile(configDir: string, profile: Profile
 
   return {
     child,
-    claudeDesignProxy: Boolean(proxyUrl),
     command: launch.command,
     ...(cdpPort ? { cdpPort } : {}),
     ...(launch.pidIsLauncher ? { pidIsLauncher: launch.pidIsLauncher } : {}),
@@ -120,45 +126,12 @@ function claudeDesignPluginConfig(config: AppConfig | undefined): AppConfig["plu
   return config?.plugins.find((plugin) => plugin.enabled !== false && plugin.id === "claude-design");
 }
 
-function claudeAppProxyUrl(config: AppConfig | undefined): string | undefined {
-  if (!config?.proxy?.enabled) {
-    return undefined;
-  }
-  const port = Number.isInteger(config.gateway?.port) && config.gateway.port > 0
-    ? config.gateway.port
-    : Number.isInteger(config.PORT) && config.PORT > 0
-      ? config.PORT
-      : undefined;
-  if (!port) {
-    return undefined;
-  }
-  const host = formatLoopbackGatewayHost(config.gateway?.host || "127.0.0.1");
-  return `http://${host}:${port}`;
-}
-
-function formatLoopbackGatewayHost(host: string): string {
-  const trimmed = host.trim();
-  if (!trimmed || trimmed === "0.0.0.0" || trimmed === "::" || trimmed === "[::]") {
-    return "127.0.0.1";
-  }
-  if (trimmed.includes(":") && !trimmed.startsWith("[")) {
-    return `[${trimmed}]`;
-  }
-  return trimmed;
-}
-
-function claudeElectronArgs(userDataDir: string, cdpPort?: number, proxyUrl?: string): string[] {
+function claudeElectronArgs(userDataDir: string, cdpPort?: number): string[] {
   return [
     ...(cdpPort
       ? [
           `--remote-debugging-port=${cdpPort}`,
           "--remote-debugging-address=127.0.0.1"
-        ]
-      : []),
-    ...(proxyUrl
-      ? [
-          `--proxy-server=${proxyUrl}`,
-          "--proxy-bypass-list=localhost;127.0.0.1;[::1]"
         ]
       : []),
     `--user-data-dir=${userDataDir}`,
@@ -173,10 +146,9 @@ export function claudeAppLaunchCommand(
   executable: string,
   userDataDir: string,
   cdpPort: number | undefined,
-  proxyUrl: string | undefined,
   env: Record<string, string>
 ): { args: string[]; command: string; pidIsLauncher?: boolean } {
-  const args = claudeElectronArgs(userDataDir, cdpPort, proxyUrl);
+  const args = claudeElectronArgs(userDataDir, cdpPort);
   const appBundle = process.platform === "darwin" ? macAppBundleFromExecutable(executable) : undefined;
   if (appBundle) {
     return {
@@ -224,9 +196,14 @@ function claudeElectronUserDataDir(settingsDir: string, profile: ProfileConfig):
   );
 }
 
-function findInstalledClaudeAppExecutable(): ClaudeAppLookupResult {
+export function findInstalledClaudeAppExecutable(profileAppPath?: string): ClaudeAppLookupResult {
   const checked: string[] = [];
-  const envCandidate = findFirstExecutable(envClaudeAppPathCandidates(), checked);
+  const profileCandidate = findFirstExecutable(profileClaudeAppPathCandidates(profileAppPath), checked, { allowGenericExecutable: true });
+  if (profileCandidate) {
+    return { checked, executable: profileCandidate };
+  }
+
+  const envCandidate = findFirstExecutable(envClaudeAppPathCandidates(), checked, { allowGenericExecutable: true });
   if (envCandidate) {
     return { checked, executable: envCandidate };
   }
@@ -240,13 +217,13 @@ function findInstalledClaudeAppExecutable(): ClaudeAppLookupResult {
   return { checked, executable: findFirstExecutable(linuxClaudeAppCandidates(), checked) };
 }
 
-function findFirstExecutable(candidates: string[], checked: string[]): string | undefined {
+function findFirstExecutable(candidates: Iterable<string>, checked: string[], options: ClaudeAppCandidateOptions = {}): string | undefined {
   for (const candidate of candidates) {
     if (!candidate || checked.includes(candidate)) {
       continue;
     }
     checked.push(candidate);
-    const executable = normalizeClaudeAppCandidate(candidate);
+    const executable = normalizeClaudeAppCandidate(candidate, options);
     if (executable) {
       return executable;
     }
@@ -261,6 +238,11 @@ function envClaudeAppPathCandidates(): string[] {
     .map(resolveUserPath);
 }
 
+function profileClaudeAppPathCandidates(value: string | undefined): string[] {
+  const trimmed = value?.trim() || "";
+  return trimmed ? [resolveUserPath(trimmed)] : [];
+}
+
 function macClaudeAppCandidates(): string[] {
   const roots = [
     "/Applications",
@@ -269,7 +251,7 @@ function macClaudeAppCandidates(): string[] {
   return roots.flatMap((root) => macClaudeAppNames.map((name) => path.join(root, name)));
 }
 
-function windowsClaudeAppCandidates(): string[] {
+function windowsClaudeAppCandidates(): Iterable<string> {
   return windowsDesktopAppCandidates({
     appDirs: windowsClaudeAppDirs,
     exeNames: windowsClaudeExeNames,
@@ -289,13 +271,20 @@ function windowsClaudeAppCandidates(): string[] {
 function linuxClaudeAppCandidates(): string[] {
   return [
     "/usr/bin/claude",
+    "/usr/bin/claude-desktop",
     "/usr/local/bin/claude",
+    "/usr/local/bin/claude-desktop",
     "/opt/Claude/claude",
-    "/opt/Claude/Claude"
+    "/opt/Claude/Claude",
+    "/opt/Claude Desktop/claude",
+    "/opt/Claude Desktop/Claude",
+    "/opt/Claude Desktop/claude-desktop",
+    "/opt/ClaudeDesktop/ClaudeDesktop",
+    "/opt/AnthropicClaude/AnthropicClaude"
   ];
 }
 
-function normalizeClaudeAppCandidate(candidate: string): string | undefined {
+export function normalizeClaudeAppCandidate(candidate: string, options: ClaudeAppCandidateOptions = {}): string | undefined {
   if (process.platform === "darwin") {
     if (candidate.endsWith(".app")) {
       return executableFromMacAppBundle(candidate);
@@ -303,9 +292,10 @@ function normalizeClaudeAppCandidate(candidate: string): string | undefined {
     return isFile(candidate) ? candidate : undefined;
   }
   if (process.platform === "win32") {
-    return normalizeWindowsClaudeAppCandidate(candidate);
+    const executable = normalizeWindowsClaudeAppCandidate(candidate);
+    return executable && isAllowedClaudeAppExecutable(executable, options) ? executable : undefined;
   }
-  return isFile(candidate) ? candidate : undefined;
+  return isFile(candidate) && isAllowedClaudeAppExecutable(candidate, options) ? candidate : undefined;
 }
 
 function executableFromMacAppBundle(appPath: string): string | undefined {
@@ -358,9 +348,28 @@ function normalizeWindowsClaudeAppCandidate(candidate: string): string | undefin
   });
 }
 
+function isAllowedClaudeAppExecutable(executable: string, options: ClaudeAppCandidateOptions): boolean {
+  if (options.allowGenericExecutable || !isGenericClaudeExecutableName(executable)) {
+    return true;
+  }
+  return hasElectronDesktopAppResources(executable);
+}
+
+function isGenericClaudeExecutableName(executable: string): boolean {
+  const name = path.basename(executable).toLowerCase();
+  return name === "claude" || name === "claude.exe";
+}
+
+function hasElectronDesktopAppResources(executable: string): boolean {
+  const resourcesDir = path.join(path.dirname(executable), "resources");
+  return isFile(path.join(resourcesDir, "app.asar")) ||
+    isDirectory(path.join(resourcesDir, "app")) ||
+    isDirectory(path.join(resourcesDir, "app.asar.unpacked"));
+}
+
 function profileEnv(profile: ProfileConfig): Record<string, string> {
   return Object.entries(profile.env ?? {}).reduce<Record<string, string>>((result, [key, value]) => {
-    if (isEnvName(key) && typeof value === "string") {
+    if (isEnvName(key) && typeof value === "string" && !isClaudeCodeManagedModelEnvKey(key)) {
       result[key] = value;
     }
     return result;
@@ -368,32 +377,7 @@ function profileEnv(profile: ProfileConfig): Record<string, string> {
 }
 
 function claudeCodeModelEnv(profile: ProfileConfig): Record<string, string> {
-  const env: Record<string, string> = {};
-  const model = normalizeClientModel(profile.model);
-  if (model) {
-    env.ANTHROPIC_MODEL = model;
-    env.CCR_CLAUDE_CODE_MODEL = model;
-    env.CODEXL_CLAUDE_CODE_MODEL = model;
-  }
-  const smallFastModel = normalizeClientModel(profile.smallFastModel);
-  if (smallFastModel) {
-    env.ANTHROPIC_SMALL_FAST_MODEL = smallFastModel;
-  }
-  return env;
-}
-
-function normalizeClientModel(value: string | undefined): string {
-  const trimmed = value?.trim() || "";
-  if (!trimmed) {
-    return "";
-  }
-  const commaIndex = trimmed.indexOf(",");
-  if (commaIndex > 0 && commaIndex < trimmed.length - 1) {
-    const provider = trimmed.slice(0, commaIndex).trim();
-    const model = trimmed.slice(commaIndex + 1).trim();
-    return provider && model ? `${provider}/${model}` : "";
-  }
-  return trimmed;
+  return claudeCodeProfileModelEnv(profile);
 }
 
 function isEnvName(value: string): boolean {

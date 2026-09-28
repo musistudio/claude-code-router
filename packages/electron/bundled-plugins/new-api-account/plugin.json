@@ -1,0 +1,15 @@
+{
+  "id": "new-api-account",
+  "name": "New API Account",
+  "description": "Reads New API subscription quota through the CCR built-in browser session.",
+  "module": "index.cjs",
+  "surfaces": {
+    "apps": false,
+    "gateway": false,
+    "provider": true
+  },
+  "permissions": [
+    "trusted-code",
+    "provider-account-connectors"
+  ]
+}

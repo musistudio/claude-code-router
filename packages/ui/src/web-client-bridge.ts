@@ -28,7 +28,9 @@ async function rpc(method: string, args: unknown[] = []): Promise<unknown> {
   if (!response.ok || !payload?.ok) {
     const message = payload && !payload.ok
       ? payload.error.message
-      : `CCR web API failed with HTTP ${response.status}`;
+      : response.status === 404
+        ? "CCR management service is unavailable. Make sure the CCR app or ccr ui command is running, then retry."
+        : `CCR web API failed with HTTP ${response.status}`;
     throw new Error(message);
   }
   return payload.value;
@@ -126,11 +128,13 @@ const webClientBridge: CcrApi = {
   getProfileRuntimeStatus: () => rpc("getProfileRuntimeStatus") as ReturnType<CcrApi["getProfileRuntimeStatus"]>,
   getProviderAccountSnapshots: (provider, options) => rpc("getProviderAccountSnapshots", [provider, options]) as ReturnType<CcrApi["getProviderAccountSnapshots"]>,
   getProviderCatalogModels: (request) => rpc("getProviderCatalogModels", [request]) as ReturnType<CcrApi["getProviderCatalogModels"]>,
+  getOpenRouterProviderCatalog: (request) => rpc("getOpenRouterProviderCatalog", [request]) as ReturnType<CcrApi["getOpenRouterProviderCatalog"]>,
   getProviderPresets: () => rpc("getProviderPresets") as ReturnType<CcrApi["getProviderPresets"]>,
   getProxyCertificateStatus: () => rpc("getProxyCertificateStatus") as ReturnType<CcrApi["getProxyCertificateStatus"]>,
   getProxyNetworkCaptures: () => rpc("getProxyNetworkCaptures") as ReturnType<CcrApi["getProxyNetworkCaptures"]>,
   getProxyStatus: () => rpc("getProxyStatus") as ReturnType<CcrApi["getProxyStatus"]>,
   getRequestLogDetail: (request) => rpc("getRequestLogDetail", [request]) as ReturnType<CcrApi["getRequestLogDetail"]>,
+  getRequestLogBodyChunk: (request) => rpc("getRequestLogBodyChunk", [request]) as ReturnType<CcrApi["getRequestLogBodyChunk"]>,
   getRequestLogs: (filter) => rpc("getRequestLogs", [filter]) as ReturnType<CcrApi["getRequestLogs"]>,
   getUpdateStatus: () => rpc("getUpdateStatus") as ReturnType<CcrApi["getUpdateStatus"]>,
   getUsageStats: (range, filter) => rpc("getUsageStats", [range, filter]) as ReturnType<CcrApi["getUsageStats"]>,
@@ -143,11 +147,12 @@ const webClientBridge: CcrApi = {
   onProviderDeepLink: noopSubscription,
   onUpdateStatusChanged: noopSubscription,
   openBotGatewayQrWindow: (request) => rpc("openBotGatewayQrWindow", [request]) as ReturnType<CcrApi["openBotGatewayQrWindow"]>,
-  openBuiltInBrowser: () => rpc("openBuiltInBrowser") as ReturnType<CcrApi["openBuiltInBrowser"]>,
+  openBuiltInBrowser: (url) => rpc("openBuiltInBrowser", [url]) as ReturnType<CcrApi["openBuiltInBrowser"]>,
   openExternal: async (url) => {
     window.open(normalizeExternalHttpUrl(url), "_blank", "noopener,noreferrer");
   },
   openProfile: (request) => rpc("openProfile", [request]) as ReturnType<CcrApi["openProfile"]>,
+  probeLocalAgentProvider: (request) => rpc("probeLocalAgentProvider", [request]) as ReturnType<NonNullable<CcrApi["probeLocalAgentProvider"]>>,
   probeProvider: (request) => rpc("probeProvider", [request]) as ReturnType<CcrApi["probeProvider"]>,
   probeProviderCandidates: (request) => rpc("probeProviderCandidates", [request]) as ReturnType<CcrApi["probeProviderCandidates"]>,
   quitApp: () => rpc("quitApp") as ReturnType<CcrApi["quitApp"]>,
@@ -155,6 +160,7 @@ const webClientBridge: CcrApi = {
   restartProxy: () => rpc("restartProxy") as ReturnType<CcrApi["restartProxy"]>,
   revealProxyCertificate: () => rpc("revealProxyCertificate") as ReturnType<CcrApi["revealProxyCertificate"]>,
   resetCodexRateLimitCredit: (request) => rpc("resetCodexRateLimitCredit", [request]) as ReturnType<CcrApi["resetCodexRateLimitCredit"]>,
+  resetOverviewStatistics: () => rpc("resetOverviewStatistics") as ReturnType<CcrApi["resetOverviewStatistics"]>,
   saveApiKeys: (apiKeys) => rpc("saveApiKeys", [apiKeys]) as ReturnType<CcrApi["saveApiKeys"]>,
   saveConfig: (config, options) => rpc("saveConfig", [config, options]) as ReturnType<CcrApi["saveConfig"]>,
   scanBotHandoffBluetoothTargets: () => rpc("scanBotHandoffBluetoothTargets") as ReturnType<CcrApi["scanBotHandoffBluetoothTargets"]>,
@@ -169,9 +175,11 @@ const webClientBridge: CcrApi = {
   stopGateway: () => rpc("stopGateway") as ReturnType<CcrApi["stopGateway"]>,
   stopProfile: (request) => rpc("stopProfile", [request]) as ReturnType<CcrApi["stopProfile"]>,
   testProviderAccountConnector: (request) => rpc("testProviderAccountConnector", [request]) as ReturnType<CcrApi["testProviderAccountConnector"]>,
+  testRouteScript: (request) => rpc("testRouteScript", [request]) as ReturnType<CcrApi["testRouteScript"]>,
   updateCheck: () => rpc("updateCheck") as ReturnType<CcrApi["updateCheck"]>,
   updateDownload: () => rpc("updateDownload") as ReturnType<CcrApi["updateDownload"]>,
   updateInstall: () => rpc("updateInstall") as ReturnType<CcrApi["updateInstall"]>,
+  validateRouteScript: (request) => rpc("validateRouteScript", [request]) as ReturnType<CcrApi["validateRouteScript"]>,
   waitBotGatewayQrLogin: (request) => rpc("waitBotGatewayQrLogin", [request]) as ReturnType<CcrApi["waitBotGatewayQrLogin"]>
 };
 

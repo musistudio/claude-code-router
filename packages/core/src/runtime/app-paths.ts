@@ -3,7 +3,6 @@ import path from "node:path";
 
 export const APP_NAME = "Claude Code Router";
 export const APP_STORAGE_NAME = "claude-code-router";
-export const LEGACY_CONFIGDIR = path.join(os.homedir(), ".claude-code-router");
 
 const homeDirEnv = "CCR_INTERNAL_HOME_DIR";
 const appDataDirEnv = "CCR_INTERNAL_APP_DATA_DIR";
@@ -32,6 +31,8 @@ export function resolveRuntimeAppPath(name: RuntimePathName): string {
   }
   return fallbackUserDataDir();
 }
+
+export const LEGACY_CONFIGDIR = path.join(resolveRuntimeAppPath("home"), ".claude-code-router");
 
 export function resolveRuntimeConfigDir(): string {
   if (process.platform === "win32") {

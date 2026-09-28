@@ -1,211 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type HTMLAttributes, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
-  closestCenter,
-  DndContext,
-  DragOverlay,
-  getFirstCollision,
-  KeyboardSensor,
-  MeasuringStrategy,
-  pointerWithin,
-  PointerSensor,
-  rectIntersection,
-  useSensor,
-  useSensors,
-  type CollisionDetection,
-  type DragEndEvent,
-  type DragOverEvent,
-  type DragStartEvent
-} from "@dnd-kit/core";
-import { arrayMove, rectSortingStrategy, SortableContext, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
-import {
-  Activity,
-  ArrowDown,
-  ArrowUp,
-  Box,
-  Boxes,
-  Braces,
-  Check,
-  CheckCircle2,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  CircleAlert,
-  Copy,
-  Database,
-  ExternalLink,
-  FolderOpen,
-  Gauge,
-  Globe,
-  Info,
-  KeyRound,
-  Layers3,
-  LoaderCircle,
-  MoveRight,
-  Network,
-  Palette,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Pause,
-  Pencil,
-  Play,
-  Plus,
-  Power,
-  QrCode,
-  RefreshCw,
-  Route,
-  Search,
-  Server,
-  Settings,
-  ShieldCheck,
-  Terminal,
-  Trash2,
-  UserRound,
-  X,
-  type LucideIcon
-} from "lucide-react";
-import {
-  Area,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  ComposedChart,
-  LabelList,
-  Line,
-  Pie,
-  PieChart,
-  Tooltip,
-  XAxis,
-  YAxis
-} from "recharts";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { PopoverContent } from "@/components/ui/popover";
-import { Select } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
-import appLogoUrl from "@/assets/logo.png";
-import claudeCodeLogoUrl from "@/assets/agent-logos/claude-code.png";
-import codexLogoUrl from "@/assets/agent-logos/codex.png";
-import onboardingMascotSpriteUrl from "@/assets/onboarding/mascot-transition.svg";
-import anthropicProviderIconUrl from "@/assets/provider-icons/anthropic.png";
-import bailianProviderIconUrl from "@/assets/provider-icons/bailian.ico";
-import deepseekProviderIconUrl from "@/assets/provider-icons/deepseek.ico";
-import geminiProviderIconUrl from "@/assets/provider-icons/gemini.svg";
-import mistralProviderIconUrl from "@/assets/provider-icons/mistral.webp";
-import moonshotProviderIconUrl from "@/assets/provider-icons/moonshot.ico";
-import openaiProviderIconUrl from "@/assets/provider-icons/openai.png";
-import openrouterProviderIconUrl from "@/assets/provider-icons/openrouter.ico";
-import siliconflowProviderIconUrl from "@/assets/provider-icons/siliconflow.png";
-import zaiGlobalCodingProviderIconUrl from "@/assets/provider-icons/zai-global-coding.svg";
-import zaiGlobalGeneralProviderIconUrl from "@/assets/provider-icons/zai-global-general.svg";
-import zhipuCnCodingProviderIconUrl from "@/assets/provider-icons/zhipu-cn-coding.png";
-import zhipuCnGeneralProviderIconUrl from "@/assets/provider-icons/zhipu-cn-general.png";
-import trayCyanIconUrl from "@/assets/tray-cyan.png";
-import trayOrangeIconUrl from "@/assets/tray-orange.png";
-import trayVioletIconUrl from "@/assets/tray-violet.png";
-import {
-  BUILTIN_FUSION_TOOL_SERVER_NAME,
-  BUILTIN_FUSION_VISION_TOOL_NAME,
-  BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME,
-  CLAUDE_CODE_DEFAULT_ENV,
-  DEFAULT_OVERVIEW_WIDGETS,
-  DEFAULT_TRAY_COMPONENT_VARIANTS,
-  DEFAULT_TRAY_WIDGETS,
-  DEFAULT_TRAY_WINDOW_MODULES,
-  enforceSingleEnabledGlobalProfilePerAgent,
-  normalizeProfileScopeValue,
-  OVERVIEW_WIDGET_SIZE_VALUES,
   ROUTER_FALLBACK_MAX_RETRY_COUNT,
-  TRAY_SINGLETON_WIDGET_TYPES,
-  TRAY_TOP_WIDGET_TYPES,
-  TRAY_WINDOW_MODULE_IDS
+  ROUTER_SCRIPT_API_VERSION,
+  ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS,
+  ROUTER_SCRIPT_MAX_TIMEOUT_MS
 } from "@ccr/core/contracts/app";
 import type {
-  AgentAnalysisFilter,
-  AgentAnalysisSessionSelection,
-  AgentAnalysisSnapshot,
-  AgentKind,
   AppConfig,
-  AppInfo,
-  AppUpdateStatus,
-  ApiKeyConfig,
-  ApiKeyLimitConfig,
-  BotGatewayQrLoginCancelRequest,
-  BotGatewayQrLoginCancelResult,
-  BotGatewayQrLoginStartRequest,
-  BotGatewayQrLoginStartResult,
-  BotGatewayQrLoginWaitRequest,
-  BotGatewayQrLoginWaitResult,
-  BotGatewayQrWindowOpenResult,
-  BotGatewayRuntimeConfig,
-  BotGatewaySavedConfig,
-  BotHandoffScanTarget,
-  GatewayProviderConfig,
-  GatewayProviderCapability,
-  GatewayPluginAppConfig,
-  GatewayProviderConnectivityCheckModelResult,
-  GatewayProviderConnectivityCheckReport,
-  GatewayProviderProbeCandidate,
-  GatewayProviderProbeCandidateResult,
-  GatewayProviderProbeResult,
-  GatewayProviderProtocol,
-  GatewayMcpServerConfig,
-  GatewayMcpServerTransport,
-  GatewayMcpStdioMessageMode,
-  GatewayMcpToolInfo,
-  GatewayStatus,
-  OverviewMetricKind,
-  OverviewWidgetConfig,
-  OverviewWidgetSize,
-  OverviewWidgetType,
-  OverviewWidgetVariant,
-  PluginDependency,
-  PluginDirectorySelection,
-  PluginMarketplaceEntry,
-  ProviderAccountConfig,
-  ProviderAccountConnectorConfig,
-  ProviderAccountHttpJsonConnectorConfig,
-  ProviderAccountMeter,
-  ProviderAccountStandardConnectorConfig,
-  ProviderAccountSnapshot,
-  ProviderAccountTestPath,
-  ProviderAccountTestResult,
-  ProviderCredentialConfig,
-  ProviderDeepLinkPayload,
-  ProviderDeepLinkRequest,
-  ProfileConfig,
-  ProfileOpenSurface,
-  CodexProfileConfigFormat,
-  ProfileScope,
-  ProfileSurface,
-  ProxyCertificateInstallResult,
-  ProxyCertificateStatus,
-  ProxyNetworkBody,
-  ProxyNetworkExchange,
-  ProxyNetworkSnapshot,
-  ProxyStatus,
-  RequestLogBody,
-  RequestLogEntry,
-  RequestLogListFilter,
-  RequestLogPage,
-  RequestLogStatusFilter,
-  RouterBuiltInAgentRuleId,
+  RouteScriptSampleRequest,
   RouterBuiltInRulesConfig,
   RouterConfig,
   RouterFallbackConfig,
@@ -215,168 +16,23 @@ import type {
   RouterRuleOperator,
   RouterRuleRewrite,
   RouterRuleRewriteOperation,
-  RouterRuleType,
-  TrayBalanceProgressConfig,
-  TrayComponentVariants,
-  TrayWidgetConfig,
-  TrayWidgetType,
-  TrayWidgetVariant,
-  TrayWindowModuleId,
-  UsageComparisonRow,
-  UsageSeriesPoint,
-  UsageStatsFilter,
-  UsageStatsRange,
-  UsageStatsSnapshot,
-  UsageTotals,
-  VirtualModelBaseModelMode,
-  VirtualModelExecutionMode,
-  VirtualModelFusionCustomToolConfig,
-  VirtualModelFusionVisionConfig,
-  VirtualModelFusionWebSearchConfig,
-  VirtualModelFusionWebSearchProvider,
-  VirtualModelProfileConfig,
-  VirtualModelToolVisibility
+  RouterRuleType
 } from "@ccr/core/contracts/app";
 import {
-  customProviderPresetId,
-  defaultProviderAccountConfig,
-  standardProviderAccountConfig,
-  type ProviderIdentitySafetyIssue,
-  type ProviderPreset,
-  type ProviderPresetEndpoint
-} from "@ccr/core/providers/presets/types";
-import {
-  findProviderPresetByBaseUrlInList,
-  findProviderPresetInList,
-  primaryProviderPresetEndpoint as primaryProviderPresetEndpointFromPreset,
-  providerApiKeySafetyIssueInList,
-  providerEndpointCanReceiveProviderApiKeyInList,
-  providerIdentitySafetyIssueInList
-} from "@ccr/core/providers/presets/utils";
-import { normalizeProviderBaseUrl, providerUrlWithDefaultScheme } from "@ccr/core/providers/url";
-import {
-  fallbackConfig,
-  fallbackGatewayStatus,
-  fallbackInfo,
-  fallbackProxyCertificateStatus,
-  fallbackProxyNetworkSnapshot,
-  fallbackProxyStatus,
-  fallbackUpdateStatus
+  fallbackConfig
 } from "./fallbacks";
 import {
-  AppI18nContext,
-  appCopy,
-  languagePreferenceStorageKey,
-  translateOptions,
-  translateText,
-  useAppText,
-  type AppCopy
-} from "./i18n";
-import {
-  AnimatedDisclosure,
-  AnimatedFieldSlot,
-  AnimatedListItem,
-  disclosureSpringTransition,
-  listSpringTransition,
-  motionEase,
-  pageSpringTransition,
-  reducedMotionTransition,
-  ViewMotionShell
-} from "./motion";
-import {
-  clientInitial,
-  formatBytes,
-  formatDuration,
-  formatHeaderName,
-  formatNetworkDateTime,
-  formatNetworkHeaders,
-  formatNetworkRequestRaw,
-  formatNetworkResponseRaw,
-  formatNetworkTime,
-  networkCodeLabel,
-  networkExchangeMatchesQuery,
-  networkHeaderRows,
-  networkLifecycleLabel,
-  networkQueryRows,
-  networkRowId,
-  networkStatusLabel,
-  networkStatusVariant,
-  networkSummaryRows
-} from "./network";
-import {
-  agentKindLabel,
-  compactId,
-  compactUserAgent,
-  createEmptyAgentAnalysis,
-  createEmptyAgentConcurrencySeries,
-  createEmptyRequestLogPage,
-  createEmptyUsageSeries,
-  createEmptyUsageStats,
-  emptyUsageTotals,
-  formatAxisNumber,
-  formatCompactNumber,
-  formatPercent,
-  formatStatusCodeCounts,
-  formatToolCounts,
-  formatUsdCost,
-  logSelectOptions,
-  normalizeAgentFilterValue
-} from "./usage";
-import {
-  agentAnalysisRangeOptions,
-  agentFilterOptions,
-  apiKeyExpirationOptions,
-  apiKeyLimitMetricOptions,
   claudeDesignRouteRuleTypeOptions,
-  customFusionToolName,
-  defaultFusionWebSearchProvider,
-  fusionToolOptions,
-  fusionWebSearchEnvKeysByProvider,
-  fusionWebSearchProviderOptions,
-  getDefaultOnboardingStep,
-  getNextOnboardingStep,
-  isOnboardingProfileReady,
-  isOnboardingProviderReady,
   legacyRouterRuleTypes,
-  legacyUnimcpPackageName,
-  legacyUnimcpServerName,
-  limitWindowOptions,
-  mcpServerStartupTimeoutMs,
-  mcpServerTransportOptions,
-  mcpStdioMessageModeOptions,
-  navigation,
-  onboardingStepOrder,
-  overviewMetricOptions,
-  overviewWidgetSizeOptions,
-  profileAgentOptions,
-  profileScopeOptions,
-  profileSurfaceOptions,
-  providerAccountModeOptions,
-  providerPresetIconUrls,
-  providerProtocolOptions,
-  providerUsageMethodOptions,
-  requestLogPageSizeOptions,
-  requestLogStatusOptions,
   removedLegacyRouterRuleIds,
-  routerConditionSourceOptions,
   routerFallbackModeOptions,
   routerRewriteOperationOptions,
   routerRuleOperatorOptions,
-  routerRuleTypeOptions,
-  trayMascotIconUrls,
-  usageRangeOptions,
-  virtualModelBaseModeOptions,
-  virtualModelClientToolsPolicyOptions,
-  virtualModelExecutionModeOptions,
-  virtualModelMatchModeOptions,
-  virtualModelToolVisibilityOptions
+  routerRuleTypeOptions
 } from "./options";
-import type { AgentFilterValue, RouterConditionSource } from "./options";
-import type { MotionSafeDivAttributes } from "./motion";
-
 
 import { positiveInteger } from "./api-keys";
-import { isPlainRecord, stringValue, uniqueStrings } from "./common";
+import { isPlainRecord, normalizeProviderModelSelector, stringValue, uniqueStrings } from "./common";
 import { sanitizeConfigId } from "./extensions";
 import { formatRouterRuleCondition, formatRouterRuleTarget, routerRuleTypeLabel } from "./providers";
 import { clampNumber } from "./services";
@@ -420,7 +76,11 @@ export function normalizeRouterFallbackConfig(value: Partial<RouterFallbackConfi
   const mode = parseRouterFallbackMode(record.mode) ?? fallbackConfig.Router.fallback.mode;
   const retryCount = clampNumber(Number(record.retryCount), 0, ROUTER_FALLBACK_MAX_RETRY_COUNT);
   const models = Array.isArray(record.models)
-    ? uniqueStrings(record.models.map((model) => stringValue(model)).filter((model): model is string => Boolean(model)))
+    ? uniqueStrings(
+      record.models
+        .map((model) => normalizeProviderModelSelector(stringValue(model)))
+        .filter(Boolean)
+    )
     : [];
 
   return {
@@ -460,12 +120,13 @@ export function normalizeRouterRules(value: unknown): RouterRule[] | undefined {
         return undefined;
       }
       const pattern = stringValue(item.pattern);
-      const target = stringValue(item.target);
+      const target = normalizeProviderModelSelector(stringValue(item.target));
       const threshold = Number(item.threshold);
       const condition = normalizeRouterRuleCondition(item.condition ?? item) ?? routerRuleConditionFromLegacy(type, {
         pattern
       });
       const rewrites = normalizeRouterRuleRewrites(item);
+      const script = type === "script" ? normalizeRouterRuleScript(item.script ?? item) : undefined;
       const rawFallback = item.fallback ?? item.failureFallback ?? item.fallbackStrategy;
       const fallback = isPlainRecord(rawFallback) ? normalizeRouterFallbackConfig(rawFallback) : undefined;
       return {
@@ -477,12 +138,74 @@ export function normalizeRouterRules(value: unknown): RouterRule[] | undefined {
         ...(pattern ? { pattern } : {}),
         ...(rewrites.length === 1 ? { rewrite: rewrites[0] } : {}),
         ...(rewrites.length > 0 ? { rewrites } : {}),
+        ...(script ? { script } : {}),
         ...(target ? { target } : {}),
         ...(Number.isFinite(threshold) && threshold > 0 ? { threshold: Math.trunc(threshold) } : {}),
-        type: condition ? "condition" : type
+        type: type === "script" ? "script" : condition ? "condition" : type
       };
     })
     .filter((item): item is RouterRule => Boolean(item));
+}
+
+export function normalizeRouterRuleScript(value: unknown): RouterRule["script"] | undefined {
+  if (!isPlainRecord(value)) return undefined;
+  const file = stringValue(value.file ?? value.filePath ?? value.path);
+  const source = typeof value.source === "string"
+    ? value.source
+    : typeof value.code === "string"
+      ? value.code
+      : undefined;
+  if (!file && source === undefined) return undefined;
+  const language = stringValue(value.language)?.toLowerCase();
+  if (language && language !== "javascript" && language !== "js") return undefined;
+  const apiVersion = Number(value.apiVersion ?? value.version ?? ROUTER_SCRIPT_API_VERSION);
+  if (apiVersion !== ROUTER_SCRIPT_API_VERSION) return undefined;
+  const rawTimeout = Number(value.timeoutMs ?? value.timeout ?? ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS);
+  const timeoutMs = Number.isFinite(rawTimeout)
+    ? Math.max(10, Math.min(ROUTER_SCRIPT_MAX_TIMEOUT_MS, Math.trunc(rawTimeout)))
+    : ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS;
+  return {
+    apiVersion: ROUTER_SCRIPT_API_VERSION,
+    ...(file ? { file } : {}),
+    language: "javascript",
+    ...(source !== undefined ? { source } : {}),
+    timeoutMs
+  };
+}
+
+export function normalizeRouteScriptSampleRequest(value: unknown): RouteScriptSampleRequest {
+  if (!isPlainRecord(value) || !isPlainRecord(value.body)) {
+    throw new Error("Sample must be a JSON object with an object body");
+  }
+  const headers = normalizeRouteScriptSampleHeaders(value.headers);
+  return {
+    body: value.body,
+    headers,
+    ...(typeof value.method === "string" ? { method: value.method } : {}),
+    ...(typeof value.sessionId === "string" ? { sessionId: value.sessionId } : {}),
+    ...(typeof value.tokenCount === "number" ? { tokenCount: value.tokenCount } : {}),
+    ...(typeof value.url === "string" ? { url: value.url } : {})
+  };
+}
+
+function normalizeRouteScriptSampleHeaders(value: unknown): Record<string, string | string[]> {
+  if (value === undefined) return {};
+  if (!isPlainRecord(value)) {
+    throw new Error("Sample headers must be a JSON object containing string or string-array values");
+  }
+  const headers: Record<string, string | string[]> = {};
+  for (const [name, headerValue] of Object.entries(value)) {
+    if (typeof headerValue === "string") {
+      headers[name] = headerValue;
+      continue;
+    }
+    if (Array.isArray(headerValue) && headerValue.every((entry) => typeof entry === "string")) {
+      headers[name] = headerValue;
+      continue;
+    }
+    throw new Error("Sample headers must be a JSON object containing string or string-array values");
+  }
+  return headers;
 }
 
 export function normalizeRouterRuleCondition(value: unknown): RouterRuleCondition | undefined {
@@ -542,7 +265,7 @@ export function normalizeRouterRuleRewrites(rule: Record<string, unknown>): Rout
         .filter((item): item is RouterRuleRewrite => Boolean(item));
   }
   const rewrite = normalizeRouterRuleRewrite(rule.rewrite ?? rule.action);
-  const target = stringValue(rule.target);
+  const target = normalizeProviderModelSelector(stringValue(rule.target));
   return [
     ...(rewrite ? [rewrite] : []),
     ...(target ? [{ key: "request.body.model", operation: "set" as const, value: target }] : [])
@@ -560,7 +283,7 @@ export function normalizeRouterRuleRewrite(value: unknown): RouterRuleRewrite | 
     stringValue(value.field) ??
     stringValue(value.parameter);
   const operation = parseRouterRewriteOperation(value.operation ?? value.op ?? value.type) ?? "set";
-  const rewriteValue = stringifyRewriteValue(value.value);
+  const rewriteValue = normalizeRouterRewriteValue(key, stringifyRewriteValue(value.value));
   const match = stringifyRewriteValue(value.match);
 
   if (!key) {
@@ -594,6 +317,13 @@ function stringifyRewriteValue(value: unknown): string | undefined {
     return value.trim();
   }
   return value !== undefined ? String(value) : undefined;
+}
+
+function normalizeRouterRewriteValue(key: string | undefined, value: string | undefined): string | undefined {
+  if (key?.trim() !== "request.body.model" || value === undefined) {
+    return value;
+  }
+  return normalizeProviderModelSelector(value);
 }
 
 export function parseRouterRuleType(value: unknown): RouterRuleType | undefined {
@@ -827,90 +557,19 @@ export function claudeDesignRoutingConfigFromDraft(draft: ClaudeDesignRoutingDra
 }
 
 export function buildRoutingRuleRows(config: AppConfig): RoutingRuleRow[] {
-  return [
-    ...buildBuiltInAgentRoutingRows(config),
-    ...config.Router.rules.map((rule, index): RoutingRuleRow => ({
-      condition: formatRouterRuleCondition(rule),
-      enabled: rule.enabled,
-      index,
-      key: `router-${rule.id}-${index}`,
-      name: rule.name || "Unnamed",
-      readonly: false,
-      ruleCount: config.Router.rules.length,
-      ruleId: rule.id,
-      sourceLabel: "Router",
-      target: formatRouterRuleTarget(rule),
-      typeLabel: routerRuleTypeLabel(rule.type)
-    }))
-  ];
-}
-
-export function buildBuiltInAgentRoutingRows(config: AppConfig): RoutingRuleRow[] {
-  return routerBuiltInAgentRuleIds.map((agent): RoutingRuleRow => {
-    const target = routerBuiltInAgentRouteTarget(config, agent);
-    const toggleDisabledReason = routerBuiltInAgentRuleDisabledReason(config, agent);
-    return {
-      builtInAgent: agent,
-      condition: `request.header.user-agent contains ${routerBuiltInAgentUserAgentNeedle(agent)}`,
-      enabled: routerBuiltInAgentRuleIsActive(config, agent),
-      key: `builtin-agent-${agent}`,
-      name: routerBuiltInAgentRuleName(agent),
-      readonly: false,
-      ruleCount: config.Router.rules.length,
-      ruleId: `builtin-agent-${agent}`,
-      sourceLabel: "Built-in",
-      target: target ? `set request.body.model = ${target}` : "Profile model unset",
-      toggleDisabled: Boolean(toggleDisabledReason),
-      toggleDisabledReason,
-      typeLabel: "Condition"
-    };
-  });
-}
-
-const routerBuiltInAgentRuleIds: RouterBuiltInAgentRuleId[] = ["claude-code", "codex"];
-
-export function routerBuiltInAgentRuleIsActive(config: AppConfig, agent: RouterBuiltInAgentRuleId): boolean {
-  return routerBuiltInAgentRulePreferenceEnabled(config, agent) &&
-    Boolean(routerBuiltInAgentProfile(config, agent)) &&
-    Boolean(routerBuiltInAgentRouteTarget(config, agent));
-}
-
-export function routerBuiltInAgentRulePreferenceEnabled(config: AppConfig, agent: RouterBuiltInAgentRuleId): boolean {
-  return config.Router.builtInRules?.[agent]?.enabled !== false;
-}
-
-export function routerBuiltInAgentProfile(config: AppConfig, agent: RouterBuiltInAgentRuleId): ProfileConfig | undefined {
-  if (config.profile.enabled === false) {
-    return undefined;
-  }
-  return config.profile.profiles.find((profile) => profile.enabled && profile.agent === agent);
-}
-
-export function routerBuiltInAgentRouteTarget(config: AppConfig, agent: RouterBuiltInAgentRuleId): string {
-  return routerBuiltInAgentProfile(config, agent)?.model.trim() || "";
-}
-
-export function routerBuiltInAgentRuleDisabledReason(config: AppConfig, agent: RouterBuiltInAgentRuleId): string | undefined {
-  if (config.profile.enabled === false) {
-    return "Agent profiles are disabled.";
-  }
-  const agentName = routerBuiltInAgentRuleName(agent);
-  const profile = routerBuiltInAgentProfile(config, agent);
-  if (!profile) {
-    return `Enable a ${agentName} profile before enabling this built-in route.`;
-  }
-  if (!profile.model.trim()) {
-    return `Set a model on the ${agentName} profile before enabling this built-in route.`;
-  }
-  return undefined;
-}
-
-export function routerBuiltInAgentRuleName(agent: RouterBuiltInAgentRuleId): string {
-  return agent === "claude-code" ? "Claude Code" : "Codex";
-}
-
-export function routerBuiltInAgentUserAgentNeedle(agent: RouterBuiltInAgentRuleId): string {
-  return agent === "claude-code" ? "claude" : "codex";
+  return config.Router.rules.map((rule, index): RoutingRuleRow => ({
+    condition: formatRouterRuleCondition(rule),
+    enabled: rule.enabled,
+    index,
+    key: `router-${rule.id}-${index}`,
+    name: rule.name || "Unnamed",
+    readonly: false,
+    ruleCount: config.Router.rules.length,
+    ruleId: rule.id,
+    sourceLabel: "Router",
+    target: formatRouterRuleTarget(rule),
+    typeLabel: routerRuleTypeLabel(rule.type)
+  }));
 }
 
 export function buildPluginRoutingRows(plugin: AppConfig["plugins"][number], pluginIndex: number): RoutingRuleRow[] {
@@ -982,7 +641,7 @@ export function composeRouteTargetValue(providerValue: unknown, modelValue: unkn
   const provider = stringValue(providerValue);
   const model = stringValue(modelValue);
   if (provider && model) {
-    return `${provider},${model}`;
+    return `${provider}/${model}`;
   }
   return model || provider;
 }

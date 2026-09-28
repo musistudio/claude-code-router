@@ -1,16 +1,17 @@
 export type AppInfo = {
-  appConfigDbFile: string;
-  apiKeysDbFile: string;
+  chatgptAppPath?: string;
+  configDbFile: string;
   configDir: string;
-  configFile: string;
   dataDir: string;
-  gatewayConfigFile: string;
+  desktop: boolean;
   launchAtLoginSupported: boolean;
   requestLogsDbFile: string;
   name: string;
+  opencodeAppPath?: string;
   platform: string;
   usageDbFile: string;
   version: string;
+  workbuddyAppPath?: string;
 };
 
 export type AppDataExportResult = {
@@ -108,6 +109,39 @@ export type AppUpdateStatus = {
 export const BUILTIN_FUSION_TOOL_SERVER_NAME = "ccr-fusion-builtins";
 export const BUILTIN_FUSION_VISION_TOOL_NAME = "vision_understand";
 export const BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME = "web_search";
+export const BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME = "image_generation";
+export const BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME = "video_generation";
+export const GROK_API_MEDIA_BASE_URL = "https://api.x.ai/v1";
+export const GROK_API_DEFAULT_IMAGE_MODEL = "grok-imagine-image-quality";
+export const GROK_API_DEFAULT_VIDEO_MODEL = "grok-imagine-video";
+// Legacy sentinel retained only to migrate configs created before media execution
+// moved from the Grok CLI subprocess to the Grok API.
+export const GROK_CLI_MEDIA_MODEL_SELECTOR = "grok-cli";
+export const MEDIA_TOOLS_MCP_SERVER_NAME = "ccr-media-tools";
+export const MEDIA_IMAGE_GENERATE_TOOL_PREFIX = "image_generate";
+export const MEDIA_IMAGE_EDIT_TOOL_PREFIX = "image_edit";
+export const MEDIA_VIDEO_START_TOOL_PREFIX = "video_generate";
+export const MEDIA_JOB_GET_TOOL_PREFIX = "media_job_get";
+export const MEDIA_JOB_CANCEL_TOOL_PREFIX = "media_job_cancel";
+
+// Legacy names are retained only so configs created by the first Grok-specific
+// implementation can be opened and migrated into the generic media tools.
+export const BUILTIN_FUSION_GROK_MEDIA_TOOL_NAME = "grok_media";
+export const GROK_MEDIA_MCP_SERVER_NAME = MEDIA_TOOLS_MCP_SERVER_NAME;
+export const GROK_MEDIA_IMAGE_GENERATE_TOOL_NAME = "grok_media_image_generate";
+export const GROK_MEDIA_IMAGE_EDIT_TOOL_NAME = "grok_media_image_edit";
+export const GROK_MEDIA_VIDEO_START_TOOL_NAME = "grok_media_video_start";
+export const GROK_MEDIA_JOB_GET_TOOL_NAME = "grok_media_job_get";
+export const GROK_MEDIA_JOB_CANCEL_TOOL_NAME = "grok_media_job_cancel";
+export const GROK_MEDIA_CAPABILITIES_TOOL_NAME = "grok_media_capabilities";
+export const GROK_MEDIA_FUSION_TOOL_NAMES = [
+  GROK_MEDIA_IMAGE_GENERATE_TOOL_NAME,
+  GROK_MEDIA_IMAGE_EDIT_TOOL_NAME,
+  GROK_MEDIA_VIDEO_START_TOOL_NAME,
+  GROK_MEDIA_JOB_GET_TOOL_NAME,
+  GROK_MEDIA_JOB_CANCEL_TOOL_NAME,
+  GROK_MEDIA_CAPABILITIES_TOOL_NAME
+] as const;
 
 export type GatewayProviderProtocol =
   | "openai_responses"
@@ -115,6 +149,13 @@ export type GatewayProviderProtocol =
   | "anthropic_messages"
   | "gemini_generate_content"
   | "gemini_interactions";
+
+export type GatewayMediaProtocol =
+  | "openai_image_generations"
+  | "openai_video_generations"
+  | "xai_video_generations";
+
+export type GatewayProviderCapabilityProtocol = GatewayProviderProtocol | GatewayMediaProtocol;
 
 export type GatewayProviderConfig = {
   account?: ProviderAccountConfig;
@@ -131,14 +172,86 @@ export type GatewayProviderConfig = {
   extraHeaders?: unknown;
   icon?: string;
   id?: string;
+  enabled?: boolean;
+  autoFetchModels?: boolean;
+  autoFetchKnownModels?: string[];
   modelDescriptions?: Record<string, string>;
   modelDisplayNames?: Record<string, string>;
+  modelMetadata?: Record<string, ProviderModelMetadata>;
   models: string[];
   name: string;
   provider?: string;
+  protocolDetectionMode?: "auto" | "manual";
   transformer?: unknown;
   type?: GatewayProviderProtocol | string;
 };
+
+export function isGatewayProviderEnabled(provider: Pick<GatewayProviderConfig, "enabled">): boolean {
+  return provider.enabled !== false;
+}
+
+export type ProviderReasoningLevel = {
+  description: string;
+  effort: string;
+};
+
+export type ProviderModelCapabilities = {
+  imageInput?: boolean;
+  webSearch?: boolean;
+};
+
+export type ProviderModelPricing = {
+  cacheReadUsdPerMillionTokens?: number;
+  /** Legacy cache-write price, treated as the 5-minute price when no explicit 5m price exists. */
+  cacheWriteUsdPerMillionTokens?: number;
+  cacheWrite1hUsdPerMillionTokens?: number;
+  cacheWrite5mUsdPerMillionTokens?: number;
+  inputUsdPerMillionTokens?: number;
+  outputUsdPerMillionTokens?: number;
+};
+
+export type ProviderModelOpenRouterDiscountRoutingConfig = {
+  allowFallbacks?: boolean;
+  cacheHitRate?: number;
+  enabled?: boolean;
+  endpointTtlMs?: number;
+  minOutputTokens?: number;
+  minSavingsRatio?: number;
+  minSavingsUsd?: number;
+  minUptime5m?: number;
+  outputTokenRatio?: number;
+  providerBlacklist?: string[];
+  requireParameters?: boolean;
+  respectExistingProviderOrder?: boolean;
+};
+
+export type ProviderModelMetadata = {
+  additionalSpeedTiers?: unknown[];
+  capabilities?: ProviderModelCapabilities;
+  contextWindowPinned?: boolean;
+  contextWindow?: number;
+  defaultReasoningLevel?: string | null;
+  defaultReasoningSummary?: string;
+  effectiveContextWindowPercent?: number;
+  maxContextWindow?: number;
+  maxOutputTokens?: number;
+  openRouterDiscountRouting?: ProviderModelOpenRouterDiscountRoutingConfig;
+  pricing?: ProviderModelPricing;
+  serviceTiers?: unknown[];
+  supportsFastMode?: boolean;
+  supportedReasoningLevels?: ProviderReasoningLevel[];
+  supportsReasoningSummaries?: boolean;
+};
+
+export function effectiveContextWindowPercentFor(metadata: ProviderModelMetadata | undefined): number | undefined {
+  if (metadata?.contextWindowPinned) {
+    return 100;
+  }
+  const percent = metadata?.effectiveContextWindowPercent;
+  return percent !== undefined && Number.isFinite(percent) && percent > 0 && percent <= 100
+    ? percent
+    : undefined;
+}
 
 export type ProviderCredentialConfig = {
   account?: ProviderAccountConfig;
@@ -155,12 +268,13 @@ export type ProviderCredentialConfig = {
 };
 
 export type ProviderAccountAuthMode = "provider-api-key" | "provider-api-key-raw" | "none";
-export type ProviderAccountConnectorSource = "standard" | "http-json" | "plugin" | "local-estimate" | "merged" | "unsupported";
+export type ProviderAccountConnectorSource = "standard" | "http-json" | "webcontent-json" | "plugin" | "local-estimate" | "merged" | "unsupported";
 export type ProviderAccountStatus = "ok" | "warning" | "critical" | "error" | "unsupported";
 export type ProviderAccountMeterKind = "balance" | "subscription" | "quota" | "time_window" | "tokens" | "requests";
 export type ProviderAccountMeterUnit = "USD" | "CNY" | "hours" | "minutes" | "tokens" | "requests" | string;
 export type ProviderAccountMeterWindow = "5h" | "daily" | "weekly" | "monthly" | string;
-export type ProviderAccountHttpJsonParser = "kimi-code-usages" | "new-api-key-usage" | "new-api-user-self";
+export type ProviderAccountHttpJsonParser = "grok-subscription" | "kimi-code-usages" | "new-api-key-usage" | "new-api-user-self";
+export type ProviderAccountBrowserCredentialsMode = "include" | "omit" | "same-origin";
 
 export type ProviderAccountConfig = {
   connectors?: ProviderAccountConnectorConfig[];
@@ -171,6 +285,7 @@ export type ProviderAccountConfig = {
 export type ProviderAccountConnectorConfig =
   | ProviderAccountStandardConnectorConfig
   | ProviderAccountHttpJsonConnectorConfig
+  | ProviderAccountWebContentJsonConnectorConfig
   | ProviderAccountPluginConnectorConfig
   | ProviderAccountLocalEstimateConnectorConfig;
 
@@ -196,6 +311,24 @@ export type ProviderAccountHttpJsonConnectorConfig = ProviderAccountConnectorBas
   method?: "GET" | "POST";
   parser?: ProviderAccountHttpJsonParser;
   type: "http-json";
+};
+
+export type ProviderAccountWebContentJsonConnectorConfig = ProviderAccountConnectorBaseConfig & {
+  body?: unknown;
+  browser?: {
+    credentials?: ProviderAccountBrowserCredentialsMode;
+    headerTemplates?: Record<string, string>;
+    loginUrl?: string;
+    partition?: "built-in-browser";
+    requestOrigin?: string;
+    timeoutMs?: number;
+  };
+  endpoint: string;
+  headers?: Record<string, string>;
+  mapping: ProviderAccountMappingConfig;
+  method?: "GET" | "POST";
+  parser?: ProviderAccountHttpJsonParser;
+  type: "webcontent-json";
 };
 
 export type ProviderAccountPluginConnectorConfig = ProviderAccountConnectorBaseConfig & {
@@ -290,9 +423,11 @@ export type ProviderDeepLinkPayload = {
   account?: ProviderAccountConfig;
   apiKey?: string;
   baseUrl: string;
+  capabilities?: GatewayProviderCapability[];
   icon?: string;
   modelDescriptions?: Record<string, string>;
   modelDisplayNames?: Record<string, string>;
+  modelMetadata?: Record<string, ProviderModelMetadata>;
   models: string[];
   name?: string;
   protocol?: GatewayProviderProtocol;
@@ -313,7 +448,7 @@ export type ProviderManifestFetchResult = {
   url: string;
 };
 
-export type LocalAgentProviderKind = "claude-code" | "codex" | "zcode";
+export type LocalAgentProviderKind = "claude-code" | "codex" | "grok" | "kimi" | "opencode" | "zcode";
 
 export type LocalAgentProviderStatus = "available" | "locked" | "missing";
 
@@ -323,6 +458,7 @@ export type LocalAgentProviderCandidate = {
   importable: boolean;
   kind: LocalAgentProviderKind;
   modelDisplayNames?: Record<string, string>;
+  modelMetadata?: Record<string, ProviderModelMetadata>;
   models: string[];
   name: string;
   protocol: GatewayProviderProtocol;
@@ -341,6 +477,16 @@ export type LocalAgentProviderImportResult = {
   providerPlugins: unknown[];
 };
 
+export type LocalAgentProviderProbeRequest = {
+  forceRefresh?: boolean;
+  id: string;
+};
+
+export type LocalAgentProviderProbeResult = {
+  candidate: LocalAgentProviderCandidate;
+  probe: GatewayProviderProbeResult;
+};
+
 export type ProviderCatalogModelsRequest = {
   baseUrl?: string;
   name?: string;
@@ -352,15 +498,35 @@ export type ProviderCatalogModelsResult = {
   loadedFrom?: string;
   matchedBy?: "base-url" | "provider-id" | "provider-name";
   modelDisplayNames?: Record<string, string>;
+  modelMetadata?: Record<string, ProviderModelMetadata>;
   models: string[];
   provider?: string;
   providerName?: string;
 };
 
+export type OpenRouterProviderCatalogRequest = {
+  apiKey?: string;
+  baseUrl?: string;
+  model?: string;
+};
+
+export type OpenRouterProviderCatalogItem = {
+  name: string;
+  quantizations?: string[];
+  slug: string;
+  tokensYesterday?: number;
+  uptimePercent?: number;
+};
+
+export type OpenRouterProviderCatalogResult = {
+  loadedFrom?: string;
+  providers: OpenRouterProviderCatalogItem[];
+};
+
 export type ProviderAccountTestRequest = {
   apiKey?: string;
   baseUrl: string;
-  connector: ProviderAccountHttpJsonConnectorConfig;
+  connector: ProviderAccountHttpJsonConnectorConfig | ProviderAccountWebContentJsonConnectorConfig;
   providerName?: string;
 };
 
@@ -403,7 +569,7 @@ export type GatewayProviderCapability = {
   baseUrl: string;
   endpoint?: string;
   source?: "detected" | "preset";
-  type: GatewayProviderProtocol;
+  type: GatewayProviderCapabilityProtocol;
 };
 
 export type GatewayProviderDetectedProvider = "new-api";
@@ -414,15 +580,16 @@ export type GatewayProviderProbeRequest = {
   forceRefresh?: boolean;
   mode?: "connectivity" | "models" | "protocols";
   models?: string[];
-  protocols?: GatewayProviderProtocol[];
+  providerPlugins?: unknown[];
+  protocols?: GatewayProviderCapabilityProtocol[];
   skipModelDiscovery?: boolean;
 };
 
 export type GatewayProviderProbeCandidate = {
   baseUrl: string;
-  declaredProtocols?: GatewayProviderProtocol[];
+  declaredProtocols?: GatewayProviderCapabilityProtocol[];
   label?: string;
-  protocols: GatewayProviderProtocol[];
+  protocols: GatewayProviderCapabilityProtocol[];
   source: "custom" | "preset";
 };
 
@@ -432,7 +599,8 @@ export type GatewayProviderProbeCandidatesRequest = {
   forceRefresh?: boolean;
   mode?: "connectivity" | "models" | "protocols";
   models?: string[];
-  protocols?: GatewayProviderProtocol[];
+  providerPlugins?: unknown[];
+  protocols?: GatewayProviderCapabilityProtocol[];
 };
 
 export type ProviderIconDetectionRequest = {
@@ -452,7 +620,7 @@ export type GatewayProviderProbeProtocolResult = {
   detectedProvider?: GatewayProviderDetectedProvider;
   endpoint: string;
   message: string;
-  protocol: GatewayProviderProtocol;
+  protocol: GatewayProviderCapabilityProtocol;
   status?: number;
   supported: boolean;
 };
@@ -460,12 +628,15 @@ export type GatewayProviderProbeProtocolResult = {
 export type GatewayProviderProbeResult = {
   account?: ProviderAccountConfig;
   capabilities?: GatewayProviderCapability[];
+  catalogModelMetadata?: Record<string, ProviderModelMetadata>;
   detectedProvider?: GatewayProviderDetectedProvider;
   detectedProtocol?: GatewayProviderProtocol;
   modelDisplayNames?: Record<string, string>;
+  modelMetadata?: Record<string, ProviderModelMetadata>;
   modelSource?: "anthropic" | "gemini" | "openai";
   models: string[];
   normalizedBaseUrl: string;
+  protocolModels?: Partial<Record<GatewayProviderCapabilityProtocol, string[]>>;
   protocols: GatewayProviderProbeProtocolResult[];
 };
 
@@ -486,7 +657,8 @@ export type GatewayProviderConnectivityCheckRequest = {
   candidates: GatewayProviderProbeCandidate[];
   forceRefresh?: boolean;
   models: string[];
-  protocols?: GatewayProviderProtocol[];
+  providerPlugins?: unknown[];
+  protocols?: GatewayProviderCapabilityProtocol[];
 };
 
 export type GatewayProviderConnectivityCheckReport = {
@@ -498,7 +670,8 @@ export type GatewayProviderConnectivityCheckReport = {
 
 export type RouterRuleType =
   | "condition"
-  | "model-prefix";
+  | "model-prefix"
+  | "script";
 
 export type RouterRuleOperator =
   | "=="
@@ -533,6 +706,20 @@ export type RouterRuleRewrite = {
   value?: string;
 };
 
+export const ROUTER_SCRIPT_API_VERSION = 1 as const;
+export const ROUTER_SCRIPT_MAX_SOURCE_BYTES = 5 * 1024 * 1024;
+export const ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS = 2_000;
+export const ROUTER_SCRIPT_MAX_TIMEOUT_MS = 30_000;
+
+export type RouterRuleScript = {
+  apiVersion: typeof ROUTER_SCRIPT_API_VERSION;
+  file?: string;
+  language: "javascript";
+  /** Legacy inline source. New rules persist `file` instead. */
+  source?: string;
+  timeoutMs: number;
+};
+
 export type RouterRule = {
   condition?: RouterRuleCondition;
   enabled: boolean;
@@ -542,6 +729,7 @@ export type RouterRule = {
   pattern?: string;
   rewrite?: RouterRuleRewrite;
   rewrites?: RouterRuleRewrite[];
+  script?: RouterRuleScript;
   target?: string;
   threshold?: number;
   type: RouterRuleType;
@@ -571,11 +759,51 @@ export type RouterConfig = {
   rules: RouterRule[];
 };
 
+export type ProfileRoutingConfig = {
+  enabled: boolean;
+  enhancedRoute: boolean;
+  rules: RouterRule[];
+};
+
+export type RouteScriptDiagnostic = {
+  code: string;
+  column?: number;
+  line?: number;
+  message: string;
+};
+
+export type RouteScriptValidationRequest = {
+  script: RouterRuleScript;
+};
+
+export type RouteScriptValidationResult = {
+  diagnostics: RouteScriptDiagnostic[];
+  ok: boolean;
+};
+
+export type RouteScriptSampleRequest = {
+  body: Record<string, unknown>;
+  headers?: Record<string, string | string[] | undefined>;
+  method?: string;
+  sessionId?: string;
+  tokenCount?: number;
+  url?: string;
+};
+
+export type RouteScriptTestRequest = RouteScriptValidationRequest & {
+  request: RouteScriptSampleRequest;
+};
+
+export type RouteScriptTestResult = RouteScriptValidationResult & {
+  durationMs?: number;
+  matched: boolean;
+  output?: unknown;
+};
+
 export type GatewayRuntimeConfig = {
   coreHost: string;
   corePort: number;
   enabled: boolean;
-  generatedConfigFile: string;
   host: string;
   port: number;
 };
@@ -583,6 +811,20 @@ export type GatewayRuntimeConfig = {
 export type ProxyMode = "gateway" | "transparent";
 
 export type ProxyForwardMode = ProxyMode | "plugin";
+
+export type ProxyUpstreamMode = "none" | "system" | "custom";
+
+export type ProxyUpstreamCustomConfig = {
+  password: string;
+  port: number;
+  server: string;
+  username: string;
+};
+
+export type ProxyUpstreamConfig = {
+  custom: ProxyUpstreamCustomConfig;
+  mode: ProxyUpstreamMode;
+};
 
 export type ProxyRouteTarget = {
   host: string;
@@ -607,6 +849,92 @@ export type GatewayPluginAppConfig = {
   name: string;
   url: string;
 };
+
+export const CLAUDE_DESIGN_PLUGIN_ID = "claude-design";
+export const CLAUDE_SHIP_PLUGIN_ID = "claude-ship";
+export const DEFAULT_CLAUDE_DESIGN_APP: GatewayPluginAppConfig = {
+  description: "Open Claude Design in a dedicated CCR Electron window.",
+  icon: "palette",
+  id: "claude-design",
+  name: "Claude Design",
+  url: "https://claude-design.ccrdesk.top/design"
+};
+export const DEFAULT_CLAUDE_SHIP_APP: GatewayPluginAppConfig = {
+  description: "Open Claude Ship in a dedicated CCR Electron window.",
+  icon: "rocket",
+  id: "claude-ship",
+  name: "Claude Ship",
+  url: "https://claude.ai/claude-ship"
+};
+
+export const GATEWAY_PLUGIN_SURFACE_IDS = [
+  "apps",
+  "gateway",
+  "provider"
+] as const;
+
+export type GatewayPluginSurface = typeof GATEWAY_PLUGIN_SURFACE_IDS[number];
+
+export type GatewayPluginSurfacesConfig = Partial<Record<GatewayPluginSurface, boolean>>;
+
+export const GATEWAY_PLUGIN_PERMISSION_IDS = [
+  "trusted-code",
+  "apps",
+  "gateway-routes",
+  "proxy-routes",
+  "http-backends",
+  "provider-account-connectors",
+  "gateway-request-transforms",
+  "core-gateway-config",
+  "core-gateway-plugins",
+  "core-provider-plugins",
+  "virtual-model-profiles",
+  "sqlite-store",
+  "system-launcher"
+] as const;
+
+export type GatewayPluginPermission = typeof GATEWAY_PLUGIN_PERMISSION_IDS[number];
+
+export type KnownGatewayPluginDefaults = {
+  permissions: GatewayPluginPermission[];
+  surfaces: GatewayPluginSurfacesConfig;
+};
+
+export const KNOWN_GATEWAY_PLUGIN_DEFAULTS: Record<string, KnownGatewayPluginDefaults> = {
+  "claude-design": {
+    permissions: ["trusted-code", "apps", "gateway-routes", "proxy-routes", "http-backends", "sqlite-store"],
+    surfaces: { apps: true, gateway: true, provider: false }
+  },
+  "claude-ship": {
+    permissions: ["trusted-code", "apps", "gateway-routes", "proxy-routes", "http-backends", "sqlite-store"],
+    surfaces: { apps: true, gateway: true, provider: false }
+  },
+  "cursor-proxy": {
+    permissions: ["trusted-code", "gateway-routes", "proxy-routes", "http-backends"],
+    surfaces: { apps: false, gateway: true, provider: false }
+  }
+};
+
+export function knownGatewayPluginDefaultPermissions(id: string): GatewayPluginPermission[] | undefined {
+  const permissions = KNOWN_GATEWAY_PLUGIN_DEFAULTS[id.trim().toLowerCase()]?.permissions;
+  return permissions ? [...permissions] : undefined;
+}
+
+export function knownGatewayPluginDefaultSurfaces(id: string): GatewayPluginSurfacesConfig | undefined {
+  const surfaces = KNOWN_GATEWAY_PLUGIN_DEFAULTS[id.trim().toLowerCase()]?.surfaces;
+  return surfaces ? { ...surfaces } : undefined;
+}
+
+export function knownGatewayPluginDefaultApps(id: string): GatewayPluginAppConfig[] | undefined {
+  const pluginId = id.trim().toLowerCase();
+  if (pluginId === CLAUDE_DESIGN_PLUGIN_ID) {
+    return [{ ...DEFAULT_CLAUDE_DESIGN_APP }];
+  }
+  if (pluginId === CLAUDE_SHIP_PLUGIN_ID) {
+    return [{ ...DEFAULT_CLAUDE_SHIP_APP }];
+  }
+  return undefined;
+}
 
 export type GatewayMcpServerTransport = "stdio" | "streamable-http" | "sse";
 export type GatewayMcpStdioMessageMode = "content-length" | "newline-json";
@@ -657,6 +985,27 @@ export type ToolHubConfig = {
   requestTimeoutMs: number;
 };
 
+export type ContextArchiveConfig = {
+  enabled: boolean;
+  maxBytes: number;
+  maxSnapshotBytes: number;
+  maxSnapshots: number;
+  mcpEnabled: boolean;
+  replayTimeoutMs: number;
+  retentionDays: number;
+  storagePath: string;
+  toolName: string;
+};
+
+export type MediaToolsConfig = {
+  allowedInputRoots: string[];
+  artifactTtlHours: number;
+  enabled: boolean;
+  jobTimeoutMs: number;
+  maxImageConcurrency: number;
+  maxVideoConcurrency: number;
+};
+
 export const CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV = "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY";
 export const CLAUDE_CODE_DEFAULT_ENV: Record<string, string> = {
   [CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV]: "1"
@@ -702,8 +1051,6 @@ export type VirtualModelExecutionConfig = {
   clientToolsPolicy: "allow" | "deny";
   matchMultimodal?: boolean;
   matchWebSearch?: boolean;
-  maxToolCalls: number;
-  maxTurns: number;
   mode: VirtualModelExecutionMode;
   streamMode: "buffered" | "optimistic";
 };
@@ -718,8 +1065,10 @@ export type VirtualModelMaterializationConfig = {
 export type VirtualModelFusionVisionConfig = {
   apiKey?: string;
   baseUrl?: string;
+  fallbackModels?: string[];
   model?: string;
   modelSelector?: string;
+  retryCount?: number;
   timeoutMs?: number;
   toolName?: string;
 };
@@ -731,6 +1080,7 @@ export type VirtualModelFusionWebSearchProvider =
   | "google_cse"
   | "serper"
   | "serpapi"
+  | "serply"
   | "tavily"
   | "exa";
 
@@ -740,6 +1090,20 @@ export type VirtualModelFusionWebSearchConfig = {
   resultCount?: number;
   timeoutMs?: number;
   toolName?: string;
+};
+
+export type VirtualModelFusionMediaConfig = {
+  imageEditToolName?: string;
+  imageFallbackModelSelectors?: string[];
+  imageGenerateToolName?: string;
+  imageModelSelector?: string;
+  imageRetryCount?: number;
+  jobCancelToolName?: string;
+  jobGetToolName?: string;
+  videoFallbackModelSelectors?: string[];
+  videoModelSelector?: string;
+  videoRetryCount?: number;
+  videoStartToolName?: string;
 };
 
 export type VirtualModelFusionCustomToolConfig = {
@@ -814,7 +1178,7 @@ export function availableGatewayModelIds(config: Pick<AppConfig, "Providers" | "
 function availableGatewayBaseModelEntries(providers: GatewayProviderConfig[]): Array<{ modelName: string; providerName: string }> {
   return providers.flatMap((provider) => {
     const providerName = provider.name?.trim();
-    if (!providerName || !Array.isArray(provider.models)) {
+    if (!isGatewayProviderEnabled(provider) || !providerName || !Array.isArray(provider.models)) {
       return [];
     }
     return provider.models.flatMap((rawModel) => {
@@ -855,21 +1219,27 @@ export type GatewayPluginConfig = {
   config?: unknown;
   coreGateway?: {
     config?: Record<string, unknown>;
+    plugins?: unknown[];
     providerPlugins?: unknown[];
     virtualModelProfiles?: VirtualModelProfileConfig[];
   };
   enabled?: boolean;
   id: string;
   module?: string;
+  permissions?: GatewayPluginPermission[];
   proxy?: {
     routes?: GatewayPluginProxyRouteConfig[];
   };
+  surfaces?: GatewayPluginSurfacesConfig;
 };
 
 export type PluginDependency = {
   id: string;
+  integrity?: string;
   modulePath?: string;
   name?: string;
+  permissions?: GatewayPluginPermission[];
+  surfaces?: GatewayPluginSurfacesConfig;
 };
 
 export type PluginDirectorySelection = {
@@ -879,6 +1249,8 @@ export type PluginDirectorySelection = {
   id: string;
   modulePath: string;
   name?: string;
+  permissions?: GatewayPluginPermission[];
+  surfaces?: GatewayPluginSurfacesConfig;
 };
 
 export type PluginMarketplaceEntry = {
@@ -887,8 +1259,11 @@ export type PluginMarketplaceEntry = {
   dependencies: PluginDependency[];
   description: string;
   id: string;
+  integrity?: string;
   modulePath: string;
   name: string;
+  permissions?: GatewayPluginPermission[];
+  surfaces?: GatewayPluginSurfacesConfig;
 };
 
 export type ProxyRuntimeConfig = {
@@ -900,10 +1275,14 @@ export type ProxyRuntimeConfig = {
   port: number;
   systemProxy: boolean;
   targets: ProxyRouteTarget[];
+  upstream: ProxyUpstreamConfig;
 };
 
 export type ObservabilityConfig = {
   agentAnalysis: boolean;
+  requestLogBodyCapture?: "all" | "errors" | "none";
+  requestLogMaxBodyBytes?: number;
+  requestLogSuccessSampleRate?: number;
   requestLogs: boolean;
 };
 
@@ -1015,8 +1394,13 @@ export type OverviewMetricKind =
   | "success-rate"
   | "total-tokens";
 
+export type OverviewAccountCardSize = "1:1" | "1:2" | "2:1" | "2:2";
+
 export type OverviewWidgetConfig = {
+  accountCardOrder?: string[];
+  accountCardSizes?: Record<string, OverviewAccountCardSize>;
   accountProvider?: string;
+  accountProviders?: string[];
   enabled: boolean;
   id: string;
   metric?: OverviewMetricKind;
@@ -1025,7 +1409,7 @@ export type OverviewWidgetConfig = {
   variant: OverviewWidgetVariant;
 };
 
-export const DEFAULT_OVERVIEW_WIDGETS: OverviewWidgetConfig[] = [
+export const LEGACY_DEFAULT_OVERVIEW_WIDGETS: OverviewWidgetConfig[] = [
   { enabled: true, id: "system-status", size: "4:1", type: "system-status", variant: "timeline" },
   { enabled: true, id: "account-balance", size: "4:2", type: "account-balance", variant: "cards" },
   { enabled: true, id: "metric-requests", metric: "requests", size: "1:1", type: "metric", variant: "card" },
@@ -1035,6 +1419,24 @@ export const DEFAULT_OVERVIEW_WIDGETS: OverviewWidgetConfig[] = [
   { enabled: true, id: "metric-cache-ratio", metric: "cache-ratio", size: "1:1", type: "metric", variant: "card" },
   { enabled: true, id: "metric-estimated-cost", metric: "estimated-cost", size: "1:1", type: "metric", variant: "card" },
   { enabled: true, id: "usage-trend", size: "3:2", type: "usage-trend", variant: "composed" },
+  { enabled: true, id: "token-activity", size: "4:2", type: "token-activity", variant: "heatmap" },
+  { enabled: true, id: "token-mix", size: "1:2", type: "token-mix", variant: "bars" },
+  { enabled: true, id: "client-analysis", size: "2:2", type: "client-analysis", variant: "table" },
+  { enabled: true, id: "provider-analysis", size: "2:2", type: "provider-analysis", variant: "table" }
+];
+
+export const DEFAULT_OVERVIEW_WIDGETS: OverviewWidgetConfig[] = [
+  { enabled: true, id: "system-status", size: "4:1", type: "system-status", variant: "timeline" },
+  { enabled: true, id: "metric-requests", metric: "requests", size: "1:1", type: "metric", variant: "card" },
+  { enabled: true, id: "metric-success-rate", metric: "success-rate", size: "1:1", type: "metric", variant: "card" },
+  { enabled: true, id: "metric-avg-latency", metric: "avg-latency", size: "1:1", type: "metric", variant: "card" },
+  { enabled: true, id: "metric-estimated-cost", metric: "estimated-cost", size: "1:1", type: "metric", variant: "card" },
+  { enabled: true, id: "usage-trend", size: "4:2", type: "usage-trend", variant: "composed" },
+  { enabled: true, id: "metric-input-tokens", metric: "input-tokens", size: "1:1", type: "metric", variant: "card" },
+  { enabled: true, id: "metric-output-tokens", metric: "output-tokens", size: "1:1", type: "metric", variant: "card" },
+  { enabled: true, id: "metric-cache-tokens", metric: "cache-tokens", size: "1:1", type: "metric", variant: "card" },
+  { enabled: true, id: "metric-cache-ratio", metric: "cache-ratio", size: "1:1", type: "metric", variant: "card" },
+  { enabled: true, id: "account-balance", size: "4:2", type: "account-balance", variant: "cards" },
   { enabled: true, id: "token-activity", size: "4:2", type: "token-activity", variant: "heatmap" },
   { enabled: true, id: "token-mix", size: "1:2", type: "token-mix", variant: "bars" },
   { enabled: true, id: "client-analysis", size: "2:2", type: "client-analysis", variant: "table" },
@@ -1060,6 +1462,8 @@ export const TRAY_SINGLETON_WIDGET_TYPES = ["source-tabs", "header"] as const sa
 export const TRAY_TOP_WIDGET_TYPES = ["source-tabs", "header"] as const satisfies readonly TrayWidgetType[];
 
 export type TrayWidgetConfig = {
+  accountProvider?: string;
+  accountProviders?: string[];
   id: string;
   type: TrayWidgetType;
   variant?: TrayWidgetVariant;
@@ -1078,7 +1482,7 @@ export const DEFAULT_TRAY_WIDGETS: TrayWidgetConfig[] = [
   { id: "model-share", type: "model-share", variant: DEFAULT_TRAY_COMPONENT_VARIANTS.modelShare }
 ];
 
-export type ProfileClientKind = "claude-code" | "codex" | "zcode";
+export type ProfileClientKind = "claude-code" | "codex" | "grok" | "kimi" | "kilo" | "opencode" | "pi" | "workbuddy" | "zcode" | "claude-design";
 export type CodexProfileConfigFormat = "legacy" | "separate_profile_files";
 export type CodexRemoteFrontendMode = "app" | "cli" | "claude-code";
 export type ProfileScope = "ccr" | "global" | "custom";
@@ -1086,9 +1490,15 @@ export type ProfileSurface = "auto" | "cli" | "app";
 export type ProfileOpenSurface = "cli" | "app";
 
 export type ClaudeCodeProfileConfig = {
+  claudeSettings?: Record<string, unknown>;
   enabled: boolean;
+  fableModel: string;
+  haikuModel: string;
+  managedCompact: boolean;
   model: string;
+  opusModel: string;
   settingsFile: string;
+  sonnetModel: string;
   smallFastModel: string;
 };
 
@@ -1099,6 +1509,7 @@ export type CodexProfileConfig = {
   configFormat: CodexProfileConfigFormat;
   configFile: string;
   enabled: boolean;
+  managedCompact: boolean;
   model: string;
   providerId: string;
   providerName: string;
@@ -1108,24 +1519,33 @@ export type CodexProfileConfig = {
 
 export type ProfileConfig = {
   agent: ProfileClientKind;
+  appPath?: string;
+  availableModels?: string[];
   botConfigId?: string;
   botGateway?: BotGatewayRuntimeConfig;
   configFile?: string;
   cliMiddleware?: boolean;
+  claudeSettings?: Record<string, unknown>;
   codexCliPath?: string;
   codexHome?: string;
   configFormat?: CodexProfileConfigFormat;
   enabled: boolean;
   env?: Record<string, string>;
+  fableModel?: string;
+  haikuModel?: string;
   id: string;
+  managedCompact?: boolean;
   model: string;
   name: string;
+  opusModel?: string;
   providerId?: string;
   providerName?: string;
   remoteFrontendMode?: CodexRemoteFrontendMode;
+  routing?: ProfileRoutingConfig;
   scope?: ProfileScope;
   showAllSessions?: boolean;
   settingsFile?: string;
+  sonnetModel?: string;
   smallFastModel?: string;
   surface?: ProfileSurface;
 };
@@ -1206,12 +1626,25 @@ export type ProfileOpenResult = {
 
 export type ProfileRuntimeEntry = {
   agent: AgentKind;
+  botGateway?: BotGatewayRuntimeStatus;
   pid?: number;
   profileId: string;
   profileName: string;
   startedAt: string;
   state: "running";
   surface: ProfileOpenSurface;
+};
+
+export type BotGatewayRuntimeStatus = {
+  lastDeliveryAt?: string;
+  lastDeliveryStatus?: string;
+  lastError?: string;
+  lastErrorAt?: string;
+  lastEventAt?: string;
+  lastEventType?: string;
+  outboxCount: number;
+  state: "connected" | "error" | "starting" | "stopped" | "unknown";
+  updatedAt?: string;
 };
 
 export type ProfileRuntimeStatus = {
@@ -1308,12 +1741,20 @@ export type BotGatewayRuntimeConfig = {
   handoff: BotGatewayHandoffConfig;
   integrationConfig: Record<string, unknown>;
   integrationId: string;
+  language: "auto" | "en" | "zh-CN";
+  maxAttachmentBytes: number;
+  maxTurnTimeMs: number;
+  mediaEnabled: boolean;
+  messageChunkChars: number;
   platform: string;
   pollIntervalMs: number;
   requestTimeoutMs: number;
+  sessionIdleMinutes: number;
+  shellEnabled: boolean;
   sourceDir: string;
   startupTimeoutMs: number;
   stateDir: string;
+  streamReplies: boolean;
   tenantId: string;
 };
 
@@ -1401,7 +1842,9 @@ export type AppConfig = {
   autoStart: boolean;
   botConfigs: BotGatewaySavedConfig[];
   botGateway: BotGatewayRuntimeConfig;
+  contextArchive: ContextArchiveConfig;
   gateway: GatewayRuntimeConfig;
+  mediaTools: MediaToolsConfig;
   launchAtLogin: boolean;
   observability: ObservabilityConfig;
   preferredProvider: string;
@@ -1413,6 +1856,7 @@ export type AppConfig = {
   routerEndpoint: string;
   theme: "system" | "light" | "dark";
   trayBalanceProgress?: TrayBalanceProgressConfig;
+  trayShowTokenRate: boolean;
   trayProgressTargetTokens: number;
   trayComponentVariants: TrayComponentVariants;
   trayIcon: TrayIconPreference;
@@ -1447,7 +1891,7 @@ export type GatewayStatus = {
   coreEndpoint: string;
   coreManagedExternally?: boolean;
   endpoint: string;
-  generatedConfigFile: string;
+  gatewayManagedExternally?: boolean;
   lastError?: string;
   lastStartedAt?: string;
   networkEndpoints: GatewayNetworkEndpoint[];
@@ -1572,10 +2016,12 @@ export type ProxyCertificateInstallResult = {
 export type ProxyNetworkCaptureState = "complete" | "error" | "pending";
 
 export type ProxyNetworkBody = {
+  bodyRef?: string;
   contentType?: string;
   decodedFrom?: string;
   encoding: "base64" | "utf8";
   error?: string;
+  preview?: boolean;
   sizeBytes: number;
   text: string;
   truncated: boolean;
@@ -1630,6 +2076,28 @@ export type RequestLogDetailRequest = {
 
 export type RequestLogBody = ProxyNetworkBody;
 
+export type RequestLogBodySide = "request" | "response";
+
+export type RequestLogBodyChunkRequest = {
+  id: number;
+  length?: number;
+  offset?: number;
+  side: RequestLogBodySide;
+};
+
+export type RequestLogBodyChunk = {
+  bodyRef?: string;
+  contentType?: string;
+  encoding: "base64" | "utf8";
+  eof: boolean;
+  length: number;
+  nextOffset?: number;
+  offset: number;
+  sizeBytes: number;
+  text: string;
+  truncated: boolean;
+};
+
 export type RequestLogRetryAttempt = {
   attempt: number;
   delayMs: number;
@@ -1637,7 +2105,121 @@ export type RequestLogRetryAttempt = {
   status?: string;
 };
 
+export type RequestRouteTracePhase =
+  | "ingress"
+  | "compatibility"
+  | "routing"
+  | "capability"
+  | "enrichment"
+  | "planning"
+  | "attempt"
+  | "core"
+  | "outcome";
+
+export type RequestRouteTraceChange = {
+  after?: unknown;
+  before?: unknown;
+  operation: "add" | "remove" | "replace";
+  path: string;
+  redacted?: boolean;
+  scope: "body" | "headers" | "routing" | "url";
+  truncated?: boolean;
+};
+
+export type RequestRouteTraceDecision = {
+  diagnostics?: Array<{
+    code: string;
+    message: string;
+    model?: string;
+    ruleId?: string;
+    source?: string;
+  }>;
+  policyId?: string;
+  reason?: string;
+  ruleId?: string;
+  ruleName?: string;
+  source?: string;
+};
+
+export type RequestRouteTraceTarget = {
+  credentialCandidates?: string[];
+  credentialId?: string;
+  model?: string;
+  protocol?: GatewayProviderProtocol;
+  provider?: string;
+};
+
+export type RequestRouteTraceOutcome = {
+  error?: string;
+  fallbackReason?: string;
+  retryDelayMs?: number;
+  statusCode?: number;
+};
+
+export type RequestRouteTraceSnapshot = {
+  body?: unknown;
+  bodySizeBytes: number;
+  bodyTruncated: boolean;
+  headers: Record<string, unknown>;
+  method: string;
+  routing?: Record<string, unknown>;
+  url: string;
+};
+
+export type RequestRouteTraceHop = {
+  attempt?: number;
+  changes: RequestRouteTraceChange[];
+  decision?: RequestRouteTraceDecision;
+  durationMs: number;
+  kind: "attempt" | "decision" | "mutation" | "outcome" | "snapshot";
+  name: string;
+  outcome?: RequestRouteTraceOutcome;
+  phase: RequestRouteTracePhase;
+  seq: number;
+  startedOffsetMs: number;
+  status: "error" | "noop" | "ok";
+  target?: RequestRouteTraceTarget;
+  truncated?: boolean;
+};
+
+export type RequestRouteTrace = {
+  attemptCount: number;
+  complete: boolean;
+  finalSnapshot?: RequestRouteTraceSnapshot;
+  hopCount: number;
+  hops: RequestRouteTraceHop[];
+  ingressSnapshot?: RequestRouteTraceSnapshot;
+  truncated: boolean;
+  version: 1 | 2;
+};
+
+export type StreamSpeedSampleStatus =
+  | "complete"
+  | "partial"
+  | "usage_missing"
+  | "insufficient_tokens"
+  | "unsupported_protocol"
+  | "hidden_reasoning"
+  | "batched_output";
+
+export type RequestStreamMetrics = {
+  activeOutputMs?: number;
+  estimatedOutputTokens: number;
+  maxInterEventGapMs?: number;
+  p95InterEventGapMs?: number;
+  reasoningObserved: boolean;
+  responseHeadersMs?: number;
+  sampleStatus: StreamSpeedSampleStatus;
+  tailMs?: number;
+  textObserved: boolean;
+  timeToFirstSignalMs?: number;
+  timeToFirstTextMs?: number;
+  toolObserved: boolean;
+  upstreamTimeToFirstSignalMs?: number;
+};
+
 export type RequestLogEntry = {
+  activeOutputMs?: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
   client: string;
@@ -1652,21 +2234,37 @@ export type RequestLogEntry = {
   id: number;
   inputTokens: number;
   isStream: boolean;
+  maxInterEventGapMs?: number;
   method: string;
   model: string;
   ok: boolean;
   outputTokens: number;
+  outputTokensPerSecond?: number;
   path: string;
+  p95InterEventGapMs?: number;
   provider: string;
   reasoningTokens: number;
+  responseHeadersMs?: number;
+  requestedModel?: string;
   requestBody: RequestLogBody;
   requestHeaders: Record<string, string | string[]>;
   requestId: string;
+  routeAttemptCount: number;
+  routeHopCount: number;
+  routeTrace?: RequestRouteTrace;
+  routeTraceTruncated: boolean;
   retryAttempts: RequestLogRetryAttempt[];
+  resolvedModel?: string;
   responseBody?: RequestLogBody;
+  responseModel?: string;
   responseHeaders: Record<string, string | string[]>;
   statusCode: number;
+  streamSpeedSampleStatus?: StreamSpeedSampleStatus;
+  tailMs?: number;
+  timeToFirstSignalMs?: number;
+  timeToFirstTextMs?: number;
   totalTokens: number;
+  upstreamTimeToFirstSignalMs?: number;
   url: string;
 };
 
@@ -1719,6 +2317,7 @@ export type UsageComparisonRow = UsageTotals & {
   credentialId?: string;
   key: string;
   label: string;
+  logicalModel?: string;
   maxShare: number;
   model?: string;
   provider?: string;
@@ -1735,7 +2334,12 @@ export type UsageStatsSnapshot = {
   totals: UsageTotals;
 };
 
-export type AgentKind = "claude-code" | "codex" | "zcode" | "claude-design" | "unknown";
+export type UsageStatsResetResult = {
+  deletedEvents: number;
+  resetAt: string;
+};
+
+export type AgentKind = "claude-code" | "codex" | "grok" | "kimi" | "kilo" | "opencode" | "pi" | "workbuddy" | "zcode" | "claude-design" | "unknown";
 
 export type AgentAnalysisFilter = {
   agent?: AgentKind | "all";
@@ -1850,7 +2454,7 @@ export type AgentAnalysisSubagentRow = {
 
 export type AgentAnalysisTraceRunKind = "agent" | "llm" | "route" | "subagent" | "tool";
 
-export type AgentAnalysisTraceRunStatus = "error" | "success";
+export type AgentAnalysisTraceRunStatus = "error" | "partial" | "success";
 
 export type AgentAnalysisTracePayloadPreview = {
   kind: "empty" | "json" | "text";
@@ -1888,6 +2492,7 @@ export type AgentAnalysisTraceRun = {
   cacheReadTokens: number;
   cacheWriteTokens: number;
   concurrentRequests: number;
+  costUsd?: number;
   depth: number;
   durationMs: number;
   endedAt: string;
@@ -1983,7 +2588,37 @@ export type AgentObservabilityErrorRow = {
   userAgent?: string;
 };
 
+export type AgentAnalysisConversationRole = "assistant" | "context" | "developer" | "system" | "tool" | "user";
+
+export type AgentAnalysisConversationMessage = {
+  content: string;
+  sourcePreview: boolean;
+  sourceTruncated: boolean;
+  truncated: boolean;
+};
+
+export type AgentAnalysisConversationItem = AgentAnalysisConversationMessage & {
+  id: string;
+  role: AgentAnalysisConversationRole;
+};
+
+export type AgentAnalysisConversationTurn = {
+  agent: AgentKind;
+  assistant?: AgentAnalysisConversationMessage;
+  createdAt: string;
+  durationMs: number;
+  id: number;
+  messages?: AgentAnalysisConversationItem[];
+  model: string;
+  provider: string;
+  requestId: string;
+  sessionId: string;
+  statusCode: number;
+  user?: AgentAnalysisConversationMessage;
+};
+
 export type AgentAnalysisSessionDetail = {
+  conversation: AgentAnalysisConversationTurn[];
   endpoints: AgentObservabilityEndpointRow[];
   errors: AgentObservabilityErrorRow[];
   models: AgentAnalysisSessionModelRow[];
@@ -2007,6 +2642,8 @@ export type AgentAnalysisSnapshot = {
   range: UsageStatsRange;
   recentRequests: AgentAnalysisRequestRow[];
   routes: AgentObservabilityRouteRow[];
+  requestScanLimit: number;
+  requestScanTruncated: boolean;
   scannedRequestCount: number;
   selectedSession?: AgentAnalysisSessionDetail;
   sessions: AgentAnalysisSessionRow[];

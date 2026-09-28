@@ -1,0 +1,25 @@
+---
+import DocPage from "../../components/DocPage.astro";
+import { pageKeyFromSlug } from "../../docs-structure";
+import { zhGuideDocs, sectionSlugFromPath } from "../../section-docs";
+
+const agentProfileDoc = Object.entries(zhGuideDocs).find(
+  ([filePath]) => sectionSlugFromPath(filePath) === "agent-profile"
+)?.[1];
+const appUrl = `${import.meta.env.BASE_URL}guides/agent-profile-app/?locale=zh`;
+---
+
+<DocPage
+  locale="zh"
+  pageKey="guides"
+  doc={agentProfileDoc}
+  activeSidebarItem={pageKeyFromSlug("guides", "zh", "agent-profile")}
+>
+  <iframe
+    slot="interactive"
+    src={appUrl}
+    title="CCR Agent 配置 — 实际界面"
+    loading="lazy"
+    class="interactive-frame interactive-frame--manager"
+  />
+</DocPage>

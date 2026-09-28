@@ -1,17 +1,5 @@
 ---
-const target = "/en/configuration/overview/";
+import Redirect from "../../components/Redirect.astro";
 ---
 
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta http-equiv="refresh" content={`0;url=${target}`} />
-    <link rel="canonical" href={target} />
-    <script is:inline>
-      window.location.replace("/en/configuration/overview/");
-    </script>
-  </head>
-  <body>
-    <a href={target}>Overview Dashboard</a>
-  </body>
-</html>
+<Redirect target="/en/configuration/overview/" lang="en" label="Overview Dashboard" />

@@ -1,0 +1,25 @@
+---
+import DocPage from "../../../components/DocPage.astro";
+import { pageKeyFromSlug } from "../../../docs-structure";
+import { enGuideDocs, sectionSlugFromPath } from "../../../section-docs";
+
+const agentProfileDoc = Object.entries(enGuideDocs).find(
+  ([filePath]) => sectionSlugFromPath(filePath) === "agent-profile"
+)?.[1];
+const appUrl = `${import.meta.env.BASE_URL}guides/agent-profile-app/?locale=en`;
+---
+
+<DocPage
+  locale="en"
+  pageKey="guides"
+  doc={agentProfileDoc}
+  activeSidebarItem={pageKeyFromSlug("guides", "en", "agent-profile")}
+>
+  <iframe
+    slot="interactive"
+    src={appUrl}
+    title="CCR Agent Config — live UI"
+    loading="lazy"
+    class="interactive-frame interactive-frame--manager"
+  />
+</DocPage>

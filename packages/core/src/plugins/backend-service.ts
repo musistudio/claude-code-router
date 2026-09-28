@@ -60,7 +60,7 @@ class BackendService {
 
   async registerHttpBackend(ownerId: string, backend: HttpBackendRegistration): Promise<RegisteredHttpBackend> {
     const server = http.createServer((request, response) => {
-      void Promise.resolve(backend.handler(request, response)).catch((error) => {
+      void Promise.resolve().then(() => backend.handler(request, response)).catch((error) => {
         if (!response.headersSent) {
           sendJson(response, 500, { error: { message: formatError(error) } });
         } else {

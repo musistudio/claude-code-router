@@ -1,0 +1,289 @@
+import assert from "node:assert/strict";
+import path from "node:path";
+import test from "node:test";
+import {
+  buildProfileLaunchPlan,
+  ccrManagedProfileDir,
+  defaultProfileOpenSurface,
+  findProfileForOpen,
+  profileOpenCommand,
+  profileOpenSurfaces,
+  resolveClaudeCodeSettingsFile,
+  resolveCodexConfigFile,
+  resolveKiloConfigFile,
+  resolveOpenCodeConfigFile,
+  resolveProfileOpenSurface,
+  shouldAutoStartProfileGateway
+} from "@ccr/core/profiles/launch-core.ts";
+
+const claudeProfile = {
+  agent: "claude-code",
+  enabled: true,
+  fableModel: "provider,fable",
+  haikuModel: "provider,haiku",
+  id: "claude-main",
+  model: "provider,model",
+  name: "Claude Main",
+  opusModel: "provider,opus",
+  scope: "ccr",
+  sonnetModel: "provider,sonnet",
+  smallFastModel: "provider,small",
+  surface: "auto"
+};
+
+const codexProfile = {
+  agent: "codex",
+  enabled: true,
+  id: "codex-main",
+  model: "provider,model",
+  name: "Codex Main",
+  providerId: "openai-codex",
+  scope: "ccr",
+  surface: "auto"
+};
+
+const grokProfile = {
+  agent: "grok",
+  enabled: true,
+  id: "grok-main",
+  model: "provider,model",
+  name: "Grok Main",
+  scope: "ccr",
+  surface: "cli"
+};
+
+const kimiProfile = {
+  agent: "kimi",
+  enabled: true,
+  id: "kimi-main",
+  model: "provider,model",
+  name: "Kimi Main",
+  scope: "ccr",
+  surface: "cli"
+};
+
+const piProfile = {
+  agent: "pi",
+  enabled: true,
+  id: "pi-main",
+  model: "provider,model",
+  name: "Pi Main",
+  scope: "ccr",
+  surface: "cli"
+};
+
+const openCodeProfile = {
+  agent: "opencode",
+  enabled: true,
+  id: "opencode-main",
+  model: "provider,model",
+  name: "OpenCode Main",
+  providerId: "claude-code-router",
+  scope: "ccr",
+  surface: "auto"
+};
+
+const kiloProfile = {
+  agent: "kilo",
+  enabled: true,
+  id: "kilo-main",
+  model: "provider,model",
+  name: "Kilo Main",
+  providerId: "claude-code-router",
+  scope: "ccr",
+  surface: "cli"
+};
+
+const workbuddyProfile = {
+  agent: "workbuddy",
+  enabled: true,
+  id: "workbuddy-main",
+  model: "provider,model",
+  name: "Workbuddy Main",
+  providerId: "claude-code-router",
+  scope: "ccr",
+  surface: "app"
+};
+
+const claudeDesignProfile = {
+  agent: "claude-design",
+  enabled: true,
+  id: "claude-design-main",
+  model: "",
+  name: "Claude Design",
+  scope: "ccr",
+  surface: "app"
+};
+
+test("findProfileForOpen resolves enabled profiles and reports ambiguous names", () => {
+  const config = {
+    profile: {
+      profiles: [
+        claudeProfile,
+        { ...claudeProfile, enabled: false, id: "disabled", name: "Disabled" },
+        { ...codexProfile, id: "duplicate-a", name: "Duplicate Name" },
+        { ...codexProfile, id: "duplicate-b", name: "duplicate name" }
+      ]
+    }
+  };
+
+  assert.equal(findProfileForOpen(config, "claude-main").id, "claude-main");
+  assert.equal(findProfileForOpen(config, "claude main").id, "claude-main");
+  assert.throws(() => findProfileForOpen(config, "duplicate name"), /ambiguous/);
+  assert.throws(() => findProfileForOpen(config, "Disabled"), /not found or is disabled/);
+});
+
+test("profile open surfaces enforce agent capabilities", () => {
+  assert.deepEqual(profileOpenSurfaces(claudeProfile), ["cli", "app"]);
+  assert.deepEqual(profileOpenSurfaces({ ...claudeProfile, surface: "cli" }), ["cli"]);
+  assert.deepEqual(profileOpenSurfaces({ ...codexProfile, agent: "zcode" }), ["app"]);
+  assert.deepEqual(profileOpenSurfaces(grokProfile), ["cli"]);
+  assert.deepEqual(profileOpenSurfaces(kimiProfile), ["cli"]);
+  assert.deepEqual(profileOpenSurfaces(piProfile), ["cli"]);
+  assert.deepEqual(profileOpenSurfaces(kiloProfile), ["cli"]);
+  assert.deepEqual(profileOpenSurfaces(workbuddyProfile), ["app"]);
+  assert.deepEqual(profileOpenSurfaces(openCodeProfile), ["cli", "app"]);
+  assert.deepEqual(profileOpenSurfaces(claudeDesignProfile), ["app"]);
+  assert.equal(resolveProfileOpenSurface(codexProfile, "app"), "app");
+  assert.throws(() => resolveProfileOpenSurface({ ...claudeProfile, surface: "cli" }, "app"), /does not support APP/);
+  assert.throws(() => resolveProfileOpenSurface(grokProfile, "app"), /does not support APP/);
+  assert.throws(() => resolveProfileOpenSurface(kimiProfile, "app"), /does not support APP/);
+  assert.throws(() => resolveProfileOpenSurface(piProfile, "app"), /does not support APP/);
+  assert.throws(() => resolveProfileOpenSurface(kiloProfile, "app"), /does not support APP/);
+  assert.throws(() => resolveProfileOpenSurface(workbuddyProfile, "cli"), /does not support CLI/);
+  assert.throws(() => resolveProfileOpenSurface(claudeDesignProfile, "cli"), /does not support CLI/);
+});
+
+test("default profile command surface is CLI unless the agent is app-only", () => {
+  assert.equal(defaultProfileOpenSurface(claudeProfile), "cli");
+  assert.equal(defaultProfileOpenSurface(codexProfile), "cli");
+  assert.equal(defaultProfileOpenSurface({ ...codexProfile, surface: "app" }), "cli");
+  assert.equal(defaultProfileOpenSurface(workbuddyProfile), "app");
+  assert.equal(defaultProfileOpenSurface({ ...codexProfile, agent: "zcode" }), "app");
+  assert.equal(defaultProfileOpenSurface(claudeDesignProfile), "app");
+});
+
+test("Grok and Kimi CLI start a temporary CCR gateway when none is already running", () => {
+  assert.equal(shouldAutoStartProfileGateway(grokProfile, "cli"), true);
+  assert.equal(shouldAutoStartProfileGateway(kimiProfile, "cli"), true);
+  assert.equal(shouldAutoStartProfileGateway(piProfile, "cli"), true);
+  assert.equal(shouldAutoStartProfileGateway(workbuddyProfile, "app"), false);
+  assert.equal(shouldAutoStartProfileGateway(kiloProfile, "cli"), false);
+  assert.equal(shouldAutoStartProfileGateway(codexProfile, "cli"), false);
+  assert.equal(shouldAutoStartProfileGateway(claudeProfile, "app"), false);
+  assert.equal(shouldAutoStartProfileGateway(claudeDesignProfile, "app"), false);
+});
+
+test("buildProfileLaunchPlan creates CCR-managed launcher paths", () => {
+  const configDir = path.join(path.sep, "tmp", "ccr-config");
+  const codexPlan = buildProfileLaunchPlan(configDir, codexProfile, "app");
+  const claudePlan = buildProfileLaunchPlan(configDir, claudeProfile, "cli", ["--debug"]);
+  const grokPlan = buildProfileLaunchPlan(configDir, grokProfile, "cli", ["--debug"]);
+  const kimiPlan = buildProfileLaunchPlan(configDir, kimiProfile, "cli", ["--debug"]);
+  const piPlan = buildProfileLaunchPlan(configDir, piProfile, "cli", ["--debug"]);
+  const openCodePlan = buildProfileLaunchPlan(configDir, openCodeProfile, "cli", ["--debug"]);
+  const kiloPlan = buildProfileLaunchPlan(configDir, kiloProfile, "cli", ["--debug"]);
+  const workbuddyPlan = buildProfileLaunchPlan(configDir, workbuddyProfile, "app");
+
+  assert.equal(codexPlan.surface, "app");
+  assert.deepEqual(codexPlan.args, ["app"]);
+  assert.equal(path.basename(codexPlan.command), process.platform === "win32" ? "ccr-codex-cli-stdio-codex-main.cmd" : "ccr-codex-cli-stdio-codex-main");
+  assert.equal(codexPlan.env.CCR_PROFILE_SURFACE, "app");
+
+  assert.equal(claudePlan.surface, "cli");
+  assert.deepEqual(claudePlan.args, ["--debug"]);
+  assert.equal(path.basename(claudePlan.command), process.platform === "win32" ? "ccr-claude-code-wrapper-claude-main.cmd" : "ccr-claude-code-wrapper-claude-main");
+  assert.equal(claudePlan.env.CCR_PROFILE_SURFACE, "cli");
+  assert.match(claudePlan.env.CLAUDE_CONFIG_DIR, /claude$/);
+  assert.equal(claudePlan.env.ANTHROPIC_MODEL, "provider/model");
+  assert.equal(claudePlan.env.CCR_CLAUDE_CODE_MODEL, "provider/model");
+  assert.equal(claudePlan.env.CODEXL_CLAUDE_CODE_MODEL, "provider/model");
+  assert.equal(claudePlan.env.ANTHROPIC_DEFAULT_FABLE_MODEL, "provider/fable");
+  assert.equal(claudePlan.env.ANTHROPIC_DEFAULT_OPUS_MODEL, "provider/opus");
+  assert.equal(claudePlan.env.ANTHROPIC_DEFAULT_SONNET_MODEL, "provider/sonnet");
+  assert.equal(claudePlan.env.ANTHROPIC_DEFAULT_HAIKU_MODEL, "provider/haiku");
+  assert.equal(claudePlan.env.ANTHROPIC_SMALL_FAST_MODEL, undefined);
+
+  assert.equal(grokPlan.surface, "cli");
+  assert.deepEqual(grokPlan.args, ["--debug"]);
+  assert.equal(path.basename(grokPlan.command), process.platform === "win32" ? "ccr-grok-cli-wrapper-grok-main.cmd" : "ccr-grok-cli-wrapper-grok-main");
+  assert.equal(grokPlan.env.CCR_PROFILE_SURFACE, "cli");
+
+  assert.equal(kimiPlan.surface, "cli");
+  assert.deepEqual(kimiPlan.args, ["--debug"]);
+  assert.equal(path.basename(kimiPlan.command), process.platform === "win32" ? "ccr-kimi-cli-wrapper-kimi-main.cmd" : "ccr-kimi-cli-wrapper-kimi-main");
+  assert.equal(kimiPlan.env.CCR_PROFILE_SURFACE, "cli");
+
+  assert.equal(piPlan.surface, "cli");
+  assert.deepEqual(piPlan.args, ["--debug"]);
+  assert.equal(path.basename(piPlan.command), process.platform === "win32" ? "ccr-pi-wrapper-pi-main.cmd" : "ccr-pi-wrapper-pi-main");
+  assert.equal(piPlan.env.CCR_PROFILE_SURFACE, "cli");
+  assert.match(piPlan.env.PI_CODING_AGENT_DIR, /pi-main[\\/]pi$/);
+  assert.match(piPlan.env.PI_CODING_AGENT_SESSION_DIR, /pi-main[\\/]pi[\\/]sessions$/);
+
+  assert.equal(openCodePlan.surface, "cli");
+  assert.deepEqual(openCodePlan.args, ["--debug"]);
+  assert.equal(path.basename(openCodePlan.command), process.platform === "win32" ? "ccr-opencode-wrapper-opencode-main.cmd" : "ccr-opencode-wrapper-opencode-main");
+  assert.match(openCodePlan.env.OPENCODE_CONFIG, /opencode[\\/]opencode\.jsonc$/);
+  assert.throws(() => buildProfileLaunchPlan(configDir, openCodeProfile, "app"), /OpenCode App profiles/);
+
+  assert.equal(kiloPlan.surface, "cli");
+  assert.deepEqual(kiloPlan.args, ["--debug"]);
+  assert.equal(path.basename(kiloPlan.command), process.platform === "win32" ? "ccr-kilo-wrapper-kilo-main.cmd" : "ccr-kilo-wrapper-kilo-main");
+  assert.equal(kiloPlan.env.CCR_PROFILE_SURFACE, "cli");
+  assert.match(kiloPlan.env.KILO_CONFIG, /kilo[\\/]kilo\.jsonc$/);
+  assert.throws(() => buildProfileLaunchPlan(configDir, kiloProfile, "app"), /does not support APP/);
+
+  assert.equal(workbuddyPlan.surface, "app");
+  assert.deepEqual(workbuddyPlan.args, ["app"]);
+  assert.equal(path.basename(workbuddyPlan.command), process.platform === "win32" ? "ccr-codex-cli-stdio-workbuddy-main.cmd" : "ccr-codex-cli-stdio-workbuddy-main");
+  assert.equal(workbuddyPlan.env.CCR_PROFILE_SURFACE, "app");
+  assert.throws(() => buildProfileLaunchPlan(configDir, workbuddyProfile, "cli"), /does not support CLI/);
+
+  assert.throws(() => buildProfileLaunchPlan(configDir, claudeProfile, "app"), /Claude App opening/);
+  assert.throws(() => buildProfileLaunchPlan(configDir, claudeDesignProfile, "app"), /Claude Design profiles can only be opened from CCR Desktop/);
+});
+
+test("profile config paths honor CCR, custom, and global scopes", () => {
+  const configDir = path.join(path.sep, "tmp", "ccr-config");
+  const customProfile = { ...codexProfile, id: "Custom Profile", scope: "custom" };
+  const globalCodex = { ...codexProfile, codexHome: "~/codex-home", scope: "global" };
+
+  assert.equal(
+    ccrManagedProfileDir(configDir, customProfile),
+    path.join(configDir, "profiles", "custom-profile", "custom")
+  );
+  assert.equal(
+    resolveClaudeCodeSettingsFile(configDir, claudeProfile),
+    path.join(configDir, "profiles", "claude-main", "claude", "settings.json")
+  );
+  assert.equal(
+    resolveCodexConfigFile(configDir, customProfile),
+    path.join(configDir, "profiles", "custom-profile", "custom", "codex", "config.toml")
+  );
+  assert.equal(
+    resolveCodexConfigFile(configDir, workbuddyProfile),
+    path.join(configDir, "profiles", "workbuddy-main", "workbuddy", "config.toml")
+  );
+  assert.equal(resolveCodexConfigFile(configDir, globalCodex), path.join(process.env.HOME, "codex-home", "config.toml"));
+  assert.equal(
+    resolveOpenCodeConfigFile(configDir, openCodeProfile),
+    path.join(configDir, "profiles", "opencode-main", "opencode", "opencode.jsonc")
+  );
+  assert.equal(
+    resolveKiloConfigFile(configDir, kiloProfile),
+    path.join(configDir, "profiles", "kilo-main", "kilo", "kilo.jsonc")
+  );
+});
+
+test("profileOpenCommand quotes profile references for shell usage", () => {
+  const cliCommand = profileOpenCommand(claudeProfile, "cli", "ccr", "Claude Main");
+  const appCommand = profileOpenCommand(codexProfile, "app", "ccr", "Codex Main");
+  const workbuddyCommand = profileOpenCommand(workbuddyProfile, undefined, "ccr", "Workbuddy Main");
+
+  assert.match(cliCommand, /Claude/);
+  assert.match(cliCommand, /Main/);
+  assert.equal(cliCommand.endsWith(" cli"), false);
+  assert.match(appCommand, / app$/);
+  assert.match(workbuddyCommand, / app$/);
+});

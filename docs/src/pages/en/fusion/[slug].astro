@@ -1,0 +1,19 @@
+---
+import DocPage from "../../../components/DocPage.astro";
+import { docModule, docPages, urlSlugFromPath } from "../../../docs-structure";
+
+export function getStaticPaths() {
+  const fusionPages = docPages.filter(
+    (page) => page.section === "fusion" && page.key !== "fusion"
+  );
+
+  return fusionPages.map((page) => ({
+    params: { slug: urlSlugFromPath(page.path.en) },
+    props: { mod: docModule("en", page.source.en), activeSidebarItem: page.key },
+  }));
+}
+
+const { mod, activeSidebarItem } = Astro.props;
+---
+
+<DocPage locale="en" pageKey="fusion" doc={mod} activeSidebarItem={activeSidebarItem} />

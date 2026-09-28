@@ -1,389 +1,91 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type HTMLAttributes, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
+import { MorphIcon } from "@musistudio/lucide-morph-react";
+import { AnimatePresence } from "motion/react";
 import {
-  closestCenter,
-  DndContext,
-  DragOverlay,
-  getFirstCollision,
-  KeyboardSensor,
-  MeasuringStrategy,
-  pointerWithin,
-  PointerSensor,
-  rectIntersection,
-  useSensor,
-  useSensors,
-  type CollisionDetection,
-  type DragEndEvent,
-  type DragOverEvent,
-  type DragStartEvent
-} from "@dnd-kit/core";
-import { arrayMove, rectSortingStrategy, SortableContext, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { AnimatePresence, LayoutGroup } from "motion/react";
-import {
-  Activity,
-  ArrowDown,
-  ArrowUp,
-  Box,
-  Boxes,
-  Braces,
   Check,
-  CheckCircle2,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  CircleAlert,
   Copy,
-  Database,
-  ExternalLink,
-  FolderOpen,
-  Gauge,
-  Globe,
-  Info,
-  KeyRound,
-  Layers3,
-  LoaderCircle,
-  MoveRight,
-  Network,
-  Palette,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Pause,
-  Pencil,
-  Play,
   Plus,
-  Power,
-  QrCode,
-  RefreshCw,
-  Route,
-  Search,
-  Server,
-  Settings,
-  ShieldCheck,
-  Terminal,
-  Trash2,
-  UserRound,
-  X,
-  type LucideIcon
+  X
 } from "lucide-react";
-import {
-  Area,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  ComposedChart,
-  LabelList,
-  Line,
-  Pie,
-  PieChart,
-  Tooltip,
-  XAxis,
-  YAxis
-} from "recharts";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PopoverContent } from "@/components/ui/popover";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { playPauseMorph } from "@/lib/morph-icon";
 import { cn } from "@/lib/utils";
-import appLogoUrl from "@/assets/logo.png";
-import claudeCodeLogoUrl from "@/assets/agent-logos/claude-code.png";
-import codexLogoUrl from "@/assets/agent-logos/codex.png";
-import onboardingMascotSpriteUrl from "@/assets/onboarding/mascot-transition.svg";
-import anthropicProviderIconUrl from "@/assets/provider-icons/anthropic.png";
-import bailianProviderIconUrl from "@/assets/provider-icons/bailian.ico";
-import deepseekProviderIconUrl from "@/assets/provider-icons/deepseek.ico";
-import geminiProviderIconUrl from "@/assets/provider-icons/gemini.svg";
-import mistralProviderIconUrl from "@/assets/provider-icons/mistral.webp";
-import moonshotProviderIconUrl from "@/assets/provider-icons/moonshot.ico";
-import openaiProviderIconUrl from "@/assets/provider-icons/openai.png";
-import openrouterProviderIconUrl from "@/assets/provider-icons/openrouter.ico";
-import siliconflowProviderIconUrl from "@/assets/provider-icons/siliconflow.png";
-import zaiGlobalCodingProviderIconUrl from "@/assets/provider-icons/zai-global-coding.svg";
-import zaiGlobalGeneralProviderIconUrl from "@/assets/provider-icons/zai-global-general.svg";
-import zhipuCnCodingProviderIconUrl from "@/assets/provider-icons/zhipu-cn-coding.png";
-import zhipuCnGeneralProviderIconUrl from "@/assets/provider-icons/zhipu-cn-general.png";
-import trayCyanIconUrl from "@/assets/tray-cyan.png";
-import trayOrangeIconUrl from "@/assets/tray-orange.png";
-import trayVioletIconUrl from "@/assets/tray-violet.png";
-import {
-  BUILTIN_FUSION_TOOL_SERVER_NAME,
-  BUILTIN_FUSION_VISION_TOOL_NAME,
-  BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME,
-  CLAUDE_CODE_DEFAULT_ENV,
-  DEFAULT_OVERVIEW_WIDGETS,
-  DEFAULT_TRAY_COMPONENT_VARIANTS,
-  DEFAULT_TRAY_WIDGETS,
-  DEFAULT_TRAY_WINDOW_MODULES,
-  enforceSingleEnabledGlobalProfilePerAgent,
-  normalizeProfileScopeValue,
-  OVERVIEW_WIDGET_SIZE_VALUES,
-  TRAY_SINGLETON_WIDGET_TYPES,
-  TRAY_TOP_WIDGET_TYPES,
-  TRAY_WINDOW_MODULE_IDS
-} from "@ccr/core/contracts/app";
 import type {
-  AgentAnalysisFilter,
-  AgentAnalysisSessionSelection,
-  AgentAnalysisSnapshot,
-  AgentKind,
   AppConfig,
-  AppInfo,
-  AppUpdateStatus,
-  ApiKeyConfig,
-  ApiKeyLimitConfig,
-  BotGatewayQrLoginCancelRequest,
-  BotGatewayQrLoginCancelResult,
-  BotGatewayQrLoginStartRequest,
-  BotGatewayQrLoginStartResult,
-  BotGatewayQrLoginWaitRequest,
-  BotGatewayQrLoginWaitResult,
-  BotGatewayQrWindowOpenResult,
-  BotGatewayRuntimeConfig,
-  BotGatewaySavedConfig,
-  BotHandoffScanTarget,
-  GatewayProviderConfig,
-  GatewayProviderCapability,
-  GatewayPluginAppConfig,
-  GatewayProviderConnectivityCheckModelResult,
-  GatewayProviderConnectivityCheckReport,
-  GatewayProviderProbeCandidate,
-  GatewayProviderProbeCandidateResult,
-  GatewayProviderProbeResult,
-  GatewayProviderProtocol,
-  GatewayMcpServerConfig,
-  GatewayMcpServerTransport,
-  GatewayMcpStdioMessageMode,
-  GatewayMcpToolInfo,
   GatewayStatus,
-  OverviewMetricKind,
-  OverviewWidgetConfig,
-  OverviewWidgetSize,
-  OverviewWidgetType,
-  OverviewWidgetVariant,
-  PluginDependency,
-  PluginDirectorySelection,
-  PluginMarketplaceEntry,
-  ProviderAccountConfig,
-  ProviderAccountConnectorConfig,
-  ProviderAccountHttpJsonConnectorConfig,
-  ProviderAccountMeter,
-  ProviderAccountStandardConnectorConfig,
-  ProviderAccountSnapshot,
-  ProviderAccountTestPath,
-  ProviderAccountTestResult,
-  ProviderCredentialConfig,
-  ProviderDeepLinkPayload,
-  ProviderDeepLinkRequest,
   ProfileConfig,
-  ProfileOpenSurface,
-  CodexProfileConfigFormat,
-  ProfileScope,
-  ProfileSurface,
-  ProxyCertificateInstallResult,
-  ProxyCertificateStatus,
-  ProxyNetworkBody,
-  ProxyNetworkExchange,
-  ProxyNetworkSnapshot,
-  ProxyStatus,
-  RequestLogBody,
-  RequestLogEntry,
-  RequestLogListFilter,
-  RequestLogPage,
-  RequestLogStatusFilter,
-  RouterConfig,
-  RouterFallbackConfig,
-  RouterFallbackMode,
-  RouterRule,
-  RouterRuleCondition,
-  RouterRuleOperator,
-  RouterRuleRewrite,
-  RouterRuleRewriteOperation,
-  RouterRuleType,
-  TrayBalanceProgressConfig,
-  TrayComponentVariants,
-  TrayWidgetConfig,
-  TrayWidgetType,
-  TrayWidgetVariant,
-  TrayWindowModuleId,
-  UsageComparisonRow,
   UsageSeriesPoint,
-  UsageStatsFilter,
   UsageStatsRange,
-  UsageStatsSnapshot,
-  UsageTotals,
-  VirtualModelBaseModelMode,
-  VirtualModelExecutionMode,
-  VirtualModelFusionCustomToolConfig,
-  VirtualModelFusionVisionConfig,
-  VirtualModelFusionWebSearchConfig,
-  VirtualModelFusionWebSearchProvider,
-  VirtualModelProfileConfig,
-  VirtualModelToolVisibility
+  UsageTotals
 } from "@ccr/core/contracts/app";
 import {
-  customProviderPresetId,
-  defaultProviderAccountConfig,
-  standardProviderAccountConfig,
-  type ProviderIdentitySafetyIssue,
-  type ProviderPreset,
-  type ProviderPresetEndpoint
-} from "@ccr/core/providers/presets/types";
-import {
-  findProviderPresetByBaseUrlInList,
-  findProviderPresetInList,
-  primaryProviderPresetEndpoint as primaryProviderPresetEndpointFromPreset,
-  providerApiKeySafetyIssueInList,
-  providerEndpointCanReceiveProviderApiKeyInList,
-  providerIdentitySafetyIssueInList
-} from "@ccr/core/providers/presets/utils";
-import { normalizeProviderBaseUrl, providerUrlWithDefaultScheme } from "@ccr/core/providers/url";
-import {
-  fallbackConfig,
-  fallbackGatewayStatus,
-  fallbackInfo,
-  fallbackProxyCertificateStatus,
-  fallbackProxyNetworkSnapshot,
-  fallbackProxyStatus,
-  fallbackUpdateStatus
-} from "./fallbacks";
-import {
-  AppI18nContext,
-  appCopy,
-  languagePreferenceStorageKey,
   translateOptions,
-  translateText,
-  useAppText,
-  type AppCopy
+  useAppText
 } from "./i18n";
 import {
-  AnimatedDisclosure,
   AnimatedIconSwap,
-  AnimatedFieldSlot,
-  AnimatedListItem,
-  AnimatedPopover,
-  disclosureSpringTransition,
-  listSpringTransition,
-  pageSpringTransition,
-  ViewMotionShell
+  AnimatedPopover
 } from "./motion";
 import {
-  clientInitial,
-  formatBytes,
-  formatDuration,
-  formatHeaderName,
-  formatNetworkDateTime,
-  formatNetworkHeaders,
-  formatNetworkRequestRaw,
-  formatNetworkResponseRaw,
-  formatNetworkTime,
-  networkCodeLabel,
-  networkExchangeMatchesQuery,
-  networkHeaderRows,
-  networkLifecycleLabel,
-  networkQueryRows,
-  networkRowId,
-  networkStatusLabel,
-  networkStatusVariant,
-  networkSummaryRows
+  formatDuration
 } from "./network";
 import {
-  agentKindLabel,
-  compactId,
-  compactUserAgent,
-  createEmptyAgentAnalysis,
-  createEmptyAgentConcurrencySeries,
-  createEmptyRequestLogPage,
-  createEmptyUsageSeries,
-  createEmptyUsageStats,
-  emptyUsageTotals,
-  formatAxisNumber,
   formatCompactNumber,
-  formatPercent,
-  formatStatusCodeCounts,
-  formatToolCounts,
-  formatUsdCost,
-  logSelectOptions,
-  normalizeAgentFilterValue
+  formatPercent
 } from "./usage";
-import {
-  agentAnalysisRangeOptions,
-  agentFilterOptions,
-  apiKeyExpirationOptions,
-  apiKeyLimitMetricOptions,
-  claudeDesignRouteRuleTypeOptions,
-  customFusionToolName,
-  defaultFusionWebSearchProvider,
-  fusionToolOptions,
-  fusionWebSearchEnvKeysByProvider,
-  fusionWebSearchProviderOptions,
-  getDefaultOnboardingStep,
-  getNextOnboardingStep,
-  isOnboardingProfileReady,
-  isOnboardingProviderReady,
-  legacyRouterRuleTypes,
-  legacyUnimcpPackageName,
-  legacyUnimcpServerName,
-  limitWindowOptions,
-  mcpServerStartupTimeoutMs,
-  mcpServerTransportOptions,
-  mcpStdioMessageModeOptions,
-  navigation,
-  onboardingStepOrder,
-  overviewMetricOptions,
-  overviewWidgetSizeOptions,
-  profileAgentOptions,
-  profileScopeOptions,
-  profileSurfaceOptions,
-  providerAccountModeOptions,
-  providerPresetIconUrls,
-  providerProtocolOptions,
-  providerUsageMethodOptions,
-  requestLogPageSizeOptions,
-  requestLogStatusOptions,
-  removedLegacyRouterRuleIds,
-  routerConditionSourceOptions,
-  routerFallbackModeOptions,
-  routerRewriteOperationOptions,
-  routerRuleOperatorOptions,
-  routerRuleTypeOptions,
-  trayMascotIconUrls,
-  usageRangeOptions,
-  virtualModelBaseModeOptions,
-  virtualModelClientToolsPolicyOptions,
-  virtualModelExecutionModeOptions,
-  virtualModelMatchModeOptions,
-  virtualModelToolVisibilityOptions
-} from "./options";
-import type { AgentFilterValue, RouterConditionSource } from "./options";
-import type { MotionSafeDivAttributes } from "./motion";
 
-
-import { metricToneBar } from "./common";
+import { metricToneBar, normalizeProviderModelSelector } from "./common";
 import { profileAgentLabel, profileAgentLogoUrl } from "./profiles";
 import { routeTargetOptions } from "./providers";
 import { createKeyValueDraftRow } from "./virtual-models";
 import type { KeyValueDraftRow } from "./types";
 
-export function Field({ children, className, label }: { children: React.ReactNode; className?: string; label: string }) {
+export function Field({
+  children,
+  className,
+  label,
+  requirement,
+  requirementLabel
+}: {
+  children: React.ReactNode;
+  className?: string;
+  label: string;
+  requirement?: "optional" | "required";
+  requirementLabel?: string;
+}) {
   return (
     <Label className={cn("block min-w-0 space-y-1", className)}>
-      <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="flex min-w-0 items-center gap-1.5">
+        <span className="truncate text-[12px] font-medium text-muted-foreground">{label}</span>
+        {requirement ? (
+          <span className={cn(
+            "shrink-0 rounded border px-1 py-0 text-[11px] font-semibold leading-4 tracking-wide",
+            requirement === "required"
+              ? "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+              : "border-border bg-muted/35 text-muted-foreground"
+          )}>
+            {requirementLabel ?? (requirement === "required" ? "Required" : "Optional")}
+          </span>
+        ) : null}
+      </span>
       {children}
     </Label>
+  );
+}
+
+export function FieldGroup({ children, className, label }: { children: React.ReactNode; className?: string; label: string }) {
+  return (
+    <div className={cn("block min-w-0 space-y-1", className)}>
+      <span className="block truncate text-[12px] font-medium text-muted-foreground">{label}</span>
+      {children}
+    </div>
   );
 }
 
@@ -424,13 +126,14 @@ export function RouteTargetControl({
   value: string;
 }) {
   const t = useAppText();
+  const normalizedValue = normalizeProviderModelSelector(value);
 
   if (modelOptions.length === 0) {
-    return <Input onChange={(event) => onChange(event.target.value)} value={value} />;
+    return <Input onChange={(event) => onChange(event.target.value)} value={normalizedValue} />;
   }
 
-  const options = routeTargetOptions(modelOptions, value);
-  return <SelectControl onChange={onChange} options={translateOptions(options, t)} value={value} />;
+  const options = routeTargetOptions(modelOptions, normalizedValue);
+  return <SelectControl onChange={onChange} options={translateOptions(options, t)} value={normalizedValue} />;
 }
 
 export function TextAreaControl({
@@ -529,15 +232,27 @@ export function KeyValueRowsControl({
   );
 }
 
-export function Toggle({ checked, disabled = false, onChange, title }: { checked: boolean; disabled?: boolean; onChange: (checked: boolean) => void; title?: string }) {
-  return <Switch checked={checked} disabled={disabled} onCheckedChange={onChange} title={title} />;
+export function Toggle({
+  ariaLabel,
+  checked,
+  disabled = false,
+  onChange,
+  title
+}: {
+  ariaLabel?: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (checked: boolean) => void;
+  title?: string;
+}) {
+  return <Switch aria-label={ariaLabel ?? title} checked={checked} disabled={disabled} onCheckedChange={onChange} title={title} />;
 }
 
 export type MetricTone = "amber" | "blue" | "indigo" | "rose" | "slate" | "teal";
 
-export function MetricCard({ label, tone, value }: { label: string; tone: MetricTone; value: string }) {
+export function MetricCard({ className, label, tone, value }: { className?: string; label: string; tone: MetricTone; value: string }) {
   return (
-    <Card className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+    <Card className={cn("flex h-full min-h-0 min-w-0 flex-col overflow-hidden", className)}>
       <div className={cn("h-1", metricToneBar(tone))} />
       <CardContent className="flex min-h-[88px] flex-1 flex-col justify-center">
         <div className="min-w-0">
@@ -585,6 +300,12 @@ export function formatStatusBucketDate(bucket: string, range: UsageStatsRange): 
 }
 
 export function parseStatusBucketDate(bucket: string): Date | undefined {
+  if (/^\d{4}-\d{1,2}-\d{1,2}T\d{1,2}:\d{2}/.test(bucket)) {
+    const isoDate = new Date(bucket);
+    if (Number.isFinite(isoDate.getTime())) {
+      return isoDate;
+    }
+  }
   const match = bucket.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:\s+(\d{1,2})(?::00)?)?$/);
   if (!match) {
     return undefined;
@@ -597,20 +318,10 @@ export function systemStatusPointTooltip(segment: SystemStatusPoint, t: (value: 
   return [
     segment.dateLabel,
     `${t("Requests")}: ${formatCompactNumber(segment.point.requestCount)}`,
-    `${t("Success rate")}: ${formatPercent(segment.point.successRate)}`,
+    `${t("Success rate")}: ${segment.point.requestCount > 0 ? formatPercent(segment.point.successRate) : "—"}`,
     `${t("Failed requests")}: ${formatCompactNumber(segment.point.errorCount)}`,
     `${t("Duration")}: ${formatDuration(segment.point.avgDurationMs)}`
   ].join("\n");
-}
-
-export function systemStatusTooltipPositionClass(index: number, total: number): string {
-  if (index <= 1) {
-    return "left-0";
-  }
-  if (index >= total - 2) {
-    return "right-0";
-  }
-  return "left-1/2 -translate-x-1/2";
 }
 
 export function systemStatusIconClass(tone: SystemStatusTone): string {
@@ -630,22 +341,24 @@ export function systemStatusSegmentClass(tone: SystemStatusTone): string {
 export function ServiceControlButton({
   busy,
   onClick,
-  state
+  state,
+  targetActive
 }: {
   busy: boolean;
   onClick: () => void;
   state: GatewayStatus["state"];
+  targetActive?: boolean;
 }) {
   const t = useAppText();
-  const active = state === "running" || state === "starting";
+  const runtimeActive = state === "running" || state === "starting";
+  const active = targetActive ?? runtimeActive;
   const title = active ? t("Pause service") : t("Start service");
-  const Icon = active ? Pause : Play;
 
   return (
     <Button
       aria-label={title}
       className={cn(
-        "app-no-drag app-service-control inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent bg-transparent p-0 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25",
+        "app-no-drag app-service-control inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent bg-transparent p-0 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25",
         active && "text-emerald-700 hover:text-emerald-800"
       )}
       disabled={busy}
@@ -655,7 +368,14 @@ export function ServiceControlButton({
       type="button"
       unstyled
     >
-      {busy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Icon className="h-3.5 w-3.5" />}
+      <MorphIcon
+        active={active}
+        asset={playPauseMorph}
+        color="currentColor"
+        duration={300}
+        size={14}
+        strokeWidth={2}
+      />
     </Button>
   );
 }

@@ -7,7 +7,7 @@ const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElemen
       className={cn("overflow-hidden rounded-lg border border-border bg-card text-card-foreground transition-shadow duration-200", className)}
       ref={ref}
       style={{
-        boxShadow: "0 1px 2px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.02), inset 0 1px 0 rgba(255,255,255,0.5)",
+        boxShadow: "0 1px 2px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.02), inset 0 1px 0 var(--card-inset-highlight)",
         ...style
       }}
       {...props}

@@ -17,9 +17,9 @@ export type WindowsDesktopAppNormalizeOptions = {
   packageKeywords: string[];
 };
 
-export function windowsDesktopAppCandidates(options: WindowsDesktopAppDiscoveryOptions): string[] {
+export function* windowsDesktopAppCandidates(options: WindowsDesktopAppDiscoveryOptions): Generator<string> {
   if (process.platform !== "win32") {
-    return [];
+    return;
   }
 
   const candidates: string[] = [];
@@ -48,16 +48,64 @@ export function windowsDesktopAppCandidates(options: WindowsDesktopAppDiscoveryO
     }
   }
 
-  for (const candidate of windowsAppExecutionAliasCandidates(options)) {
-    pushUnique(candidates, candidate);
+  // Let callers stop at an installed app before starting discovery subprocesses.
+  yield* candidates;
+  yield* windowsAppExecutionAliasCandidates(options);
+  yield* windowsShortcutTargetCandidates(options);
+  yield* windowsMsixPackageCandidates(options);
+  yield* windowsWhereCandidates(options.whereNames);
+}
+
+function windowsShortcutTargetCandidates(options: WindowsDesktopAppDiscoveryOptions): string[] {
+  const names = unique([
+    ...options.packageKeywords,
+    ...options.appDirs,
+    ...options.exeNames.map((name) => path.basename(name, path.extname(name)))
+  ].map((name) => name.trim()).filter(Boolean));
+  if (names.length === 0) {
+    return [];
   }
-  for (const candidate of windowsMsixPackageCandidates(options)) {
-    pushUnique(candidates, candidate);
+
+  const pattern = names.map(escapeRegExp).join("|");
+  const script = [
+    "$ErrorActionPreference = 'SilentlyContinue';",
+    "$roots = @(",
+    "  [Environment]::GetFolderPath('Programs'),",
+    "  [Environment]::GetFolderPath('CommonPrograms'),",
+    "  [Environment]::GetFolderPath('Desktop'),",
+    "  [Environment]::GetFolderPath('CommonDesktopDirectory')",
+    ") | Where-Object { $_ } | Select-Object -Unique;",
+    `$pattern = '${powerShellSingleQuotedString(pattern)}';`,
+    "$shell = New-Object -ComObject WScript.Shell;",
+    "Get-ChildItem -LiteralPath $roots -Filter '*.lnk' -File -Recurse |",
+    "  Where-Object { $_.BaseName -match $pattern } |",
+    "  ForEach-Object {",
+    "    try {",
+    "      $target = $shell.CreateShortcut($_.FullName).TargetPath;",
+    "      if ($target) { $target }",
+    "    } catch {}",
+    "  }"
+  ].join(" ");
+
+  const result = spawnSync(windowsSystemCommand("powershell.exe"), [
+    "-NoProfile",
+    "-NonInteractive",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-Command",
+    script
+  ], {
+    encoding: "utf8",
+    windowsHide: true
+  });
+  if (result.status !== 0) {
+    return [];
   }
-  for (const candidate of windowsWhereCandidates(options.whereNames)) {
-    pushUnique(candidates, candidate);
-  }
-  return candidates;
+
+  return result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
 }
 
 export function normalizeWindowsDesktopAppCandidate(

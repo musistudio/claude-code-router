@@ -1,17 +1,17 @@
 ---
-title: Built-In Web Search
-pageTitle: Built-In Web Search
+title: Built-in web search
+pageTitle: Built-in web search
 eyebrow: Fusion
-lead: Use CCR's built-in Web Search tool to give models live search context.
+lead: Add live web retrieval to a model with CCR's built-in web_search capability, backed by In-app Browser or a search service such as Brave, Bing, or Tavily.
 ---
 
-## Select The Capability
+## Select the capability
 
 Use `ccr-fusion-builtins / web_search`.
 
 ## Search Providers
 
-Supported providers include In-app Browser, Brave, Bing, Google CSE, Serper, SerpAPI, Tavily, and Exa.
+Supported providers include In-app Browser, Brave, Bing, Google CSE, Serper, SerpAPI, Serply, Tavily, and Exa.
 
 ## In-app Browser
 
@@ -24,7 +24,7 @@ Configuration options include search engine, language, country or region, and sa
 - Country or region: for example `US` or `CN`.
 - Safe search: default, moderate, strict, or off.
 
-> Note: `In-app Browser` depends on CCR Desktop's Electron built-in browser capability and is only available in the desktop app. CLI, server deployments, and pure web environments do not have the built-in browser integration; use Brave, Bing, Google CSE, Serper, SerpAPI, Tavily, or Exa instead.
+> Note: `In-app Browser` depends on CCR Desktop's Electron built-in browser capability and is only available in the desktop app. CLI, server deployments, and pure web environments do not have the built-in browser integration; use Brave, Bing, Google CSE, Serper, SerpAPI, Serply, Tavily, or Exa instead.
 
 ## Troubleshooting
 

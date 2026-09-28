@@ -1,9 +1,14 @@
 {
   "name": "@claude-code-router/electron",
-  "version": "3.0.10",
+  "version": "3.1.1",
   "private": true,
   "description": "Claude Code Router Electron desktop shell.",
+  "author": "musistudio",
   "main": "dist/main/main.js",
+  "scripts": {
+    "test": "node ../../build/test.mjs electron && node ../../build/run-tests.mjs electron",
+    "test:unit": "node ../../build/test.mjs electron --scope unit && node ../../build/run-tests.mjs electron"
+  },
   "dependencies": {
     "better-sqlite3": "^12.11.1"
   },

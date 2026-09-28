@@ -7,6 +7,7 @@ import {
   type AppConfig,
   type ProxyRouteTarget
 } from "@ccr/core/contracts/app";
+import { defaultRequestLogBodyBytes } from "@ccr/core/observability/request-log-limits";
 
 export const DEFAULT_PROXY_TARGETS: ProxyRouteTarget[] = [
   { host: "api.anthropic.com", paths: ["/v1/messages", "/v1/messages/count_tokens"] },
@@ -19,10 +20,9 @@ export const DEFAULT_PROXY_TARGETS: ProxyRouteTarget[] = [
 
 export type DefaultAppConfigOptions = {
   coreHost?: string;
-  generatedConfigFile: string;
 };
 
-export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppConfig {
+export function createDefaultAppConfig(options: DefaultAppConfigOptions = {}): AppConfig {
   const coreHost = options.coreHost ?? "127.0.0.1";
   return {
     APIKEY: "",
@@ -74,25 +74,54 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
       },
       integrationConfig: {},
       integrationId: "",
+      language: "auto",
+      maxAttachmentBytes: 20 * 1024 * 1024,
+      maxTurnTimeMs: 10 * 60 * 1000,
+      mediaEnabled: true,
+      messageChunkChars: 3500,
       platform: "none",
       pollIntervalMs: 2000,
       requestTimeoutMs: 600000,
+      sessionIdleMinutes: 0,
+      shellEnabled: false,
       sourceDir: "",
       startupTimeoutMs: 10000,
       stateDir: "",
+      streamReplies: false,
       tenantId: "ccr"
+    },
+    contextArchive: {
+      enabled: false,
+      maxBytes: 512 * 1024 * 1024,
+      maxSnapshotBytes: 32 * 1024 * 1024,
+      maxSnapshots: 200,
+      mcpEnabled: true,
+      replayTimeoutMs: 60000,
+      retentionDays: 30,
+      storagePath: "",
+      toolName: "ccr_history_ask"
     },
     gateway: {
       coreHost,
       corePort: 3457,
       enabled: true,
-      generatedConfigFile: options.generatedConfigFile,
       host: "127.0.0.1",
       port: 3456
+    },
+    mediaTools: {
+      allowedInputRoots: [],
+      artifactTtlHours: 24,
+      enabled: false,
+      jobTimeoutMs: 600000,
+      maxImageConcurrency: 2,
+      maxVideoConcurrency: 1
     },
     launchAtLogin: false,
     observability: {
       agentAnalysis: false,
+      requestLogBodyCapture: "all",
+      requestLogMaxBodyBytes: defaultRequestLogBodyBytes,
+      requestLogSuccessSampleRate: 1,
       requestLogs: false
     },
     preferredProvider: "",
@@ -100,8 +129,13 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
     profile: {
       claudeCode: {
         enabled: true,
+        fableModel: "",
+        haikuModel: "",
+        managedCompact: false,
         model: "",
+        opusModel: "",
         settingsFile: "~/.claude/settings.json",
+        sonnetModel: "",
         smallFastModel: ""
       },
       codex: {
@@ -111,6 +145,7 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
         configFormat: "separate_profile_files",
         configFile: "~/.codex/config.toml",
         enabled: true,
+        managedCompact: false,
         model: "",
         providerId: "claude-code-router",
         providerName: "Claude Code Router",
@@ -122,11 +157,16 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
           agent: "claude-code",
           enabled: true,
           env: { ...CLAUDE_CODE_DEFAULT_ENV },
+          fableModel: "",
+          haikuModel: "",
           id: "default-claude-code",
+          managedCompact: false,
           model: "",
           name: "Claude Code",
+          opusModel: "",
           scope: "global",
           settingsFile: "~/.claude/settings.json",
+          sonnetModel: "",
           smallFastModel: "",
           surface: "auto"
         },
@@ -140,6 +180,7 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
           enabled: true,
           env: {},
           id: "default-codex",
+          managedCompact: false,
           model: "",
           name: "Codex",
           providerId: "claude-code-router",
@@ -158,7 +199,16 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
       mode: "gateway",
       port: 7890,
       systemProxy: false,
-      targets: DEFAULT_PROXY_TARGETS
+      targets: DEFAULT_PROXY_TARGETS,
+      upstream: {
+        custom: {
+          password: "",
+          port: 7890,
+          server: "",
+          username: ""
+        },
+        mode: "system"
+      }
     },
     providerPlugins: [],
     overviewWidgets: DEFAULT_OVERVIEW_WIDGETS,
@@ -166,6 +216,7 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
     theme: "system",
     trayComponentVariants: DEFAULT_TRAY_COMPONENT_VARIANTS,
     trayIcon: "random",
+    trayShowTokenRate: false,
     trayProgressTargetTokens: 100000,
     trayWidgets: DEFAULT_TRAY_WIDGETS,
     trayWindowModules: DEFAULT_TRAY_WINDOW_MODULES,

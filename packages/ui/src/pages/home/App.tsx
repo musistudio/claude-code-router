@@ -2,42 +2,44 @@ import {
   AddApiKeyDraft, AddProfileDraft, AddProviderDraft, AddRoutingRuleDraft, AgentAnalysisSessionSelection, AgentAnalysisSnapshot, AgentFilterValue,
   ApiKeyConfig, AppConfig, appCopy, AppI18nContext, AppInfo, AppSaveConfigOptions, AppUpdateStatus,
   AppLanguagePreference, applyProviderProbeResult, AppToast, BotGatewaySavedConfig, buildExtensionList, claudeDesignRoutingConfigFromDraft,
-  buildRouterConditionPath,
   ClaudeDesignRoutingDraft, ClaudeDesignRoutingRuleDraft, cloneConfig, createApiKeyDraft, createApiKeyEditDraft,
   createApiKeyList, createClaudeDesignRoutingDraft, createClaudeDesignRoutingRuleDraft, createCursorProxyRoutingDraft, createCursorProxyRoutingRuleDraft, createEmptyAgentAnalysis,
   copyTextToClipboard, createEmptyRequestLogPage, createEmptyUsageStats, createExtensionInstallDraft, createGeneratedApiKey, createPluginSettingsDraft, createProfileDraft,
   createProfileDraftFromProfile, createProviderDraft, createProviderDraftFromDeepLinkPayload, createProviderDraftFromProvider, createRoutingRuleDraft, createRoutingRuleDraftFromRule,
-  createVirtualModelDraft, createVirtualModelDraftFromProfile, customProviderPresetId, DEFAULT_TRAY_WIDGETS, detectSystemLanguage, detectSystemTheme,
+  createVirtualModelDraft, createVirtualModelDraftFromProfile, DEFAULT_TRAY_WIDGETS, detectSystemLanguage, detectSystemTheme,
   enforceSingleEnabledGlobalProfilePerAgent,
   ExtensionConfigTarget, ExtensionDeleteTarget, ExtensionInstallDraft, ExtensionSource, fallbackAgentAnalysis, fallbackConfig,
-  fallbackGatewayStatus, fallbackInfo, fallbackProxyCertificateStatus, fallbackProxyNetworkSnapshot, fallbackProxyStatus, fallbackRequestLogPage,
-  fallbackUpdateStatus, fallbackUsageStats, formatAppError, formatProxyCertificateInstallMessage, GatewayProviderConfig,
+  fallbackGatewayStatus, fallbackInfo, fallbackProxyNetworkSnapshot, fallbackProxyStatus, fallbackRequestLogPage,
+  fallbackUpdateStatus, fallbackUsageStats, formatAppError, GatewayProviderConfig, GatewayProviderProtocol,
   fusionCustomMcpServerFromDraft, fusionCustomToolConfigFromProfile,
   GatewayProviderProbeResult, gatewayServiceMessage, GatewayStatus, getDefaultOnboardingStep, isClaudeDesignPluginConfig, isClaudeDesignRoutingDraftValid,
-  isCursorProxyPluginConfig, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
+  isCursorProxyPluginConfig, isGatewayProviderEnabled, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
+  isRoutingRuleDraftSubmittable,
   isTraySupportedPlatform,
-  isRoutingRewriteDraftRowValid,
-  LayoutGroup, mergeModelDisplayNames, mergeProviderModelLists, modelDescriptionsForModels, modelDisplayNamesForModels,
-  navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeObservabilityConfig, normalizeOverviewWidgets,
-  normalizeProfileItem, normalizeProfileScope, normalizeProviderBaseUrl, normalizeRouterBuiltInRules, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeToolHubConfig, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
-  normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, numberValue, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder,
-  OverviewWidgetConfig, parsePluginAppsSettingsText, parsePluginConfigSettingsText, parseProviderAccountDraft,
+  LayoutGroup, mergeModelDisplayNames, mergeModelMetadata, mergeProviderModelLists, modelDescriptionsForModels, modelDisplayNamesForModels, modelMetadataForModels,
+  navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeObservabilityConfig, normalizeOverviewWidgets, normalizeProxyConfig,
+  normalizeProfileItem, normalizeProviderBaseUrl, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeToolHubConfig, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
+  normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder,
+  OverviewWidgetConfig, parseProviderAccountDraft, parseProviderExtraJsonDraft, pluginConfigPatchFromSettingsDraft,
   providerCredentialsFromDraft,
-  persistLanguagePreference, PluginMarketplaceEntry, PluginRoutingConfigTarget, pluginSettingsConfigFromDraft, PluginSettingsDraft, presetCapabilitiesFromDraft,
-  probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
+  persistLanguagePreference, PluginInstallCandidate, PluginMarketplaceEntry, PluginRoutingConfigTarget, PluginSettingsDraft, presetCapabilitiesFromDraft,
+  probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, profileAgentOptionsForRuntime, profileDraftWithDetectedAppPath, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
   profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, ProviderConnectivityCheckReport, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
-  providerCapabilitiesForProtocols, providerGlobalBaseUrlForProbe, providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerSelectableProtocolsFromProbe, ProxyCertificateStatus, ProxyNetworkSnapshot, proxyRestartMessage,
+  providerAutoFetchKnownModelsForSave, providerBaseUrl, providerCapabilitiesForProtocols, providerCapabilitiesForSave, providerConnectivityApiKeyFromDraft, providerConnectivityProviderPlugins, providerGlobalBaseUrlForProbe, providerManualFieldsForSave, providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerProtocolOptions, providerSelectableProtocolsFromProbe, ProxyNetworkSnapshot,
   ProxyStatus, readLanguagePreference, RequestLogListFilter, RequestLogPage, ResolvedLanguage,
-  ResolvedTheme, resolvePluginInstallPlan, resolveProviderDeepLinkCatalogModels, RouterRule, ServerActionBusy, SettingsPageId,
-  routingRewriteFromDraftRow, setProviderPresets, splitLines, translateAppErrorMessage, translateProxyCertificateMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
-  uniqueRoutingRuleId, updateApiKeyEditableConfig, UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, useEffect,
+  ResolvedTheme, resolvePluginInstallPlan, resolveProviderDeepLinkCatalogModels, removeLocalAgentProviderPluginsForProvider, RouterRule, routingRuleFromDraft, SettingsPageId,
+  setProviderPresets, splitLines, translateAppErrorMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
+  uniqueProviderProtocols, updateApiKeyEditableConfig, UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, useEffect,
   useMemo, useReducedMotion, useRef, useState, validateVirtualModelDraft, ViewId,
-  VirtualModelDraft, virtualModelProfileFromDraft
+  VirtualModelDraft, virtualModelProfileFromDraft, virtualModelProfilesUseMediaTools
 } from "./shared/index";
-import { startVisiblePolling } from "./shared/polling";
+import { preserveEqualPollingSnapshot, startVisiblePolling } from "./shared/polling";
+import { configsEqual, createConfigSaveQueue, mergeSavedApiKeys, reconcileSavedConfig } from "./shared/config-persistence";
+import { renameProviderReferences } from "./shared/provider-references";
 import {
-  AppDialogStack, LightToast, MainLayout, OnboardingLayout
+  AppDialogStack, FeedbackStack, LightToast, MainLayout, OnboardingLayout, PersistenceFeedback, shouldCheckForUpdateOnOpen
 } from "./components/index";
+import { hasAvailableGatewayModels } from "@ccr/core/contracts/app";
 
 type ProfileOpenDialogState = {
   busy?: "" | "cli" | "app";
@@ -52,10 +54,37 @@ type ProfileActionBusy = {
   surface: ProfileOpenSurface;
 };
 
+type ConfigSaveFeedbackTarget = "global" | "form" | "silent";
+
 const providerNamePlaceholder = "__CCR_PROVIDER_NAME__";
 const providerNameSlugPlaceholder = "__CCR_PROVIDER_NAME_SLUG__";
 const providerInternalNamePlaceholder = "__CCR_PROVIDER_INTERNAL_NAME__";
 const localAgentProviderApiKey = "ccr-local-agent-login";
+const localCodexDefaultBaseUrl = "https://chatgpt.com/backend-api/codex";
+const localCodexProviderId = "codex-api";
+
+function isLocalCodexProviderDraft(draft: AddProviderDraft): boolean {
+  return (
+    draft.apiKey.trim() === localAgentProviderApiKey &&
+    normalizeProviderBaseUrl(draft.baseUrl) === normalizeProviderBaseUrl(localCodexDefaultBaseUrl)
+  );
+}
+
+function localCodexProviderDraftProbeKey(draft: AddProviderDraft): string {
+  return JSON.stringify([
+    draft.apiKey.trim(),
+    normalizeProviderBaseUrl(draft.baseUrl),
+    draft.protocol
+  ]);
+}
+
+function overviewUsageStatsFilter(range: UsageStatsRange, providerFilter: string, modelFilter: string): UsageStatsFilter {
+  return {
+    ...(range === "today" ? { includeProxy: true } : {}),
+    ...(providerFilter ? { provider: providerFilter } : {}),
+    ...(modelFilter ? { model: modelFilter } : {})
+  };
+}
 
 function materializeProviderPluginTemplates(
   templates: unknown[],
@@ -110,41 +139,6 @@ function providerPluginKey(value: unknown): string | undefined {
   return isPlainRecord(value) && typeof value.key === "string" && value.key.trim() ? value.key.trim() : undefined;
 }
 
-function removeLocalAgentProviderPluginsForProvider(
-  current: unknown[] | undefined,
-  provider: GatewayProviderConfig | undefined
-): unknown[] | undefined {
-  if (!provider || providerApiKeyValue(provider) !== localAgentProviderApiKey) {
-    return current;
-  }
-
-  const providerNames = new Set([
-    provider.name,
-    provider.type ? `${provider.name}::${provider.type}` : ""
-  ].map((value) => value.trim().toLowerCase()).filter(Boolean));
-  return (current ?? []).filter((plugin) => !localAgentProviderPluginMatchesProvider(plugin, providerNames));
-}
-
-function localAgentProviderPluginMatchesProvider(plugin: unknown, providerNames: Set<string>): boolean {
-  if (!isPlainRecord(plugin)) {
-    return false;
-  }
-  const key = typeof plugin.key === "string" ? plugin.key.trim().toLowerCase() : "";
-  if (!key.startsWith("ccr-local-agent-")) {
-    return false;
-  }
-  const pluginProviderName = typeof plugin.providerName === "string"
-    ? plugin.providerName
-    : typeof plugin.provider === "string"
-      ? plugin.provider
-      : "";
-  return providerNames.has(pluginProviderName.trim().toLowerCase());
-}
-
-function providerApiKeyValue(provider: GatewayProviderConfig): string {
-  return provider.api_key || provider.apiKey || provider.apikey || "";
-}
-
 function providerNameSlug(value: string): string {
   return value
     .trim()
@@ -160,9 +154,29 @@ async function loadProviderAccountSnapshots(forceRefresh = false): Promise<Provi
   return window.ccr.getProviderAccountSnapshots(undefined, forceRefresh ? { forceRefresh: true } : undefined);
 }
 
+function providerRefreshModelsInputKey(
+  draft: AddProviderDraft,
+  protocols: GatewayProviderProtocol[] | undefined
+): string {
+  return JSON.stringify([
+    providerProbeInputKey(
+      providerProbeCandidates(draft).filter(isProviderProbeCandidateReady),
+      providerConnectivityApiKeyFromDraft(draft),
+      []
+    ),
+    protocols ?? [],
+    draft.protocolDetectionMode,
+    draft.providerPlugins
+  ]);
+}
+
 function extensionActionIndexes(index: number, groupIndexes?: number[]): number[] {
   const indexes = groupIndexes?.length ? groupIndexes : [index];
   return [...new Set(indexes.filter((item) => Number.isInteger(item) && item >= 0))];
+}
+
+function canInstallExtensionCandidate(candidate: PluginInstallCandidate): boolean {
+  return Boolean(candidate.id.trim() && (candidate.modulePath.trim() || (candidate.apps?.length ?? 0) > 0));
 }
 
 function App() {
@@ -176,27 +190,37 @@ function App() {
   const [onboardingStatusLoaded, setOnboardingStatusLoaded] = useState(() => !window.ccr);
   const [providerPresetsLoaded, setProviderPresetsLoaded] = useState(() => !window.ccr);
   const [gatewayStatus, setGatewayStatus] = useState<GatewayStatus>(fallbackGatewayStatus);
-  const [proxyCertificateStatus, setProxyCertificateStatus] = useState<ProxyCertificateStatus>(fallbackProxyCertificateStatus);
   const [proxyNetworkSnapshot, setProxyNetworkSnapshot] = useState<ProxyNetworkSnapshot>(fallbackProxyNetworkSnapshot);
   const [proxyStatus, setProxyStatus] = useState<ProxyStatus>(fallbackProxyStatus);
-  const [actionBusy, setActionBusy] = useState<ServerActionBusy>("");
   const [updateActionBusy, setUpdateActionBusy] = useState<"" | "check" | "download" | "install">("");
   const [updateActionError, setUpdateActionError] = useState("");
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [updateDialogStatus, setUpdateDialogStatus] = useState<AppUpdateStatus>(fallbackUpdateStatus);
   const [gatewayActionBusy, setGatewayActionBusy] = useState(false);
-  const [actionMessage, setActionMessage] = useState("");
+  const [gatewayActionTargetActive, setGatewayActionTargetActive] = useState<boolean>();
+  const [, setActionMessage] = useState("");
   const [actionError, setActionError] = useState("");
+  const [configSaveState, setConfigSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [configSaveError, setConfigSaveError] = useState("");
+  const [autoSaveResumeRevision, setAutoSaveResumeRevision] = useState(0);
+  const [runtimeDisconnected, setRuntimeDisconnected] = useState(false);
   const [profileActionError, setProfileActionError] = useState("");
   const [profileAddOpen, setProfileAddOpen] = useState(false);
   const [profileAgentTab, setProfileAgentTab] = useState<ProfileConfig["agent"]>("claude-code");
   const [profileDraft, setProfileDraft] = useState<AddProfileDraft>(() => createProfileDraft());
   const [profileEditDraft, setProfileEditDraft] = useState<AddProfileDraft>(() => createProfileDraft());
   const [profileEditIndex, setProfileEditIndex] = useState<number>();
+  const [profileDeleteIndex, setProfileDeleteIndex] = useState<number>();
   const [profileOpenDialog, setProfileOpenDialog] = useState<ProfileOpenDialogState>();
   const [profileActionBusy, setProfileActionBusy] = useState<ProfileActionBusy>();
   const [profileRuntimeStatus, setProfileRuntimeStatus] = useState<ProfileRuntimeStatus>({ profiles: [] });
   const [profileSubmitBusy, setProfileSubmitBusy] = useState<"" | "add" | "edit">("");
+  const availableProfileAgentOptions = useMemo(() => profileAgentOptionsForRuntime(appInfo.desktop), [appInfo.desktop]);
+  const defaultAvailableProfileAgent = availableProfileAgentOptions[0]?.value ?? "claude-code";
+  const isProfileAgentAvailable = useMemo(() => {
+    const availableAgents = new Set(availableProfileAgentOptions.map((option) => option.value));
+    return (agent: ProfileConfig["agent"]) => availableAgents.has(agent);
+  }, [availableProfileAgentOptions]);
   const [apiKeyAddOpen, setApiKeyAddOpen] = useState(false);
   const [apiKeyDraft, setApiKeyDraft] = useState<AddApiKeyDraft>(() => createApiKeyDraft());
   const [apiKeyEditDraft, setApiKeyEditDraft] = useState<AddApiKeyDraft>(() => createApiKeyDraft());
@@ -216,8 +240,6 @@ function App() {
   const [providerDeepLinkRequest, setProviderDeepLinkRequest] = useState<ProviderDeepLinkRequest>();
   const [providerDeepLinkBusy, setProviderDeepLinkBusy] = useState(false);
   const [providerDeepLinkError, setProviderDeepLinkError] = useState("");
-  const [proxyCertificateChecking, setProxyCertificateChecking] = useState(false);
-  const [proxyEnablePending, setProxyEnablePending] = useState(false);
   const [providerProbeError, setProviderProbeError] = useState("");
   const [extensionInstallOpen, setExtensionInstallOpen] = useState(false);
   const [extensionInstallDraft, setExtensionInstallDraft] = useState<ExtensionInstallDraft>(() => createExtensionInstallDraft());
@@ -246,6 +268,7 @@ function App() {
   const [compactLayout, setCompactLayout] = useState(() => window.matchMedia("(max-width: 720px)").matches);
   const [toast, setToast] = useState<AppToast>();
   const [languagePreference, setLanguagePreference] = useState<AppLanguagePreference>(() => readLanguagePreference());
+  const [themePreference, setThemePreference] = useState<AppConfig["theme"]>(() => fallbackConfig.theme || "system");
   const [systemLanguage, setSystemLanguage] = useState<ResolvedLanguage>(() => detectSystemLanguage());
   const [systemTheme, setSystemTheme] = useState<ResolvedTheme>(() => detectSystemTheme());
   const [requestLogError, setRequestLogError] = useState("");
@@ -254,6 +277,7 @@ function App() {
     pageSize: 25,
     status: "all"
   });
+  const [focusedRequestLogId, setFocusedRequestLogId] = useState<number>();
   const [requestLogLoading, setRequestLogLoading] = useState(false);
   const [requestLogPage, setRequestLogPage] = useState<RequestLogPage>(fallbackRequestLogPage);
   const [agentAnalysis, setAgentAnalysis] = useState<AgentAnalysisSnapshot>(fallbackAgentAnalysis);
@@ -262,11 +286,14 @@ function App() {
   const [agentAnalysisLoading, setAgentAnalysisLoading] = useState(false);
   const [agentAnalysisRange, setAgentAnalysisRange] = useState<UsageStatsRange>("7d");
   const [agentAnalysisSession, setAgentAnalysisSession] = useState<AgentAnalysisSessionSelection>();
+  const [usageModelFilter, setUsageModelFilter] = useState("");
+  const [usageProviderFilter, setUsageProviderFilter] = useState("");
   const [usageRange, setUsageRange] = useState<UsageStatsRange>("7d");
   const [usageStats, setUsageStats] = useState<UsageStatsSnapshot>(fallbackUsageStats);
   const [providerAccountSnapshots, setProviderAccountSnapshots] = useState<ProviderAccountSnapshot[]>([]);
   const [providerAccountRefreshing, setProviderAccountRefreshing] = useState(false);
   const updateActionBusyRef = useRef(false);
+  const usageStatsRequestId = useRef(0);
   const resolvedLanguage = languagePreference === "system" ? systemLanguage : languagePreference;
   const copy = appCopy[resolvedLanguage];
   const t = useMemo(() => (value: string) => translateText(copy, value), [copy]);
@@ -282,14 +309,14 @@ function App() {
 
   useEffect(() => {
     const root = document.documentElement;
-    const theme = draftConfig.theme || "system";
+    const theme = themePreference;
     if (theme === "system") {
       root.removeAttribute("data-theme");
       return;
     }
 
     root.dataset.theme = theme;
-  }, [draftConfig.theme]);
+  }, [themePreference]);
 
   useEffect(() => {
     document.documentElement.lang = resolvedLanguage === "zh" ? "zh-CN" : "en";
@@ -334,13 +361,25 @@ function App() {
       .catch(() => setActiveView("onboarding"))
       .finally(() => setOnboardingStatusLoaded(true));
     void window.ccr.getPluginMarketplace().then(setPluginMarketplace).catch(() => setPluginMarketplace([]));
-    void window.ccr.getProxyCertificateStatus().then(setProxyCertificateStatus);
     const unsubscribeOpenSettings = window.ccr.onOpenSettingsRequest(openSettingsDialog);
     const unsubscribeOpenUpdate = window.ccr.onOpenUpdateRequest(openUpdateDialog);
-    const refreshRuntimeStatus = () => {
-      void window.ccr?.getGatewayStatus().then(setGatewayStatus);
-      void window.ccr?.getProxyStatus().then(setProxyStatus);
-      void refreshProfileRuntimeStatus();
+    const refreshRuntimeStatus = async () => {
+      const ccr = window.ccr;
+      if (!ccr) {
+        return;
+      }
+      await Promise.allSettled([
+        ccr.getGatewayStatus().then((next) => {
+          setGatewayStatus((current) => preserveEqualPollingSnapshot(current, next));
+          setRuntimeDisconnected(false);
+        }).catch(() => {
+          setRuntimeDisconnected(true);
+        }),
+        ccr.getProxyStatus().then((next) => {
+          setProxyStatus((current) => preserveEqualPollingSnapshot(current, next));
+        }),
+        refreshProfileRuntimeStatus()
+      ]);
     };
     const stopPolling = startVisiblePolling(refreshRuntimeStatus, 2000);
     return () => {
@@ -349,6 +388,26 @@ function App() {
       unsubscribeOpenUpdate();
     };
   }, []);
+
+  useEffect(() => {
+    if (!appInfo.chatgptAppPath && !appInfo.opencodeAppPath && !appInfo.workbuddyAppPath) {
+      return;
+    }
+    setProfileDraft((current) => profileDraftWithDetectedAppPath(current, appInfo.chatgptAppPath, appInfo.opencodeAppPath, appInfo.workbuddyAppPath));
+    setProfileEditDraft((current) => profileDraftWithDetectedAppPath(current, appInfo.chatgptAppPath, appInfo.opencodeAppPath, appInfo.workbuddyAppPath));
+  }, [appInfo.chatgptAppPath, appInfo.opencodeAppPath, appInfo.workbuddyAppPath]);
+
+  useEffect(() => {
+    if (!isProfileAgentAvailable(profileAgentTab)) {
+      setProfileAgentTab(defaultAvailableProfileAgent);
+    }
+    setProfileDraft((current) => isProfileAgentAvailable(current.agent)
+      ? current
+      : createProfileDraft(defaultAvailableProfileAgent));
+    setProfileEditDraft((current) => isProfileAgentAvailable(current.agent)
+      ? current
+      : createProfileDraft(defaultAvailableProfileAgent));
+  }, [defaultAvailableProfileAgent, isProfileAgentAvailable, profileAgentTab]);
 
   useEffect(() => {
     if (!window.ccr) {
@@ -433,19 +492,43 @@ function App() {
 
     let cancelled = false;
     const refreshUsageStats = () => {
-      const filter: UsageStatsFilter | undefined = usageRange === "today" ? { includeProxy: true } : undefined;
+      const requestId = ++usageStatsRequestId.current;
+      const filter = overviewUsageStatsFilter(usageRange, usageProviderFilter, usageModelFilter);
       void window.ccr?.getUsageStats(usageRange, filter).then((snapshot) => {
-        if (!cancelled) {
+        if (!cancelled && requestId === usageStatsRequestId.current) {
           setUsageStats(snapshot);
         }
-      });
+      }).catch(() => undefined);
     };
     const stopPolling = startVisiblePolling(refreshUsageStats, 5000);
     return () => {
       cancelled = true;
       stopPolling();
     };
-  }, [usageRange]);
+  }, [usageModelFilter, usageProviderFilter, usageRange]);
+
+  useEffect(() => {
+    if (!usageProviderFilter) {
+      return;
+    }
+    if (!draftConfig.Providers.some((provider) => provider.name === usageProviderFilter)) {
+      setUsageProviderFilter("");
+    }
+  }, [draftConfig.Providers, usageProviderFilter]);
+
+  useEffect(() => {
+    if (!usageModelFilter) {
+      return;
+    }
+    const modelAvailable = draftConfig.Providers.some((provider) =>
+      isGatewayProviderEnabled(provider) &&
+      (!usageProviderFilter || provider.name === usageProviderFilter) &&
+      provider.models.some((model) => model.trim() === usageModelFilter)
+    );
+    if (!modelAvailable) {
+      setUsageModelFilter("");
+    }
+  }, [draftConfig.Providers, usageModelFilter, usageProviderFilter]);
 
   useEffect(() => {
     if (!window.ccr) {
@@ -625,6 +708,7 @@ function App() {
   const dirty = draftConfig !== savedConfig;
   const apiKeys = useMemo(() => createApiKeyList(draftConfig), [draftConfig.APIKEY, draftConfig.APIKEYS]);
   const apiKeyEditItem = apiKeyEditIndex === undefined ? undefined : apiKeys.find((apiKey) => apiKey.index === apiKeyEditIndex);
+  const profileDeleteItem = profileDeleteIndex === undefined ? undefined : draftConfig.profile.profiles[profileDeleteIndex];
   const providerDeleteItem = providerDeleteIndex === undefined ? undefined : draftConfig.Providers[providerDeleteIndex];
   const routingDeleteRule = routingDeleteIndex === undefined ? undefined : draftConfig.Router.rules[routingDeleteIndex];
   const extensionDeleteItem = useMemo(() => {
@@ -651,16 +735,28 @@ function App() {
   }, [draftConfig.plugins, pluginRoutingConfigTarget]);
   const providers = useMemo(() => draftConfig.Providers.map((provider, index) => ({ provider, index })), [draftConfig.Providers]);
   const gatewayEndpoint = gatewayStatus.endpoint || draftConfig.routerEndpoint;
+  const gatewayStartupError = gatewayStatus.state === "error"
+    ? translateAppErrorMessage(copy, gatewayStatus.lastError || "Service did not start.")
+    : "";
   const networkCaptureEnabled = draftConfig.proxy.enabled && draftConfig.proxy.captureNetwork;
   const visibleNavigation = useMemo(
     () => navigation.filter((item) =>
       (item.id !== "networking" || networkCaptureEnabled) &&
-      (item.id !== "logs" || requestLogsEnabled) &&
       (item.id !== "observability" || agentAnalysisEnabled)
     ),
-    [agentAnalysisEnabled, networkCaptureEnabled, requestLogsEnabled]
+    [agentAnalysisEnabled, networkCaptureEnabled]
   );
   const autoSaveRequestId = useRef(0);
+  const autoSaveTimer = useRef<number>();
+  const explicitSaveKey = useRef<string>();
+  const explicitConfigSaves = useRef(0);
+  const configSaveQueue = useRef(createConfigSaveQueue());
+  const apiKeySaveBusy = useRef(false);
+  const currentDraft = useRef(draftConfig);
+  const currentSaved = useRef(savedConfig);
+  currentDraft.current = draftConfig;
+  currentSaved.current = savedConfig;
+  const themePreferenceRequestId = useRef(0);
   const onboardingProfileDraftSource = useRef("");
   const providerProbeRequestId = useRef(0);
   const providerConnectivityRequestId = useRef(0);
@@ -675,15 +771,12 @@ function App() {
   const canSubmitProvider =
     Boolean(providerDraft.name.trim() && providerDraft.baseUrl.trim()) &&
     providerDialogModels.length > 0;
-  const canSubmitProfile = isProfileDraftSubmittable(profileDraft) && isProfileBotSelectionValid(profileDraft, draftConfig.botConfigs);
-  const canSubmitProfileEdit = profileEditIndex !== undefined && isProfileDraftSubmittable(profileEditDraft) && isProfileBotSelectionValid(profileEditDraft, draftConfig.botConfigs);
+  const profileRouteTargetReady = hasAvailableGatewayModels(draftConfig);
+  const canSubmitProfile = profileRouteTargetReady && isProfileDraftSubmittable(profileDraft) && isProfileBotSelectionValid(profileDraft, draftConfig.botConfigs);
+  const canSubmitProfileEdit = profileRouteTargetReady && profileEditIndex !== undefined && isProfileDraftSubmittable(profileEditDraft) && isProfileBotSelectionValid(profileEditDraft, draftConfig.botConfigs);
   const canSubmitApiKey = Boolean(apiKeyDraft.name.trim()) && (apiKeyDraft.expirationPreset !== "custom" || Boolean(apiKeyDraft.expiresAt.trim()));
   const canSubmitApiKeyEdit = apiKeyEditDraft.expirationPreset !== "custom" || Boolean(apiKeyEditDraft.expiresAt.trim());
-  const canSubmitRoutingRule =
-    Boolean(routingRuleDraft.name.trim()) &&
-    routingRuleDraft.rewrites.length > 0 &&
-    routingRuleDraft.rewrites.every(isRoutingRewriteDraftRowValid) &&
-    Boolean(routingRuleDraft.conditionField.trim() && routingRuleDraft.conditionOperator && routingRuleDraft.conditionRight.trim());
+  const canSubmitRoutingRule = isRoutingRuleDraftSubmittable(routingRuleDraft);
   const canSubmitClaudeDesignRouting = isClaudeDesignRoutingDraftValid(claudeDesignRoutingDraft);
   const canSubmitCursorProxyRouting = isClaudeDesignRoutingDraftValid(cursorProxyRoutingDraft);
   const virtualModelValidationError = useMemo(() => validateVirtualModelDraft(virtualModelDraft), [virtualModelDraft]);
@@ -692,7 +785,15 @@ function App() {
     [copy, virtualModelValidationError]
   );
   const canSubmitVirtualModel = !virtualModelValidationError;
-  const canInstallExtension = Boolean(extensionInstallDraft.key.trim() && extensionInstallDraft.modulePath.trim());
+  const canInstallExtension = canInstallExtensionCandidate({
+    apps: extensionInstallDraft.apps,
+    dependencies: extensionInstallDraft.dependencies,
+    id: extensionInstallDraft.key,
+    modulePath: extensionInstallDraft.modulePath,
+    name: extensionInstallDraft.selectedName,
+    permissions: extensionInstallDraft.permissions,
+    surfaces: extensionInstallDraft.surfaces
+  });
   const onboardingReadiness = useMemo<OnboardingReadinessOptions>(() => ({
     profileConfirmed: onboardingProfileConfirmed,
     requireProfileConfirmation: activeView === "onboarding" && !onboardingFinished
@@ -701,18 +802,15 @@ function App() {
 
   useEffect(() => {
     if (!networkCaptureEnabled && activeView === "networking") {
-      setActiveView("server");
+      setActiveView("overview");
     }
   }, [activeView, networkCaptureEnabled]);
 
   useEffect(() => {
-    if (
-      (activeView === "logs" && !requestLogsEnabled) ||
-      (activeView === "observability" && !agentAnalysisEnabled)
-    ) {
+    if (activeView === "observability" && !agentAnalysisEnabled) {
       setActiveView("overview");
     }
-  }, [activeView, agentAnalysisEnabled, requestLogsEnabled]);
+  }, [activeView, agentAnalysisEnabled]);
 
   useEffect(() => {
     if (activeView !== "onboarding" || !configLoaded || !onboardingStatusLoaded || !providerPresetsLoaded) {
@@ -748,9 +846,14 @@ function App() {
 
     onboardingProfileDraftSource.current = source;
     setProfileAgentTab(profile.agent);
-    setProfileDraft(createProfileDraftFromProfile(profile, draftConfig.botConfigs));
+    setProfileDraft(profileDraftWithDetectedAppPath(
+      createProfileDraftFromProfile(profile, draftConfig.botConfigs),
+      appInfo.chatgptAppPath,
+      appInfo.opencodeAppPath,
+      appInfo.workbuddyAppPath
+    ));
     setProfileActionError("");
-  }, [activeView, onboardingStep, onboardingProfileConfirmed, configLoaded, draftConfig.profile.profiles, draftConfig.botConfigs, profileDraft.agent]);
+  }, [activeView, onboardingStep, onboardingProfileConfirmed, configLoaded, draftConfig.profile.profiles, draftConfig.botConfigs, profileDraft.agent, appInfo.chatgptAppPath, appInfo.opencodeAppPath, appInfo.workbuddyAppPath]);
 
   useEffect(() => {
     if (activeView !== "onboarding" || !configLoaded || !onboardingStatusLoaded || !providerPresetsLoaded || providerAddOpen) {
@@ -783,36 +886,57 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!window.ccr || !dirty) {
+    if (!window.ccr || !dirty || explicitConfigSaves.current > 0) {
       return;
     }
 
-    const requestId = autoSaveRequestId.current + 1;
-    autoSaveRequestId.current = requestId;
-    const configToSave = draftConfig;
+    const configToSave = normalizeConfig({
+      ...draftConfig,
+      theme: themePreference
+    });
+    if (explicitSaveKey.current === JSON.stringify(configToSave)) {
+      return;
+    }
+    const requestId = ++autoSaveRequestId.current;
+    setConfigSaveState("saving");
+    setConfigSaveError("");
     const options = deferProfileApplyOnSave ? { applyProfile: false } : undefined;
     const timer = window.setTimeout(() => {
-      void window.ccr?.saveConfig(configToSave, options)
-        .then((saved) => {
+      autoSaveTimer.current = undefined;
+      void enqueueConfigSave(configToSave, options)
+        .then(() => {
           if (autoSaveRequestId.current === requestId) {
-            syncConfigState(saved);
             setActionError("");
+            setConfigSaveState("saved");
           }
         })
         .catch((error) => {
           if (autoSaveRequestId.current === requestId) {
-            setActionError(formatError(error));
+            setConfigSaveError(formatError(error));
+            setConfigSaveState("error");
           }
         });
     }, 400);
+    autoSaveTimer.current = timer;
 
-    return () => window.clearTimeout(timer);
-  }, [dirty, draftConfig, deferProfileApplyOnSave]);
+    return () => {
+      window.clearTimeout(timer);
+      if (autoSaveTimer.current === timer) autoSaveTimer.current = undefined;
+    };
+  }, [dirty, draftConfig, deferProfileApplyOnSave, themePreference, autoSaveResumeRevision]);
 
   function syncConfigState(config: AppConfig) {
     const normalized = normalizeConfig(config);
-    setSavedConfig(normalized);
-    setDraftConfig(normalized);
+    setConfigSnapshots(normalized, normalized);
+    setThemePreference(normalized.theme || "system");
+  }
+
+  function setConfigSnapshots(saved: AppConfig, draft: AppConfig) {
+    const nextDraft = configsEqual(saved, draft) ? saved : draft;
+    currentSaved.current = saved;
+    currentDraft.current = nextDraft;
+    setSavedConfig(saved);
+    setDraftConfig(nextDraft);
   }
 
   function showToast(message: string) {
@@ -826,6 +950,24 @@ function App() {
     }, 1800);
   }
 
+  async function resetOverviewStatistics() {
+    if (!window.ccr?.resetOverviewStatistics) {
+      throw new Error(t("Overview statistics reset is unavailable."));
+    }
+
+    usageStatsRequestId.current += 1;
+    await window.ccr.resetOverviewStatistics();
+    const requestId = ++usageStatsRequestId.current;
+    const snapshot = await window.ccr.getUsageStats(
+      usageRange,
+      overviewUsageStatsFilter(usageRange, usageProviderFilter, usageModelFilter)
+    );
+    if (requestId === usageStatsRequestId.current) {
+      setUsageStats(snapshot);
+    }
+    showToast(t("Overview statistics reset."));
+  }
+
   function openUpdateDialog() {
     setUpdateDialogOpen(true);
     setUpdateActionError("");
@@ -835,20 +977,9 @@ function App() {
   function openSidebarUpdateDialog() {
     setUpdateDialogOpen(true);
     setUpdateActionError("");
-    if (updateDialogStatus.canDownload || updateDialogStatus.state === "available") {
-      void downloadAppUpdate();
-      return;
+    if (shouldCheckForUpdateOnOpen(updateDialogStatus)) {
+      void checkForAppUpdate();
     }
-    if (
-      updateDialogStatus.canInstall ||
-      updateDialogStatus.state === "checking" ||
-      updateDialogStatus.state === "downloading" ||
-      updateDialogStatus.state === "downloaded" ||
-      updateDialogStatus.state === "installing"
-    ) {
-      return;
-    }
-    void checkForAppUpdate();
   }
 
   async function checkForAppUpdate() {
@@ -914,39 +1045,87 @@ function App() {
   }
 
   function updateConfig(mutator: (config: AppConfig) => AppConfig) {
-    setDraftConfig((current) => {
-      const next = normalizeConfig(mutator(cloneConfig(current)));
-      return next;
-    });
+    setConfigDraft(mutator(cloneConfig(currentDraft.current)));
   }
 
   function buildConfigUpdate(mutator: (config: AppConfig) => AppConfig): AppConfig {
-    return normalizeConfig(mutator(cloneConfig(draftConfig)));
+    return normalizeConfig(mutator(cloneConfig(currentDraft.current)));
   }
 
   function setConfigDraft(config: AppConfig): AppConfig {
     const normalized = normalizeConfig(config);
+    currentDraft.current = normalized;
     setDraftConfig(normalized);
     return normalized;
   }
 
-  async function persistConfig(config: AppConfig, setError: (message: string) => void, options?: AppSaveConfigOptions): Promise<boolean> {
-    autoSaveRequestId.current += 1;
+  async function persistConfig(config: AppConfig, setError: (message: string) => void, options?: AppSaveConfigOptions, feedbackTarget: ConfigSaveFeedbackTarget = "global"): Promise<boolean> {
+    const requestId = ++autoSaveRequestId.current;
+    if (autoSaveTimer.current !== undefined) {
+      window.clearTimeout(autoSaveTimer.current);
+      autoSaveTimer.current = undefined;
+    }
+    const configWithTheme = normalizeConfig({
+      ...config,
+      theme: themePreference
+    });
     if (!window.ccr) {
-      syncConfigState(config);
+      syncConfigState(configWithTheme);
       return true;
     }
 
+    const key = JSON.stringify(configWithTheme);
+    explicitSaveKey.current = key;
+    explicitConfigSaves.current += 1;
+    setError("");
+    const showSaveFeedback = feedbackTarget !== "silent";
+    if (showSaveFeedback) {
+      setConfigSaveState("saving");
+      setConfigSaveError("");
+    } else {
+      setConfigSaveState("idle");
+      setConfigSaveError("");
+    }
+    let committed = false;
     try {
       const saveOptions = options ?? (deferProfileApplyOnSave ? { applyProfile: false } : undefined);
-      const saved = await window.ccr.saveConfig(config, saveOptions);
-      syncConfigState(saved);
+      await enqueueConfigSave(configWithTheme, saveOptions);
+      committed = true;
+      if (showSaveFeedback && (autoSaveRequestId.current === requestId || JSON.stringify(currentDraft.current) === key)) {
+        setConfigSaveState("saved");
+        setConfigSaveError("");
+      }
       setError("");
       return true;
     } catch (error) {
-      setError(formatError(error));
+      const message = formatError(error);
+      setError(message);
+      if (showSaveFeedback && autoSaveRequestId.current === requestId) {
+        setConfigSaveError(message);
+        setConfigSaveState(feedbackTarget === "form" ? "idle" : "error");
+      }
       return false;
+    } finally {
+      explicitConfigSaves.current -= 1;
+      if (explicitSaveKey.current === key) explicitSaveKey.current = undefined;
+      // A failed form leaves the global draft untouched, so changing a ref alone
+      // would never restart its cancelled autosave for unrelated pending edits.
+      if (explicitConfigSaves.current === 0 && currentDraft.current !== currentSaved.current && (committed || feedbackTarget === "form")) {
+        setAutoSaveResumeRevision((revision) => revision + 1);
+      }
     }
+  }
+
+  function enqueueConfigSave(config: AppConfig, options?: AppSaveConfigOptions): Promise<AppConfig> {
+    const baseDraft = currentDraft.current;
+    return configSaveQueue.current.run(
+      () => window.ccr!.saveConfig(config, options),
+      (saved) => {
+        const normalized = normalizeConfig(saved);
+        const draft = normalizeConfig(reconcileSavedConfig(baseDraft, currentDraft.current, normalized));
+        setConfigSnapshots(normalized, draft);
+      }
+    );
   }
 
   async function persistApiKeys(apiKeys: ApiKeyConfig[], setError: (message: string) => void): Promise<boolean> {
@@ -955,17 +1134,29 @@ function App() {
       return false;
     }
 
+    if (apiKeySaveBusy.current) return false;
+    apiKeySaveBusy.current = true;
     try {
       if (!window.ccr.saveApiKeys) {
         throw new Error("This app build does not expose API key persistence. Rebuild and restart the Electron app.");
       }
-      const saved = await window.ccr.saveApiKeys(apiKeys);
-      syncConfigState(saved);
+      await configSaveQueue.current.run(
+        () => window.ccr!.saveApiKeys(apiKeys),
+        (saved) => {
+          const normalized = normalizeConfig(saved);
+          setConfigSnapshots(
+            mergeSavedApiKeys(currentSaved.current, normalized),
+            mergeSavedApiKeys(currentDraft.current, normalized)
+          );
+        }
+      );
       setError("");
       return true;
     } catch (error) {
       setError(formatError(error));
       return false;
+    } finally {
+      apiKeySaveBusy.current = false;
     }
   }
 
@@ -1013,7 +1204,6 @@ function App() {
       config.APIKEY = keys[0]?.key ?? "";
       return config;
     });
-    setConfigDraft(next);
     if (await persistApiKeys(next.APIKEYS, setApiKeyError)) {
       setApiKeyAddOpen(false);
       setCreatedApiKey(apiKey);
@@ -1037,7 +1227,6 @@ function App() {
       config.APIKEY = keys[0]?.key ?? "";
       return config;
     });
-    setConfigDraft(next);
     if (await persistApiKeys(next.APIKEYS, setApiKeyError)) {
       setApiKeyEditIndex(undefined);
     }
@@ -1050,7 +1239,6 @@ function App() {
       config.APIKEY = keys[0]?.key ?? "";
       return config;
     });
-    setConfigDraft(next);
     await persistApiKeys(next.APIKEYS, setApiKeyError);
   }
 
@@ -1104,6 +1292,7 @@ function App() {
     setProviderDeepLinkBusy(true);
     let nextPayload = payload;
     let catalogModelDisplayNames: Record<string, string> | undefined;
+    let catalogModelMetadata: ProviderDeepLinkPayload["modelMetadata"] | undefined;
     let probe: GatewayProviderProbeResult | undefined;
     if (nextPayload.models.length === 0) {
       const catalogModels = await resolveProviderDeepLinkCatalogModels(nextPayload);
@@ -1112,6 +1301,7 @@ function App() {
         return;
       }
       catalogModelDisplayNames = catalogModels.modelDisplayNames;
+      catalogModelMetadata = catalogModels.modelMetadata;
       if (catalogModels.models.length > 0) {
         nextPayload = {
           ...nextPayload,
@@ -1134,7 +1324,9 @@ function App() {
     const initialDraftFromPayload = createProviderDraftFromDeepLinkPayload(nextPayload, draftConfig.Providers);
     const initialDraft = {
       ...initialDraftFromPayload,
-      modelDisplayNames: mergeModelDisplayNames(initialDraftFromPayload.modelDisplayNames, catalogModelDisplayNames)
+      catalogModelMetadata: mergeModelMetadata(initialDraftFromPayload.catalogModelMetadata, catalogModelMetadata),
+      modelDisplayNames: mergeModelDisplayNames(initialDraftFromPayload.modelDisplayNames, catalogModelDisplayNames),
+      modelMetadata: initialDraftFromPayload.modelMetadata
     };
     setProviderEditIndex(undefined);
     setProviderImportOpen(true);
@@ -1152,13 +1344,19 @@ function App() {
   }
 
   function updateProviderDraft(patch: Partial<AddProviderDraft>, resetProbe = false) {
-    const shouldResetProtocolProbe = resetProbe && (patch.baseUrl !== undefined || patch.presetId !== undefined || patch.protocol !== undefined);
+    const shouldResetProtocolProbe = resetProbe && (
+      patch.baseUrl !== undefined ||
+      patch.presetId !== undefined ||
+      patch.protocol !== undefined ||
+      patch.protocolDetectionMode !== undefined
+    );
     const shouldResetConnectivityProbe = resetProbe ||
       patch.apiKey !== undefined ||
       patch.baseUrl !== undefined ||
       patch.modelsText !== undefined ||
       patch.presetId !== undefined ||
       patch.protocol !== undefined ||
+      patch.protocolDetectionMode !== undefined ||
       patch.selectedModels !== undefined ||
       patch.selectedProtocols !== undefined;
 
@@ -1173,8 +1371,10 @@ function App() {
 
       return {
         ...next,
+        catalogModelMetadata: patch.catalogModelMetadata,
         modelDescriptions: patch.modelDescriptions ?? current.modelDescriptions,
         modelDisplayNames: patch.modelDisplayNames,
+        modelMetadata: "modelMetadata" in patch ? patch.modelMetadata : current.modelMetadata,
         modelsText: mergeProviderModelLists(current.selectedModels, splitLines(next.modelsText)).join("\n"),
         selectedModels: [],
         selectedProtocols: patch.selectedProtocols ?? current.selectedProtocols
@@ -1198,6 +1398,60 @@ function App() {
     if (!window.ccr || !providerFormVisible) {
       return;
     }
+    if (providerDraft.protocolDetectionMode === "manual") {
+      providerProbeRequestId.current += 1;
+      setProviderProbeError("");
+      setProviderProbeLoading(false);
+      return;
+    }
+    if (isLocalCodexProviderDraft(providerDraft)) {
+      providerProbeRequestId.current += 1;
+      const requestId = providerProbeRequestId.current;
+      const inputKey = localCodexProviderDraftProbeKey(providerDraft);
+
+      setProviderProbeError("");
+      if (!window.ccr.probeLocalAgentProvider) {
+        setProviderProbe(undefined);
+        setProviderProbeLoading(false);
+        return undefined;
+      }
+      setProviderProbeLoading(true);
+
+      const timer = window.setTimeout(() => {
+        void window.ccr?.probeLocalAgentProvider?.({ id: localCodexProviderId })
+          .then((result) => {
+            if (providerProbeRequestId.current !== requestId) {
+              return;
+            }
+            setProviderProbe(result.probe);
+            setProviderDraft((current) => {
+              if (!isLocalCodexProviderDraft(current) || localCodexProviderDraftProbeKey(current) !== inputKey) {
+                return current;
+              }
+              return applyProviderProbeResult(current, result.probe);
+            });
+          })
+          .catch((error) => {
+            if (providerProbeRequestId.current === requestId) {
+              setProviderProbe(undefined);
+              setProviderProbeError(formatError(error));
+            }
+          })
+          .finally(() => {
+            if (providerProbeRequestId.current === requestId) {
+              setProviderProbeLoading(false);
+            }
+          });
+      }, 350);
+
+      return () => {
+        window.clearTimeout(timer);
+        if (providerProbeRequestId.current === requestId) {
+          providerProbeRequestId.current += 1;
+          setProviderProbeLoading(false);
+        }
+      };
+    }
     if (providerDraft.providerPlugins.length > 0) {
       providerProbeRequestId.current += 1;
       setProviderProbe(undefined);
@@ -1209,9 +1463,10 @@ function App() {
     providerProbeRequestId.current += 1;
     const requestId = providerProbeRequestId.current;
     const candidates = providerProbeCandidates(providerDraft).filter(isProviderProbeCandidateReady);
-    const shouldDiscoverModels = Boolean(providerDraft.apiKey.trim());
+    const draftProbeApiKey = providerConnectivityApiKeyFromDraft(providerDraft);
+    const shouldDiscoverModels = Boolean(draftProbeApiKey);
     const probeMode = shouldDiscoverModels ? "models" : "protocols";
-    const probeApiKey = shouldDiscoverModels ? providerDraft.apiKey.trim() : "";
+    const probeApiKey = shouldDiscoverModels ? draftProbeApiKey : "";
     const inputKey = providerProbeInputKey(candidates, probeApiKey, []);
 
     setProviderProbeError("");
@@ -1236,8 +1491,9 @@ function App() {
           setProviderProbe(result.probe);
           setProviderDraft((current) => {
             const currentCandidates = providerProbeCandidates(current).filter(isProviderProbeCandidateReady);
-            const currentShouldDiscoverModels = Boolean(current.apiKey.trim());
-            const currentProbeApiKey = currentShouldDiscoverModels ? current.apiKey.trim() : "";
+            const currentDraftProbeApiKey = providerConnectivityApiKeyFromDraft(current);
+            const currentShouldDiscoverModels = Boolean(currentDraftProbeApiKey);
+            const currentProbeApiKey = currentShouldDiscoverModels ? currentDraftProbeApiKey : "";
             const currentKey = providerProbeInputKey(currentCandidates, currentProbeApiKey, []);
             if (currentKey !== inputKey) {
               return current;
@@ -1245,7 +1501,11 @@ function App() {
             return applyProviderProbeResult(current, result.probe);
           });
 
-          if (probeMode !== "models" && !providerProbeHasSupportedProtocol(result.probe)) {
+          // In "models" mode the probe still reports protocol support, so a rejected API key
+          // surfaces here as unsupported protocols and an empty catalog. Report it instead of
+          // leaving the model picker silently empty, but stay quiet when models were discovered
+          // (a provider can expose a working catalog while a protocol probe endpoint 404s).
+          if (!providerProbeHasSupportedProtocol(result.probe) && (probeMode !== "models" || result.probe.models.length === 0)) {
             const message = result.probe.protocols.find((item) => item.message)?.message || "Request failed.";
             setProviderProbeError(translateAppErrorMessage(copy, message));
           }
@@ -1270,19 +1530,118 @@ function App() {
         setProviderProbeLoading(false);
       }
     };
-  }, [activeView, onboardingStep, providerAddOpen, providerDraft.apiKey, providerDraft.baseUrl, providerDraft.presetId, providerDraft.protocol, providerDraft.providerPlugins]);
+  }, [activeView, onboardingStep, providerAddOpen, providerDraft.apiKey, providerDraft.baseUrl, providerDraft.credentialMode, providerDraft.credentials, providerDraft.presetId, providerDraft.protocol, providerDraft.protocolDetectionMode, providerDraft.providerPlugins]);
+
+  async function refreshProviderModels(): Promise<void> {
+    if (providerProbeLoading) {
+      return;
+    }
+    if (!window.ccr) {
+      setProviderProbeError(t("Request failed."));
+      return;
+    }
+
+    providerProbeRequestId.current += 1;
+    providerConnectivityRequestId.current += 1;
+    const requestId = providerProbeRequestId.current;
+    const existingProvider = providerEditIndex === undefined ? undefined : draftConfig.Providers[providerEditIndex];
+    const refreshProtocols = providerDraft.protocolDetectionMode === "manual"
+      ? uniqueProviderProtocols(providerDraft.selectedProtocols.length > 0 ? providerDraft.selectedProtocols : [providerDraft.protocol])
+      : undefined;
+    const refreshInputKey = providerRefreshModelsInputKey(providerDraft, refreshProtocols);
+
+    setProviderProbeError("");
+    setProviderConnectivityProbe(undefined);
+    setProviderConnectivityLoading(false);
+    setProviderProbeLoading(true);
+
+    try {
+      if (isLocalCodexProviderDraft(providerDraft)) {
+        if (!window.ccr.probeLocalAgentProvider) {
+          setProviderProbe(undefined);
+          return;
+        }
+        const result = await window.ccr.probeLocalAgentProvider({ forceRefresh: true, id: localCodexProviderId });
+        if (providerProbeRequestId.current !== requestId) {
+          return;
+        }
+        setProviderProbe(result.probe);
+        setProviderDraft((current) => {
+          const currentProtocols = current.protocolDetectionMode === "manual"
+            ? uniqueProviderProtocols(current.selectedProtocols.length > 0 ? current.selectedProtocols : [current.protocol])
+            : undefined;
+          if (!isLocalCodexProviderDraft(current) || providerRefreshModelsInputKey(current, currentProtocols) !== refreshInputKey) {
+            return current;
+          }
+          return applyProviderProbeResult(current, result.probe);
+        });
+        return;
+      }
+
+      const candidates = providerProbeCandidates(providerDraft).filter(isProviderProbeCandidateReady);
+      if (candidates.length === 0) {
+        setProviderProbe(undefined);
+        setProviderProbeError(t("No endpoint candidates available."));
+        return;
+      }
+
+      const apiKey = providerConnectivityApiKeyFromDraft(providerDraft);
+      const providerPlugins = providerConnectivityProviderPlugins(providerDraft, draftConfig.providerPlugins, existingProvider);
+      const result = await probeProviderCandidates(candidates, apiKey, [], {
+        forceRefresh: true,
+        mode: "models",
+        providerPlugins,
+        protocols: refreshProtocols
+      });
+      if (providerProbeRequestId.current !== requestId) {
+        return;
+      }
+      if (!result) {
+        setProviderProbe(undefined);
+        setProviderProbeError(t("Request failed."));
+        return;
+      }
+
+      setProviderProbe(result.probe);
+      setProviderDraft((current) => {
+        const currentProtocols = current.protocolDetectionMode === "manual"
+          ? uniqueProviderProtocols(current.selectedProtocols.length > 0 ? current.selectedProtocols : [current.protocol])
+          : undefined;
+        if (providerRefreshModelsInputKey(current, currentProtocols) !== refreshInputKey) {
+          return current;
+        }
+        return applyProviderProbeResult(current, result.probe);
+      });
+
+      if (result.probe.models.length === 0 && !providerProbeHasSupportedProtocol(result.probe)) {
+        const message = result.probe.protocols.find((item) => item.message)?.message || "Request failed.";
+        setProviderProbeError(translateAppErrorMessage(copy, message));
+      }
+    } catch (error) {
+      if (providerProbeRequestId.current === requestId) {
+        setProviderProbe(undefined);
+        setProviderProbeError(formatError(error));
+      }
+    } finally {
+      if (providerProbeRequestId.current === requestId) {
+        setProviderProbeLoading(false);
+      }
+    }
+  }
 
   async function checkProviderDraft(modelsToCheck?: string[]): Promise<ProviderConnectivityCheckReport> {
     const emptyReport: ProviderConnectivityCheckReport = { failed: [], passed: [], results: [] };
     providerConnectivityRequestId.current += 1;
     const requestId = providerConnectivityRequestId.current;
-    const apiKey = providerDraft.apiKey.trim();
+    const apiKey = providerConnectivityApiKeyFromDraft(providerDraft);
     const models = mergeProviderModelLists(modelsToCheck ?? mergeProviderModelLists(providerDraft.selectedModels, splitLines(providerDraft.modelsText)));
     const protocols = providerDraft.selectedProtocols.length > 0 ? providerDraft.selectedProtocols : [providerDraft.protocol];
+    const existingProvider = providerEditIndex === undefined ? undefined : draftConfig.Providers[providerEditIndex];
+    const providerPlugins = providerConnectivityProviderPlugins(providerDraft, draftConfig.providerPlugins, existingProvider);
     const candidates = providerProbeCandidates(providerDraft)
       .map((candidate) => ({
         ...candidate,
-        protocols: candidate.protocols.filter((protocol) => protocols.includes(protocol))
+        protocols: candidate.protocols.filter((protocol) => protocols.some((selected) => selected === protocol))
       }))
       .filter((candidate) => isProviderProbeCandidateReady(candidate) && candidate.protocols.length > 0);
 
@@ -1317,6 +1676,7 @@ function App() {
         candidates,
         forceRefresh: true,
         models,
+        providerPlugins,
         protocols
       });
       if (providerConnectivityRequestId.current !== requestId) {
@@ -1368,36 +1728,51 @@ function App() {
       setProviderProbeError(translateAppErrorMessage(copy, accountConfig));
       return false;
     }
-    const credentials = providerCredentialsFromDraft(providerDraft);
+    const useCredentialPool = providerDraft.credentialMode === "pool";
+    const primaryApiKey = useCredentialPool ? "" : providerDraft.apiKey.trim();
+    const credentials = useCredentialPool ? providerCredentialsFromDraft(providerDraft) : [];
     if (typeof credentials === "string") {
       setProviderProbeError(translateAppErrorMessage(copy, credentials));
       return false;
     }
-    const selectableProtocols = providerSelectableProtocolsFromProbe(probe);
+    const manualProtocolDetection = providerDraft.protocolDetectionMode === "manual";
+    const saveProbe = manualProtocolDetection ? undefined : probe;
+    const selectableProtocols = providerSelectableProtocolsFromProbe(saveProbe);
     const selectedProtocols = providerDraft.selectedProtocols.length > 0
-      ? providerDraft.selectedProtocols.filter((protocol) => !probe || selectableProtocols.includes(protocol))
+      ? manualProtocolDetection
+        ? uniqueProviderProtocols(providerDraft.selectedProtocols)
+        : providerDraft.selectedProtocols.filter((protocol) => !saveProbe || selectableProtocols.includes(protocol))
       : [];
-    if (selectableProtocols.length > 0 && selectedProtocols.length === 0) {
+    if ((manualProtocolDetection || selectableProtocols.length > 0) && selectedProtocols.length === 0) {
       setProviderProbeError(t("Select at least one protocol."));
       return false;
     }
 
-    const protocolsToSave = selectedProtocols.length > 0 ? selectedProtocols : [probe?.detectedProtocol ?? providerDraft.protocol];
+    const protocolsToSave = selectedProtocols.length > 0 ? selectedProtocols : [saveProbe?.detectedProtocol ?? providerDraft.protocol];
     const fallbackProtocol = protocolsToSave.includes(providerDraft.protocol)
       ? providerDraft.protocol
-      : protocolsToSave[0] ?? probe?.detectedProtocol ?? providerDraft.protocol;
-    const fallbackBaseUrl = providerGlobalBaseUrlForProbe(providerDraft.baseUrl, probe, protocolsToSave);
+      : protocolsToSave[0] ?? saveProbe?.detectedProtocol ?? providerDraft.protocol;
+    const fallbackBaseUrl = providerGlobalBaseUrlForProbe(providerDraft.baseUrl, saveProbe, protocolsToSave);
     const modelDescriptions = modelDescriptionsForModels(providerDraft.modelDescriptions, models);
     const modelDisplayNames = modelDisplayNamesForModels(providerDraft.modelDisplayNames, models);
-    const capabilities = providerCapabilitiesForProtocols(providerDraft.baseUrl, protocolsToSave, probe, presetCapabilitiesFromDraft(providerDraft));
+    const modelMetadata = modelMetadataForModels(providerDraft.modelMetadata, models);
+    const existingProvider = providerEditIndex !== undefined ? draftConfig.Providers[providerEditIndex] : undefined;
+    const capabilities = providerCapabilitiesForSave(
+      providerCapabilitiesForProtocols(providerDraft.baseUrl, protocolsToSave, saveProbe, presetCapabilitiesFromDraft(providerDraft)),
+      providerDraft.capabilities,
+      existingProvider ? providerBaseUrl(existingProvider) : undefined,
+      providerDraft.baseUrl
+    );
     const primaryCapability =
       capabilities.find((capability) => capability.type === fallbackProtocol) ??
-      capabilities[0];
-    const protocol = primaryCapability?.type ?? fallbackProtocol;
+      capabilities.find((capability) => providerProtocolOptions.some((option) => option.value === capability.type));
+    const protocol = primaryCapability && providerProtocolOptions.some((option) => option.value === primaryCapability.type)
+      ? primaryCapability.type as GatewayProviderProtocol
+      : fallbackProtocol;
     const baseUrl = fallbackBaseUrl;
 
     const keySafetyIssue = providerApiKeySafetyIssue({
-      apiKey: providerDraft.apiKey,
+      apiKey: primaryApiKey,
       baseUrl,
       name: providerName,
       presetId: providerDraft.presetId
@@ -1429,7 +1804,7 @@ function App() {
     }
 
     const accountKeySafetyIssue = providerAccountApiKeySafetyIssue(accountConfig, {
-      apiKey: providerDraft.apiKey,
+      apiKey: primaryApiKey,
       baseUrl,
       providerName,
       providerPresetId: providerDraft.presetId
@@ -1439,20 +1814,45 @@ function App() {
       return false;
     }
 
-    const existingProvider = providerEditIndex !== undefined ? draftConfig.Providers[providerEditIndex] : undefined;
+    const extraBody = parseProviderExtraJsonDraft(providerDraft.extraBodyText, "extraBody");
+    if (typeof extraBody === "string") {
+      setProviderProbeError(translateAppErrorMessage(copy, extraBody));
+      return false;
+    }
+    const extraHeaders = parseProviderExtraJsonDraft(providerDraft.extraHeadersText, "extraHeaders");
+    if (typeof extraHeaders === "string") {
+      setProviderProbeError(translateAppErrorMessage(copy, extraHeaders));
+      return false;
+    }
+
     const providerId = existingProvider?.id ?? providerNameSlug(providerName);
+    const autoFetchKnownModels = providerAutoFetchKnownModelsForSave({
+      currentModels: models,
+      detectedModels: saveProbe?.models ?? probe?.models ?? [],
+      draftKnownModels: providerDraft.autoFetchKnownModels,
+      existingProvider,
+      nextBaseUrl: baseUrl
+    });
     const provider: GatewayProviderConfig = {
+      ...providerManualFieldsForSave(existingProvider),
       api_base_url: normalizeProviderBaseUrl(baseUrl),
-      api_key: providerDraft.apiKey.trim(),
+      api_key: primaryApiKey,
+      autoFetchModels: providerDraft.autoFetchModels || undefined,
+      autoFetchKnownModels,
       capabilities: capabilities.length > 0 ? capabilities : undefined,
       account: accountConfig,
+      extraBody,
+      extraHeaders,
       credentials: credentials.length > 0 ? credentials : undefined,
+      enabled: existingProvider?.enabled === false ? false : undefined,
       icon: providerDraft.icon.trim() || undefined,
       id: providerId,
       modelDescriptions,
       modelDisplayNames,
+      modelMetadata,
       models,
       name: providerName,
+      protocolDetectionMode: providerDraft.protocolDetectionMode === "manual" ? "manual" : undefined,
       type: protocol
     };
     const importedProviderPlugins = materializeProviderPluginTemplates(providerDraft.providerPlugins, providerName, protocol, providerId);
@@ -1468,10 +1868,9 @@ function App() {
       if (!config.preferredProvider) {
         config.preferredProvider = provider.name;
       }
-      return config;
+      return existingProvider ? renameProviderReferences(config, existingProvider.name, provider.name) : config;
     });
-    setConfigDraft(next);
-    if (await persistConfig(next, setProviderProbeError)) {
+    if (await persistConfig(next, setProviderProbeError, undefined, "form")) {
       setProviderEditIndex(undefined);
       setProviderImportOpen(false);
       setProviderImportPayload(undefined);
@@ -1532,6 +1931,22 @@ function App() {
     return persistConfig(next, setActionError);
   }
 
+  function setProviderEnabled(index: number, enabled: boolean) {
+    const next = buildConfigUpdate((config) => {
+      const provider = config.Providers[index];
+      if (!provider) {
+        return config;
+      }
+      config.Providers[index] = {
+        ...provider,
+        enabled: enabled ? undefined : false
+      };
+      return config;
+    });
+    setConfigDraft(next);
+    void persistConfig(next, setActionError);
+  }
+
   function updateProviderModelDescription(providerIndex: number, model: string, description: string) {
     const next = buildConfigUpdate((config) => {
       const provider = config.Providers[providerIndex];
@@ -1588,28 +2003,17 @@ function App() {
       return;
     }
 
-    const rule: RouterRule = {
-      condition: {
-        left: buildRouterConditionPath(routingRuleDraft.conditionSource, routingRuleDraft.conditionField),
-        operator: routingRuleDraft.conditionOperator,
-        right: routingRuleDraft.conditionRight.trim()
-      },
-      enabled: routingRuleDraft.enabled,
-      fallback: normalizeRouterFallbackConfig(routingRuleDraft.fallback),
-      id: uniqueRoutingRuleId(draftConfig.Router.rules),
-      name: routingRuleDraft.name.trim(),
-      rewrites: routingRuleDraft.rewrites.map(routingRewriteFromDraftRow),
-      type: "condition"
-    };
+    const rule = routingRuleFromDraft(
+      routingRuleDraft,
+      draftConfig.Router.rules,
+      routingEditIndex === undefined ? undefined : draftConfig.Router.rules[routingEditIndex]
+    );
 
     updateConfig((config) => {
       if (routingEditIndex === undefined) {
         config.Router.rules = [...config.Router.rules, rule];
       } else {
-        config.Router.rules[routingEditIndex] = {
-          ...rule,
-          id: config.Router.rules[routingEditIndex]?.id ?? rule.id
-        };
+        config.Router.rules[routingEditIndex] = rule;
       }
       return config;
     });
@@ -1695,6 +2099,7 @@ function App() {
         values[virtualModelEditIndex] = profile;
       }
       config.virtualModelProfiles = values;
+      config.mediaTools.enabled = virtualModelProfilesUseMediaTools(values);
       const existingMcpServers = [...(config.agent?.mcpServers ?? [])];
       const replacementIndex = previousMcpServerName
         ? existingMcpServers.findIndex((server) => server.name === previousMcpServerName)
@@ -1729,6 +2134,7 @@ function App() {
       }
       values[index] = { ...item, enabled };
       config.virtualModelProfiles = values;
+      config.mediaTools.enabled = virtualModelProfilesUseMediaTools(values);
       return config;
     });
   }
@@ -1736,6 +2142,7 @@ function App() {
   function removeVirtualModel(index: number) {
     updateConfig((config) => {
       config.virtualModelProfiles = (config.virtualModelProfiles ?? []).filter((_, itemIndex) => itemIndex !== index);
+      config.mediaTools.enabled = virtualModelProfilesUseMediaTools(config.virtualModelProfiles);
       return config;
     });
   }
@@ -1762,38 +2169,55 @@ function App() {
       if (!selection) {
         return;
       }
-      setExtensionInstallDraft((current) => ({
-        ...current,
+      const candidate = {
         apps: selection.apps,
         dependencies: selection.dependencies,
-        key: selection.id,
-        marketplaceId: "",
+        id: selection.id,
         modulePath: selection.modulePath,
-        selectedName: selection.name || selection.id
+        name: selection.name || selection.id,
+        permissions: selection.permissions,
+        surfaces: selection.surfaces
+      };
+      setExtensionInstallDraft((current) => ({
+        ...current,
+        apps: candidate.apps,
+        dependencies: candidate.dependencies,
+        key: candidate.id,
+        marketplaceId: "",
+        modulePath: candidate.modulePath,
+        permissions: candidate.permissions,
+        selectedName: candidate.name,
+        surfaces: candidate.surfaces
       }));
-      setExtensionInstallError("");
-      setActionError("");
+      installExtensionCandidate(candidate);
     } catch (error) {
       setActionError(formatError(error));
     }
   }
 
   function submitExtensionInstallDraft() {
-    if (!canInstallExtension) {
+    installExtensionCandidate({
+      apps: extensionInstallDraft.apps,
+      dependencies: extensionInstallDraft.dependencies,
+      id: extensionInstallDraft.key,
+      modulePath: extensionInstallDraft.modulePath,
+      name: extensionInstallDraft.selectedName,
+      permissions: extensionInstallDraft.permissions,
+      surfaces: extensionInstallDraft.surfaces
+    });
+  }
+
+  function installExtensionCandidate(candidate: PluginInstallCandidate) {
+    if (!canInstallExtensionCandidate(candidate)) {
       return;
     }
 
-    const installPlan = resolvePluginInstallPlan(
-      {
-        apps: extensionInstallDraft.apps,
-        dependencies: extensionInstallDraft.dependencies,
-        id: extensionInstallDraft.key.trim(),
-        modulePath: extensionInstallDraft.modulePath.trim(),
-        name: extensionInstallDraft.selectedName
-      },
-      pluginMarketplace,
-      draftConfig.plugins ?? []
-    );
+    const normalizedCandidate = {
+      ...candidate,
+      id: candidate.id.trim(),
+      modulePath: candidate.modulePath.trim()
+    };
+    const installPlan = resolvePluginInstallPlan(normalizedCandidate, pluginMarketplace, draftConfig.plugins ?? []);
     if (installPlan.missing.length > 0) {
       setExtensionInstallError(`Missing plugin dependencies: ${installPlan.missing.join(", ")}`);
       return;
@@ -1807,7 +2231,9 @@ function App() {
           ...(item.apps?.length ? { apps: item.apps } : {}),
           enabled: true,
           id: item.id,
-          module: item.modulePath
+          ...(item.modulePath.trim() ? { module: item.modulePath.trim() } : {}),
+          ...(item.permissions?.length ? { permissions: item.permissions } : {}),
+          ...(item.surfaces ? { surfaces: item.surfaces } : {})
         }));
       config.plugins = [...(config.plugins ?? []), ...pluginsToAdd];
       return config;
@@ -1816,6 +2242,28 @@ function App() {
     setExtensionInstallError("");
 
     setExtensionInstallOpen(false);
+  }
+
+  async function openExtensionApp(index: number, appId?: string) {
+    const plugin = draftConfig.plugins[index];
+    if (!plugin?.id) {
+      setActionError(t("Plugin app is not configured or enabled."));
+      return;
+    }
+    if (!window.ccr?.openPluginApp) {
+      setActionError(t("Plugin apps can be opened from the Electron app."));
+      return;
+    }
+
+    try {
+      if (!await persistConfig(draftConfig, setActionError)) {
+        return;
+      }
+      await window.ccr.openPluginApp(plugin.id, appId);
+      setActionError("");
+    } catch (error) {
+      setActionError(formatError(error));
+    }
   }
 
   function removeExtension(source: ExtensionSource, index: number, groupIndexes?: number[]) {
@@ -1861,15 +2309,12 @@ function App() {
       return;
     }
 
-    const appsResult = parsePluginAppsSettingsText(pluginSettingsDraft.appsText);
-    if (!appsResult.ok) {
-      setPluginSettingsError(appsResult.message);
-      return;
-    }
-
-    const configResult = parsePluginConfigSettingsText(pluginSettingsDraft.configText);
-    if (!configResult.ok) {
-      setPluginSettingsError(configResult.message);
+    const settingsResult = pluginConfigPatchFromSettingsDraft(
+      draftConfig.plugins[extensionConfigTarget.index]?.config,
+      pluginSettingsDraft
+    );
+    if (!settingsResult.ok) {
+      setPluginSettingsError(settingsResult.message);
       return;
     }
 
@@ -1879,34 +2324,15 @@ function App() {
       if (!item) {
         return config;
       }
-      const nextConfig = pluginSettingsConfigFromDraft(item.config, configResult.value);
       values[extensionConfigTarget.index] = {
         ...item,
-        ...(appsResult.value && appsResult.value.length > 0 ? { apps: appsResult.value } : { apps: undefined }),
-        config: nextConfig,
-        enabled: pluginSettingsDraft.enabled,
-        module: pluginSettingsDraft.modulePath.trim()
+        ...settingsResult.value
       };
       config.plugins = values;
       return config;
     });
     setExtensionConfigTarget(undefined);
     setPluginSettingsError("");
-  }
-
-  function openConfigurePluginRouting(index: number) {
-    const item = draftConfig.plugins[index];
-    if (!item) {
-      return;
-    }
-    if (isClaudeDesignPluginConfig(item)) {
-      setClaudeDesignRoutingDraft(createClaudeDesignRoutingDraft(item.config));
-    } else if (isCursorProxyPluginConfig(item)) {
-      setCursorProxyRoutingDraft(createCursorProxyRoutingDraft(item.config));
-    } else {
-      return;
-    }
-    setPluginRoutingConfigTarget({ index });
   }
 
   function updateClaudeDesignRoutingDraft(patch: Partial<ClaudeDesignRoutingDraft>) {
@@ -2045,10 +2471,34 @@ function App() {
 
   function changeThemePreference(value: string) {
     const theme = normalizeThemePreference(value);
-    updateConfig((config) => ({
-      ...config,
-      theme
-    }));
+    const previousTheme = themePreference;
+    setThemePreference(theme);
+
+    if (!window.ccr?.setThemePreference) {
+      updateConfig((config) => ({
+        ...config,
+        theme
+      }));
+      return;
+    }
+
+    const requestId = themePreferenceRequestId.current + 1;
+    themePreferenceRequestId.current = requestId;
+    void window.ccr.setThemePreference(theme)
+      .then((savedTheme) => {
+        if (themePreferenceRequestId.current !== requestId) {
+          return;
+        }
+        setThemePreference(savedTheme);
+        setActionError("");
+      })
+      .catch((error) => {
+        if (themePreferenceRequestId.current !== requestId) {
+          return;
+        }
+        setThemePreference(previousTheme);
+        setActionError(formatError(error));
+      });
   }
 
   function changeLaunchAtLogin(launchAtLogin: boolean) {
@@ -2066,6 +2516,13 @@ function App() {
     updateConfig((config) => ({
       ...config,
       trayIcon
+    }));
+  }
+
+  function changeTrayShowTokenRate(trayShowTokenRate: boolean) {
+    updateConfig((config) => ({
+      ...config,
+      trayShowTokenRate
     }));
   }
 
@@ -2114,6 +2571,24 @@ function App() {
     }));
   }
 
+  function changeProxyConfig(patch: Partial<AppConfig["proxy"]>) {
+    updateConfig((config) => ({
+      ...config,
+      proxy: normalizeProxyConfig({
+        ...config.proxy,
+        ...patch,
+        upstream: {
+          ...config.proxy.upstream,
+          ...(patch.upstream ?? {}),
+          custom: {
+            ...config.proxy.upstream.custom,
+            ...(patch.upstream?.custom ?? {})
+          }
+        }
+      })
+    }));
+  }
+
   function changeToolHubConfig(patch: Partial<AppConfig["toolHub"]>) {
     updateConfig((config) => ({
       ...config,
@@ -2139,6 +2614,11 @@ function App() {
     setSettingsOpen(true);
   }
 
+  function openGeneralSettingsDialog() {
+    setSettingsInitialPage("general");
+    setSettingsOpen(true);
+  }
+
   function changeOverviewWidgets(widgets: OverviewWidgetConfig[]) {
     updateConfig((config) => ({
       ...config,
@@ -2150,26 +2630,6 @@ function App() {
     const language = normalizeLanguagePreference(value);
     setLanguagePreference(language);
     persistLanguagePreference(language);
-  }
-
-  async function restartProxy() {
-    if (!window.ccr) {
-      setActionError(t("Proxy restart is available in the Electron app."));
-      return;
-    }
-
-    setActionBusy("proxy");
-    setActionError("");
-    setActionMessage("");
-    try {
-      const status = await window.ccr.restartProxy();
-      setProxyStatus(status);
-      setActionMessage(translateAppErrorMessage(copy, proxyRestartMessage(status)));
-    } catch (error) {
-      setActionError(formatError(error));
-    } finally {
-      setActionBusy("");
-    }
   }
 
   async function completeOnboarding() {
@@ -2190,60 +2650,6 @@ function App() {
     setActiveView(id);
   }
 
-  async function refreshProxyCertificateStatus(): Promise<ProxyCertificateStatus | undefined> {
-    if (!window.ccr) {
-      setProxyCertificateStatus(fallbackProxyCertificateStatus);
-      return undefined;
-    }
-    const status = await window.ccr.getProxyCertificateStatus();
-    setProxyCertificateStatus(status);
-    return status;
-  }
-
-  async function checkProxyCertificateStatus() {
-    setProxyCertificateChecking(true);
-    setActionError("");
-    setActionMessage("");
-    try {
-      const status = await refreshProxyCertificateStatus();
-      setActionMessage(status?.trusted ? t("Proxy CA certificate is trusted.") : translateProxyCertificateMessage(status?.message, t) || t("Proxy CA certificate is not trusted."));
-    } catch (error) {
-      setActionError(formatError(error));
-    } finally {
-      setProxyCertificateChecking(false);
-    }
-  }
-
-  async function setProxyEnabled(checked: boolean) {
-    setActionError("");
-    setActionMessage("");
-    if (!checked) {
-      setProxyEnablePending(false);
-      updateConfig((next) => ({ ...next, proxy: { ...next.proxy, enabled: false } }));
-      return;
-    }
-    if (!window.ccr) {
-      setActionError(t("Proxy certificate detection is available in the Electron app."));
-      return;
-    }
-
-    setProxyCertificateChecking(true);
-    try {
-      const status = await refreshProxyCertificateStatus();
-      if (status?.trusted) {
-        setProxyEnablePending(false);
-        updateConfig((next) => ({ ...next, proxy: { ...next.proxy, enabled: true } }));
-        return;
-      }
-      setProxyEnablePending(true);
-      setActionMessage(translateProxyCertificateMessage(status?.message, t) || t("Install and trust the proxy CA certificate before enabling proxy mode."));
-    } catch (error) {
-      setActionError(formatError(error));
-    } finally {
-      setProxyCertificateChecking(false);
-    }
-  }
-
   async function toggleGatewayService() {
     if (!window.ccr) {
       setActionError(t("Service control is available in the Electron app."));
@@ -2251,6 +2657,7 @@ function App() {
     }
 
     const shouldStop = gatewayStatus.state === "running" || gatewayStatus.state === "starting";
+    setGatewayActionTargetActive(!shouldStop);
     setGatewayActionBusy(true);
     setActionError("");
     setActionMessage("");
@@ -2264,33 +2671,7 @@ function App() {
       setActionError(formatError(error));
     } finally {
       setGatewayActionBusy(false);
-    }
-  }
-
-  async function installProxyCertificate() {
-    if (!window.ccr) {
-      setActionError(t("Certificate install is available in the Electron app."));
-      return;
-    }
-
-    setActionBusy("cert");
-    setActionError("");
-    setActionMessage("");
-    try {
-      const result = await window.ccr.installProxyCertificate();
-      setProxyCertificateStatus(result.status);
-      const status = result.status.trusted ? result.status : await refreshProxyCertificateStatus();
-      if (proxyEnablePending && status?.trusted) {
-        updateConfig((next) => ({ ...next, proxy: { ...next.proxy, enabled: true } }));
-        setProxyEnablePending(false);
-        setActionMessage(t("Certificate installed and trusted. Proxy mode enabled."));
-        return;
-      }
-      setActionMessage(formatProxyCertificateInstallMessage(result, status, t));
-    } catch (error) {
-      setActionError(formatError(error));
-    } finally {
-      setActionBusy("");
+      setGatewayActionTargetActive(undefined);
     }
   }
 
@@ -2383,7 +2764,7 @@ function App() {
     updateConfig((next) => ({ ...next, proxy: { ...next.proxy, captureNetwork: enabled } }));
     setProxyNetworkSnapshot((current) => ({ ...current, captureEnabled: enabled }));
     if (!enabled && activeView === "networking") {
-      setActiveView("server");
+      setActiveView("overview");
     }
     if (!window.ccr) {
       return;
@@ -2396,15 +2777,10 @@ function App() {
     }
   }
 
-  function setProxySystemProxyEnabled(enabled: boolean) {
-    setActionError("");
-    setActionMessage("");
-    updateConfig((next) => ({ ...next, proxy: { ...next.proxy, systemProxy: enabled } }));
-  }
-
   function openAddProfileDialog(agent: ProfileConfig["agent"] = profileAgentTab) {
-    setProfileAgentTab(agent);
-    setProfileDraft(createProfileDraft(agent));
+    const resolvedAgent = isProfileAgentAvailable(agent) ? agent : defaultAvailableProfileAgent;
+    setProfileAgentTab(resolvedAgent);
+    setProfileDraft(profileDraftWithDetectedAppPath(createProfileDraft(resolvedAgent), appInfo.chatgptAppPath, appInfo.opencodeAppPath, appInfo.workbuddyAppPath));
     setProfileActionError("");
     setProfileAddOpen(true);
   }
@@ -2415,26 +2791,13 @@ function App() {
       return;
     }
     setProfileEditIndex(index);
-    setProfileEditDraft(createProfileDraftFromProfile(profile, draftConfig.botConfigs));
+    setProfileEditDraft(profileDraftWithDetectedAppPath(
+      createProfileDraftFromProfile(profile, draftConfig.botConfigs),
+      appInfo.chatgptAppPath,
+      appInfo.opencodeAppPath,
+      appInfo.workbuddyAppPath
+    ));
     setProfileActionError("");
-  }
-
-  function openProfileDialog(index: number) {
-    const profile = draftConfig.profile.profiles[index];
-    if (!profile?.enabled) {
-      return;
-    }
-    setProfileActionError("");
-    const surfaces = profileOpenSurfaces(profile);
-    if (surfaces.length > 1) {
-      void showProfileCliCommand(profile, "choose");
-      return;
-    }
-    if (surfaces[0] === "app") {
-      void openProfileApp(profile);
-      return;
-    }
-    void showProfileCliCommand(profile);
   }
 
   async function copyProfileCliCommand(index: number) {
@@ -2489,7 +2852,7 @@ function App() {
         saveError = message;
         setProfileActionError(message);
       };
-      if (!(await persistConfig(draftConfig, setSaveError))) {
+      if (!(await persistConfig(draftConfig, setSaveError, undefined, "silent"))) {
         if (!saveError) {
           setProfileActionError(t("Failed to save profile before opening."));
         }
@@ -2538,15 +2901,23 @@ function App() {
     }
   }
 
-  async function showProfileCliCommand(profile: ProfileConfig, mode: "choose" | "cli" = "cli") {
-    const fallbackCommand = profileOpenCommandFallback(profile, "cli");
-    setProfileOpenDialog({ busy: "cli", command: fallbackCommand, mode, profile });
-    if (!(await persistConfig(draftConfig, setProfileActionError))) {
-      setProfileOpenDialog((current) => current?.profile.id === profile.id
-        ? { ...current, busy: "", error: profileActionError || t("Failed to save profile before opening.") }
-        : current);
+  async function showProfileReadyDialog(profile: ProfileConfig) {
+    if (!profile.enabled) {
       return;
     }
+    const surfaces = profileOpenSurfaces(profile);
+    const mode: "choose" | "cli" = surfaces.includes("app") && surfaces.includes("cli")
+      ? "choose"
+      : surfaces[0] === "cli"
+        ? "cli"
+        : "choose";
+    if (!surfaces.includes("cli")) {
+      setProfileOpenDialog({ busy: "", mode, profile });
+      return;
+    }
+
+    const fallbackCommand = profileOpenCommandFallback(profile, "cli");
+    setProfileOpenDialog({ busy: "cli", command: fallbackCommand, mode, profile });
     if (!window.ccr?.getProfileOpenCommand) {
       setProfileOpenDialog((current) => current?.profile.id === profile.id ? { ...current, busy: "" } : current);
       return;
@@ -2567,9 +2938,14 @@ function App() {
     setProfileOpenDialog((current) => current?.profile.id === profile.id
       ? { ...current, busy: "app", error: "" }
       : { busy: "app", mode: "choose", profile });
-    if (!(await persistConfig(draftConfig, setProfileActionError))) {
+    let saveError = "";
+    const setSaveError = (message: string) => {
+      saveError = message;
+      setProfileActionError(message);
+    };
+    if (!(await persistConfig(draftConfig, setSaveError, undefined, "silent"))) {
       setProfileOpenDialog((current) => current?.profile.id === profile.id
-        ? { ...current, busy: "", error: profileActionError || t("Failed to save profile before opening.") }
+        ? { ...current, busy: "", error: saveError || t("Failed to save profile before opening.") }
         : current);
       return;
     }
@@ -2616,13 +2992,14 @@ function App() {
 
   async function refreshProfileRuntimeStatus(): Promise<void> {
     if (!window.ccr?.getProfileRuntimeStatus) {
-      setProfileRuntimeStatus({ profiles: [] });
+      setProfileRuntimeStatus((current) => preserveEqualPollingSnapshot(current, { profiles: [] }));
       return;
     }
     try {
-      setProfileRuntimeStatus(await window.ccr.getProfileRuntimeStatus());
+      const next = await window.ccr.getProfileRuntimeStatus();
+      setProfileRuntimeStatus((current) => preserveEqualPollingSnapshot(current, next));
     } catch {
-      setProfileRuntimeStatus({ profiles: [] });
+      setProfileRuntimeStatus((current) => preserveEqualPollingSnapshot(current, { profiles: [] }));
     }
   }
 
@@ -2637,10 +3014,10 @@ function App() {
       const next = { ...current, ...patch };
       if (patch.agent && patch.agent !== current.agent) {
         const name = current.name === profileAgentLabel(current.agent) ? undefined : next.name;
-        return {
+        return profileDraftWithDetectedAppPath({
           ...createProfileDraft(patch.agent, name),
           envRows: profileEnvRowsForAgent(patch.agent, current.envRows)
-        };
+        }, appInfo.chatgptAppPath, appInfo.opencodeAppPath, appInfo.workbuddyAppPath);
       }
       return next;
     });
@@ -2652,10 +3029,10 @@ function App() {
       const next = { ...current, ...patch };
       if (patch.agent && patch.agent !== current.agent) {
         const name = current.name === profileAgentLabel(current.agent) ? undefined : next.name;
-        return {
+        return profileDraftWithDetectedAppPath({
           ...createProfileDraft(patch.agent, name),
           envRows: profileEnvRowsForAgent(patch.agent, current.envRows)
-        };
+        }, appInfo.chatgptAppPath, appInfo.opencodeAppPath, appInfo.workbuddyAppPath);
       }
       return next;
     });
@@ -2664,6 +3041,10 @@ function App() {
 
   async function submitProfileDraft(): Promise<boolean> {
     if (profileSubmitBusy) {
+      return false;
+    }
+    if (!profileRouteTargetReady) {
+      setProfileActionError(t("Configure at least one enabled provider model before saving an agent profile."));
       return false;
     }
     if (!canSubmitProfile) {
@@ -2692,9 +3073,8 @@ function App() {
         })()
       }
     }));
-    setConfigDraft(next);
     try {
-      if (!(await persistConfig(next, setProfileActionError, { applyProfile: true }))) {
+      if (!(await persistConfig(next, setProfileActionError, { applyProfile: true }, "form"))) {
         return false;
       }
       setProfileAddOpen(false);
@@ -2703,6 +3083,8 @@ function App() {
       if (activeView === "onboarding") {
         setOnboardingProfileConfirmed(true);
         setOnboardingStep("enter");
+      } else {
+        void showProfileReadyDialog(profile);
       }
       return true;
     } finally {
@@ -2710,24 +3092,28 @@ function App() {
     }
   }
 
-	  async function submitProfileEditDraft(): Promise<boolean> {
-	    if (profileSubmitBusy) {
-	      return false;
-	    }
-	    if (profileEditIndex === undefined) {
-	      return false;
-	    }
-	    if (!canSubmitProfileEdit) {
-	      setProfileActionError(t("Profile name, required target settings, and environment variable keys are required."));
-	      return false;
-	    }
-	    setProfileSubmitBusy("edit");
-	    const currentProfile = draftConfig.profile.profiles[profileEditIndex];
-	    if (!currentProfile) {
-	      setProfileSubmitBusy("");
-	      setProfileActionError(t("Profile no longer exists."));
-	      return false;
-	    }
+  async function submitProfileEditDraft(): Promise<boolean> {
+    if (profileSubmitBusy) {
+      return false;
+    }
+    if (profileEditIndex === undefined) {
+      return false;
+    }
+    if (!profileRouteTargetReady) {
+      setProfileActionError(t("Configure at least one enabled provider model before saving an agent profile."));
+      return false;
+    }
+    if (!canSubmitProfileEdit) {
+      setProfileActionError(t("Profile name, required target settings, and environment variable keys are required."));
+      return false;
+    }
+    setProfileSubmitBusy("edit");
+    const currentProfile = draftConfig.profile.profiles[profileEditIndex];
+    if (!currentProfile) {
+      setProfileSubmitBusy("");
+      setProfileActionError(t("Profile no longer exists."));
+      return false;
+    }
     const nextProfile = profileConfigFromDraft(profileEditDraft, draftConfig.profile.profiles, currentProfile, draftConfig.botConfigs);
     setProfileAgentTab(nextProfile.agent);
     const next = buildConfigUpdate((config) => {
@@ -2741,19 +3127,18 @@ function App() {
         }
       };
     });
-    setConfigDraft(next);
-	    try {
-	      if (!(await persistConfig(next, setProfileActionError))) {
-	        return false;
-	      }
-	      setProfileEditIndex(undefined);
-	      setProfileEditDraft(createProfileDraft());
-	      setProfileActionError("");
-	      return true;
-	    } finally {
-	      setProfileSubmitBusy("");
-	    }
-	  }
+    try {
+      if (!(await persistConfig(next, setProfileActionError, undefined, "form"))) {
+        return false;
+      }
+      setProfileEditIndex(undefined);
+      setProfileEditDraft(createProfileDraft());
+      setProfileActionError("");
+      return true;
+    } finally {
+      setProfileSubmitBusy("");
+    }
+  }
 
   function updateProfileItem(index: number, patch: Partial<ProfileConfig>) {
     updateConfig((next) => {
@@ -2783,15 +3168,38 @@ function App() {
     }));
   }
 
+  function confirmProfileDelete() {
+    if (profileDeleteIndex === undefined) {
+      return;
+    }
+    removeProfile(profileDeleteIndex);
+    setProfileDeleteIndex(undefined);
+  }
+
+  const persistenceFeedback = (
+    <PersistenceFeedback
+      actionError={actionError}
+      contained={!settingsOpen}
+      disconnected={runtimeDisconnected}
+      error={configSaveError}
+      inline={settingsOpen}
+      onDismissAction={() => setActionError("")}
+      onRetry={() => void persistConfig(draftConfig, setActionError)}
+      state={configSaveState}
+    />
+  );
+
   return (
     <AppI18nContext.Provider value={copy}>
       <LayoutGroup id="home-shell">
         <div className="relative flex h-full min-h-0 w-full min-w-0 overflow-hidden bg-background text-foreground max-[720px]:flex-col">
           {activeView === "onboarding" ? (
             <OnboardingLayout
+              gatewayStartupError={gatewayStartupError}
               loaded={configLoaded && onboardingStatusLoaded && providerPresetsLoaded}
               onboarding={{
                 activeStep: onboardingStep,
+                agentOptions: availableProfileAgentOptions,
                 canSubmitProfile,
                 canSubmitProvider,
                 config: draftConfig,
@@ -2820,14 +3228,18 @@ function App() {
               activeView={activeView}
               agentAnalysisEnabled={agentAnalysisEnabled}
               compactLayout={compactLayout}
+              config={draftConfig}
               copy={copy}
               gatewayActionBusy={gatewayActionBusy}
               gatewayEndpoint={gatewayEndpoint}
+              gatewayStartupError={gatewayStartupError}
               gatewayStatus={gatewayStatus}
+              gatewayTargetActive={gatewayActionTargetActive}
               isMac={isMac}
               needsTrafficLightSafeArea={needsTrafficLightSafeArea}
               networkCaptureEnabled={networkCaptureEnabled}
               onOpenUpdate={openSidebarUpdateDialog}
+              onOpenServerSettings={openGeneralSettingsDialog}
               onOpenSettings={openSettingsDialog}
               onSelectNavigationItem={selectNavigationItem}
               onToggleSidebar={() => setSidebarOpen((current) => !current)}
@@ -2851,13 +3263,18 @@ function App() {
                   configureExtension: openConfigureExtension,
                   config: draftConfig,
                   installExtension: openInstallExtensionDialog,
+                  openExtensionApp: (index, appId) => void openExtensionApp(index, appId),
                   removeExtension: (source, index, groupIndexes) => setExtensionDeleteTarget({ groupIndexes: extensionActionIndexes(index, groupIndexes), index, source }),
                   setExtensionEnabled
                 },
                 logs: {
+                  enabled: requestLogsEnabled,
                   error: requestLogError,
                   filter: requestLogFilter,
+                  focusedRequestId: focusedRequestLogId,
                   loading: requestLogLoading,
+                  onEnable: () => changeObservabilityConfig({ requestLogs: true }),
+                  onFocusedRequestHandled: () => setFocusedRequestLogId(undefined),
                   page: requestLogPage,
                   refreshLogs: () => void refreshRequestLogs(),
                   updateFilter: updateRequestLogFilter
@@ -2886,6 +3303,15 @@ function App() {
                   snapshot: agentAnalysis
                 },
                 overview: {
+                  onConfigureProviderAccounts: () => selectNavigationItem("providers"),
+                  usageFilters: {
+                    modelFilter: usageModelFilter,
+                    providerFilter: usageProviderFilter,
+                    providers: draftConfig.Providers,
+                    setModelFilter: setUsageModelFilter,
+                    setProviderFilter: setUsageProviderFilter
+                  },
+                  resetOverviewStatistics,
                   onWidgetsChange: changeOverviewWidgets,
                   overviewWidgets: normalizeOverviewWidgets(draftConfig.overviewWidgets),
                   providerAccounts: providerAccountSnapshots,
@@ -2897,6 +3323,7 @@ function App() {
                 },
                 profile: {
                   addProfile: openAddProfileDialog,
+                  agentOptions: availableProfileAgentOptions,
                   applyError: profileActionError,
                   copyProfileCliCommand: (index) => void copyProfileCliCommand(index),
                   config: draftConfig,
@@ -2904,7 +3331,7 @@ function App() {
                   openProfileApp: (index) => void openProfileAppFromList(index),
                   profileActionBusy,
                   profileRuntimeStatus,
-                  removeProfile,
+                  removeProfile: setProfileDeleteIndex,
                   stopProfileApp: (index) => void stopProfileAppFromList(index),
                   updateProfileItem
                 },
@@ -2914,7 +3341,8 @@ function App() {
                   editProvider: openEditProviderDialog,
                   notify: showToast,
                   providers,
-                  removeProvider: setProviderDeleteIndex
+                  removeProvider: setProviderDeleteIndex,
+                  setProviderEnabled
                 },
                 routing: {
                   addRule: openAddRoutingRuleDialog,
@@ -2923,42 +3351,11 @@ function App() {
                   moveRule: moveRoutingRule,
                   providers: draftConfig.Providers,
                   removeRule: setRoutingDeleteIndex,
-                  updateBuiltInRule: (agent, patch) => updateConfig((config) => {
-                    config.Router.builtInRules = normalizeRouterBuiltInRules(config.Router.builtInRules);
-                    if (agent === "claude-code") {
-                      config.Router.builtInRules["claude-code"] = {
-                        ...config.Router.builtInRules["claude-code"],
-                        ...patch
-                      };
-                    } else {
-                      config.Router.builtInRules.codex = {
-                        ...config.Router.builtInRules.codex,
-                        ...patch
-                      };
-                    }
-                    return config;
-                  }),
                   updateFallback: (fallback) => updateConfig((config) => {
                     config.Router.fallback = normalizeRouterFallbackConfig(fallback);
                     return config;
                   }),
                   updateRule: updateRoutingRule
-                },
-                server: {
-                  actionBusy,
-                  actionError,
-                  actionMessage,
-                  config: draftConfig,
-                  installProxyCertificate,
-                  onProxyEnabledChange: (checked) => void setProxyEnabled(checked),
-                  onProxyNetworkCaptureChange: (enabled) => void setProxyNetworkCaptureEnabled(enabled),
-                  onProxySystemProxyChange: setProxySystemProxyEnabled,
-                  proxyCertificateChecking,
-                  proxyCertificateStatus,
-                  proxyStatus,
-                  refreshProxyCertificateStatus: () => void checkProxyCertificateStatus(),
-                  restartProxy,
-                  updateConfig
                 },
                 virtualModels: {
                   addVirtualModel: openAddVirtualModelDialog,
@@ -3045,20 +3442,27 @@ function App() {
               onSubmit: submitPluginSettingsDraft
             } : undefined}
             profileAdd={profileAddOpen ? {
+              agentOptions: availableProfileAgentOptions,
               botConfigs: draftConfig.botConfigs,
               canSubmit: canSubmitProfile,
               draft: profileDraft,
               error: profileActionError,
               mode: "add",
-	              onChange: updateProfileDraft,
-	              onCreateBot: openBotSettingsWithAddDialog,
-	              onClose: () => setProfileAddOpen(false),
-	              providers: draftConfig.Providers,
-	              submitting: profileSubmitBusy === "add",
-	              virtualModelProfiles: draftConfig.virtualModelProfiles ?? [],
-	              onSubmit: submitProfileDraft
-	            } : undefined}
+              onChange: updateProfileDraft,
+              onCreateBot: openBotSettingsWithAddDialog,
+              onClose: () => setProfileAddOpen(false),
+              providers: draftConfig.Providers,
+              submitting: profileSubmitBusy === "add",
+              virtualModelProfiles: draftConfig.virtualModelProfiles ?? [],
+              onSubmit: submitProfileDraft
+            } : undefined}
+            profileDelete={profileDeleteItem ? {
+              onClose: () => setProfileDeleteIndex(undefined),
+              onConfirm: confirmProfileDelete,
+              profile: profileDeleteItem
+            } : undefined}
             profileEdit={profileEditIndex !== undefined ? {
+              agentOptions: availableProfileAgentOptions,
               botConfigs: draftConfig.botConfigs,
               canSubmit: canSubmitProfileEdit,
               draft: profileEditDraft,
@@ -3069,12 +3473,12 @@ function App() {
               onClose: () => {
                 setProfileEditIndex(undefined);
                 setProfileActionError("");
-	              },
-	              providers: draftConfig.Providers,
-	              submitting: profileSubmitBusy === "edit",
-	              virtualModelProfiles: draftConfig.virtualModelProfiles ?? [],
-	              onSubmit: submitProfileEditDraft
-	            } : undefined}
+              },
+              providers: draftConfig.Providers,
+              submitting: profileSubmitBusy === "edit",
+              virtualModelProfiles: draftConfig.virtualModelProfiles ?? [],
+              onSubmit: submitProfileEditDraft
+            } : undefined}
             profileOpen={profileOpenDialog ? {
               appRunning: profileRuntimeStatus.profiles.some((entry) =>
                 entry.profileId === profileOpenDialog.profile.id && entry.surface === "app" && entry.state === "running"
@@ -3121,6 +3525,7 @@ function App() {
                 setProviderImportPayload(undefined);
               },
               onCheck: checkProviderDraft,
+              onRefreshModels: refreshProviderModels,
               onSubmit: submitProviderDraft,
               probe: providerProbe,
               probeLoading: providerProbeLoading,
@@ -3147,9 +3552,11 @@ function App() {
               providers: draftConfig.Providers
             } : undefined}
             settings={settingsOpen ? {
+              saveFeedback: persistenceFeedback,
               appInfo,
               botAddRequestKey: settingsBotAddRequestKey,
               botConfigs: draftConfig.botConfigs,
+              config: draftConfig,
               copy,
               initialPage: settingsInitialPage,
               languagePreference,
@@ -3158,24 +3565,29 @@ function App() {
               onChangeLaunchAtLogin: changeLaunchAtLogin,
               onChangeLanguage: changeLanguagePreference,
               onChangeObservability: changeObservabilityConfig,
+              onChangeProxy: changeProxyConfig,
               onChangeTheme: changeThemePreference,
               onChangeToolHub: changeToolHubConfig,
               onChangeTrayBalanceProgress: changeTrayBalanceProgress,
               onChangeTrayIcon: changeTrayIconPreference,
+              onChangeTrayShowTokenRate: changeTrayShowTokenRate,
               onChangeTrayWidgets: changeTrayWidgets,
               onClose: () => setSettingsOpen(false),
               observability: draftConfig.observability,
               profiles: draftConfig.profile.profiles,
+              proxy: draftConfig.proxy,
               providers: draftConfig.Providers,
               systemLanguage,
               systemTheme,
-              themePreference: draftConfig.theme || "system",
+              themePreference,
               toolHub: draftConfig.toolHub,
               providerAccountSnapshots,
               trayBalanceProgress: normalizeTrayBalanceProgressConfig(draftConfig.trayBalanceProgress),
               trayIconPreference: draftConfig.trayIcon || "random",
+              trayShowTokenRate: Boolean(draftConfig.trayShowTokenRate),
               traySupported,
-              trayWidgets: normalizeTrayWidgets(draftConfig.trayWidgets ?? DEFAULT_TRAY_WIDGETS, draftConfig.trayWindowModules, draftConfig.trayComponentVariants)
+              trayWidgets: normalizeTrayWidgets(draftConfig.trayWidgets ?? DEFAULT_TRAY_WIDGETS, draftConfig.trayWindowModules, draftConfig.trayComponentVariants),
+              updateConfig
             } : undefined}
             update={updateDialogOpen ? {
               actionBusy: updateActionBusy,
@@ -3207,7 +3619,10 @@ function App() {
               providers: draftConfig.Providers
             } : undefined}
           />
-          <LightToast toast={toast} />
+          <FeedbackStack>
+            {!settingsOpen ? persistenceFeedback : null}
+            <LightToast contained toast={toast} />
+          </FeedbackStack>
         </div>
       </LayoutGroup>
     </AppI18nContext.Provider>

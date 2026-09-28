@@ -1,12 +1,23 @@
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { loadPersistedAppConfig, replacePersistedAppConfig } from "@ccr/core/config/app-config-store";
-import { loadPersistedApiKeys, replacePersistedApiKeys } from "@ccr/core/config/api-key-store";
-import { CONFIG_FILE, GATEWAY_CONFIG_FILE, LEGACY_CONFIG_FILE, LEGACY_WINDOWS_CONFIG_FILE } from "@ccr/core/config/constants";
+import path from "node:path";
+import {
+  archiveLegacyJsonConfigFiles,
+  loadPersistedApiKeys,
+  loadPersistedAppConfig,
+  replacePersistedApiKeys,
+  replacePersistedAppConfig,
+  replacePersistedConfigSnapshot
+} from "@ccr/core/config/config-repository";
+import { LEGACY_ACTIVE_CONFIG_FILE, LEGACY_CONFIG_FILE, LEGACY_WINDOWS_CONFIG_FILE } from "@ccr/core/config/constants";
 import { normalizeCodexProviderAccountConfig } from "@ccr/core/agents/local-providers/codex";
-import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent } from "@ccr/core/contracts/app";
+import { normalizeGrokProviderAccountConfig, normalizeGrokProviderMediaCapabilities } from "@ccr/core/agents/local-providers/grok";
+import { removeOpenCodeProviderAccountConfig } from "@ccr/core/agents/local-providers/opencode";
+import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, CLAUDE_DESIGN_PLUGIN_ID, CLAUDE_SHIP_PLUGIN_ID, DEFAULT_TRAY_COMPONENT_VARIANTS, GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, ROUTER_SCRIPT_API_VERSION, ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS, ROUTER_SCRIPT_MAX_TIMEOUT_MS, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent, isEnabledGlobalProfile, knownGatewayPluginDefaultApps, knownGatewayPluginDefaultPermissions, knownGatewayPluginDefaultSurfaces } from "@ccr/core/contracts/app";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config";
-import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "@ccr/core/providers/presets/index";
+import { maxRequestLogBodyBytes } from "@ccr/core/observability/request-log-limits";
+import { findProviderPresetByBaseUrl, primaryProviderPresetEndpoint, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "@ccr/core/providers/presets/index";
+import { isDesktopAppRuntime } from "@ccr/core/runtime/desktop-app";
 import type {
   AppConfig,
   ApiKeyConfig,
@@ -15,16 +26,21 @@ import type {
   BotGatewaySavedConfig,
   ClaudeCodeProfileConfig,
   CodexProfileConfig,
+  ContextArchiveConfig,
   GatewayAgentConfig,
   GatewayMcpServerConfig,
   GatewayMcpServerTransport,
   GatewayPluginConfig,
   GatewayPluginAppConfig,
   GatewayPluginProxyRouteConfig,
+  GatewayPluginPermission,
+  GatewayPluginSurface,
   GatewayProviderCapability,
+  GatewayProviderCapabilityProtocol,
   GatewayProviderConfig,
-  GatewayProviderProtocol,
+  MediaToolsConfig,
   ObservabilityConfig,
+  OverviewAccountCardSize,
   OverviewMetricKind,
   OverviewWidgetConfig,
   OverviewWidgetSize,
@@ -33,7 +49,12 @@ import type {
   ProviderAccountConfig,
   ProviderAccountConnectorConfig,
   ProviderCredentialConfig,
+  ProviderModelCapabilities,
+  ProviderModelMetadata,
+  ProviderModelPricing,
+  ProviderReasoningLevel,
   ProfileConfig,
+  ProfileRoutingConfig,
   ProfileRuntimeConfig,
   ProxyRouteTarget,
   ProxyRuntimeConfig,
@@ -46,6 +67,7 @@ import type {
   RouterRuleOperator,
   RouterRuleRewrite,
   RouterRuleRewriteOperation,
+  RouterRuleScript,
   RouterRuleType,
   TrayBalanceProgressConfig,
   TrayComponentVariants,
@@ -67,12 +89,14 @@ type LoadedBotGatewayConfig = Partial<Omit<BotGatewayRuntimeConfig, "handoff">> 
   handoff?: Partial<BotGatewayRuntimeConfig["handoff"]>;
 };
 
-type LoadedAppConfig = Partial<Omit<AppConfig, "Router" | "agent" | "botGateway" | "gateway" | "observability" | "profile" | "proxy" | "toolHub">> & {
+type LoadedAppConfig = Partial<Omit<AppConfig, "Router" | "agent" | "botGateway" | "contextArchive" | "gateway" | "mediaTools" | "observability" | "profile" | "proxy" | "toolHub">> & {
   Router?: Partial<RouterConfig>;
   agent?: Partial<GatewayAgentConfig>;
   botConfigs?: BotGatewaySavedConfig[];
   botGateway?: LoadedBotGatewayConfig;
+  contextArchive?: Partial<ContextArchiveConfig>;
   gateway?: Partial<AppConfig["gateway"]>;
+  mediaTools?: Partial<MediaToolsConfig>;
   observability?: Partial<ObservabilityConfig>;
   profile?: LoadedProfileConfig;
   proxy?: Partial<ProxyRuntimeConfig>;
@@ -82,7 +106,13 @@ type LoadedAppConfig = Partial<Omit<AppConfig, "Router" | "agent" | "botGateway"
 export type RawAppConfigSource = "default" | "legacy-json" | "sqlite";
 
 type RawAppConfigLoadResult = {
+  legacyJsonFile?: string;
   source: RawAppConfigSource;
+  value: Partial<AppConfig>;
+};
+
+type LegacyJsonConfigLoadResult = {
+  file: string;
   value: Partial<AppConfig>;
 };
 
@@ -95,10 +125,10 @@ const REMOVED_LEGACY_ROUTER_RULE_IDS = new Set([
 ]);
 const INTERNAL_GATEWAY_CORE_HOST = "127.0.0.1";
 const GENERATED_GATEWAY_API_KEY_ID = "local-gateway";
+const GATEWAY_PLUGIN_PERMISSION_ID_SET = new Set<string>(GATEWAY_PLUGIN_PERMISSION_IDS);
 
 const DEFAULT_CONFIG: AppConfig = createDefaultAppConfig({
-  coreHost: INTERNAL_GATEWAY_CORE_HOST,
-  generatedConfigFile: GATEWAY_CONFIG_FILE
+  coreHost: INTERNAL_GATEWAY_CORE_HOST
 });
 
 function completeBotGatewayConfig(config: LoadedBotGatewayConfig | undefined): BotGatewayRuntimeConfig {
@@ -170,6 +200,9 @@ function defaultBotGatewayAuthType(platform: string): string {
   if (platform === "slack" || platform === "discord" || platform === "telegram" || platform === "line") {
     return "bot_token";
   }
+  if (platform === "imessage") {
+    return "local";
+  }
   return "";
 }
 
@@ -223,6 +256,7 @@ export async function loadAppConfig(): Promise<AppConfig> {
     const persistedApiKeys = (await loadPersistedApiKeys()).filter((apiKey) => !isDefaultSeedApiKey(apiKey));
     const loadedApiKeys = uniqueApiKeyConfigs([...persistedApiKeys, ...configFileApiKeys]);
     const apiKeys = ensureGatewayApiKeys(loadedApiKeys);
+    const pluginMigration = migrateKnownGatewayPluginConfigs(picked.plugins ?? DEFAULT_CONFIG.plugins);
     const config: AppConfig = withSingleEnabledGlobalProfiles({
       ...DEFAULT_CONFIG,
       ...picked,
@@ -242,19 +276,35 @@ export async function loadAppConfig(): Promise<AppConfig> {
       },
       botConfigs: picked.botConfigs ?? DEFAULT_CONFIG.botConfigs,
       botGateway: completeBotGatewayConfig(picked.botGateway),
+      contextArchive: {
+        enabled: picked.contextArchive?.enabled ?? DEFAULT_CONFIG.contextArchive.enabled,
+        maxBytes: picked.contextArchive?.maxBytes ?? DEFAULT_CONFIG.contextArchive.maxBytes,
+        maxSnapshotBytes: picked.contextArchive?.maxSnapshotBytes ?? DEFAULT_CONFIG.contextArchive.maxSnapshotBytes,
+        maxSnapshots: picked.contextArchive?.maxSnapshots ?? DEFAULT_CONFIG.contextArchive.maxSnapshots,
+        mcpEnabled: picked.contextArchive?.mcpEnabled ?? DEFAULT_CONFIG.contextArchive.mcpEnabled,
+        replayTimeoutMs: picked.contextArchive?.replayTimeoutMs ?? DEFAULT_CONFIG.contextArchive.replayTimeoutMs,
+        retentionDays: picked.contextArchive?.retentionDays ?? DEFAULT_CONFIG.contextArchive.retentionDays,
+        storagePath: picked.contextArchive?.storagePath ?? DEFAULT_CONFIG.contextArchive.storagePath,
+        toolName: picked.contextArchive?.toolName ?? DEFAULT_CONFIG.contextArchive.toolName
+      },
       gateway: {
         ...DEFAULT_CONFIG.gateway,
         ...gatewayConfig,
         coreHost: INTERNAL_GATEWAY_CORE_HOST,
         corePort,
-        generatedConfigFile: GATEWAY_CONFIG_FILE,
         host: gatewayConfig.host ?? host,
         port: gatewayConfig.port ?? port
+      },
+      mediaTools: {
+        ...DEFAULT_CONFIG.mediaTools,
+        ...(picked.mediaTools ?? {}),
+        allowedInputRoots: picked.mediaTools?.allowedInputRoots ?? DEFAULT_CONFIG.mediaTools.allowedInputRoots
       },
       observability: {
         ...DEFAULT_CONFIG.observability,
         ...(picked.observability ?? {})
       },
+      plugins: pluginMigration.plugins,
       preferredProvider:
         picked.preferredProvider || providers[0]?.name || DEFAULT_CONFIG.preferredProvider,
       profile: {
@@ -288,11 +338,15 @@ export async function loadAppConfig(): Promise<AppConfig> {
       }
     });
     const shouldPersistApiKeys = loadedApiKeys.length === 0 || hasConfigFileApiKeys(rawValue) || configFileApiKeys.length > 0;
-    if (shouldPersistApiKeys) {
-      await replacePersistedApiKeys(apiKeys);
+    const shouldRepairProviderCapabilities = hasUnsupportedNvidiaCapabilities(value.Providers);
+    const shouldRepairKnownPlugins = pluginMigration.changed;
+    if (loadedRawConfig.source !== "sqlite" || shouldPersistApiKeys || shouldRepairProviderCapabilities || shouldRepairKnownPlugins) {
+      await replacePersistedConfigSnapshot(sanitizeConfigForDisk(config), apiKeys);
     }
-    if (loadedRawConfig.source !== "sqlite" || shouldPersistApiKeys) {
-      await writeSanitizedConfig(config);
+    if (loadedRawConfig.source === "legacy-json" && loadedRawConfig.legacyJsonFile) {
+      await archiveLegacyJsonConfigFiles([loadedRawConfig.legacyJsonFile]).catch((archiveError) => {
+        console.warn(`[config] Failed to archive legacy JSON config: ${formatError(archiveError)}`);
+      });
     }
     return config;
   } catch (error) {
@@ -315,27 +369,191 @@ export async function loadAppConfig(): Promise<AppConfig> {
   }
 }
 
+let appConfigWriteQueue: Promise<void> = Promise.resolve();
+let appThemePreferenceOverride: AppConfig["theme"] | undefined;
+
+/** Save settings; change gateway credentials through saveApiKeysConfig instead. */
 export async function saveAppConfig(config: AppConfig): Promise<AppConfig> {
+  return enqueueAppConfigWrite(() => saveAppConfigNow(config));
+}
+
+export async function saveAppThemePreference(theme: unknown): Promise<AppConfig["theme"]> {
+  const normalizedTheme = normalizeAppThemePreference(theme);
+  appThemePreferenceOverride = normalizedTheme;
+  return enqueueAppConfigWrite(async () => {
+    const currentConfig = await loadAppConfig();
+    await writeSanitizedConfig({
+      ...currentConfig,
+      theme: normalizedTheme
+    });
+    return normalizedTheme;
+  });
+}
+
+async function saveAppConfigNow(config: AppConfig): Promise<AppConfig> {
   const normalizedConfig = withSingleEnabledGlobalProfiles(config);
   assertProviderApiKeysAreSafe(normalizedConfig);
-  const apiKeys = ensureGatewayApiKeys(normalizeApiKeys(normalizedConfig.APIKEYS, normalizedConfig.APIKEY).filter((apiKey) => !isDefaultSeedApiKey(apiKey)));
-  await replacePersistedApiKeys(apiKeys);
+  const pluginMigration = migrateKnownGatewayPluginConfigs(normalizedConfig.plugins);
+  // Credentials have their own save operation. A settings snapshot may predate
+  // a key revocation or rotation, so it must never replace the credential table.
   await writeSanitizedConfig({
     ...normalizedConfig,
-    APIKEY: apiKeys[0]?.key ?? "",
-    APIKEYS: apiKeys
+    theme: appThemePreferenceOverride ?? normalizedConfig.theme,
+    plugins: pluginMigration.plugins
   });
   return loadAppConfig();
 }
 
+function normalizeAppThemePreference(theme: unknown): AppConfig["theme"] {
+  if (theme === "system" || theme === "light" || theme === "dark") {
+    return theme;
+  }
+  throw new Error("Invalid theme preference.");
+}
+
+function enqueueAppConfigWrite<T>(operation: () => Promise<T>): Promise<T> {
+  const result = appConfigWriteQueue.then(operation, operation);
+  appConfigWriteQueue = result.then(
+    () => undefined,
+    () => undefined
+  );
+  return result;
+}
+
 function withSingleEnabledGlobalProfiles(config: AppConfig): AppConfig {
+  const profiles = enforceSingleEnabledGlobalProfilePerAgent(config.profile.profiles);
   return {
     ...config,
-    profile: {
+    Providers: config.Providers.map(normalizeProviderPresetCapabilities),
+    profile: synchronizeLegacyProfileConfig({
       ...config.profile,
-      profiles: enforceSingleEnabledGlobalProfilePerAgent(config.profile.profiles)
-    }
+      profiles
+    })
   };
+}
+
+function synchronizeLegacyProfileConfig(profile: AppConfig["profile"]): AppConfig["profile"] {
+  const profiles = enforceSingleEnabledGlobalProfilePerAgent(profile.profiles);
+  const profileEnabled = profile.enabled !== false && profiles.some((item) => item.enabled);
+  const claudeCodeProfile = profileEnabled ? activeGlobalProfile(profiles, "claude-code") : undefined;
+  const codexProfile = profileEnabled ? activeGlobalProfile(profiles, "codex") : undefined;
+
+  return {
+    ...profile,
+    enabled: profileEnabled,
+    claudeCode: synchronizeLegacyClaudeCodeProfile(profile.claudeCode, claudeCodeProfile),
+    codex: synchronizeLegacyCodexProfile(profile.codex, codexProfile),
+    profiles
+  };
+}
+
+function activeGlobalProfile(profiles: ProfileConfig[], agent: ProfileConfig["agent"]): ProfileConfig | undefined {
+  return profiles.find((profile) => profile.agent === agent && isEnabledGlobalProfile(profile));
+}
+
+function synchronizeLegacyClaudeCodeProfile(
+  legacy: ClaudeCodeProfileConfig,
+  profile: ProfileConfig | undefined
+): ClaudeCodeProfileConfig {
+  if (!profile) {
+    return {
+      ...legacy,
+      enabled: false
+    };
+  }
+  return {
+    ...legacy,
+    enabled: true,
+    fableModel: profile.fableModel ?? legacy.fableModel,
+    haikuModel: profile.haikuModel ?? legacy.haikuModel,
+    managedCompact: profile.managedCompact ?? legacy.managedCompact,
+    model: profile.model,
+    opusModel: profile.opusModel ?? legacy.opusModel,
+    settingsFile: profile.settingsFile ?? legacy.settingsFile,
+    sonnetModel: profile.sonnetModel ?? legacy.sonnetModel,
+    smallFastModel: profile.smallFastModel ?? legacy.smallFastModel
+  };
+}
+
+function synchronizeLegacyCodexProfile(
+  legacy: CodexProfileConfig,
+  profile: ProfileConfig | undefined
+): CodexProfileConfig {
+  if (!profile) {
+    return {
+      ...legacy,
+      enabled: false
+    };
+  }
+  return {
+    ...legacy,
+    cliMiddleware: profile.cliMiddleware ?? legacy.cliMiddleware,
+    codexCliPath: profile.codexCliPath ?? legacy.codexCliPath,
+    codexHome: profile.codexHome ?? legacy.codexHome,
+    configFormat: profile.configFormat ?? legacy.configFormat,
+    configFile: profile.configFile ?? legacy.configFile,
+    enabled: true,
+    managedCompact: profile.managedCompact ?? legacy.managedCompact,
+    model: profile.model,
+    providerId: profile.providerId ?? legacy.providerId,
+    providerName: profile.providerName ?? legacy.providerName,
+    showAllSessions: profile.showAllSessions ?? legacy.showAllSessions
+  };
+}
+
+function normalizeProviderPresetCapabilities(provider: GatewayProviderConfig): GatewayProviderConfig {
+  const preset = findProviderPresetByBaseUrl(providerBaseUrl(provider));
+  if (preset?.id !== "nvidia") {
+    return provider;
+  }
+
+  const chatCapability = provider.capabilities?.find((capability) =>
+    capability.type === "openai_chat_completions"
+  );
+  const presetBaseUrl = primaryProviderPresetEndpoint(preset)?.baseUrl ?? providerBaseUrl(provider);
+  return {
+    ...provider,
+    capabilities: [{
+      baseUrl: chatCapability?.baseUrl || presetBaseUrl,
+      endpoint: chatCapability?.endpoint,
+      source: chatCapability?.source ?? "preset",
+      type: "openai_chat_completions"
+    }]
+  };
+}
+
+export function normalizeProviderPresetCapabilitiesForTest(
+  provider: GatewayProviderConfig
+): GatewayProviderConfig {
+  return normalizeProviderPresetCapabilities(provider);
+}
+
+export function parseProvidersForTest(value: unknown): GatewayProviderConfig[] | undefined {
+  return parseProviders(value);
+}
+
+function hasUnsupportedNvidiaCapabilities(value: unknown): boolean {
+  if (!Array.isArray(value)) {
+    return false;
+  }
+  return value.some((item) => {
+    if (!isObject(item)) {
+      return false;
+    }
+    const baseUrl = readString(item.api_base_url) || readString(item.baseUrl) || readString(item.baseurl);
+    if (!baseUrl || findProviderPresetByBaseUrl(baseUrl)?.id !== "nvidia" || !Array.isArray(item.capabilities)) {
+      return false;
+    }
+    return item.capabilities.some((capability) => {
+      if (!isObject(capability)) {
+        return false;
+      }
+      const protocol = parseProviderCapabilityProtocol(
+        readString(capability.type) || readString(capability.protocol)
+      );
+      return Boolean(protocol && protocol !== "openai_chat_completions");
+    });
+  });
 }
 
 function assertProviderApiKeysAreSafe(config: AppConfig): void {
@@ -445,8 +663,10 @@ function providerCredentialApiKey(credential: ProviderCredentialConfig): string 
 
 export async function saveApiKeysConfig(apiKeys: ApiKeyConfig[]): Promise<AppConfig> {
   const normalized = ensureGatewayApiKeys(normalizeApiKeys(apiKeys, undefined).filter((apiKey) => !isDefaultSeedApiKey(apiKey)));
-  await replacePersistedApiKeys(normalized);
-  return loadAppConfig();
+  return enqueueAppConfigWrite(async () => {
+    await replacePersistedApiKeys(normalized);
+    return loadAppConfig();
+  });
 }
 
 async function loadRawAppConfig(): Promise<RawAppConfigLoadResult> {
@@ -461,8 +681,9 @@ async function loadRawAppConfig(): Promise<RawAppConfigLoadResult> {
   const legacyConfig = readLegacyJsonConfig();
   if (legacyConfig) {
     return {
+      legacyJsonFile: legacyConfig.file,
       source: "legacy-json",
-      value: legacyConfig
+      value: legacyConfig.value
     };
   }
 
@@ -472,8 +693,8 @@ async function loadRawAppConfig(): Promise<RawAppConfigLoadResult> {
   };
 }
 
-function readLegacyJsonConfig(): Partial<AppConfig> | undefined {
-  const files = uniqueStrings([CONFIG_FILE, LEGACY_WINDOWS_CONFIG_FILE, LEGACY_CONFIG_FILE]);
+function readLegacyJsonConfig(): LegacyJsonConfigLoadResult | undefined {
+  const files = uniqueStrings([LEGACY_ACTIVE_CONFIG_FILE, LEGACY_WINDOWS_CONFIG_FILE, LEGACY_CONFIG_FILE]);
   for (const file of files) {
     if (!existsSync(file)) {
       continue;
@@ -481,7 +702,10 @@ function readLegacyJsonConfig(): Partial<AppConfig> | undefined {
     try {
       const parsed = JSON.parse(readFileSync(file, "utf8")) as unknown;
       if (isObject(parsed)) {
-        return parsed as Partial<AppConfig>;
+        return {
+          file,
+          value: parsed as Partial<AppConfig>
+        };
       }
       console.warn(`[config] Ignoring legacy config with non-object root: ${file}`);
     } catch (error) {
@@ -495,29 +719,28 @@ async function writeSanitizedConfig(config: AppConfig): Promise<void> {
   await replacePersistedAppConfig(sanitizeConfigForDisk(config));
 }
 
-function sanitizeConfigForDisk(config: AppConfig): AppConfig {
+function sanitizeConfigForDisk(config: AppConfig): Record<string, unknown> {
+  const { coreHost: _coreHost, corePort: _corePort, ...gateway } = config.gateway;
   return {
     ...config,
     APIKEY: "",
     APIKEYS: [],
-    gateway: {
-      ...config.gateway,
-      coreHost: INTERNAL_GATEWAY_CORE_HOST
-    },
+    gateway,
     Providers: withProviderIds(config.Providers),
     profile: sanitizeProfileConfigForDisk(config.profile)
   };
 }
 
 function sanitizeProfileConfigForDisk(profile: AppConfig["profile"]): AppConfig["profile"] {
-  const { remoteFrontendMode: _remoteFrontendMode, ...codex } = profile.codex as AppConfig["profile"]["codex"] & {
+  const synchronizedProfile = synchronizeLegacyProfileConfig(profile);
+  const { remoteFrontendMode: _remoteFrontendMode, ...codex } = synchronizedProfile.codex as AppConfig["profile"]["codex"] & {
     remoteFrontendMode?: unknown;
   };
   return {
-    ...profile,
+    ...synchronizedProfile,
     codex,
-    profiles: profile.profiles.map((profileItem) => {
-      if (profileItem.agent !== "codex" && profileItem.agent !== "zcode") {
+    profiles: synchronizedProfile.profiles.map((profileItem) => {
+      if (profileItem.agent !== "codex" && profileItem.agent !== "opencode" && profileItem.agent !== "kilo" && profileItem.agent !== "workbuddy" && profileItem.agent !== "zcode") {
         return profileItem;
       }
       const {
@@ -565,8 +788,9 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   if (Array.isArray((value as Record<string, unknown>).providerPlugins)) {
     config.providerPlugins = (value as Record<string, unknown>).providerPlugins as unknown[];
   }
-  if (Array.isArray((value as Record<string, unknown>).virtualModelProfiles)) {
-    config.virtualModelProfiles = (value as Record<string, unknown>).virtualModelProfiles as AppConfig["virtualModelProfiles"];
+  const virtualModelProfiles = (value as Record<string, unknown>).virtualModelProfiles;
+  if (Array.isArray(virtualModelProfiles)) {
+    config.virtualModelProfiles = virtualModelProfiles.map(removeVirtualModelToolLoopLimits) as AppConfig["virtualModelProfiles"];
   }
   const plugins = parseGatewayPlugins((value as Record<string, unknown>).plugins ?? (value as Record<string, unknown>).gatewayPlugins);
   if (plugins) {
@@ -587,6 +811,10 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   const botConfigs = parseBotGatewaySavedConfigs((value as Record<string, unknown>).botConfigs ?? (value as Record<string, unknown>).bot_configs);
   if (botConfigs) {
     config.botConfigs = botConfigs;
+  }
+  const contextArchive = parseContextArchive((value as Record<string, unknown>).contextArchive ?? (value as Record<string, unknown>).context_archive);
+  if (contextArchive) {
+    config.contextArchive = contextArchive;
   }
   if (typeof value.autoStart === "boolean") {
     config.autoStart = value.autoStart;
@@ -626,6 +854,10 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   if (observability) {
     config.observability = observability;
   }
+  const mediaTools = parseMediaTools((value as Record<string, unknown>).mediaTools ?? (value as Record<string, unknown>).media_tools ?? (value as Record<string, unknown>).grokMedia ?? (value as Record<string, unknown>).grok_media);
+  if (mediaTools) {
+    config.mediaTools = mediaTools;
+  }
   const toolHub = parseToolHub((value as Record<string, unknown>).toolHub ?? (value as Record<string, unknown>).tool_hub);
   if (toolHub) {
     config.toolHub = toolHub;
@@ -642,6 +874,10 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   const trayIcon = parseTrayIconPreference((value as Record<string, unknown>).trayIcon);
   if (trayIcon) {
     config.trayIcon = trayIcon;
+  }
+  const trayShowTokenRate = (value as Record<string, unknown>).trayShowTokenRate;
+  if (typeof trayShowTokenRate === "boolean") {
+    config.trayShowTokenRate = trayShowTokenRate;
   }
   const trayBalanceProgress = parseTrayBalanceProgress((value as Record<string, unknown>).trayBalanceProgress);
   if (trayBalanceProgress) {
@@ -676,6 +912,70 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   return config;
 }
 
+function parseContextArchive(value: unknown): Partial<ContextArchiveConfig> | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const contextArchive: Partial<ContextArchiveConfig> = {};
+  if (typeof value.enabled === "boolean") {
+    contextArchive.enabled = value.enabled;
+  }
+  const mcpEnabled = value.mcpEnabled ?? value.mcp_enabled;
+  if (typeof mcpEnabled === "boolean") {
+    contextArchive.mcpEnabled = mcpEnabled;
+  }
+  const maxBytes = readNumber(value.maxBytes ?? value.max_bytes);
+  if (maxBytes !== undefined) {
+    contextArchive.maxBytes = clampNumber(maxBytes, 1024 * 1024, 64 * 1024 * 1024 * 1024);
+  }
+  const maxSnapshotBytes = readNumber(value.maxSnapshotBytes ?? value.max_snapshot_bytes);
+  if (maxSnapshotBytes !== undefined) {
+    contextArchive.maxSnapshotBytes = clampNumber(maxSnapshotBytes, 64 * 1024, 1024 * 1024 * 1024);
+  }
+  const maxSnapshots = readNumber(value.maxSnapshots ?? value.max_snapshots);
+  if (maxSnapshots !== undefined) {
+    contextArchive.maxSnapshots = clampNumber(maxSnapshots, 1, 100000);
+  }
+  const replayTimeoutMs = readNumber(value.replayTimeoutMs ?? value.replay_timeout_ms);
+  if (replayTimeoutMs !== undefined) {
+    contextArchive.replayTimeoutMs = clampNumber(replayTimeoutMs, 1000, 600000);
+  }
+  const retentionDays = readNumber(value.retentionDays ?? value.retention_days);
+  if (retentionDays !== undefined) {
+    contextArchive.retentionDays = clampNumber(retentionDays, 1, 3650);
+  }
+  const storagePath = readString(value.storagePath ?? value.storage_path);
+  if (storagePath !== undefined) {
+    contextArchive.storagePath = storagePath;
+  }
+  const toolName = readString(value.toolName ?? value.tool_name);
+  if (toolName !== undefined) {
+    contextArchive.toolName = toolName;
+  }
+
+  return Object.keys(contextArchive).length ? contextArchive : undefined;
+}
+
+function removeVirtualModelToolLoopLimits(value: unknown): unknown {
+  if (
+    !isObject(value) ||
+    !isObject(value.execution) ||
+    (!("maxTurns" in value.execution) && !("maxToolCalls" in value.execution))
+  ) {
+    return value;
+  }
+  const { maxToolCalls: _maxToolCalls, maxTurns: _maxTurns, ...execution } = value.execution;
+  return {
+    ...value,
+    execution
+  };
+}
+
+export function virtualModelProfileFromRawForTest(value: unknown): unknown {
+  return removeVirtualModelToolLoopLimits(value);
+}
+
 function parseObservability(value: unknown): Partial<ObservabilityConfig> | undefined {
   if (!isObject(value)) {
     return undefined;
@@ -687,6 +987,15 @@ function parseObservability(value: unknown): Partial<ObservabilityConfig> | unde
   }
   if (typeof value.agentAnalysis === "boolean") {
     observability.agentAnalysis = value.agentAnalysis;
+  }
+  if (value.requestLogBodyCapture === "all" || value.requestLogBodyCapture === "errors" || value.requestLogBodyCapture === "none") {
+    observability.requestLogBodyCapture = value.requestLogBodyCapture;
+  }
+  if (typeof value.requestLogMaxBodyBytes === "number" && Number.isFinite(value.requestLogMaxBodyBytes)) {
+    observability.requestLogMaxBodyBytes = Math.max(0, Math.min(maxRequestLogBodyBytes, Math.floor(value.requestLogMaxBodyBytes)));
+  }
+  if (typeof value.requestLogSuccessSampleRate === "number" && Number.isFinite(value.requestLogSuccessSampleRate)) {
+    observability.requestLogSuccessSampleRate = Math.max(0, Math.min(1, value.requestLogSuccessSampleRate));
   }
   return Object.keys(observability).length ? observability : undefined;
 }
@@ -738,6 +1047,34 @@ function parseToolHub(value: unknown): Partial<ToolHubConfig> | undefined {
   return Object.keys(toolHub).length ? toolHub : undefined;
 }
 
+function parseMediaTools(value: unknown): Partial<MediaToolsConfig> | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const config: Partial<MediaToolsConfig> = {};
+  if (typeof value.enabled === "boolean") config.enabled = value.enabled;
+  const rawAllowedInputRoots = value.allowedInputRoots ?? value.allowed_input_roots;
+  if (Array.isArray(rawAllowedInputRoots)) {
+    config.allowedInputRoots = rawAllowedInputRoots
+      .filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+      .map((item) => item.trim());
+  }
+  const artifactTtlHours = readNumber(value.artifactTtlHours ?? value.artifact_ttl_hours);
+  if (artifactTtlHours !== undefined) config.artifactTtlHours = clampNumber(artifactTtlHours, 1, 720);
+  const jobTimeoutMs = readNumber(value.jobTimeoutMs ?? value.job_timeout_ms);
+  if (jobTimeoutMs !== undefined) config.jobTimeoutMs = clampNumber(jobTimeoutMs, 30000, 3600000);
+  const maxImageConcurrency = readNumber(value.maxImageConcurrency ?? value.max_image_concurrency);
+  if (maxImageConcurrency !== undefined) config.maxImageConcurrency = clampNumber(maxImageConcurrency, 1, 8);
+  const maxVideoConcurrency = readNumber(value.maxVideoConcurrency ?? value.max_video_concurrency);
+  if (maxVideoConcurrency !== undefined) config.maxVideoConcurrency = clampNumber(maxVideoConcurrency, 1, 4);
+  return Object.keys(config).length ? config : undefined;
+}
+
+export function mediaToolsConfigFromRawForTest(value: unknown): Partial<MediaToolsConfig> | undefined {
+  return parseMediaTools(value);
+}
+
 function parseOverviewWidgets(value: unknown): OverviewWidgetConfig[] | undefined {
   if (!Array.isArray(value)) {
     return undefined;
@@ -757,9 +1094,14 @@ function parseOverviewWidget(value: unknown): OverviewWidgetConfig | undefined {
     return undefined;
   }
   const metric = type === "metric" ? parseOverviewMetricKind(value.metric) ?? "requests" : undefined;
-  const accountProvider = type === "account-balance" ? readString(value.accountProvider) : undefined;
+  const accountProviders = type === "account-balance" ? parseOverviewAccountProviders(value) : [];
+  const accountCardOrder = type === "account-balance" ? parseOverviewAccountCardOrder(value.accountCardOrder) : [];
+  const accountCardSizes = type === "account-balance" ? parseOverviewAccountCardSizes(value.accountCardSizes) : undefined;
   return {
-    ...(accountProvider ? { accountProvider } : {}),
+    ...(accountCardOrder.length > 0 ? { accountCardOrder } : {}),
+    ...(accountCardSizes ? { accountCardSizes } : {}),
+    ...(accountProviders.length === 1 ? { accountProvider: accountProviders[0] } : {}),
+    ...(accountProviders.length > 0 ? { accountProviders } : {}),
     enabled: typeof value.enabled === "boolean" ? value.enabled : true,
     id: readString(value.id) || overviewWidgetId(type, metric),
     ...(metric ? { metric } : {}),
@@ -767,6 +1109,43 @@ function parseOverviewWidget(value: unknown): OverviewWidgetConfig | undefined {
     type,
     variant: parseOverviewWidgetVariant(value.variant) ?? defaultOverviewWidgetVariant(type)
   };
+}
+
+function parseOverviewAccountProviders(value: Record<string, unknown>): string[] {
+  const accountProvider = readString(value.accountProvider);
+  return uniqueStrings([
+    ...parseStringList(value.accountProviders),
+    ...(accountProvider ? [accountProvider] : [])
+  ]);
+}
+
+function parseOverviewAccountCardOrder(value: unknown): string[] {
+  return uniqueStrings(parseStringList(value));
+}
+
+function parseOverviewAccountCardSizes(value: unknown): Record<string, OverviewAccountCardSize> | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const sizes: Record<string, OverviewAccountCardSize> = {};
+  for (const [key, rawSize] of Object.entries(value)) {
+    const accountKey = key.trim();
+    const size = parseOverviewAccountCardSize(rawSize);
+    if (accountKey && size) {
+      sizes[accountKey] = size;
+    }
+  }
+  return Object.keys(sizes).length > 0 ? sizes : undefined;
+}
+
+function parseOverviewAccountCardSize(value: unknown): OverviewAccountCardSize | undefined {
+  if (value === "small") {
+    return "1:1";
+  }
+  if (value === "large") {
+    return "1:2";
+  }
+  return parseEnumValue(value, ["1:1", "1:2", "2:1", "2:2"], undefined);
 }
 
 function parseOverviewWidgetType(value: unknown): OverviewWidgetType | undefined {
@@ -913,11 +1292,22 @@ function parseTrayWidget(value: unknown): TrayWidgetConfig | undefined {
     return undefined;
   }
   const variant = parseTrayWidgetVariant(type, value.variant);
+  const accountProviders = type === "account" ? parseTrayWidgetAccountProviders(value) : [];
   return {
+    ...(accountProviders.length === 1 ? { accountProvider: accountProviders[0] } : {}),
+    ...(accountProviders.length > 0 ? { accountProviders } : {}),
     id: readString(value.id) || trayWidgetId(type),
     type,
     ...(variant ? { variant } : {})
   };
+}
+
+function parseTrayWidgetAccountProviders(value: Record<string, unknown>): string[] {
+  const accountProvider = readString(value.accountProvider);
+  return uniqueStrings([
+    ...parseStringList(value.accountProviders),
+    ...(accountProvider ? [accountProvider] : [])
+  ]);
 }
 
 function parseTrayWidgetType(value: unknown): TrayWidgetType | undefined {
@@ -1035,6 +1425,7 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
         : [];
       const modelDescriptions = parseModelDescriptions(item.modelDescriptions ?? item.model_descriptions, models);
       const modelDisplayNames = parseModelDisplayNames(item.modelDisplayNames ?? item.model_display_names, models);
+      const modelMetadata = parseModelMetadata(item.modelMetadata ?? item.model_metadata, models);
 
       if (!name) {
         return undefined;
@@ -1049,21 +1440,33 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
         baseUrl: readString(item.baseUrl),
         baseurl: readString(item.baseurl),
         billing: item.billing,
-        capabilities: parseProviderCapabilities(item.capabilities),
+        capabilities: parseProviderCapabilities(item.capabilities)
+          ?? parseProviderProtocolCapability(item),
         credentials: parseProviderCredentials(item.credentials ?? item.keys ?? item.apiKeys),
         extraBody: item.extraBody,
-        extraHeaders: item.extraHeaders,
+        extraHeaders: item.extraHeaders ?? item.extra_headers ?? item.headers,
         icon: readString(item.icon),
         id: readString(item.id),
+        enabled: item.enabled === false ? false : undefined,
+        autoFetchModels: readBoolean(item.autoFetchModels ?? item.auto_fetch_models ?? item.autoRefreshModels ?? item.auto_refresh_models),
+        autoFetchKnownModels: parseStringArray(item.autoFetchKnownModels ?? item.auto_fetch_known_models ?? item.autoRefreshKnownModels ?? item.auto_refresh_known_models),
         modelDescriptions,
         modelDisplayNames,
+        modelMetadata,
         models,
         name,
         provider: readString(item.provider),
+        protocolDetectionMode: parseEnumValue(item.protocolDetectionMode, ["auto", "manual"], undefined),
         transformer: item.transformer,
         type: readString(item.type)
       };
-      return normalizeCodexProviderAccountConfig(provider);
+      return removeOpenCodeProviderAccountConfig(
+        normalizeProviderPresetCapabilities(
+          normalizeGrokProviderMediaCapabilities(
+            normalizeGrokProviderAccountConfig(normalizeCodexProviderAccountConfig(provider))
+          )
+        )
+      );
     })
     .filter((item): item is GatewayProviderConfig => Boolean(item));
 
@@ -1100,6 +1503,157 @@ function parseModelDisplayNames(value: unknown, models: string[]): Record<string
     });
 
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function parseModelMetadata(value: unknown, models: string[]): Record<string, ProviderModelMetadata> | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const modelIds = new Set(models);
+  const entries = Object.entries(value)
+    .map(([rawModel, rawMetadata]) => [rawModel.trim(), parseProviderModelMetadata(rawMetadata)] as const)
+    .filter((entry): entry is [string, ProviderModelMetadata] => {
+      const [model, metadata] = entry;
+      return Boolean(model && metadata && modelIds.has(model));
+    });
+
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function parseProviderModelMetadata(value: unknown): ProviderModelMetadata | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const supportedReasoningLevels = parseProviderReasoningLevels(value.supportedReasoningLevels ?? value.supported_reasoning_levels);
+  const capabilities = parseProviderModelCapabilities(value.capabilities);
+  const contextWindow = readPositiveInteger(value.contextWindow ?? value.context_window);
+  const effectiveContextWindowPercent = readPercentage(value.effectiveContextWindowPercent ?? value.effective_context_window_percent);
+  const maxContextWindow = readPositiveInteger(value.maxContextWindow ?? value.max_context_window);
+  const maxOutputTokens = readPositiveInteger(value.maxOutputTokens ?? value.max_output_tokens ?? value.outputTokens ?? value.output_tokens);
+  const openRouterDiscountRouting = parseOpenRouterDiscountRouting(value.openRouterDiscountRouting ?? value.open_router_discount_routing);
+  const pricing = parseProviderModelPricing(value.pricing);
+  const metadata: ProviderModelMetadata = {
+    ...(Array.isArray(value.additionalSpeedTiers) ? { additionalSpeedTiers: value.additionalSpeedTiers } : {}),
+    ...(Array.isArray(value.additional_speed_tiers) ? { additionalSpeedTiers: value.additional_speed_tiers } : {}),
+    ...(capabilities ? { capabilities } : {}),
+    ...(contextWindow ? { contextWindow } : {}),
+    ...(value.contextWindowPinned === true || value.context_window_pinned === true ? { contextWindowPinned: true } : {}),
+    ...(value.defaultReasoningLevel === null ? { defaultReasoningLevel: null } : {}),
+    ...(readString(value.defaultReasoningLevel) ? { defaultReasoningLevel: readString(value.defaultReasoningLevel) } : {}),
+    ...(value.default_reasoning_level === null ? { defaultReasoningLevel: null } : {}),
+    ...(readString(value.default_reasoning_level) ? { defaultReasoningLevel: readString(value.default_reasoning_level) } : {}),
+    ...(readString(value.defaultReasoningSummary) ? { defaultReasoningSummary: readString(value.defaultReasoningSummary) } : {}),
+    ...(readString(value.default_reasoning_summary) ? { defaultReasoningSummary: readString(value.default_reasoning_summary) } : {}),
+    ...(effectiveContextWindowPercent ? { effectiveContextWindowPercent } : {}),
+    ...(maxContextWindow ? { maxContextWindow } : {}),
+    ...(maxOutputTokens ? { maxOutputTokens } : {}),
+    ...(openRouterDiscountRouting ? { openRouterDiscountRouting } : {}),
+    ...(pricing ? { pricing } : {}),
+    ...(Array.isArray(value.serviceTiers) ? { serviceTiers: value.serviceTiers } : {}),
+    ...(Array.isArray(value.service_tiers) ? { serviceTiers: value.service_tiers } : {}),
+    ...(typeof value.supportsFastMode === "boolean" ? { supportsFastMode: value.supportsFastMode } : {}),
+    ...(typeof value.supports_fast_mode === "boolean" ? { supportsFastMode: value.supports_fast_mode } : {}),
+    ...(supportedReasoningLevels ? { supportedReasoningLevels } : {}),
+    ...(typeof value.supportsReasoningSummaries === "boolean" ? { supportsReasoningSummaries: value.supportsReasoningSummaries } : {}),
+    ...(typeof value.supports_reasoning_summaries === "boolean" ? { supportsReasoningSummaries: value.supports_reasoning_summaries } : {})
+  };
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
+function parseOpenRouterDiscountRouting(value: unknown): ProviderModelMetadata["openRouterDiscountRouting"] {
+  if (value === true) {
+    return { enabled: true };
+  }
+  if (value === false || !isObject(value)) {
+    return undefined;
+  }
+  const providerBlacklist = parseStringList(value.providerBlacklist ?? value.provider_blacklist ?? value.ignoredProviders ?? value.ignored_providers ?? value.ignore);
+  const routing: NonNullable<ProviderModelMetadata["openRouterDiscountRouting"]> = {
+    ...(typeof value.allowFallbacks === "boolean" ? { allowFallbacks: value.allowFallbacks } : {}),
+    ...(typeof value.allow_fallbacks === "boolean" ? { allowFallbacks: value.allow_fallbacks } : {}),
+    ...(readNonNegativeNumber(value.cacheHitRate ?? value.cache_hit_rate) !== undefined ? { cacheHitRate: readNonNegativeNumber(value.cacheHitRate ?? value.cache_hit_rate) } : {}),
+    ...(typeof value.enabled === "boolean" ? { enabled: value.enabled } : {}),
+    ...(readPositiveInteger(value.endpointTtlMs ?? value.endpoint_ttl_ms ?? value.priceTtlMs ?? value.price_ttl_ms) ? { endpointTtlMs: readPositiveInteger(value.endpointTtlMs ?? value.endpoint_ttl_ms ?? value.priceTtlMs ?? value.price_ttl_ms) } : {}),
+    ...(readPositiveInteger(value.minOutputTokens ?? value.min_output_tokens) ? { minOutputTokens: readPositiveInteger(value.minOutputTokens ?? value.min_output_tokens) } : {}),
+    ...(readNonNegativeNumber(value.minSavingsRatio ?? value.min_savings_ratio) !== undefined ? { minSavingsRatio: readNonNegativeNumber(value.minSavingsRatio ?? value.min_savings_ratio) } : {}),
+    ...(readNonNegativeNumber(value.minSavingsUsd ?? value.min_savings_usd) !== undefined ? { minSavingsUsd: readNonNegativeNumber(value.minSavingsUsd ?? value.min_savings_usd) } : {}),
+    ...(readNonNegativeNumber(value.minUptime5m ?? value.min_uptime_5m) !== undefined ? { minUptime5m: readNonNegativeNumber(value.minUptime5m ?? value.min_uptime_5m) } : {}),
+    ...(readNonNegativeNumber(value.outputTokenRatio ?? value.output_token_ratio) !== undefined ? { outputTokenRatio: readNonNegativeNumber(value.outputTokenRatio ?? value.output_token_ratio) } : {}),
+    ...(providerBlacklist.length > 0 ? { providerBlacklist } : {}),
+    ...(typeof value.requireParameters === "boolean" ? { requireParameters: value.requireParameters } : {}),
+    ...(typeof value.require_parameters === "boolean" ? { requireParameters: value.require_parameters } : {}),
+    ...(typeof value.respectExistingProviderOrder === "boolean" ? { respectExistingProviderOrder: value.respectExistingProviderOrder } : {}),
+    ...(typeof value.respect_existing_provider_order === "boolean" ? { respectExistingProviderOrder: value.respect_existing_provider_order } : {})
+  };
+  return Object.keys(routing).length > 0 ? routing : undefined;
+}
+
+function parseProviderModelCapabilities(value: unknown): ProviderModelCapabilities | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const capabilities: ProviderModelCapabilities = {};
+  const fields: Array<keyof ProviderModelCapabilities> = ["imageInput", "webSearch"];
+  for (const field of fields) {
+    const snakeCaseField = field.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+    const candidate = value[field] ?? value[snakeCaseField];
+    if (typeof candidate === "boolean") {
+      capabilities[field] = candidate;
+    }
+  }
+  return Object.keys(capabilities).length > 0 ? capabilities : undefined;
+}
+
+function parseProviderModelPricing(value: unknown): ProviderModelPricing | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const pricing: ProviderModelPricing = {};
+  const fields: Array<keyof ProviderModelPricing> = [
+    "cacheReadUsdPerMillionTokens",
+    "cacheWriteUsdPerMillionTokens",
+    "cacheWrite1hUsdPerMillionTokens",
+    "cacheWrite5mUsdPerMillionTokens",
+    "inputUsdPerMillionTokens",
+    "outputUsdPerMillionTokens"
+  ];
+  for (const field of fields) {
+    const snakeCaseField = field.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+    const durationSnakeCaseField = snakeCaseField.replace(/([a-z])([0-9])/g, "$1_$2");
+    const parsed = readNonNegativeNumber(value[field] ?? value[durationSnakeCaseField] ?? value[snakeCaseField]);
+    if (parsed !== undefined) {
+      pricing[field] = parsed;
+    }
+  }
+  return Object.keys(pricing).length > 0 ? pricing : undefined;
+}
+
+export function providerModelMetadataFromConfigForTest(value: unknown): ProviderModelMetadata | undefined {
+  return parseProviderModelMetadata(value);
+}
+
+function parseProviderReasoningLevels(value: unknown): ProviderReasoningLevel[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const levels = value
+    .map((item): ProviderReasoningLevel | undefined => {
+      if (!isObject(item)) {
+        const effort = readString(item);
+        return effort ? { description: effort, effort } : undefined;
+      }
+      const effort = readString(item.effort);
+      if (!effort) {
+        return undefined;
+      }
+      return {
+        description: readString(item.description) || effort,
+        effort
+      };
+    })
+    .filter((item): item is ProviderReasoningLevel => Boolean(item));
+  return levels.length > 0 ? levels : value.length === 0 ? [] : undefined;
 }
 
 function withProviderIds(providers: GatewayProviderConfig[]): GatewayProviderConfig[] {
@@ -1231,7 +1785,22 @@ function parseProviderCapabilities(value: unknown): GatewayProviderCapability[] 
   return capabilities.length > 0 ? capabilities : undefined;
 }
 
-function parseProviderCapabilityProtocol(value: string | undefined): GatewayProviderProtocol | undefined {
+// Local-agent login imports (e.g. Codex API) declare their protocol at the top
+// level of the provider payload instead of inside a capabilities array. When no
+// explicit capabilities are configured, translate that protocol into a single
+// capability so the gateway picks the correct upstream adapter. Without this,
+// an openai_responses provider silently falls back to the chat-completions
+// adapter and every request 404s against Responses-only backends.
+function parseProviderProtocolCapability(item: Record<string, unknown>): GatewayProviderCapability[] | undefined {
+  const type = parseProviderCapabilityProtocol(readString(item.protocol));
+  const baseUrl = readString(item.baseUrl) || readString(item.baseurl) || readString(item.api_base_url);
+  if (!type || !baseUrl) {
+    return undefined;
+  }
+  return [{ baseUrl, type }];
+}
+
+function parseProviderCapabilityProtocol(value: string | undefined): GatewayProviderCapabilityProtocol | undefined {
   if (!value) {
     return undefined;
   }
@@ -1241,6 +1810,15 @@ function parseProviderCapabilityProtocol(value: string | undefined): GatewayProv
   }
   if (normalized === "openai_chat" || normalized === "openai_chat_completions") {
     return "openai_chat_completions";
+  }
+  if (normalized === "openai_image_generations" || normalized === "openai_images") {
+    return "openai_image_generations";
+  }
+  if (normalized === "openai_video_generations" || normalized === "openai_videos") {
+    return "openai_video_generations";
+  }
+  if (normalized === "xai_video_generations" || normalized === "xai_videos") {
+    return "xai_video_generations";
   }
   if (normalized === "anthropic" || normalized === "anthropic_messages") {
     return "anthropic_messages";
@@ -1412,6 +1990,7 @@ function parseRouterRules(value: unknown): RouterRule[] | undefined {
         pattern
       });
       const rewrites = parseRouterRuleRewrites(item);
+      const script = type === "script" ? parseRouterRuleScript(item.script ?? item) : undefined;
       const fallback = parseRouterFallback(item.fallback ?? item.failureFallback ?? item.fallbackStrategy);
 
       return {
@@ -1423,9 +2002,10 @@ function parseRouterRules(value: unknown): RouterRule[] | undefined {
         ...(pattern ? { pattern } : {}),
         ...(rewrites.length === 1 ? { rewrite: rewrites[0] } : {}),
         ...(rewrites.length > 0 ? { rewrites } : {}),
+        ...(script ? { script } : {}),
         ...(target ? { target } : {}),
         ...(threshold !== undefined && threshold > 0 ? { threshold } : {}),
-        type: condition ? "condition" : type
+        type: type === "script" ? "script" : condition ? "condition" : type
       };
     })
     .filter((item): item is RouterRule => Boolean(item));
@@ -1439,11 +2019,46 @@ function parseRouterRuleType(value: unknown): RouterRuleType | undefined {
   const normalized = value.trim().toLowerCase();
   if (
     normalized === "condition" ||
-    normalized === "model-prefix"
+    normalized === "model-prefix" ||
+    normalized === "script"
   ) {
     return normalized;
   }
   return undefined;
+}
+
+function parseRouterRuleScript(value: unknown): RouterRuleScript | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const file = readString(value.file ?? value.filePath ?? value.path);
+  const source = typeof value.source === "string"
+    ? value.source
+    : typeof value.code === "string"
+      ? value.code
+      : undefined;
+  if (!file && source === undefined) {
+    return undefined;
+  }
+  const language = readString(value.language)?.toLowerCase();
+  if (language && language !== "javascript" && language !== "js") {
+    return undefined;
+  }
+  const apiVersion = readNumber(value.apiVersion ?? value.version) ?? ROUTER_SCRIPT_API_VERSION;
+  if (apiVersion !== ROUTER_SCRIPT_API_VERSION) {
+    return undefined;
+  }
+  const timeoutValue = readNumber(value.timeoutMs ?? value.timeout);
+  const timeoutMs = timeoutValue === undefined
+    ? ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS
+    : Math.max(10, Math.min(ROUTER_SCRIPT_MAX_TIMEOUT_MS, Math.trunc(timeoutValue)));
+  return {
+    apiVersion: ROUTER_SCRIPT_API_VERSION,
+    ...(file ? { file } : {}),
+    language: "javascript",
+    ...(source !== undefined ? { source } : {}),
+    timeoutMs
+  };
 }
 
 function parseRouterRuleCondition(value: unknown): RouterRuleCondition | undefined {
@@ -1583,7 +2198,7 @@ function readRewriteValue(value: unknown): string | undefined {
 }
 
 function routerRuleTypeLabel(type: RouterRuleType): string {
-  return type === "condition" ? "Condition" : "Legacy";
+  return type === "condition" ? "Condition" : type === "script" ? "JavaScript" : "Legacy";
 }
 
 function parseAgent(value: unknown, legacyMcpServers?: unknown): Partial<GatewayAgentConfig> | undefined {
@@ -1673,6 +2288,22 @@ function parseBotGateway(value: unknown): LoadedBotGatewayConfig | undefined {
     config.forwardAllAgentMessages = Boolean(value.forward_all_agent_messages ?? value.forward_all_codex_messages);
   }
 
+  if (typeof value.mediaEnabled === "boolean") {
+    config.mediaEnabled = value.mediaEnabled;
+  }
+  if (typeof value.streamReplies === "boolean") {
+    config.streamReplies = value.streamReplies;
+  }
+  if (typeof value.shellEnabled === "boolean") {
+    config.shellEnabled = value.shellEnabled;
+  } else if (typeof value.shell_enabled === "boolean") {
+    config.shellEnabled = value.shell_enabled;
+  }
+  const language = readString(value.language);
+  if (language === "auto" || language === "en" || language === "zh-CN") {
+    config.language = language;
+  }
+
   const requestTimeoutMs = readNumber(value.requestTimeoutMs ?? value.request_timeout_ms);
   if (requestTimeoutMs !== undefined) {
     config.requestTimeoutMs = clampNumber(requestTimeoutMs, 1000, 3_600_000);
@@ -1684,6 +2315,22 @@ function parseBotGateway(value: unknown): LoadedBotGatewayConfig | undefined {
   const pollIntervalMs = readNumber(value.pollIntervalMs ?? value.poll_interval_ms);
   if (pollIntervalMs !== undefined) {
     config.pollIntervalMs = clampNumber(pollIntervalMs, 500, 60_000);
+  }
+  const maxTurnTimeMs = readNumber(value.maxTurnTimeMs ?? value.max_turn_time_ms);
+  if (maxTurnTimeMs !== undefined) {
+    config.maxTurnTimeMs = clampNumber(maxTurnTimeMs, 10_000, 3_600_000);
+  }
+  const maxAttachmentBytes = readNumber(value.maxAttachmentBytes ?? value.max_attachment_bytes);
+  if (maxAttachmentBytes !== undefined) {
+    config.maxAttachmentBytes = clampNumber(maxAttachmentBytes, 1024, 100 * 1024 * 1024);
+  }
+  const messageChunkChars = readNumber(value.messageChunkChars ?? value.message_chunk_chars);
+  if (messageChunkChars !== undefined) {
+    config.messageChunkChars = clampNumber(messageChunkChars, 500, 20_000);
+  }
+  const sessionIdleMinutes = readNumber(value.sessionIdleMinutes ?? value.session_idle_minutes);
+  if (sessionIdleMinutes !== undefined) {
+    config.sessionIdleMinutes = clampNumber(sessionIdleMinutes, 0, 43_200);
   }
 
   const handoff = parseBotGatewayHandoff(value.handoff);
@@ -1902,11 +2549,67 @@ function parseProxy(value: unknown): Partial<ProxyRuntimeConfig> | undefined {
   } else if (typeof value.systemProxyEnabled === "boolean") {
     proxy.systemProxy = value.systemProxyEnabled;
   }
+  const upstream = parseProxyUpstream(value.upstream ?? value.upstreamProxy ?? value.outboundProxy);
+  if (upstream) {
+    proxy.upstream = upstream;
+  }
   const targets = parseProxyTargets(value.targets);
   if (targets) {
     proxy.targets = targets;
   }
   return proxy;
+}
+
+function parseProxyUpstream(value: unknown): ProxyRuntimeConfig["upstream"] | undefined {
+  const fallback = DEFAULT_CONFIG.proxy.upstream;
+  if (typeof value === "string") {
+    const mode = parseProxyUpstreamMode(value);
+    return mode ? { ...fallback, mode } : undefined;
+  }
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const mode = parseProxyUpstreamMode(value.mode ?? value.type);
+  const customInput = isObject(value.custom) ? value.custom : value;
+  const server = readString(customInput.server ?? customInput.host ?? customInput.hostname);
+  const port = readPort(customInput.port);
+  const username = readString(customInput.username ?? customInput.user);
+  const password = typeof customInput.password === "string"
+    ? customInput.password
+    : typeof customInput.pass === "string"
+      ? customInput.pass
+      : undefined;
+  const hasCustomInput = server !== undefined || port !== undefined || username !== undefined || password !== undefined;
+
+  return {
+    ...fallback,
+    custom: {
+      ...fallback.custom,
+      ...(server !== undefined ? { server } : {}),
+      ...(port !== undefined ? { port } : {}),
+      ...(username !== undefined ? { username } : {}),
+      ...(password !== undefined ? { password } : {})
+    },
+    mode: mode ?? (hasCustomInput ? "custom" : fallback.mode)
+  };
+}
+
+function parseProxyUpstreamMode(value: unknown): ProxyRuntimeConfig["upstream"]["mode"] | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase().replace(/[\s_-]+/g, "");
+  if (["none", "off", "disabled", "direct", "noproxy"].includes(normalized)) {
+    return "none";
+  }
+  if (["system", "systemproxy", "os", "osproxy", "env", "environment"].includes(normalized)) {
+    return "system";
+  }
+  if (["custom", "manual", "http", "httpproxy"].includes(normalized)) {
+    return "custom";
+  }
+  return undefined;
 }
 
 function parseProxyTargets(value: unknown): ProxyRouteTarget[] | undefined {
@@ -1955,6 +2658,11 @@ function parseGatewayPlugins(value: unknown): GatewayPluginConfig[] | undefined 
       const apps = parseGatewayPluginApps(item.apps);
       const proxyRoutes = parseGatewayPluginProxyRoutes(isObject(item.proxy) ? item.proxy.routes : undefined);
       const coreGateway = parseGatewayPluginCoreGateway(item.coreGateway);
+      const rawSurfaces = item.surfaces ?? item.surface;
+      const parsedPermissions = parseGatewayPluginPermissions(item.permissions);
+      const parsedSurfaces = parseGatewayPluginSurfaces(rawSurfaces);
+      const permissions = item.permissions === undefined ? knownGatewayPluginDefaultPermissions(id) : parsedPermissions;
+      const surfaces = rawSurfaces === undefined ? knownGatewayPluginDefaultSurfaces(id) : parsedSurfaces;
 
       return {
         ...(apps ? { apps } : {}),
@@ -1963,12 +2671,710 @@ function parseGatewayPlugins(value: unknown): GatewayPluginConfig[] | undefined 
         enabled: typeof item.enabled === "boolean" ? item.enabled : true,
         id,
         ...(modulePath ? { module: modulePath } : {}),
-        ...(proxyRoutes ? { proxy: { routes: proxyRoutes } } : {})
+        ...(permissions !== undefined ? { permissions } : {}),
+        ...(proxyRoutes ? { proxy: { routes: proxyRoutes } } : {}),
+        ...(surfaces ? { surfaces } : {})
       };
     })
     .filter((item): item is GatewayPluginConfig => Boolean(item));
 
   return plugins.length ? plugins : undefined;
+}
+
+type GatewayPluginMigrationResult = {
+  changed: boolean;
+  plugins: GatewayPluginConfig[];
+};
+
+const CCR_EXTENSIONS_PLUGIN_IDS = new Set([CLAUDE_DESIGN_PLUGIN_ID, CLAUDE_SHIP_PLUGIN_ID, "cursor-proxy"]);
+
+function migrateKnownGatewayPluginConfigs(plugins: GatewayPluginConfig[] | undefined): GatewayPluginMigrationResult {
+  const sourcePlugins = plugins ?? [];
+  let changed = false;
+  let hasClaudeShip = sourcePlugins.some((plugin) => plugin.id === CLAUDE_SHIP_PLUGIN_ID);
+  const migrated: GatewayPluginConfig[] = [];
+
+  for (const sourcePlugin of sourcePlugins) {
+    const moduleMigration = migrateExternalizedPluginModuleConfig(sourcePlugin);
+    const plugin = moduleMigration.plugin;
+    changed = changed || moduleMigration.changed;
+
+    if (plugin.id === CLAUDE_SHIP_PLUGIN_ID) {
+      const shipMigration = migrateClaudeShipPluginConfig(plugin);
+      changed = changed || shipMigration.changed;
+      migrated.push(shipMigration.plugin);
+      continue;
+    }
+
+    if (plugin.id !== CLAUDE_DESIGN_PLUGIN_ID) {
+      migrated.push(plugin);
+      continue;
+    }
+
+    const designMigration = migrateClaudeDesignPluginConfig(plugin);
+    changed = changed || designMigration.changed;
+    migrated.push(designMigration.plugin);
+
+    if (!hasClaudeShip && shouldSplitClaudeShipPlugin(plugin)) {
+      const shipPlugin = migratedClaudeShipPluginConfig(plugin);
+      if (shipPlugin) {
+        migrated.push(shipPlugin);
+        hasClaudeShip = true;
+        changed = true;
+      }
+    }
+  }
+
+  return {
+    changed,
+    plugins: migrated
+  };
+}
+
+function migrateExternalizedPluginModuleConfig(plugin: GatewayPluginConfig): { changed: boolean; plugin: GatewayPluginConfig } {
+  const modulePath = migratedExternalizedPluginModulePath(plugin.id, plugin.module);
+  if (!modulePath || modulePath === plugin.module) {
+    return {
+      changed: false,
+      plugin
+    };
+  }
+  return {
+    changed: true,
+    plugin: {
+      ...plugin,
+      module: modulePath
+    }
+  };
+}
+
+function migrateClaudeDesignPluginConfig(plugin: GatewayPluginConfig): GatewayPluginMigrationResult & { plugin: GatewayPluginConfig } {
+  let changed = false;
+  const nextPlugin: GatewayPluginConfig = { ...plugin };
+  const config = removeDeprecatedClaudePluginConfig(plugin.config);
+  if (config.changed) {
+    changed = true;
+    if (config.config === undefined) {
+      delete nextPlugin.config;
+    } else {
+      nextPlugin.config = config.config;
+    }
+  }
+  const isLegacyModule = isLegacyClaudeDesignModule(plugin.module);
+  const modulePath = migratedClaudePluginModulePath(CLAUDE_DESIGN_PLUGIN_ID, plugin.module);
+  if (modulePath && modulePath !== plugin.module) {
+    nextPlugin.module = modulePath;
+    changed = true;
+  }
+
+  const hasMigratableApps = Boolean(plugin.apps?.some((app) => isClaudeShipApp(app) || isLegacyClaudeDesignAppUrl(app.url)));
+  if (isLegacyModule || hasMigratableApps) {
+    const apps = migrateClaudeDesignPluginApps(plugin.apps);
+    if (apps.changed) {
+      nextPlugin.apps = apps.apps;
+      changed = true;
+    }
+  }
+
+  return {
+    changed,
+    plugin: nextPlugin,
+    plugins: [nextPlugin]
+  };
+}
+
+const deprecatedClaudePluginConfigKeys = new Set([
+  "appMode",
+  "autoAnswerQuestions",
+  "claudeAppAssetDir",
+  "claudeAppAssets",
+  "claudeAppIonDistDir",
+  "claudeAppPath",
+  "claudeShipAssetDir",
+  "claudeShipAssets",
+  "claudeShipIonDistDir",
+  "claudeShipLocalApp",
+  "designHtmlPath",
+  "htmlPath",
+  "localApp",
+  "localShell",
+  "onlineApp",
+  "savedHtmlPath",
+  "shipAssetDir",
+  "shipAssets",
+  "shipIonDistDir",
+  "shipLocalApp",
+  "useSavedHtml"
+]);
+
+const deprecatedClaudePluginFalseOnlyConfigKeys = new Set([
+  "assetsOrigin",
+  "designAssetsOrigin",
+  "designFrontendAssetsOrigin",
+  "designFrontendOrigin",
+  "designFrontendUrl",
+  "designWebUrl",
+  "frontendAssetsOrigin",
+  "frontendOrigin",
+  "frontendUrl",
+  "shipAssetsOrigin",
+  "shipFrontendAssetsOrigin",
+  "shipFrontendOrigin",
+  "shipFrontendUrl",
+  "shipWebUrl",
+  "staticAssetsOrigin",
+  "webUrl"
+]);
+
+function removeDeprecatedClaudePluginConfig(config: unknown): { changed: boolean; config?: unknown } {
+  if (!isObject(config)) {
+    return {
+      changed: false,
+      ...(config !== undefined ? { config } : {})
+    };
+  }
+  const nextConfig: Record<string, unknown> = {};
+  let changed = false;
+  for (const [key, value] of Object.entries(config)) {
+    if (deprecatedClaudePluginConfigKeys.has(key) || (value === false && deprecatedClaudePluginFalseOnlyConfigKeys.has(key))) {
+      changed = true;
+      continue;
+    }
+    nextConfig[key] = value;
+  }
+  if (!changed) {
+    return {
+      changed: false,
+      config
+    };
+  }
+  return {
+    changed: true,
+    ...(Object.keys(nextConfig).length > 0 ? { config: nextConfig } : {})
+  };
+}
+
+function migrateClaudeDesignPluginApps(apps: GatewayPluginAppConfig[] | undefined): { apps: GatewayPluginAppConfig[]; changed: boolean } {
+  const designDefaults = knownGatewayPluginDefaultApps(CLAUDE_DESIGN_PLUGIN_ID) ?? [];
+  if (!apps?.length) {
+    return {
+      apps: designDefaults,
+      changed: designDefaults.length > 0
+    };
+  }
+
+  let changed = false;
+  const designApps = apps
+    .filter((app) => {
+      const isShip = isClaudeShipApp(app);
+      changed = changed || isShip;
+      return !isShip;
+    })
+    .map((app) => {
+      if (!isLegacyClaudeDesignAppUrl(app.url)) {
+        return app;
+      }
+      const defaultApp = designDefaults.find((item) => item.id === (app.id || "claude-design")) ?? designDefaults[0];
+      if (!defaultApp) {
+        return app;
+      }
+      changed = true;
+      return {
+        ...app,
+        url: defaultApp.url
+      };
+    });
+
+  if (!designApps.length && designDefaults.length) {
+    return {
+      apps: designDefaults,
+      changed: true
+    };
+  }
+
+  return {
+    apps: designApps,
+    changed
+  };
+}
+
+function migrateClaudeShipPluginConfig(plugin: GatewayPluginConfig): GatewayPluginMigrationResult & { plugin: GatewayPluginConfig } {
+  let changed = false;
+  const nextPlugin: GatewayPluginConfig = { ...plugin };
+  const config = removeDeprecatedClaudePluginConfig(plugin.config);
+  if (config.changed) {
+    changed = true;
+    if (config.config === undefined) {
+      delete nextPlugin.config;
+    } else {
+      nextPlugin.config = config.config;
+    }
+  }
+  const apps = migrateClaudeShipPluginApps(plugin.apps);
+  if (apps.changed) {
+    changed = true;
+    nextPlugin.apps = apps.apps;
+  }
+  if (!changed) {
+    return {
+      changed: false,
+      plugin,
+      plugins: [plugin]
+    };
+  }
+  return {
+    changed: true,
+    plugin: nextPlugin,
+    plugins: [nextPlugin]
+  };
+}
+
+function migrateClaudeShipPluginApps(apps: GatewayPluginAppConfig[] | undefined): { apps: GatewayPluginAppConfig[]; changed: boolean } {
+  const shipDefaults = knownGatewayPluginDefaultApps(CLAUDE_SHIP_PLUGIN_ID) ?? [];
+  if (!apps?.length) {
+    return {
+      apps: shipDefaults,
+      changed: shipDefaults.length > 0
+    };
+  }
+
+  return {
+    apps,
+    changed: false
+  };
+}
+
+function migratedClaudeShipPluginConfig(source: GatewayPluginConfig): GatewayPluginConfig | undefined {
+  const modulePath = isLegacyClaudeDesignModule(source.module)
+    ? migratedClaudePluginModulePath(CLAUDE_SHIP_PLUGIN_ID, source.module)
+    : resolveBundledOrExternalizedPluginModule(CLAUDE_SHIP_PLUGIN_ID, source.module);
+  if (!modulePath) {
+    return undefined;
+  }
+  const config = removeDeprecatedClaudePluginConfig(source.config);
+  return {
+    ...(config.config !== undefined ? { config: config.config } : {}),
+    apps: knownGatewayPluginDefaultApps(CLAUDE_SHIP_PLUGIN_ID),
+    enabled: source.enabled,
+    id: CLAUDE_SHIP_PLUGIN_ID,
+    module: modulePath,
+    permissions: knownGatewayPluginDefaultPermissions(CLAUDE_SHIP_PLUGIN_ID),
+    surfaces: knownGatewayPluginDefaultSurfaces(CLAUDE_SHIP_PLUGIN_ID)
+  };
+}
+
+export function claudeDesignRuntimePluginConfig(): GatewayPluginConfig | undefined {
+  return claudeProductRuntimePluginConfig(CLAUDE_DESIGN_PLUGIN_ID);
+}
+
+export function claudeShipRuntimePluginConfig(): GatewayPluginConfig | undefined {
+  return claudeProductRuntimePluginConfig(CLAUDE_SHIP_PLUGIN_ID);
+}
+
+function claudeProductRuntimePluginConfig(pluginId: string): GatewayPluginConfig | undefined {
+  if (!isDesktopAppRuntime()) {
+    return undefined;
+  }
+  const modulePath = resolveBundledOrExternalizedPluginModule(pluginId, undefined);
+  if (!modulePath) {
+    return undefined;
+  }
+  return {
+    apps: knownGatewayPluginDefaultApps(pluginId),
+    enabled: true,
+    id: pluginId,
+    module: modulePath,
+    permissions: knownGatewayPluginDefaultPermissions(pluginId),
+    surfaces: knownGatewayPluginDefaultSurfaces(pluginId)
+  };
+}
+
+export function withClaudeDesignRuntimePluginConfig(config: AppConfig): AppConfig {
+  return withClaudeProductRuntimePluginConfig(config, CLAUDE_DESIGN_PLUGIN_ID, "Claude Design");
+}
+
+export function withClaudeShipRuntimePluginConfig(config: AppConfig): AppConfig {
+  return withClaudeProductRuntimePluginConfig(config, CLAUDE_SHIP_PLUGIN_ID, "Claude Ship");
+}
+
+function withClaudeProductRuntimePluginConfig(config: AppConfig, pluginId: string, productName: string): AppConfig {
+  const existingIndex = config.plugins.findIndex((plugin) => plugin.enabled !== false && plugin.id === pluginId);
+  if (existingIndex >= 0 && config.plugins[existingIndex]?.module?.trim()) {
+    return config;
+  }
+  if (!isDesktopAppRuntime()) {
+    throw new Error(`${productName} is only available in CCR Desktop.`);
+  }
+  const plugin = claudeProductRuntimePluginConfig(pluginId);
+  if (!plugin) {
+    throw new Error(`${productName} runtime module was not found. Rebuild app assets so the bundled ${productName} plugin is copied into the Electron dist.`);
+  }
+  if (existingIndex >= 0) {
+    const existing = config.plugins[existingIndex];
+    const plugins = [...config.plugins];
+    plugins[existingIndex] = {
+      ...plugin,
+      ...existing,
+      apps: existing.apps ?? plugin.apps,
+      module: plugin.module,
+      permissions: existing.permissions ?? plugin.permissions,
+      surfaces: existing.surfaces ?? plugin.surfaces
+    };
+    return {
+      ...config,
+      plugins
+    };
+  }
+  return {
+    ...config,
+    plugins: [...config.plugins, plugin]
+  };
+}
+
+function shouldSplitClaudeShipPlugin(plugin: GatewayPluginConfig): boolean {
+  return isLegacyClaudeDesignModule(plugin.module) || Boolean(plugin.apps?.some(isClaudeShipApp));
+}
+
+function isClaudeShipApp(app: GatewayPluginAppConfig): boolean {
+  return [app.id, app.name, app.url].some((value) => typeof value === "string" && value.toLowerCase().includes("claude-ship"));
+}
+
+function isLegacyClaudeDesignAppUrl(value: string): boolean {
+  try {
+    const url = new URL(value, "https://claude.ai");
+    const host = url.hostname.toLowerCase();
+    const pathname = url.pathname.replace(/\/$/, "");
+    if (host === "claude.ai") {
+      return pathname === "/design" || pathname === "/discover/design";
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function migratedClaudePluginModulePath(pluginId: string, previousModule: string | undefined): string {
+  if (!isLegacyClaudeDesignModule(previousModule)) {
+    return previousModule || "";
+  }
+  return resolveBundledOrExternalizedPluginModule(pluginId, previousModule) || previousModule || "";
+}
+
+function migratedExternalizedPluginModulePath(pluginId: string, previousModule: string | undefined): string {
+  if (!isLegacyExternalizedPluginModule(pluginId, previousModule)) {
+    return previousModule || "";
+  }
+  return resolveBundledOrExternalizedPluginModule(pluginId, previousModule) || previousModule || "";
+}
+
+function resolveBundledOrExternalizedPluginModule(pluginId: string, previousModule: string | undefined): string {
+  const bundledModule = resolveBundledRuntimePluginModule(pluginId);
+  if (bundledModule) {
+    return bundledModule;
+  }
+  for (const root of ccrExtensionsRootCandidates(previousModule)) {
+    const candidate = path.join(root, "plugins", pluginId, "index.cjs");
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return "";
+}
+
+function resolveBundledRuntimePluginModule(pluginId: string): string {
+  if (!isDesktopBundledClaudeRuntimePlugin(pluginId)) {
+    return "";
+  }
+  for (const candidate of bundledRuntimePluginModuleCandidates(pluginId)) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return "";
+}
+
+function isDesktopBundledClaudeRuntimePlugin(pluginId: string): boolean {
+  return isDesktopAppRuntime() && (pluginId === CLAUDE_DESIGN_PLUGIN_ID || pluginId === CLAUDE_SHIP_PLUGIN_ID);
+}
+
+function bundledRuntimePluginModuleCandidates(pluginId: string): string[] {
+  const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+  const resourceCandidates = resourcesPath
+    ? [
+      path.join(resourcesPath, "app.asar.unpacked", "dist", "bundled-plugins", pluginId, "index.cjs"),
+      path.join(resourcesPath, "app.asar", "dist", "bundled-plugins", pluginId, "index.cjs"),
+      path.join(resourcesPath, "app", "dist", "bundled-plugins", pluginId, "index.cjs")
+    ]
+    : [];
+  return uniqueStrings([
+    ...resourceCandidates,
+    path.join(__dirname, "..", "bundled-plugins", pluginId, "index.cjs"),
+    path.resolve(__dirname, "..", "..", "..", "electron", "bundled-plugins", pluginId, "index.cjs"),
+    path.resolve(process.cwd(), "packages", "electron", "dist", "bundled-plugins", pluginId, "index.cjs"),
+    path.resolve(process.cwd(), "packages", "electron", "bundled-plugins", pluginId, "index.cjs")
+  ]);
+}
+
+function isLegacyClaudeDesignModule(modulePath: string | undefined): boolean {
+  return isLegacyExternalizedPluginModule(CLAUDE_DESIGN_PLUGIN_ID, modulePath);
+}
+
+function isLegacyExternalizedPluginModule(pluginId: string, modulePath: string | undefined): boolean {
+  if (!CCR_EXTENSIONS_PLUGIN_IDS.has(pluginId)) {
+    return false;
+  }
+  const normalized = modulePath?.replace(/\\/g, "/").toLowerCase() || "";
+  return normalized.includes(`/marketplace/plugins/${pluginId}/`) ||
+    normalized.includes(`/examples/plugins/${pluginId}/`) ||
+    normalized.endsWith(`/examples/plugins/${pluginId}-plugin.cjs`) ||
+    normalized.endsWith(`/examples/plugins/${pluginId}/index.cjs`);
+}
+
+function ccrExtensionsRootCandidates(previousModule: string | undefined): string[] {
+  const candidates = [
+    process.env.CCR_EXTENSIONS_DIR,
+    ccrExtensionsRootFromLegacyModule(previousModule),
+    path.resolve(process.cwd(), "..", "ccr-extensions"),
+    path.resolve(process.cwd(), "ccr-extensions")
+  ];
+  return uniqueStrings(candidates.filter((candidate): candidate is string => Boolean(candidate?.trim())));
+}
+
+function ccrExtensionsRootFromLegacyModule(modulePath: string | undefined): string {
+  if (!modulePath) {
+    return "";
+  }
+  const resolved = path.resolve(modulePath);
+  const segments = resolved.split(path.sep);
+  const index = segments.lastIndexOf("claude-code-router");
+  if (index <= 0) {
+    return "";
+  }
+  return path.join(path.sep, ...segments.slice(1, index), "ccr-extensions");
+}
+
+export function migrateKnownGatewayPluginConfigsForTest(plugins: GatewayPluginConfig[] | undefined): GatewayPluginMigrationResult {
+  return migrateKnownGatewayPluginConfigs(plugins);
+}
+
+function parseGatewayPluginSurfaces(value: unknown): GatewayPluginConfig["surfaces"] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const surfaces: GatewayPluginConfig["surfaces"] = {};
+  const setSurface = (rawValue: unknown, enabled = true): boolean => {
+    const surface = normalizeGatewayPluginSurface(rawValue);
+    if (!surface) {
+      return false;
+    }
+    surfaces[surface] = enabled;
+    return true;
+  };
+
+  if (typeof value === "string") {
+    if (isAllGatewayPluginSurfacesKey(value)) {
+      for (const surface of GATEWAY_PLUGIN_SURFACE_IDS) {
+        surfaces[surface] = true;
+      }
+      return surfaces;
+    }
+    if (!setSurface(value)) {
+      return undefined;
+    }
+    GATEWAY_PLUGIN_SURFACE_IDS.forEach((surface) => {
+      surfaces[surface] ??= false;
+    });
+  } else if (Array.isArray(value)) {
+    let matched = false;
+    for (const item of value) {
+      if (typeof item === "string" && isAllGatewayPluginSurfacesKey(item)) {
+        for (const surface of GATEWAY_PLUGIN_SURFACE_IDS) {
+          surfaces[surface] = true;
+        }
+        matched = true;
+      } else {
+        matched = setSurface(item) || matched;
+      }
+    }
+    if (!matched) {
+      return undefined;
+    }
+    GATEWAY_PLUGIN_SURFACE_IDS.forEach((surface) => {
+      surfaces[surface] ??= false;
+    });
+  } else if (isObject(value)) {
+    for (const [key, enabled] of Object.entries(value)) {
+      if (isAllGatewayPluginSurfacesKey(key)) {
+        for (const surface of GATEWAY_PLUGIN_SURFACE_IDS) {
+          surfaces[surface] = enabled !== false;
+        }
+      } else {
+        setSurface(key, enabled !== false);
+      }
+    }
+  }
+
+  return Object.keys(surfaces).length > 0 ? surfaces : undefined;
+}
+
+function normalizeGatewayPluginSurface(value: unknown): GatewayPluginSurface | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = gatewayPluginSurfaceAlias(value.trim().toLowerCase().replace(/[\s_]+/g, "-"));
+  return (GATEWAY_PLUGIN_SURFACE_IDS as readonly string[]).includes(normalized) ? normalized as GatewayPluginSurface : undefined;
+}
+
+function gatewayPluginSurfaceAlias(value: string): string {
+  switch (value) {
+    case "app":
+    case "browser-app":
+    case "browser-apps":
+    case "ui":
+      return "apps";
+    case "gateway-route":
+    case "route":
+    case "routes":
+    case "gateway-routes":
+    case "proxy-route":
+    case "proxy":
+    case "proxy-routes":
+    case "http-backend":
+    case "http-backends":
+    case "backend":
+    case "backends":
+    case "core-gateway":
+    case "core-gateway-config":
+    case "fusion-profile":
+    case "fusion-profiles":
+    case "virtual-model":
+    case "virtual-models":
+    case "virtual-model-profile":
+    case "virtual-model-profiles":
+    case "request":
+    case "requests":
+      return "gateway";
+    case "core-provider-plugin":
+    case "provider-plugin":
+    case "provider-plugins":
+    case "provider-account":
+    case "provider-account-connector":
+    case "provider-account-connectors":
+    case "providers":
+      return "provider";
+    default:
+      return value;
+  }
+}
+
+function isAllGatewayPluginSurfacesKey(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "*" || normalized === "all";
+}
+
+function parseGatewayPluginPermissions(value: unknown): GatewayPluginPermission[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const permissions: GatewayPluginPermission[] = [];
+  const seen = new Set<GatewayPluginPermission>();
+  const add = (rawValue: unknown): void => {
+    const permission = normalizeGatewayPluginPermission(rawValue);
+    if (!permission || seen.has(permission)) {
+      return;
+    }
+    seen.add(permission);
+    permissions.push(permission);
+  };
+
+  if (typeof value === "string") {
+    add(value);
+  } else if (Array.isArray(value)) {
+    value.forEach(add);
+  } else if (isObject(value)) {
+    for (const [key, enabled] of Object.entries(value)) {
+      if (enabled === false) {
+        continue;
+      }
+      if (isAllGatewayPluginPermissionsKey(key)) {
+        GATEWAY_PLUGIN_PERMISSION_IDS.forEach(add);
+      } else {
+        add(key);
+      }
+    }
+  }
+
+  return permissions;
+}
+
+function normalizeGatewayPluginPermission(value: unknown): GatewayPluginPermission | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase().replace(/[\s_]+/g, "-");
+  const mapped = gatewayPluginPermissionAlias(normalized);
+  return GATEWAY_PLUGIN_PERMISSION_ID_SET.has(mapped) ? mapped as GatewayPluginPermission : undefined;
+}
+
+function gatewayPluginPermissionAlias(value: string): string {
+  switch (value) {
+    case "code":
+    case "execute-code":
+    case "trusted":
+    case "trusted-code":
+      return "trusted-code";
+    case "app":
+    case "browser-app":
+    case "browser-apps":
+      return "apps";
+    case "gateway-route":
+    case "route":
+    case "routes":
+      return "gateway-routes";
+    case "gateway-request-transform":
+    case "gateway-request-transforms":
+    case "request-transform":
+    case "request-transforms":
+      return "gateway-request-transforms";
+    case "proxy":
+    case "proxy-route":
+      return "proxy-routes";
+    case "backend":
+    case "backends":
+    case "http-backend":
+      return "http-backends";
+    case "provider-account":
+    case "provider-account-connector":
+      return "provider-account-connectors";
+    case "core-gateway":
+      return "core-gateway-config";
+    case "provider-plugin":
+    case "provider-plugins":
+    case "core-provider-plugin":
+      return "core-provider-plugins";
+    case "fusion-profile":
+    case "fusion-profiles":
+    case "virtual-model":
+    case "virtual-models":
+    case "virtual-model-profile":
+      return "virtual-model-profiles";
+    case "sqlite":
+    case "data-store":
+    case "store":
+      return "sqlite-store";
+    case "launcher":
+    case "mac-launcher":
+      return "system-launcher";
+    default:
+      return value;
+  }
+}
+
+function isAllGatewayPluginPermissionsKey(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "*" || normalized === "all";
 }
 
 function parseGatewayPluginApps(value: unknown): GatewayPluginAppConfig[] | undefined {
@@ -2045,17 +3451,19 @@ function parseGatewayPluginCoreGateway(value: unknown): GatewayPluginConfig["cor
     return undefined;
   }
   const providerPlugins = Array.isArray(value.providerPlugins) ? value.providerPlugins : undefined;
+  const plugins = Array.isArray(value.plugins) ? value.plugins : undefined;
   const virtualModelProfiles = Array.isArray(value.virtualModelProfiles)
     ? value.virtualModelProfiles as NonNullable<GatewayPluginConfig["coreGateway"]>["virtualModelProfiles"]
     : undefined;
   const config = isObject(value.config) ? { ...(value.config as Record<string, unknown>) } : undefined;
 
-  if (!providerPlugins && !virtualModelProfiles && !config) {
+  if (!providerPlugins && !plugins && !virtualModelProfiles && !config) {
     return undefined;
   }
 
   return {
     ...(config ? { config } : {}),
+    ...(plugins ? { plugins } : {}),
     ...(providerPlugins ? { providerPlugins } : {}),
     ...(virtualModelProfiles ? { virtualModelProfiles } : {})
   };
@@ -2077,6 +3485,14 @@ function parseProfile(value: unknown): LoadedProfileConfig | undefined {
     if (typeof claudeCode.enabled === "boolean") {
       profile.claudeCode.enabled = claudeCode.enabled;
     }
+    const claudeSettings = parseUnknownRecord(claudeCode.claudeSettings ?? claudeCode.claude_settings ?? claudeCode.settings);
+    if (claudeSettings) {
+      profile.claudeCode.claudeSettings = claudeSettings;
+    }
+    const managedCompact = readManagedCompact(claudeCode);
+    if (managedCompact !== undefined) {
+      profile.claudeCode.managedCompact = managedCompact;
+    }
     const settingsFile = readString(claudeCode.settingsFile) || readString(claudeCode.configFile) || readString(claudeCode.path);
     if (settingsFile) {
       profile.claudeCode.settingsFile = settingsFile;
@@ -2084,6 +3500,22 @@ function parseProfile(value: unknown): LoadedProfileConfig | undefined {
     const model = readString(claudeCode.model);
     if (model !== undefined) {
       profile.claudeCode.model = model;
+    }
+    const fableModel = readString(claudeCode.fableModel) || readString(claudeCode.defaultFableModel);
+    if (fableModel !== undefined) {
+      profile.claudeCode.fableModel = fableModel;
+    }
+    const opusModel = readString(claudeCode.opusModel) || readString(claudeCode.defaultOpusModel);
+    if (opusModel !== undefined) {
+      profile.claudeCode.opusModel = opusModel;
+    }
+    const sonnetModel = readString(claudeCode.sonnetModel) || readString(claudeCode.defaultSonnetModel);
+    if (sonnetModel !== undefined) {
+      profile.claudeCode.sonnetModel = sonnetModel;
+    }
+    const haikuModel = readString(claudeCode.haikuModel) || readString(claudeCode.defaultHaikuModel) || readString(claudeCode.smallFastModel) || readString(claudeCode.smallModel);
+    if (haikuModel !== undefined) {
+      profile.claudeCode.haikuModel = haikuModel;
     }
     const smallFastModel = readString(claudeCode.smallFastModel) || readString(claudeCode.smallModel);
     if (smallFastModel !== undefined) {
@@ -2096,6 +3528,10 @@ function parseProfile(value: unknown): LoadedProfileConfig | undefined {
     profile.codex = {};
     if (typeof codex.enabled === "boolean") {
       profile.codex.enabled = codex.enabled;
+    }
+    const managedCompact = readManagedCompact(codex);
+    if (managedCompact !== undefined) {
+      profile.codex.managedCompact = managedCompact;
     }
     if (typeof codex.cliMiddleware === "boolean") {
       profile.codex.cliMiddleware = codex.cliMiddleware;
@@ -2187,34 +3623,93 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
       const id = readString(item.id) || `profile-${index + 1}`;
       const name = readString(item.name) || defaultProfileAgentName(agent);
       const model = readString(item.model) ?? "";
+      const parsedAvailableModels = parseStringList(item.availableModels ?? item.available_models ?? item.models);
+      const availableModels = parsedAvailableModels.length > 0
+        ? uniqueStrings([model, ...parsedAvailableModels].filter(Boolean))
+        : undefined;
       const env = parseStringRecord(item.env) ?? {};
       const parsedSurface = parseProfileSurface(readString(item.surface) || readString(item.entry) || readString(item.frontend)) || "auto";
-      const surface = agent === "zcode" ? "app" : parsedSurface;
+      const surface = agent === "workbuddy" || agent === "zcode" || agent === CLAUDE_DESIGN_PLUGIN_ID
+        ? "app"
+        : agent === "pi" || agent === "kilo"
+          ? "cli"
+          : parsedSurface;
       const botConfigId = surface !== "cli"
         ? readString(item.botConfigId) || readString(item.bot_config_id) || readString(item.savedBotConfigId) || readString(item.saved_bot_config_id)
         : "";
       const parsedBotGateway = parseBotGateway(item.botGateway ?? item.bot_gateway ?? item.bot);
       const botGateway = surface !== "cli" && parsedBotGateway ? completeBotGatewayConfig(parsedBotGateway) : undefined;
+      const managedCompact = readManagedCompact(item);
+      const routing = parseProfileRouting(item.routing ?? item.route, agent);
 
       if (agent === "claude-code") {
+        const appPath = readProfileAppPath(item, agent);
+        const claudeSettings = parseUnknownRecord(item.claudeSettings ?? item.claude_settings);
         return {
           agent,
+          ...(appPath ? { appPath } : {}),
           ...(botConfigId ? { botConfigId } : {}),
           ...(botGateway ? { botGateway } : {}),
+          ...(claudeSettings ? { claudeSettings } : {}),
           enabled,
           env: claudeCodeProfileEnv(env),
+          fableModel: readString(item.fableModel) || readString(item.defaultFableModel) || "",
+          haikuModel: readString(item.haikuModel) || readString(item.defaultHaikuModel) || readString(item.smallFastModel) || readString(item.smallModel) || "",
           id,
+          ...(managedCompact !== undefined ? { managedCompact } : {}),
+          ...(availableModels ? { availableModels } : {}),
           model,
           name,
+          opusModel: readString(item.opusModel) || readString(item.defaultOpusModel) || "",
+          ...(routing ? { routing } : {}),
           scope: parseProfileScope(readString(item.scope) || readString(item.applyScope) || readString(item.effectScope)) || "global",
           settingsFile: readString(item.settingsFile) || readString(item.configFile) || "~/.claude/settings.json",
+          sonnetModel: readString(item.sonnetModel) || readString(item.defaultSonnetModel) || "",
           smallFastModel: readString(item.smallFastModel) || readString(item.smallModel) || "",
           surface
         };
       }
 
+      if (agent === "grok" || agent === "kimi" || agent === "pi") {
+        return {
+          agent,
+          ...(availableModels ? { availableModels } : {}),
+          enabled,
+          env: codexCompatibleProfileEnv(env),
+          id,
+          model,
+          name,
+          ...(routing ? { routing } : {}),
+          scope: "ccr",
+          surface: "cli"
+        };
+      }
+
+      if (agent === CLAUDE_DESIGN_PLUGIN_ID) {
+        return {
+          agent,
+          enabled,
+          env: {},
+          id,
+          model: "",
+          name,
+          ...(routing ? { routing } : {}),
+          scope: "ccr",
+          surface: "app"
+        };
+      }
+
+      const appPath = readProfileAppPath(item, agent);
+      const showAllSessions = agent === "zcode" || agent === "opencode" || agent === "kilo" || agent === "workbuddy"
+        ? false
+        : typeof item.showAllSessions === "boolean"
+          ? item.showAllSessions
+          : typeof item.show_all_sessions === "boolean"
+            ? item.show_all_sessions
+            : undefined;
       return {
         agent,
+        ...(appPath ? { appPath } : {}),
         ...(botConfigId ? { botConfigId } : {}),
         ...(botGateway ? { botGateway } : {}),
         cliMiddleware: true,
@@ -2225,23 +3720,74 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         enabled,
         env: codexCompatibleProfileEnv(env),
         id,
+        ...(managedCompact !== undefined ? { managedCompact } : {}),
+        ...(availableModels ? { availableModels } : {}),
         model,
         name,
         providerId: readString(item.providerId) || readString(item.provider) || "claude-code-router",
         providerName: readString(item.providerName) || "Claude Code Router",
         remoteFrontendMode: parseCodexRemoteFrontendMode(readString(item.remoteFrontendMode) || readString(item.frontendMode) || readString(item.coreMode)) || "app",
+        ...(routing ? { routing } : {}),
         scope: parseProfileScope(readString(item.scope) || readString(item.applyScope) || readString(item.effectScope)) || "global",
-        showAllSessions: agent === "zcode"
-          ? false
-          : typeof item.showAllSessions === "boolean"
-            ? item.showAllSessions
-            : typeof item.show_all_sessions === "boolean"
-              ? item.show_all_sessions
-              : false,
+        ...(showAllSessions !== undefined ? { showAllSessions } : {}),
         surface
       };
     })
     .filter((item): item is ProfileConfig => Boolean(item));
+}
+
+function parseProfileRouting(value: unknown, _agent: ProfileConfig["agent"]): ProfileRoutingConfig | undefined {
+  if (value === false) {
+    return {
+      enabled: false,
+      enhancedRoute: true,
+      rules: []
+    };
+  }
+  if (value === true) {
+    return {
+      enabled: true,
+      enhancedRoute: true,
+      rules: []
+    };
+  }
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const enhancedRoute = readBoolean(
+    value.enhancedRoute ??
+    value.useEnhancedRoute ??
+    value.builtInRoute ??
+    value.builtinRoute ??
+    value.useBuiltInRoute ??
+    value.use_builtin_route
+  );
+  return {
+    enabled: readBoolean(value.enabled) ?? true,
+    enhancedRoute: enhancedRoute ?? true,
+    rules: parseRouterRules(value.rules) ?? []
+  };
+}
+
+function readBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function readProfileAppPath(item: Record<string, unknown>, agent: ProfileConfig["agent"]): string | undefined {
+  return readString(item.appPath) ||
+    readString(item.app_path) ||
+    readString(item.appExecutablePath) ||
+    readString(item.app_executable_path) ||
+    (agent === "claude-code"
+      ? readString(item.claudeAppPath) || readString(item.claude_app_path)
+      : agent === "codex"
+        ? readString(item.chatgptAppPath) || readString(item.chatgpt_app_path) || readString(item.codexAppPath) || readString(item.codex_app_path)
+        : agent === "opencode"
+          ? readString(item.openCodeAppPath) || readString(item.opencodeAppPath) || readString(item.opencode_app_path)
+          : agent === "workbuddy"
+            ? readString(item.workbuddyAppPath) || readString(item.workbuddy_app_path) || readString(item.workBuddyAppPath) || readString(item.work_buddy_app_path)
+            : readString(item.zcodeAppPath) || readString(item.zcode_app_path));
 }
 
 function parseProfileAgent(value: unknown): ProfileConfig["agent"] | undefined {
@@ -2255,10 +3801,41 @@ function parseProfileAgent(value: unknown): ProfileConfig["agent"] | undefined {
   if (normalized === "codex") {
     return "codex";
   }
+  if (normalized === "grok" || normalized === "grok-cli" || normalized === "grok cli") {
+    return "grok";
+  }
+  if (normalized === "kimi" || normalized === "kimi-cli" || normalized === "kimi cli" || normalized === "kimi-code" || normalized === "kimi code") {
+    return "kimi";
+  }
+  if (normalized === "opencode" || normalized === "open-code" || normalized === "open code") {
+    return "opencode";
+  }
+  if (normalized === "kilo" || normalized === "kilo-cli" || normalized === "kilo cli" || normalized === "kilocode" || normalized === "kilo-code" || normalized === "kilo code") {
+    return "kilo";
+  }
+  if (normalized === "pi" || normalized === "pi-agent" || normalized === "pi agent" || normalized === "pi-coding-agent" || normalized === "pi coding agent") {
+    return "pi";
+  }
+  if (normalized === "workbuddy" || normalized === "work-buddy" || normalized === "work buddy" || normalized === "workbuddy-agent" || normalized === "workbuddy agent") {
+    return "workbuddy";
+  }
   if (normalized === "zcode" || normalized === "z-code" || normalized === "z code") {
     return "zcode";
   }
+  if (normalized === "claude-design" || normalized === "claude design" || normalized === "design") {
+    return CLAUDE_DESIGN_PLUGIN_ID;
+  }
   return undefined;
+}
+
+function readManagedCompact(value: Record<string, unknown>): boolean | undefined {
+  const candidate = value.managedCompact ??
+    value.managed_compact ??
+    value.ccrManagedCompact ??
+    value.ccr_managed_compact ??
+    value.contextArchiveCompact ??
+    value.context_archive_compact;
+  return typeof candidate === "boolean" ? candidate : undefined;
 }
 
 function defaultProfileAgentName(agent: ProfileConfig["agent"]): string {
@@ -2268,11 +3845,44 @@ function defaultProfileAgentName(agent: ProfileConfig["agent"]): string {
   if (agent === "zcode") {
     return "ZCode";
   }
+  if (agent === "grok") {
+    return "Grok CLI";
+  }
+  if (agent === "kimi") {
+    return "Kimi CLI";
+  }
+  if (agent === "opencode") {
+    return "OpenCode";
+  }
+  if (agent === "kilo") {
+    return "Kilo CLI";
+  }
+  if (agent === "pi") {
+    return "Pi";
+  }
+  if (agent === "workbuddy") {
+    return "Workbuddy";
+  }
+  if (agent === CLAUDE_DESIGN_PLUGIN_ID) {
+    return "Claude Design";
+  }
   return "Codex";
 }
 
 function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
-  return agent === "zcode" ? "~/.zcode/cli/config.json" : "~/.codex/config.toml";
+  return agent === "zcode"
+    ? "~/.zcode/cli/config.json"
+    : agent === "opencode"
+      ? "~/.config/opencode/opencode.jsonc"
+      : agent === "kilo"
+        ? "~/.config/kilo/kilo.jsonc"
+        : agent === "workbuddy"
+          ? "~/.workbuddy/config.toml"
+        : agent === "pi"
+          ? "~/.pi/agent"
+          : agent === CLAUDE_DESIGN_PLUGIN_ID
+            ? "~/.claude-code-router/claude-design"
+            : "~/.codex/config.toml";
 }
 
 function normalizeCodexConfigFileForAgent(agent: ProfileConfig["agent"], value: string | undefined): string {
@@ -2286,13 +3896,19 @@ function normalizeCodexConfigFileForAgent(agent: ProfileConfig["agent"], value: 
 function profileFromClaudeCodeConfig(config: ClaudeCodeProfileConfig): ProfileConfig {
   return {
     agent: "claude-code",
+    ...(config.claudeSettings ? { claudeSettings: { ...config.claudeSettings } } : {}),
     enabled: config.enabled,
     env: claudeCodeProfileEnv(),
+    fableModel: config.fableModel,
+    haikuModel: config.haikuModel || config.smallFastModel,
     id: "default-claude-code",
+    managedCompact: config.managedCompact,
     model: config.model,
     name: "Claude Code",
+    opusModel: config.opusModel,
     scope: "global",
     settingsFile: config.settingsFile,
+    sonnetModel: config.sonnetModel,
     smallFastModel: config.smallFastModel,
     surface: "auto"
   };
@@ -2321,6 +3937,7 @@ function profileFromCodexConfig(config: CodexProfileConfig): ProfileConfig {
     enabled: config.enabled,
     env: {},
     id: "default-codex",
+    managedCompact: config.managedCompact,
     model: config.model,
     name: "Codex",
     providerId: config.providerId,
@@ -2610,6 +4227,21 @@ function readNumber(value: unknown): number | undefined {
   }
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function readNonNegativeNumber(value: unknown): number | undefined {
+  const parsed = readNumber(value);
+  return parsed !== undefined && parsed >= 0 ? parsed : undefined;
+}
+
+function readPercentage(value: unknown): number | undefined {
+  const parsed = readNumber(value);
+  return parsed !== undefined && parsed > 0 && parsed <= 100 ? parsed : undefined;
+}
+
+function readPositiveInteger(value: unknown): number | undefined {
+  const parsed = readNumber(value);
+  return parsed !== undefined && parsed > 0 ? Math.trunc(parsed) : undefined;
 }
 
 function clampNumber(value: number, min: number, max: number): number {

@@ -4,7 +4,8 @@ import type {
   LocalAgentProviderCandidate,
   LocalAgentProviderKind,
   ProviderAccountConfig,
-  ProviderDeepLinkPayload
+  ProviderDeepLinkPayload,
+  ProviderModelMetadata
 } from "@ccr/core/contracts/app";
 
 export type OAuthTokenSet = {
@@ -39,8 +40,8 @@ export function missingCandidate(
     importable: false,
     kind,
     modelDisplayNames: modelDisplayNamesForModels(modelDisplayNames, models),
-    models,
-    name,
+  models,
+  name,
     protocol,
     status: "missing"
   };
@@ -50,18 +51,32 @@ export function providerPayload(
   candidate: LocalAgentProviderCandidate,
   name: string,
   baseUrl: string,
-  account?: ProviderAccountConfig
+  account?: ProviderAccountConfig,
+  options?: { preserveAllModels?: boolean }
 ): ProviderDeepLinkPayload {
-  const models = uniqueStrings(candidate.models).slice(0, 24);
+  const candidateModels = uniqueStrings(candidate.models);
+  const models = options?.preserveAllModels ? candidateModels : candidateModels.slice(0, 24);
   return {
     account,
     apiKey: localAgentProviderApiKey,
     baseUrl,
     modelDisplayNames: modelDisplayNamesForModels(candidate.modelDisplayNames, models),
+    modelMetadata: modelMetadataForModels(candidate.modelMetadata, models),
     models,
     name,
     protocol: candidate.protocol
   };
+}
+
+export function modelMetadataForModels(
+  value: Record<string, ProviderModelMetadata> | undefined,
+  models: string[]
+): Record<string, ProviderModelMetadata> | undefined {
+  const modelIds = new Set(models);
+  const entries = Object.entries(value ?? {})
+    .map(([rawModel, metadata]) => [rawModel.trim(), metadata] as const)
+    .filter(([model, metadata]) => model && modelIds.has(model) && metadata && typeof metadata === "object");
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 export function modelDisplayNamesForModels(
@@ -117,8 +132,11 @@ export function cloneProviderAccountConfig(account: ProviderAccountConfig | unde
   return account ? JSON.parse(JSON.stringify(account)) as ProviderAccountConfig : undefined;
 }
 
-export function findOauthTokenSet(value: unknown, depth = 0): { accessToken?: string; refreshToken?: string } | undefined {
-  if (!isRecord(value) || depth > 5) {
+// Reads the token fields on `value` itself, never descending into children.
+// Callers that know their record shape use this to avoid matching an unrelated
+// nested credential -- see the mcpOAuth note in claude-code.ts.
+export function readOauthTokenSetFields(value: unknown): { accessToken?: string; refreshToken?: string } | undefined {
+  if (!isRecord(value)) {
     return undefined;
   }
   const accessToken =
@@ -129,8 +147,16 @@ export function findOauthTokenSet(value: unknown, depth = 0): { accessToken?: st
     readString(value.refreshToken) ||
     readString(value.refresh_token) ||
     readString(value.anthropicRefreshToken);
-  if (accessToken || refreshToken) {
-    return { accessToken, refreshToken };
+  return accessToken || refreshToken ? { accessToken, refreshToken } : undefined;
+}
+
+export function findOauthTokenSet(value: unknown, depth = 0): { accessToken?: string; refreshToken?: string } | undefined {
+  if (!isRecord(value) || depth > 5) {
+    return undefined;
+  }
+  const direct = readOauthTokenSetFields(value);
+  if (direct) {
+    return direct;
   }
   for (const child of Object.values(value)) {
     const found = findOauthTokenSet(child, depth + 1);
@@ -151,6 +177,113 @@ export function readJsonRecord(file: string): Record<string, unknown> | undefine
   } catch {
     return undefined;
   }
+}
+
+export function readJsoncRecord(file: string): Record<string, unknown> | undefined {
+  if (!existsSync(file)) {
+    return undefined;
+  }
+  try {
+    return parseJsoncRecord(readFileSync(file, "utf8"));
+  } catch {
+    return undefined;
+  }
+}
+
+export function parseJsoncRecord(value: string): Record<string, unknown> | undefined {
+  try {
+    const parsed = JSON.parse(stripJsonCommentsAndTrailingCommas(value)) as unknown;
+    return isRecord(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function stripJsonCommentsAndTrailingCommas(value: string): string {
+  let withoutComments = "";
+  let inString = false;
+  let escaped = false;
+
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    const nextCharacter = value[index + 1];
+    if (inString) {
+      withoutComments += character;
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+      withoutComments += character;
+      continue;
+    }
+    if (character === "/" && nextCharacter === "/") {
+      withoutComments += "  ";
+      index += 1;
+      while (index + 1 < value.length && value[index + 1] !== "\n" && value[index + 1] !== "\r") {
+        withoutComments += " ";
+        index += 1;
+      }
+      continue;
+    }
+    if (character === "/" && nextCharacter === "*") {
+      withoutComments += "  ";
+      index += 1;
+      while (index + 1 < value.length) {
+        const commentCharacter = value[index + 1];
+        const commentNextCharacter = value[index + 2];
+        if (commentCharacter === "*" && commentNextCharacter === "/") {
+          withoutComments += "  ";
+          index += 2;
+          break;
+        }
+        withoutComments += commentCharacter === "\n" || commentCharacter === "\r" ? commentCharacter : " ";
+        index += 1;
+      }
+      continue;
+    }
+    withoutComments += character;
+  }
+
+  let result = "";
+  inString = false;
+  escaped = false;
+  for (let index = 0; index < withoutComments.length; index += 1) {
+    const character = withoutComments[index];
+    if (inString) {
+      result += character;
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+      result += character;
+      continue;
+    }
+    if (character === ",") {
+      let lookahead = index + 1;
+      while (lookahead < withoutComments.length && /\s/.test(withoutComments[lookahead])) {
+        lookahead += 1;
+      }
+      if (withoutComments[lookahead] === "}" || withoutComments[lookahead] === "]") {
+        continue;
+      }
+    }
+    result += character;
+  }
+  return result;
 }
 
 export function uniqueProviderName(existingNames: string[], baseName: string): string {

@@ -2,12 +2,12 @@ import {
   buildBrowserRenderer,
   buildCoreServer,
   buildRenderer,
+  buildRequestLogBodyWorker,
   buildStyles,
   buildTrayRenderer,
   buildWebClientBridge,
   cleanDist,
   copyBrowserRendererHtml,
-  copyMarketplacePlugins,
   copyModelCatalog,
   copyRendererHtml,
   copyTrayRendererHtml,
@@ -17,7 +17,6 @@ import {
 const mode = process.argv.includes("--dev") ? "development" : "production";
 
 cleanDist();
-copyMarketplacePlugins();
 copyModelCatalog();
 copyBrowserRendererHtml();
 copyRendererHtml();
@@ -27,6 +26,7 @@ await Promise.all([
   buildCoreServer({ mode }),
   buildBrowserRenderer({ mode }),
   buildRenderer({ mode }),
+  buildRequestLogBodyWorker({ mode }),
   buildTrayRenderer({ mode }),
   buildWebClientBridge({ mode }),
   buildStyles({ minify: mode === "production" })

@@ -28,6 +28,8 @@ import type {
   BotGatewayQrWindowOpenRequest,
   BotGatewayQrWindowOpenResult,
   BotHandoffScanTarget,
+  ChromeLoginImportJob,
+  ChromeLoginImportRequest,
   ClaudeAppGatewayApplyResult,
   GatewayMcpToolInfo,
   GatewayProviderConnectivityCheckReport,
@@ -40,6 +42,10 @@ import type {
   LocalAgentProviderCandidate,
   LocalAgentProviderImportRequest,
   LocalAgentProviderImportResult,
+  LocalAgentProviderProbeRequest,
+  LocalAgentProviderProbeResult,
+  OpenRouterProviderCatalogRequest,
+  OpenRouterProviderCatalogResult,
   PluginDirectorySelection,
   PluginMarketplaceEntry,
   ProfileOpenCommandResult,
@@ -66,11 +72,18 @@ import type {
   ProxyNetworkSnapshot,
   ProxyStatus,
   RequestLogDetailRequest,
+  RequestLogBodyChunk,
+  RequestLogBodyChunkRequest,
   RequestLogEntry,
   RequestLogListFilter,
   RequestLogPage,
+  RouteScriptTestRequest,
+  RouteScriptTestResult,
+  RouteScriptValidationRequest,
+  RouteScriptValidationResult,
   UsageStatsFilter,
   UsageStatsRange,
+  UsageStatsResetResult,
   UsageStatsSnapshot
 } from "@ccr/core/contracts/app";
 import type { ProviderPreset } from "@ccr/core/providers/presets/types";
@@ -92,7 +105,9 @@ declare global {
       getAgentAnalysis: (filter?: AgentAnalysisFilter) => Promise<AgentAnalysisSnapshot>;
       getAgentTracePayload: (request: AgentAnalysisTracePayloadRequest) => Promise<AgentAnalysisTracePayloadFullResult>;
       getAppInfo: () => Promise<AppInfo>;
+      getChromeLoginImport?: (id: string) => Promise<ChromeLoginImportJob | undefined>;
       getConfig: () => Promise<AppConfig>;
+      getFilePath?: (file: File) => string;
       getGatewayStatus: () => Promise<GatewayStatus>;
       getLocalAgentProviderCandidates: () => Promise<LocalAgentProviderCandidate[]>;
       getOnboardingFinished: () => Promise<boolean>;
@@ -101,38 +116,46 @@ declare global {
       getProfileRuntimeStatus: () => Promise<ProfileRuntimeStatus>;
       getProviderAccountSnapshots: (provider?: string, options?: ProviderAccountSnapshotRequestOptions) => Promise<ProviderAccountSnapshot[]>;
       getProviderCatalogModels: (request: ProviderCatalogModelsRequest) => Promise<ProviderCatalogModelsResult>;
+      getOpenRouterProviderCatalog: (request: OpenRouterProviderCatalogRequest) => Promise<OpenRouterProviderCatalogResult>;
       getProviderPresets: () => Promise<ProviderPreset[]>;
       getPluginMarketplace: () => Promise<PluginMarketplaceEntry[]>;
       getProxyCertificateStatus: () => Promise<ProxyCertificateStatus>;
       getProxyNetworkCaptures: () => Promise<ProxyNetworkSnapshot>;
       getProxyStatus: () => Promise<ProxyStatus>;
       getRequestLogDetail: (request: RequestLogDetailRequest) => Promise<RequestLogEntry | undefined>;
+      getRequestLogBodyChunk: (request: RequestLogBodyChunkRequest) => Promise<RequestLogBodyChunk | undefined>;
       getRequestLogs: (filter?: RequestLogListFilter) => Promise<RequestLogPage>;
       getUpdateStatus: () => Promise<AppUpdateStatus>;
       getUsageStats: (range?: UsageStatsRange, filter?: UsageStatsFilter) => Promise<UsageStatsSnapshot>;
       installProxyCertificate: () => Promise<ProxyCertificateInstallResult>;
       importLocalAgentProvider: (request: LocalAgentProviderImportRequest) => Promise<LocalAgentProviderImportResult>;
       listMcpServerTools: (serverName: string) => Promise<GatewayMcpToolInfo[]>;
-      openBuiltInBrowser: () => Promise<void>;
+      openBuiltInBrowser: (url?: string) => Promise<void>;
       openBotGatewayQrWindow: (request: BotGatewayQrWindowOpenRequest) => Promise<BotGatewayQrWindowOpenResult>;
       openExternal: (url: string) => Promise<void>;
+      openPluginApp?: (pluginId: string, appId?: string) => Promise<void>;
       openProfile: (request: ProfileOpenRequest) => Promise<ProfileOpenResult>;
       prepareImageExportTarget?: (request: AppImageExportTargetRequest) => Promise<AppImageExportTargetResult>;
+      probeLocalAgentProvider?: (request: LocalAgentProviderProbeRequest) => Promise<LocalAgentProviderProbeResult>;
       probeProviderCandidates: (request: GatewayProviderProbeCandidatesRequest) => Promise<GatewayProviderProbeCandidateResult | undefined>;
       probeProvider: (request: GatewayProviderProbeRequest) => Promise<GatewayProviderProbeResult>;
       quitApp: () => Promise<void>;
       revealProxyCertificate: () => Promise<void>;
       renderHtmlPng?: (request: AppRenderHtmlPngRequest) => Promise<AppRenderHtmlPngResult>;
       resetCodexRateLimitCredit: (request: ProviderAccountResetRequest) => Promise<ProviderAccountResetResult>;
+      resetOverviewStatistics: () => Promise<UsageStatsResetResult>;
       restartGateway: () => Promise<GatewayStatus>;
       restartProxy: () => Promise<ProxyStatus>;
       saveApiKeys: (apiKeys: ApiKeyConfig[]) => Promise<AppConfig>;
+      /** Saves settings while preserving the credentials managed by saveApiKeys. */
       saveConfig: (config: AppConfig, options?: AppSaveConfigOptions) => Promise<AppConfig>;
       selectPluginDirectory: () => Promise<PluginDirectorySelection | undefined>;
       setOnboardingFinished: () => Promise<boolean>;
       setProxyNetworkCaptureEnabled: (enabled: boolean) => Promise<ProxyNetworkSnapshot>;
+      setThemePreference?: (theme: AppConfig["theme"]) => Promise<AppConfig["theme"]>;
       setTrayDetailOpen: (open: boolean, provider?: string) => Promise<void>;
       showMainWindow: () => Promise<void>;
+      startChromeLoginImport?: (request: ChromeLoginImportRequest) => Promise<ChromeLoginImportJob>;
       startGateway: () => Promise<GatewayStatus>;
       startBotGatewayQrLogin: (request: BotGatewayQrLoginStartRequest) => Promise<BotGatewayQrLoginStartResult>;
       stopGateway: () => Promise<GatewayStatus>;
@@ -140,14 +163,17 @@ declare global {
       scanBotHandoffBluetoothTargets: () => Promise<BotHandoffScanTarget[]>;
       scanBotHandoffWifiTargets: () => Promise<BotHandoffScanTarget[]>;
       testProviderAccountConnector: (request: ProviderAccountTestRequest) => Promise<ProviderAccountTestResult>;
+      testRouteScript: (request: RouteScriptTestRequest) => Promise<RouteScriptTestResult>;
       updateCheck: () => Promise<AppUpdateStatus>;
       updateDownload: () => Promise<AppUpdateStatus>;
       updateInstall: () => Promise<void>;
+      validateRouteScript: (request: RouteScriptValidationRequest) => Promise<RouteScriptValidationResult>;
       waitBotGatewayQrLogin: (request: BotGatewayQrLoginWaitRequest) => Promise<BotGatewayQrLoginWaitResult>;
       onBeforeQuit: (callback: () => void) => () => void;
       onOpenSettingsRequest: (callback: () => void) => () => void;
       onOpenUpdateRequest: (callback: () => void) => () => void;
       onProviderDeepLink: (callback: (request: ProviderDeepLinkRequest) => void) => () => void;
+      onThemePreferenceChanged?: (callback: (theme: AppConfig["theme"]) => void) => () => void;
       onUpdateStatusChanged: (callback: (status: AppUpdateStatus) => void) => () => void;
     };
   }

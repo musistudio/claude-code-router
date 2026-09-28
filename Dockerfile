@@ -1,4 +1,4 @@
-ARG NODE_IMAGE=node:22-bookworm
+ARG NODE_IMAGE=node:22-bookworm-slim
 ARG RUNTIME_NODE_IMAGE=node:22-bookworm-slim
 
 FROM ${NODE_IMAGE} AS build
@@ -12,6 +12,9 @@ COPY packages/ui/package.json packages/ui/package.json
 RUN npm ci
 
 COPY . .
+RUN if ls docker/local-ai-gateway/*.tgz >/dev/null 2>&1; then \
+    npm install --no-save docker/local-ai-gateway/*.tgz; \
+  fi
 RUN npm run build:docker
 
 FROM ${NODE_IMAGE} AS production-deps
@@ -31,7 +34,6 @@ ENV NODE_ENV=production \
     CCR_NGINX_PORT=8080 \
     CCR_GATEWAY_HOST=127.0.0.1 \
     CCR_GATEWAY_PORT=3456 \
-    CCR_GATEWAY_CORE_PORT=3457 \
     CCR_PUBLIC_HOST=127.0.0.1 \
     CCR_PUBLIC_PORT=3458
 

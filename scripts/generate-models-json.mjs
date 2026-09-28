@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
-import { writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -29,6 +31,10 @@ const sources = {
 const sourceOrder = ["models.dev", "litellm", "openrouter"];
 const support1MContextThreshold = 1_000_000;
 const schemaVersion = 2;
+const fetchAttempts = 3;
+const fetchRetryDelayMs = 500;
+const fetchTimeoutMs = 15_000;
+const execFileAsync = promisify(execFile);
 
 const firstPartyProviderAliases = new Map(Object.entries({
   ai21: "ai21",
@@ -81,11 +87,33 @@ const providerHints = [
 ];
 
 async function main() {
-  const [modelsDevPayload, liteLlmPayload, openRouterPayload] = await Promise.all([
-    fetchJson(sources.modelsDev.url),
-    fetchJson(sources.litellm.url),
-    fetchJson(sources.openrouter.url)
-  ]);
+  const sourceRequests = [
+    sources.modelsDev,
+    sources.litellm,
+    sources.openrouter
+  ];
+  const sourceResults = await Promise.allSettled(
+    sourceRequests.map((source) => fetchJson(source.url))
+  );
+  const failures = sourceResults.flatMap((result, index) =>
+    result.status === "rejected"
+      ? [`${sourceRequests[index].id}: ${formatError(result.reason)}`]
+      : []
+  );
+  if (failures.length > 0) {
+    const existingCatalog = await readExistingCatalog();
+    if (existingCatalog) {
+      console.warn(`[models] Refresh failed (${failures.join("; ")}).`);
+      console.warn(
+        `[models] Keeping the checked-in catalog with ${existingCatalog.models.length} model records.`
+      );
+      return;
+    }
+    throw new Error(`Failed to refresh the model catalog: ${failures.join("; ")}`);
+  }
+  const [modelsDevPayload, liteLlmPayload, openRouterPayload] = sourceResults.map(
+    (result) => result.value
+  );
 
   const entries = new Map();
   ingestModelsDev(entries, modelsDevPayload);
@@ -96,6 +124,7 @@ async function main() {
     .map(finalizeEntry)
     .sort((a, b) => a.id.localeCompare(b.id));
   const models = dedupeModels(providerModelRecords);
+  assertUniqueModelCatalog(models);
 
   const payload = {
     schemaVersion,
@@ -116,11 +145,66 @@ async function main() {
 }
 
 async function fetchJson(url) {
-  const response = await fetch(url, { headers: { accept: "application/json" } });
-  if (!response.ok) {
-    throw new Error(`Failed to fetch ${url}: HTTP ${response.status}`);
+  let lastError;
+  for (let attempt = 1; attempt <= fetchAttempts; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(fetchTimeoutMs)
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      lastError = error;
+      if (attempt < fetchAttempts) {
+        await delay(fetchRetryDelayMs * attempt);
+      }
+    }
   }
-  return response.json();
+  try {
+    return await fetchJsonWithCurl(url);
+  } catch (curlError) {
+    throw new Error(
+      `Failed to fetch ${url} after ${fetchAttempts} attempts: ${formatError(lastError)}; curl fallback failed: ${formatError(curlError)}`
+    );
+  }
+}
+
+async function fetchJsonWithCurl(url) {
+  const { stdout } = await execFileAsync(
+    "curl",
+    ["-sL", "--fail", "--max-time", String(Math.ceil(fetchTimeoutMs / 1000)), "-H", "accept: application/json", url],
+    {
+      encoding: "utf8",
+      maxBuffer: 128 * 1024 * 1024,
+      windowsHide: true
+    }
+  );
+  return JSON.parse(stdout);
+}
+
+async function readExistingCatalog() {
+  try {
+    const payload = JSON.parse(await readFile(outputPath, "utf8"));
+    return isRecord(payload) &&
+      payload.schemaVersion === schemaVersion &&
+      Array.isArray(payload.models) &&
+      payload.models.length > 0
+      ? payload
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function delay(milliseconds) {
+  return new Promise((resolveDelay) => setTimeout(resolveDelay, milliseconds));
+}
+
+function formatError(error) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function ingestModelsDev(entries, payload) {
@@ -150,6 +234,7 @@ function ingestModelsDev(entries, payload) {
         openWeights: readBoolean(model.open_weights),
         pdfInput: modalities.input.includes("pdf"),
         reasoning: readBoolean(model.reasoning),
+        ...reasoningEffortCapabilities(model.reasoning_options),
         structuredOutput: readBoolean(model.structured_output),
         temperature: readBoolean(model.temperature),
         toolCalling: readBoolean(model.tool_call),
@@ -373,6 +458,29 @@ function dedupeModels(providerModelRecords) {
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 
+function assertUniqueModelCatalog(models) {
+  const modelIds = new Map();
+  const aliases = new Map();
+
+  for (const model of models) {
+    const id = normalizeEntryKey(model.id);
+    const previousId = modelIds.get(id);
+    if (previousId) {
+      throw new Error(`Duplicate model ID after deduplication: ${model.id} (${previousId})`);
+    }
+    modelIds.set(id, model.id);
+
+    for (const alias of model.aliases ?? []) {
+      const key = normalizeEntryKey(alias);
+      const previousModel = aliases.get(key);
+      if (previousModel && previousModel !== model.id) {
+        throw new Error(`Alias collision after deduplication: ${alias} (${previousModel}, ${model.id})`);
+      }
+      aliases.set(key, model.id);
+    }
+  }
+}
+
 function mergeDedupedModel(identity, records) {
   const sortedRecords = records.slice().sort((a, b) => providerModelRecordScore(a, identity) - providerModelRecordScore(b, identity));
   const representative = sortedRecords[0];
@@ -570,6 +678,8 @@ function pricingFromModelsDev(cost) {
   const per1MTokens = compactObject({
     cacheRead: readNumber(cost.cache_read),
     cacheWrite: readNumber(cost.cache_write),
+    cacheWrite1h: readNumber(cost.cache_write_1h),
+    cacheWrite5m: readNumber(cost.cache_write_5m) ?? readNumber(cost.cache_write),
     input: readNumber(cost.input),
     inputAudio: readNumber(cost.input_audio),
     output: readNumber(cost.output),
@@ -577,7 +687,7 @@ function pricingFromModelsDev(cost) {
     reasoningOutput: readNumber(cost.reasoning)
   });
 
-  const known = new Set(["cache_read", "cache_write", "input", "input_audio", "output", "output_audio", "reasoning", "tiers", "context_over_200k"]);
+  const known = new Set(["cache_read", "cache_write", "cache_write_1h", "cache_write_5m", "input", "input_audio", "output", "output_audio", "reasoning", "tiers", "context_over_200k"]);
   const extra = numericObjectExcept(cost, known);
 
   return compactObject({
@@ -600,6 +710,15 @@ function pricingFromLiteLlm(model) {
       "cache_read_cost_per_token"
     ])),
     cacheWrite: per1MFromPerToken(firstNumber(model, consumed, [
+      "cache_creation_input_token_cost",
+      "input_cache_write_cost_per_token",
+      "cache_write_cost_per_token"
+    ])),
+    cacheWrite1h: per1MFromPerToken(firstNumber(model, consumed, [
+      "cache_creation_input_token_cost_above_1hr",
+      "input_cache_write_1h"
+    ])),
+    cacheWrite5m: per1MFromPerToken(firstNumber(model, consumed, [
       "cache_creation_input_token_cost",
       "input_cache_write_cost_per_token",
       "cache_write_cost_per_token"
@@ -704,6 +823,8 @@ function pricingFromOpenRouter(pricing) {
   const per1MTokens = compactObject({
     cacheRead: per1MFromPerToken(firstNumber(pricing, consumed, ["input_cache_read"])),
     cacheWrite: per1MFromPerToken(firstNumber(pricing, consumed, ["input_cache_write"])),
+    cacheWrite1h: per1MFromPerToken(firstNumber(pricing, consumed, ["input_cache_write_1h"])),
+    cacheWrite5m: per1MFromPerToken(firstNumber(pricing, consumed, ["input_cache_write"])),
     input: per1MFromPerToken(firstNumber(pricing, consumed, ["prompt"])),
     internalReasoning: per1MFromPerToken(firstNumber(pricing, consumed, ["internal_reasoning"])),
     output: per1MFromPerToken(firstNumber(pricing, consumed, ["completion"]))
@@ -741,8 +862,10 @@ function capabilitiesFromLiteLlm(model, mode, modalities) {
       readBoolean(model.supports_embedding_image_input) ||
       modalities.input.includes("image"),
     imageOutput: mode === "image_generation" || modalities.output.includes("image"),
+    highReasoningEffort: readBoolean(model.supports_high_reasoning_effort),
     lowReasoningEffort: readBoolean(model.supports_low_reasoning_effort),
     maxReasoningEffort: readBoolean(model.supports_max_reasoning_effort),
+    mediumReasoningEffort: readBoolean(model.supports_medium_reasoning_effort),
     minimalReasoningEffort: readBoolean(model.supports_minimal_reasoning_effort),
     moderation: mode === "moderation",
     multimodal: readBoolean(model.supports_multimodal),
@@ -762,10 +885,30 @@ function capabilitiesFromLiteLlm(model, mode, modalities) {
     toolChoice: readBoolean(model.supports_tool_choice),
     transcription: mode === "audio_transcription",
     urlContext: readBoolean(model.supports_url_context),
+    ultraReasoningEffort: readBoolean(model.supports_ultra_reasoning_effort),
     videoInput: readBoolean(model.supports_video_input) || modalities.input.includes("video"),
     vision: readBoolean(model.supports_vision),
     webSearch: readBoolean(model.supports_web_search),
     xhighReasoningEffort: readBoolean(model.supports_xhigh_reasoning_effort)
+  });
+}
+
+function reasoningEffortCapabilities(value) {
+  const efforts = new Set(
+    (Array.isArray(value) ? value : [])
+      .flatMap((option) => isRecord(option) && Array.isArray(option.values) ? option.values : [])
+      .map((effort) => readString(effort)?.toLowerCase() ?? "")
+      .filter(Boolean)
+  );
+  return compactObject({
+    lowReasoningEffort: efforts.has("low") || undefined,
+    mediumReasoningEffort: efforts.has("medium") || undefined,
+    highReasoningEffort: efforts.has("high") || undefined,
+    maxReasoningEffort: efforts.has("max") || undefined,
+    minimalReasoningEffort: efforts.has("minimal") || undefined,
+    noneReasoningEffort: efforts.has("none") || undefined,
+    ultraReasoningEffort: efforts.has("ultra") || undefined,
+    xhighReasoningEffort: efforts.has("xhigh") || undefined
   });
 }
 

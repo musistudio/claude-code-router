@@ -1,12 +1,28 @@
 import { createHash, randomUUID } from "node:crypto";
 import { loadAppConfig } from "@ccr/core/config/config";
 import { attachCodexRateLimitResetCreditDetails } from "@ccr/core/agents/local-providers/codex";
-import { localAgentProviderApiKey, readCodexAuth } from "@ccr/core/agents/local-providers/service";
+import {
+  codexDefaultBaseUrl,
+  localAgentProviderApiKey,
+  kimiAccessTokenExpired,
+  kimiIdentityHeaders,
+  readClaudeCodeOauth,
+  readCodexAuth,
+  readGrokAuth,
+  readKimiAuth,
+  resolveGrokAuth,
+  resolveKimiAuth,
+  readZcodeLocalProviderCredential,
+  zcodeDefaultBaseUrl
+} from "@ccr/core/agents/local-providers/service";
+import { grokAccessTokenExpired } from "@ccr/core/agents/local-providers/grok";
 import { pluginService } from "@ccr/core/plugins/service";
 import { getUsageTotalsSince } from "@ccr/core/usage/store";
 import { findProviderPresetByBaseUrl, providerEndpointCanReceiveProviderApiKey } from "@ccr/core/providers/presets/index";
 import { fetchWithSystemProxy } from "@ccr/core/proxy/system-proxy-fetch";
 import { normalizeProviderBaseUrl, providerUrlWithDefaultScheme } from "@ccr/core/providers/url";
+import { fetchProviderAccountWebContentJson } from "@ccr/core/providers/account-webcontent";
+import { isGatewayProviderEnabled } from "@ccr/core/contracts/app";
 import type {
   AppConfig,
   GatewayProviderConfig,
@@ -15,6 +31,7 @@ import type {
   ProviderAccountConnectorError,
   ProviderAccountConnectorSource,
   ProviderAccountAuthMode,
+  ProviderAccountBrowserCredentialsMode,
   ProviderAccountHttpJsonConnectorConfig,
   ProviderAccountLocalEstimateConnectorConfig,
   ProviderAccountLocalWindowConfig,
@@ -34,9 +51,16 @@ import type {
   ProviderAccountTestRequest,
   ProviderAccountTestResult,
   ProviderAccountStandardConnectorConfig,
+  ProviderAccountWebContentJsonConnectorConfig,
   ProviderCredentialConfig,
   ProviderAccountStatus
 } from "@ccr/core/contracts/app";
+
+export {
+  setProviderAccountWebContentFetchHandler,
+  type ProviderAccountWebContentFetchHandler,
+  type ProviderAccountWebContentFetchRequest
+} from "@ccr/core/providers/account-webcontent";
 
 type CacheEntry = {
   expiresAt: number;
@@ -63,6 +87,21 @@ type MaterializedProviderAccountRequest = {
   provider: GatewayProviderConfig;
 };
 
+type LocalAgentAccountCredential = {
+  apiKey?: string;
+  headers?: Record<string, string>;
+};
+
+type CodexOauthRefreshResult = {
+  accessToken?: string;
+  accountId?: string;
+  expiresAtMs: number;
+  idToken?: string;
+  isFedrampAccount?: boolean;
+  refreshToken?: string;
+  scope?: string;
+};
+
 const defaultRefreshIntervalMs = 5 * 60 * 1000;
 const minRefreshIntervalMs = 30 * 1000;
 const maxErrorRefreshIntervalMs = 60 * 1000;
@@ -70,7 +109,13 @@ const maxStaleAccountSnapshotMs = 2 * 60 * 1000;
 const maxCacheEntries = 500;
 const standardAccountPaths = ["/.well-known/ccr/account", "/v1/account/limits"];
 const codexRateLimitResetCreditConsumeEndpoint = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume";
+const codexOauthTokenEndpoint = "https://auth.openai.com/oauth/token";
+const codexOauthClientId = "app_EMoamEEZ73f0CkXaXp7hrann";
+const codexOauthDefaultScope = "openid profile email offline_access api.connectors.read api.connectors.invoke";
+const codexOauthRequiredScopes = ["api.connectors.read", "api.connectors.invoke"];
+const codexOauthDefaultTimeoutMs = 8_000;
 const cache = new Map<string, CacheEntry>();
+const codexOauthCache = new Map<string, CodexOauthRefreshResult>();
 const inFlightRefreshes = new Map<string, Promise<ProviderAccountSnapshot | undefined>>();
 let cacheGeneration = 0;
 
@@ -82,6 +127,9 @@ export async function getProviderAccountSnapshots(
   pruneProviderAccountCache();
   const normalizedProviderName = normalizeProviderName(providerName);
   const providers = config.Providers.filter((provider) => {
+    if (!isGatewayProviderEnabled(provider)) {
+      return false;
+    }
     if (!normalizedProviderName) {
       return true;
     }
@@ -129,15 +177,23 @@ export async function testProviderAccountConnector(request: ProviderAccountTestR
     models: [],
     name: request.providerName?.trim() || "Provider"
   };
-  const connector: ProviderAccountHttpJsonConnectorConfig = {
-    ...request.connector,
-    auth: request.connector.auth ?? "provider-api-key",
-    method: request.connector.method ?? "GET",
-    type: "http-json"
-  };
-  const payload = await fetchJson(connector.endpoint, provider, connector.auth, connector.headers, connector.method, connector.body);
+  const connector = normalizeProviderAccountTestConnector(request.connector);
+  const payload = connector.type === "webcontent-json"
+    ? await fetchWebContentJson(provider, connector)
+    : await fetchJson(connector.endpoint, provider, connector.auth, connector.headers, connector.method, connector.body);
+  const source = connector.type;
+  if (connector.parser === "grok-subscription") {
+    const meters = grokSubscriptionMeters(payload, source);
+    return {
+      meters,
+      message: grokSubscriptionMessage(payload),
+      paths: flattenJsonPaths(payload),
+      payload,
+      status: grokSubscriptionStatus(payload) ?? statusFromMeters(meters, [], 1)
+    };
+  }
   if (connector.parser === "kimi-code-usages") {
-    const meters = kimiCodeUsageMeters(payload);
+    const meters = kimiCodeUsageMeters(payload, source);
     return {
       meters,
       message: meters.length === 0 ? "No usage data available." : undefined,
@@ -147,7 +203,7 @@ export async function testProviderAccountConnector(request: ProviderAccountTestR
     };
   }
   if (connector.parser === "new-api-key-usage") {
-    const meters = newApiKeyUsageMeters(payload);
+    const meters = newApiKeyUsageMeters(payload, source);
     return {
       meters,
       message: meters.length === 0 ? newApiKeyUsageFallbackMessage(payload) : readMappedString(connector.mapping.message, payload),
@@ -157,7 +213,7 @@ export async function testProviderAccountConnector(request: ProviderAccountTestR
     };
   }
   if (connector.parser === "new-api-user-self") {
-    const meters = newApiUserSelfMeters(payload);
+    const meters = newApiUserSelfMeters(payload, source);
     return {
       meters,
       message: meters.length === 0 ? readMappedString(connector.mapping.message, payload) ?? "No user balance data available." : readMappedString(connector.mapping.message, payload),
@@ -167,7 +223,7 @@ export async function testProviderAccountConnector(request: ProviderAccountTestR
     };
   }
 
-  const meters = mappedMetersFromPayload(connector, payload);
+  const meters = mappedMetersFromPayload(connector, payload, source);
 
   return {
     meters,
@@ -175,6 +231,24 @@ export async function testProviderAccountConnector(request: ProviderAccountTestR
     paths: flattenJsonPaths(payload),
     payload,
     status: normalizeStatus(readMappedString(connector.mapping.status, payload))
+  };
+}
+
+function normalizeProviderAccountTestConnector(
+  connector: ProviderAccountHttpJsonConnectorConfig | ProviderAccountWebContentJsonConnectorConfig
+): ProviderAccountHttpJsonConnectorConfig | ProviderAccountWebContentJsonConnectorConfig {
+  if (connector.type === "webcontent-json") {
+    return {
+      ...connector,
+      method: connector.method ?? "GET",
+      type: "webcontent-json"
+    };
+  }
+  return {
+    ...connector,
+    auth: connector.auth ?? "provider-api-key",
+    method: connector.method ?? "GET",
+    type: "http-json"
   };
 }
 
@@ -190,6 +264,17 @@ export function newApiUserSelfMetersForTest(payload: unknown): ProviderAccountMe
   return newApiUserSelfMeters(payload);
 }
 
+export async function localCodexAccountCredentialForTest(plugin: Record<string, unknown>): Promise<LocalAgentAccountCredential> {
+  return localCodexAccountCredential(plugin);
+}
+
+export async function localAgentProviderAccountCredentialForTest(
+  config: Pick<AppConfig, "providerPlugins">,
+  provider: GatewayProviderConfig
+): Promise<LocalAgentAccountCredential | undefined> {
+  return localAgentProviderAccountCredential(config as AppConfig, provider);
+}
+
 export async function resetCodexRateLimitCredit(request: ProviderAccountResetRequest): Promise<ProviderAccountResetResult> {
   const providerName = request.provider?.trim();
   const creditId = request.creditId?.trim();
@@ -202,7 +287,7 @@ export async function resetCodexRateLimitCredit(request: ProviderAccountResetReq
 
   const config = await loadAppConfig();
   const provider = codexResetProvider(config, providerName, request.credentialId);
-  const materialized = materializeProviderAccountRequest(config, provider);
+  const materialized = await materializeProviderAccountRequest(config, provider);
   const payload = await fetchJson(
     codexRateLimitResetCreditConsumeEndpoint,
     materialized.provider,
@@ -388,7 +473,10 @@ function providerAccountTargets(provider: GatewayProviderConfig): ProviderAccoun
 
 function codexResetProvider(config: AppConfig, providerName: string, credentialId: string | undefined): GatewayProviderConfig {
   const normalizedProviderName = normalizeProviderName(providerName);
-  const provider = config.Providers.find((candidate) => normalizeProviderName(candidate.name) === normalizedProviderName);
+  const provider = config.Providers.find((candidate) =>
+    isGatewayProviderEnabled(candidate) &&
+    normalizeProviderName(candidate.name) === normalizedProviderName
+  );
   if (!provider) {
     throw new Error("Provider account was not found.");
   }
@@ -550,6 +638,9 @@ async function resolveConnector(
     if (connector.type === "http-json") {
       return await resolveHttpJsonConnector(config, provider, connector);
     }
+    if (connector.type === "webcontent-json") {
+      return await resolveWebContentJsonConnector(provider, connector);
+    }
     if (connector.type === "plugin") {
       return await resolvePluginConnector(config, provider, connector, now);
     }
@@ -573,7 +664,7 @@ async function resolveStandardConnector(
   for (const endpoint of endpoints) {
     try {
       const request = providerAccountConnectorUsesProviderApiKey(connector)
-        ? materializeProviderAccountRequest(config, provider)
+        ? await materializeProviderAccountRequest(config, provider)
         : { provider };
       const payload = await fetchJson(endpoint, request.provider, connector.auth, {
         ...(connector.headers ?? {}),
@@ -603,12 +694,21 @@ async function resolveHttpJsonConnector(
   connector: ProviderAccountHttpJsonConnectorConfig
 ): Promise<ConnectorResult> {
   const request = providerAccountConnectorUsesProviderApiKey(connector)
-    ? materializeProviderAccountRequest(config, provider)
+    ? await materializeProviderAccountRequest(config, provider)
     : { provider };
   const payload = await fetchJson(connector.endpoint, request.provider, connector.auth, {
     ...(connector.headers ?? {}),
     ...(request.headers ?? {})
   }, connector.method, connector.body);
+  if (connector.parser === "grok-subscription") {
+    return {
+      errors: [],
+      message: grokSubscriptionMessage(payload),
+      meters: grokSubscriptionMeters(payload),
+      source: "http-json",
+      status: grokSubscriptionStatus(payload)
+    };
+  }
   if (connector.parser === "kimi-code-usages") {
     const meters = kimiCodeUsageMeters(payload);
     return {
@@ -647,6 +747,58 @@ async function resolveHttpJsonConnector(
   };
 }
 
+async function resolveWebContentJsonConnector(
+  provider: GatewayProviderConfig,
+  connector: ProviderAccountWebContentJsonConnectorConfig
+): Promise<ConnectorResult> {
+  const payload = await fetchWebContentJson(provider, connector);
+  const source: ProviderAccountConnectorSource = "webcontent-json";
+  if (connector.parser === "grok-subscription") {
+    return {
+      errors: [],
+      message: grokSubscriptionMessage(payload),
+      meters: grokSubscriptionMeters(payload, source),
+      source,
+      status: grokSubscriptionStatus(payload)
+    };
+  }
+  if (connector.parser === "kimi-code-usages") {
+    const meters = kimiCodeUsageMeters(payload, source);
+    return {
+      errors: [],
+      message: meters.length === 0 ? "No usage data available." : undefined,
+      meters,
+      source
+    };
+  }
+  if (connector.parser === "new-api-key-usage") {
+    const meters = newApiKeyUsageMeters(payload, source);
+    return {
+      errors: [],
+      message: meters.length === 0 ? newApiKeyUsageFallbackMessage(payload) : readMappedString(connector.mapping.message, payload),
+      meters,
+      source
+    };
+  }
+  if (connector.parser === "new-api-user-self") {
+    const meters = newApiUserSelfMeters(payload, source);
+    return {
+      errors: [],
+      message: meters.length === 0 ? readMappedString(connector.mapping.message, payload) ?? "No user balance data available." : readMappedString(connector.mapping.message, payload),
+      meters,
+      source
+    };
+  }
+
+  return {
+    errors: [],
+    meters: mappedMetersFromPayload(connector, payload, source),
+    message: readMappedString(connector.mapping.message, payload),
+    source,
+    status: normalizeStatus(readMappedString(connector.mapping.status, payload))
+  };
+}
+
 async function resolvePluginConnector(
   config: AppConfig,
   provider: GatewayProviderConfig,
@@ -661,6 +813,10 @@ async function resolvePluginConnector(
   const result = await pluginConnector.resolve({
     config,
     connector,
+    fetchProviderAccountJson: (request) => fetchProviderAccountWebContentJson({
+      ...request,
+      provider: request.provider ?? provider
+    }),
     now: now.toISOString(),
     provider
   });
@@ -808,12 +964,116 @@ function normalizeRemoteSnapshot(
   };
 }
 
-function newApiKeyUsageMeters(payload: unknown): ProviderAccountMeter[] {
-  const meter = newApiKeyUsageMeter(payload);
+function grokSubscriptionMeters(payload: unknown, source: ProviderAccountConnectorSource = "http-json"): ProviderAccountMeter[] {
+  const allowAccess = grokSubscriptionBoolean(payload, [
+    "allow_access",
+    "allowAccess",
+    "has_grok_code_access",
+    "hasGrokCodeAccess"
+  ]);
+  if (allowAccess === undefined) {
+    return [];
+  }
+  return [
+    {
+      id: "grok_subscription_access",
+      kind: "subscription",
+      label: "Subscription access",
+      limit: 100,
+      remaining: allowAccess ? 100 : 0,
+      source,
+      unit: "%",
+      used: allowAccess ? 0 : 100,
+      window: "subscription"
+    }
+  ];
+}
+
+function grokSubscriptionMessage(payload: unknown): string | undefined {
+  return grokSubscriptionString(payload, [
+    "gate_message",
+    "gateMessage",
+    "subscription_tier_display",
+    "subscriptionTierDisplay",
+    "subscription_tier",
+    "subscriptionTier",
+    "tier_display",
+    "tierDisplay",
+    "tier",
+    "user_blocked_reason",
+    "userBlockedReason",
+    "team_blocked_reason",
+    "teamBlockedReason"
+  ]);
+}
+
+function grokSubscriptionStatus(payload: unknown): ProviderAccountStatus | undefined {
+  const allowAccess = grokSubscriptionBoolean(payload, [
+    "allow_access",
+    "allowAccess",
+    "has_grok_code_access",
+    "hasGrokCodeAccess"
+  ]);
+  if (allowAccess === false) {
+    return "critical";
+  }
+  if (grokSubscriptionString(payload, ["gate_message", "gateMessage", "gate_label", "gateLabel"])) {
+    return "warning";
+  }
+  return undefined;
+}
+
+function grokSubscriptionBoolean(payload: unknown, keys: string[]): boolean | undefined {
+  for (const record of grokSubscriptionRecords(payload)) {
+    for (const key of keys) {
+      const value = readBoolean(readJsonRecordValue(record, key));
+      if (value !== undefined) {
+        return value;
+      }
+    }
+  }
+  return undefined;
+}
+
+function grokSubscriptionString(payload: unknown, keys: string[]): string | undefined {
+  for (const record of grokSubscriptionRecords(payload)) {
+    for (const key of keys) {
+      const value = readString(readJsonRecordValue(record, key));
+      if (value) {
+        return value;
+      }
+    }
+  }
+  return undefined;
+}
+
+function grokSubscriptionRecords(payload: unknown): Record<string, unknown>[] {
+  if (!isRecord(payload)) {
+    return [];
+  }
+  const records: Record<string, unknown>[] = [];
+  const queue = [payload];
+  for (const record of queue) {
+    if (records.includes(record)) {
+      continue;
+    }
+    records.push(record);
+    for (const key of ["account", "data", "meta", "subscription", "user", "viewer_context", "viewerContext"]) {
+      const nested = readJsonRecordValue(record, key);
+      if (isRecord(nested)) {
+        queue.push(nested);
+      }
+    }
+  }
+  return records;
+}
+
+function newApiKeyUsageMeters(payload: unknown, source: ProviderAccountConnectorSource = "http-json"): ProviderAccountMeter[] {
+  const meter = newApiKeyUsageMeter(payload, source);
   return meter ? [meter] : [];
 }
 
-function newApiKeyUsageMeter(payload: unknown): ProviderAccountMeter | undefined {
+function newApiKeyUsageMeter(payload: unknown, source: ProviderAccountConnectorSource): ProviderAccountMeter | undefined {
   const data = newApiKeyUsageData(payload);
   if (!data) {
     return undefined;
@@ -833,7 +1093,7 @@ function newApiKeyUsageMeter(payload: unknown): ProviderAccountMeter | undefined
     label: "API key quota",
     limit,
     remaining,
-    source: "http-json",
+    source,
     unit: "quota",
     used
   };
@@ -847,12 +1107,12 @@ function newApiKeyUsageFallbackMessage(payload: unknown): string {
   return readMappedString("$.message", payload) ?? "No API key quota data available.";
 }
 
-function newApiUserSelfMeters(payload: unknown): ProviderAccountMeter[] {
-  const meter = newApiUserSelfMeter(payload);
+function newApiUserSelfMeters(payload: unknown, source: ProviderAccountConnectorSource = "http-json"): ProviderAccountMeter[] {
+  const meter = newApiUserSelfMeter(payload, source);
   return meter ? [meter] : [];
 }
 
-function newApiUserSelfMeter(payload: unknown): ProviderAccountMeter | undefined {
+function newApiUserSelfMeter(payload: unknown, source: ProviderAccountConnectorSource): ProviderAccountMeter | undefined {
   const data = newApiUserSelfData(payload);
   if (!data) {
     return undefined;
@@ -870,7 +1130,7 @@ function newApiUserSelfMeter(payload: unknown): ProviderAccountMeter | undefined
     label: "User balance",
     limit: remaining !== undefined && used !== undefined ? remaining + used : undefined,
     remaining,
-    source: "http-json",
+    source,
     unit: "quota",
     used
   };
@@ -892,13 +1152,13 @@ function newApiUserSelfData(payload: unknown): Record<string, unknown> | undefin
   return isRecord(data) ? data : payload;
 }
 
-function kimiCodeUsageMeters(payload: unknown): ProviderAccountMeter[] {
+function kimiCodeUsageMeters(payload: unknown, source: ProviderAccountConnectorSource = "http-json"): ProviderAccountMeter[] {
   if (!isRecord(payload)) {
     return [];
   }
 
   const meters: ProviderAccountMeter[] = [];
-  const usage = isRecord(payload.usage) ? kimiCodeUsageMeter(payload.usage, "weekly_quota", "Weekly quota") : undefined;
+  const usage = isRecord(payload.usage) ? kimiCodeUsageMeter(payload.usage, "weekly_quota", "Weekly quota", source) : undefined;
   if (usage) {
     meters.push(usage);
   }
@@ -912,7 +1172,7 @@ function kimiCodeUsageMeters(payload: unknown): ProviderAccountMeter[] {
       const detail = isRecord(item.detail) ? item.detail : item;
       const window = isRecord(item.window) ? item.window : {};
       const label = kimiCodeUsageLimitLabel(item, detail, window, index);
-      const meter = kimiCodeUsageMeter(detail, uniqueKimiCodeUsageMeterId(kimiCodeUsageMeterId(item, detail, label, index), seenIds), label, item);
+      const meter = kimiCodeUsageMeter(detail, uniqueKimiCodeUsageMeterId(kimiCodeUsageMeterId(item, detail, label, index), seenIds), label, source, item);
       if (meter) {
         seenIds.add(meter.id);
         meters.push(meter);
@@ -927,6 +1187,7 @@ function kimiCodeUsageMeter(
   data: Record<string, unknown>,
   id: string,
   defaultLabel: string,
+  source: ProviderAccountConnectorSource,
   fallbackData?: Record<string, unknown>
 ): ProviderAccountMeter | undefined {
   const limit = normalizeNumber(data.limit);
@@ -958,7 +1219,7 @@ function kimiCodeUsageMeter(
       limit: 100,
       remaining: remainingPercent,
       resetAt,
-      source: "http-json",
+      source,
       unit: "%",
       used: remainingPercent === undefined ? undefined : 100 - remainingPercent
     };
@@ -971,7 +1232,7 @@ function kimiCodeUsageMeter(
     limit,
     remaining,
     resetAt,
-    source: "http-json",
+    source,
     unit: "quota",
     used
   };
@@ -1081,7 +1342,11 @@ function normalizeRemoteErrors(value: unknown, source: ProviderAccountConnectorS
   return errors.length > 0 ? errors : undefined;
 }
 
-function mappedMeterFromPayload(config: ProviderAccountMappedMeterConfig, payload: unknown): ProviderAccountMeter | undefined {
+function mappedMeterFromPayload(
+  config: ProviderAccountMappedMeterConfig,
+  payload: unknown,
+  source: ProviderAccountConnectorSource = "http-json"
+): ProviderAccountMeter | undefined {
   const id = config.id.trim();
   const label = config.label.trim();
   if (!id || !label) {
@@ -1104,12 +1369,16 @@ function mappedMeterFromPayload(config: ProviderAccountMappedMeterConfig, payloa
     unit,
     used,
     window: config.window
-  }, "http-json");
+  }, source);
 }
 
-function mappedMetersFromPayload(connector: ProviderAccountHttpJsonConnectorConfig, payload: unknown): ProviderAccountMeter[] {
+function mappedMetersFromPayload(
+  connector: ProviderAccountHttpJsonConnectorConfig | ProviderAccountWebContentJsonConnectorConfig,
+  payload: unknown,
+  source: ProviderAccountConnectorSource = "http-json"
+): ProviderAccountMeter[] {
   const meters = connector.mapping.meters
-    .map((meter) => mappedMeterFromPayload(meter, payload))
+    .map((meter) => mappedMeterFromPayload(meter, payload, source))
     .filter((meter): meter is ProviderAccountMeter => Boolean(meter));
   return attachCodexRateLimitResetCreditDetails(meters, payload);
 }
@@ -1168,15 +1437,15 @@ function normalizeMeterDetail(value: unknown): ProviderAccountMeterDetail | unde
   return detail.description || detail.effectiveAt || detail.expiresAt || detail.id || detail.label || detail.redeemable !== undefined || detail.status ? detail : undefined;
 }
 
-function materializeProviderAccountRequest(
+async function materializeProviderAccountRequest(
   config: AppConfig,
   provider: GatewayProviderConfig
-): MaterializedProviderAccountRequest {
+): Promise<MaterializedProviderAccountRequest> {
   if (providerApiKey(provider) !== localAgentProviderApiKey) {
     return { provider };
   }
 
-  const credential = localAgentProviderAccountCredential(config, provider);
+  const credential = await localAgentProviderAccountCredential(config, provider);
   if (!credential?.apiKey) {
     throw new Error("Local agent account credential was not found. Sign in again, then re-import the local login provider.");
   }
@@ -1198,10 +1467,10 @@ function providerAccountConnectorUsesProviderApiKey(
   return (connector.auth ?? "provider-api-key") !== "none";
 }
 
-function localAgentProviderAccountCredential(
+async function localAgentProviderAccountCredential(
   config: AppConfig,
   provider: GatewayProviderConfig
-): { apiKey?: string; headers?: Record<string, string> } | undefined {
+): Promise<LocalAgentAccountCredential | undefined> {
   for (const plugin of config.providerPlugins ?? []) {
     if (!localAgentProviderPluginMatches(plugin, provider)) {
       continue;
@@ -1209,13 +1478,38 @@ function localAgentProviderAccountCredential(
 
     const key = readString((plugin as { key?: unknown }).key)?.toLowerCase() ?? "";
     if (key.includes("codex-oauth")) {
-      return localCodexAccountCredential(plugin);
+      return await localCodexAccountCredential(plugin);
     }
     if (key.includes("claude-code-oauth")) {
-      return localBearerAccountCredential(plugin);
+      return localClaudeCodeAccountCredential(plugin);
+    }
+    if (key.includes("grok-cli-oauth")) {
+      return await localGrokAccountCredential(plugin);
+    }
+    if (key.includes("kimi-cli-oauth")) {
+      return await localKimiAccountCredential(plugin);
+    }
+    if (key.includes("kimi-cli-api-key")) {
+      return localKimiApiKeyAccountCredential(plugin);
     }
     if (key.includes("zcode-api-key")) {
       return localApiKeyHeaderAccountCredential(plugin);
+    }
+    if (isLocalOpenCodeProvider(provider)) {
+      return localOpenCodeAccountCredential(plugin);
+    }
+  }
+  if (isLocalCodexProvider(provider)) {
+    return await localCodexAccountCredential({
+      codexOauth: { refreshIfMissingAccessToken: true },
+      key: "ccr-local-agent-codex-fallback-codex-oauth",
+      providerName: provider.name
+    });
+  }
+  if (isLocalZcodeProvider(provider)) {
+    const credential = readZcodeLocalProviderCredential();
+    if (credential?.apiKey && localZcodeProviderBaseUrlMatches(provider, credential.baseUrl)) {
+      return { apiKey: credential.apiKey };
     }
   }
   return undefined;
@@ -1236,34 +1530,290 @@ function localAgentProviderPluginMatches(plugin: unknown, provider: GatewayProvi
   }
 
   const providerNames = new Set([
+    provider.id,
+    provider.id && provider.type ? `${provider.id}::${provider.type}` : "",
     provider.name,
     provider.type ? `${provider.name}::${provider.type}` : ""
-  ].map((value) => value.trim().toLowerCase()).filter(Boolean));
+  ].map((value) => (value ?? "").trim().toLowerCase()).filter(Boolean));
   return providerNames.has(pluginProviderName.trim().toLowerCase());
 }
 
-function localCodexAccountCredential(plugin: Record<string, unknown>): { apiKey?: string; headers?: Record<string, string> } {
+function isLocalCodexProvider(provider: GatewayProviderConfig): boolean {
+  return normalizeProviderBaseUrl(providerBaseUrl(provider)) === normalizeProviderBaseUrl(codexDefaultBaseUrl);
+}
+
+function isLocalZcodeProvider(provider: GatewayProviderConfig): boolean {
+  if (provider.type !== "anthropic_messages") {
+    return false;
+  }
+  const baseUrl = providerBaseUrl(provider);
+  const normalizedBaseUrl = normalizeProviderBaseUrl(baseUrl);
+  if (normalizedBaseUrl === normalizeProviderBaseUrl(zcodeDefaultBaseUrl)) {
+    return true;
+  }
+  return zcodeProviderTextMatches([
+    provider.id,
+    provider.name,
+    baseUrl
+  ]);
+}
+
+function isLocalOpenCodeProvider(provider: GatewayProviderConfig): boolean {
+  try {
+    const url = new URL(providerUrlWithDefaultScheme(normalizeProviderBaseUrl(providerBaseUrl(provider))));
+    return url.hostname === "opencode.ai" && /^\/zen(?:\/|$)/.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
+function localZcodeProviderBaseUrlMatches(provider: GatewayProviderConfig, credentialBaseUrl: string): boolean {
+  const providerBaseUrl = normalizeProviderBaseUrl(providerBaseUrlOrDefault(provider));
+  const localBaseUrl = normalizeProviderBaseUrl(credentialBaseUrl);
+  return providerBaseUrl === localBaseUrl || zcodeProviderTextMatches([providerBaseUrl, localBaseUrl]);
+}
+
+function providerBaseUrlOrDefault(provider: GatewayProviderConfig): string {
+  return providerBaseUrl(provider) || zcodeDefaultBaseUrl;
+}
+
+function zcodeProviderTextMatches(values: Array<string | undefined>): boolean {
+  const text = values.join(" ").toLowerCase();
+  return (
+    text.includes("zcode") ||
+    text.includes("z.ai") ||
+    text.includes("bigmodel") ||
+    text.includes("open.bigmodel.cn")
+  ) && !text.includes("claude-code-router");
+}
+
+async function localCodexAccountCredential(plugin: Record<string, unknown>): Promise<LocalAgentAccountCredential> {
   const codexOauth = isRecord(plugin.codexOauth) ? plugin.codexOauth : {};
   const codexAuth = readCodexAuth();
   // Imported plugins contain a point-in-time access token. Prefer the live Codex
   // auth file so account checks follow tokens refreshed by Codex CLI/App.
-  const apiKey =
+  let apiKey =
     codexAuth?.accessToken ||
     readString(codexOauth.accessToken) ||
     readString(codexOauth.access_token);
-  const accountId =
+  const refreshToken =
+    codexAuth?.refreshToken ||
+    readString(codexOauth.refreshToken) ||
+    readString(codexOauth.refresh_token);
+  let accountId =
     codexAuth?.accountId ||
     readString(codexOauth.accountId) ||
     readString(codexOauth.account_id);
+  let isFedrampAccount = codexAuth?.isFedrampAccount;
+  const currentClaims = codexTokenClaims(apiKey);
+  accountId = accountId || currentClaims?.accountId;
+  isFedrampAccount = isFedrampAccount ?? currentClaims?.isFedrampAccount;
+
+  if (refreshToken && shouldRefreshCodexAccountToken(apiKey, codexOauth)) {
+    const refreshed = await refreshCodexAccountToken(codexOauth, refreshToken).catch((error) => {
+      if (!apiKey || codexAccessTokenExpired(apiKey)) {
+        throw error;
+      }
+      return undefined;
+    });
+    if (refreshed) {
+      const claims = codexTokenClaims(refreshed.accessToken) ?? codexTokenClaims(refreshed.idToken);
+      apiKey = refreshed.accessToken || apiKey;
+      accountId = refreshed.accountId || claims?.accountId || accountId;
+      isFedrampAccount = refreshed.isFedrampAccount ?? claims?.isFedrampAccount ?? isFedrampAccount;
+    }
+  }
+
   const headers = {
     ...localProviderPluginAuthHeaders(plugin),
     ...(accountId ? { "ChatGPT-Account-Id": accountId } : {}),
-    ...(codexAuth?.isFedrampAccount ? { "X-OpenAI-Fedramp": "true" } : {})
+    ...(isFedrampAccount ? { "X-OpenAI-Fedramp": "true" } : {})
   };
   return {
     apiKey,
     headers
   };
+}
+
+function shouldRefreshCodexAccountToken(accessToken: string | undefined, codexOauth: Record<string, unknown>): boolean {
+  if (readBoolean(codexOauth.forceRefresh)) {
+    return true;
+  }
+  if (!accessToken) {
+    return readBoolean(codexOauth.refreshIfMissingAccessToken) !== false;
+  }
+  if (codexAccessTokenExpired(accessToken)) {
+    return true;
+  }
+  const missingScopes = codexMissingRequiredScopes(accessToken);
+  return Boolean(missingScopes?.length);
+}
+
+async function refreshCodexAccountToken(
+  codexOauth: Record<string, unknown>,
+  refreshToken: string
+): Promise<CodexOauthRefreshResult> {
+  const tokenEndpoint =
+    readString(codexOauth.tokenEndpoint) ||
+    readString(process.env.CODEX_REFRESH_TOKEN_URL_OVERRIDE) ||
+    codexOauthTokenEndpoint;
+  const clientId = readString(codexOauth.clientId) || codexOauthClientId;
+  const scope = codexOauthScope(readString(codexOauth.scope));
+  const cacheKey = [
+    tokenEndpoint,
+    clientId,
+    scope,
+    hashSensitiveValue(refreshToken)
+  ].join("\n");
+  const cached = codexOauthCache.get(cacheKey);
+  const now = Date.now();
+  if (cached?.accessToken && cached.expiresAtMs > now + 60_000) {
+    return cached;
+  }
+
+  const timeoutMs = normalizeCodexOauthTimeout(codexOauth.timeoutMs);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetchWithSystemProxy(tokenEndpoint, {
+      body: JSON.stringify({
+        client_id: clientId,
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+        scope
+      }),
+      headers: {
+        "content-type": "application/json"
+      },
+      method: "POST",
+      signal: controller.signal
+    });
+    const text = await response.text();
+    const payload = parseJsonRecord(text);
+    if (!response.ok) {
+      throw new Error(`Codex OAuth token refresh returned HTTP ${response.status}${tokenRefreshErrorMessage(payload, text)}`);
+    }
+    const accessToken = readString(payload?.access_token) || readString(payload?.accessToken);
+    if (!accessToken) {
+      throw new Error("Codex OAuth token refresh did not return an access token.");
+    }
+    const idToken = readString(payload?.id_token) || readString(payload?.idToken);
+    const claims = codexTokenClaims(accessToken) ?? codexTokenClaims(idToken);
+    const result: CodexOauthRefreshResult = {
+      accessToken,
+      accountId: readString(payload?.account_id) || readString(payload?.accountId) || claims?.accountId,
+      expiresAtMs: codexTokenExpiresAtMs(accessToken) ?? now + 30 * 60 * 1000,
+      idToken,
+      isFedrampAccount: claims?.isFedrampAccount,
+      refreshToken: readString(payload?.refresh_token) || readString(payload?.refreshToken) || refreshToken,
+      scope: readString(payload?.scope) || readString(payload?.scopes)
+    };
+    codexOauthCache.set(cacheKey, result);
+    return result;
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`Codex OAuth token refresh timed out after ${timeoutMs}ms.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function codexOauthScope(configuredScope: string | undefined): string {
+  const scopes = new Set<string>();
+  for (const scope of (configuredScope || codexOauthDefaultScope).split(/\s+/)) {
+    if (scope.trim()) {
+      scopes.add(scope.trim());
+    }
+  }
+  for (const scope of codexOauthRequiredScopes) {
+    scopes.add(scope);
+  }
+  return [...scopes].join(" ");
+}
+
+function normalizeCodexOauthTimeout(value: unknown): number {
+  return Math.max(1, Number.isFinite(value) ? Number(value) : codexOauthDefaultTimeoutMs);
+}
+
+function parseJsonRecord(text: string): Record<string, unknown> | undefined {
+  try {
+    const payload = JSON.parse(text) as unknown;
+    return isRecord(payload) ? payload : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function tokenRefreshErrorMessage(payload: Record<string, unknown> | undefined, text: string): string {
+  const message =
+    readString(payload?.error_description) ||
+    readString(payload?.error) ||
+    readString(payload?.message) ||
+    readableResponseSnippet(text);
+  return message ? `: ${message}` : "";
+}
+
+function codexAccessTokenExpired(token: string | undefined): boolean {
+  const expiresAtMs = codexTokenExpiresAtMs(token);
+  return expiresAtMs !== undefined && expiresAtMs <= Date.now() + 60_000;
+}
+
+function codexTokenExpiresAtMs(token: string | undefined): number | undefined {
+  const payload = codexJwtPayload(token);
+  const exp = typeof payload?.exp === "number" ? payload.exp : undefined;
+  return exp ? exp * 1000 : undefined;
+}
+
+function codexMissingRequiredScopes(token: string): string[] | undefined {
+  const payload = codexJwtPayload(token);
+  if (!payload) {
+    return undefined;
+  }
+  const scopes = codexTokenScopes(payload);
+  if (scopes.length === 0) {
+    return undefined;
+  }
+  return codexOauthRequiredScopes.filter((scope) => !scopes.includes(scope));
+}
+
+function codexTokenScopes(payload: Record<string, unknown>): string[] {
+  const values: string[] = [];
+  const scope = readString(payload.scope);
+  if (scope) {
+    values.push(...scope.split(/\s+/));
+  }
+  const scp = Array.isArray(payload.scp) ? payload.scp : Array.isArray(payload.scopes) ? payload.scopes : [];
+  values.push(...scp.map(readString).filter((value): value is string => Boolean(value)));
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function codexTokenClaims(token: string | undefined): { accountId?: string; isFedrampAccount?: boolean } | undefined {
+  const payload = codexJwtPayload(token);
+  const auth = isRecord(payload?.["https://api.openai.com/auth"])
+    ? payload["https://api.openai.com/auth"]
+    : {};
+  const accountId =
+    readString(auth.chatgpt_account_id) ||
+    readString(auth.account_id) ||
+    readString(auth.accountId);
+  const isFedrampAccount = readBoolean(auth.chatgpt_account_is_fedramp);
+  return accountId || isFedrampAccount !== undefined ? { accountId, isFedrampAccount } : undefined;
+}
+
+function codexJwtPayload(token: string | undefined): Record<string, unknown> | undefined {
+  const encoded = token?.split(".")[1];
+  if (!encoded) {
+    return undefined;
+  }
+  try {
+    const padded = encoded.padEnd(encoded.length + ((4 - encoded.length % 4) % 4), "=");
+    const payload = JSON.parse(Buffer.from(padded.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8")) as unknown;
+    return isRecord(payload) ? payload : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function localBearerAccountCredential(plugin: Record<string, unknown>): { apiKey?: string; headers?: Record<string, string> } {
@@ -1275,12 +1825,81 @@ function localBearerAccountCredential(plugin: Record<string, unknown>): { apiKey
   };
 }
 
+function localClaudeCodeAccountCredential(plugin: Record<string, unknown>): { apiKey?: string; headers?: Record<string, string> } {
+  const headers = localProviderPluginAuthHeaders(plugin);
+  const oauth = readClaudeCodeOauth();
+  const apiKey = oauth?.accessToken || readBearerToken(headers.authorization || headers.Authorization);
+  return {
+    apiKey,
+    headers: withoutHeader(headers, "authorization")
+  };
+}
+
+async function localGrokAccountCredential(plugin: Record<string, unknown>): Promise<{ apiKey?: string; headers?: Record<string, string> }> {
+  const headers = localProviderPluginAuthHeaders(plugin);
+  const auth = await resolveGrokAuth().catch(() => readGrokAuth());
+  const apiKey = auth?.accessToken && !grokAccessTokenExpired(auth)
+    ? auth.accessToken
+    : readBearerToken(headers.authorization || headers.Authorization);
+  return {
+    apiKey,
+    headers: withoutHeader(headers, "authorization")
+  };
+}
+
+async function localKimiAccountCredential(plugin: Record<string, unknown>): Promise<{ apiKey?: string; headers?: Record<string, string> }> {
+  const headers = localProviderPluginAuthHeaders(plugin);
+  const oauth = isRecord(plugin.kimiOauth) ? plugin.kimiOauth : {};
+  const oauthReference = {
+    key: readString(oauth.key),
+    oauthHost: readString(oauth.oauthHost) || readString(oauth.oauth_host)
+  };
+  const auth = await resolveKimiAuth(oauthReference).catch(() => readKimiAuth(oauthReference));
+  const apiKey = auth?.accessToken && !kimiAccessTokenExpired(auth)
+    ? auth.accessToken
+    : readBearerToken(headers.authorization || headers.Authorization);
+  return {
+    apiKey,
+    headers: {
+      ...withoutHeader(headers, "authorization"),
+      ...kimiIdentityHeaders()
+    }
+  };
+}
+
+function localKimiApiKeyAccountCredential(plugin: Record<string, unknown>): { apiKey?: string; headers?: Record<string, string> } {
+  const credential = localBearerAccountCredential(plugin);
+  return {
+    ...credential,
+    headers: {
+      ...credential.headers,
+      ...kimiIdentityHeaders()
+    }
+  };
+}
+
 function localApiKeyHeaderAccountCredential(plugin: Record<string, unknown>): { apiKey?: string; headers?: Record<string, string> } {
   const headers = localProviderPluginAuthHeaders(plugin);
   const apiKey = headers["x-api-key"] || headers["X-API-Key"];
   return {
     apiKey,
     headers: withoutHeader(headers, "x-api-key")
+  };
+}
+
+function localOpenCodeAccountCredential(plugin: Record<string, unknown>): LocalAgentAccountCredential {
+  const headers = localProviderPluginAuthHeaders(plugin);
+  // OpenCode imports auth as a bearer token, an Anthropic x-api-key, or a
+  // Gemini x-goog-api-key depending on the provider protocol. The account
+  // usage endpoint always expects a bearer token, so normalize them here.
+  const apiKey =
+    readBearerToken(headers.authorization || headers.Authorization) ||
+    headers["x-api-key"] ||
+    headers["X-API-Key"] ||
+    headers["x-goog-api-key"];
+  return {
+    apiKey,
+    headers: withoutHeaders(headers, ["authorization", "x-api-key", "x-goog-api-key"])
   };
 }
 
@@ -1299,9 +1918,55 @@ function withoutHeader(headers: Record<string, string>, header: string): Record<
   return Object.fromEntries(Object.entries(headers).filter(([key]) => key.toLowerCase() !== normalized));
 }
 
+function withoutHeaders(headers: Record<string, string>, names: string[]): Record<string, string> {
+  const normalized = new Set(names.map((name) => name.toLowerCase()));
+  return Object.fromEntries(Object.entries(headers).filter(([key]) => !normalized.has(key.toLowerCase())));
+}
+
 function readBearerToken(value: string | undefined): string | undefined {
   const match = value?.match(/^Bearer\s+(.+)$/i);
   return match?.[1]?.trim() || undefined;
+}
+
+async function fetchWebContentJson(
+  provider: GatewayProviderConfig,
+  connector: ProviderAccountWebContentJsonConnectorConfig
+): Promise<unknown> {
+  const endpoint = absoluteAccountEndpoint(provider, connector.endpoint);
+  const endpointUrl = parseHttpUrl(endpoint, "Browser session account endpoint");
+  const browser = connector.browser ?? {};
+  if (browser.partition && browser.partition !== "built-in-browser") {
+    throw new Error("Browser session account requests currently support only the built-in-browser partition.");
+  }
+
+  const loginUrl = browser.loginUrl?.trim();
+  const loginOrigin = loginUrl
+    ? parseHttpUrl(loginUrl, "Browser session account login URL").origin
+    : undefined;
+  const requestOrigin = normalizeWebContentRequestOrigin(browser.requestOrigin, loginOrigin ?? endpointUrl.origin);
+  const credentials = normalizeWebContentCredentials(browser.credentials, browser.headerTemplates);
+
+  return await fetchProviderAccountWebContentJson({
+    body: connector.method === "POST" ? connector.body : undefined,
+    credentials,
+    endpoint: endpointUrl.toString(),
+    headers: connector.headers,
+    headerTemplates: browser.headerTemplates,
+    loginUrl,
+    method: connector.method ?? "GET",
+    provider: providerWithoutApiKey(provider),
+    requestOrigin,
+    timeoutMs: browser.timeoutMs
+  });
+}
+
+function providerWithoutApiKey(provider: GatewayProviderConfig): GatewayProviderConfig {
+  return {
+    ...provider,
+    api_key: "",
+    apiKey: undefined,
+    apikey: undefined
+  };
 }
 
 async function fetchJson(
@@ -1425,6 +2090,39 @@ function absoluteAccountEndpoint(provider: GatewayProviderConfig, endpoint: stri
   url.search = "";
   url.hash = "";
   return url.toString();
+}
+
+function normalizeWebContentRequestOrigin(requestOrigin: string | undefined, fallbackOrigin: string): string {
+  if (!requestOrigin?.trim()) {
+    return fallbackOrigin;
+  }
+  return parseHttpUrl(requestOrigin, "Browser session account request origin").origin;
+}
+
+function normalizeWebContentCredentials(
+  credentials: ProviderAccountBrowserCredentialsMode | undefined,
+  headerTemplates: Record<string, string> | undefined
+): ProviderAccountBrowserCredentialsMode {
+  if (!credentials) {
+    return headerTemplates && Object.keys(headerTemplates).length > 0 ? "omit" : "include";
+  }
+  if (credentials === "include" || credentials === "omit" || credentials === "same-origin") {
+    return credentials;
+  }
+  throw new Error("Browser session account credentials must be include, omit, or same-origin.");
+}
+
+function parseHttpUrl(value: string, label: string): URL {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`${label} must be an absolute HTTP or HTTPS URL.`);
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error(`${label} must use HTTP or HTTPS.`);
+  }
+  return url;
 }
 
 function providerBaseUrl(provider: GatewayProviderConfig): string {
@@ -1558,7 +2256,7 @@ function connectorError(source: ProviderAccountConnectorSource, message: string,
 }
 
 function connectorSource(connector: ProviderAccountConnectorConfig): ProviderAccountConnectorSource {
-  return connector.type === "standard" || connector.type === "http-json" || connector.type === "plugin" || connector.type === "local-estimate"
+  return connector.type === "standard" || connector.type === "http-json" || connector.type === "webcontent-json" || connector.type === "plugin" || connector.type === "local-estimate"
     ? connector.type
     : "unsupported";
 }

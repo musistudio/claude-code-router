@@ -1,7 +1,7 @@
 ---
 title: ToolHub
 pageTitle: ToolHub
-eyebrow: 详细配置
+eyebrow: ToolHub
 lead: 将多个 MCP server 收束成一个紧凑入口，让 Agent 按任务懒加载需要的工具，减少工具列表占用的上下文。
 ---
 
@@ -60,9 +60,10 @@ ToolHub 会合并 **ToolHub 页面配置的 MCP servers** 和兼容旧配置中�
 导入流程：
 
 1. 当任务需要复用 Chrome 登录状态时，Agent 会请求导入；用户也可以在 CCR 内置浏览器工具栏点击钥匙按钮主动发起。
-2. CCR 创建一次性导入任务，并打开确认页。如果默认浏览器不是 Chrome，请把确认页 URL 复制到已安装扩展的 Chrome 中打开。
-3. 用户在确认页检查要导入的域名，点击 **Confirm and Import**。
-4. Chrome 扩展读取这些域名的 cookies 和 localStorage，提交给 CCR；完成后 Agent 可以继续使用内置浏览器执行任务。
+2. CCR 创建一次性导入任务，并打开确认页。请使用已安装扩展的 Chrome 打开确认页 URL。
+3. 如果确认页没有在 Chrome 中打开，请复制 CCR 弹窗里的 **Extension import URL**，打开 Chrome 里的 CCR Login Import 扩展弹窗，粘贴该 URL 后点击 **Import Selected Domains**。
+4. 用户在确认页检查要导入的域名，点击 **Confirm and Import**，或在扩展弹窗中确认导入。
+5. Chrome 扩展读取这些域名的 cookies 和 localStorage，提交给 CCR；完成后 Agent 可以继续使用内置浏览器执行任务。
 
 扩展只读取 CCR 导入任务列出的域名，不会枚举 Chrome 中的全部 cookies。读取 localStorage 时，扩展会临时打开对应 origin 的非激活标签页，读取后自动关闭。若确认页提示扩展没有站点访问权限，请在 Chrome 扩展设置中允许该扩展访问目标域名，然后重新加载解包扩展再重试。
 
@@ -161,7 +162,7 @@ ToolHub 会合并 **ToolHub 页面配置的 MCP servers** 和兼容旧配置中�
 - Agent 看不到 ToolHub：确认已启用 ToolHub，并且至少配置了一个后端 MCP server 或开启了 **内置浏览器自动化**，然后从 CCR 重新打开 Claude Code 或 Codex。
 - 提示缺少检索模型或 API Key：在 **检索模型** 中选择已配置模型，并确认供应商凭据可用。
 - Agent 无法使用内置浏览器自动化：确认正在使用 CCR Desktop，并且已在 **设置 → ToolHub** 中开启 **内置浏览器自动化**，然后从 CCR 重新打开 Claude Code 或 Codex。CLI、服务器部署或纯 Web 环境没有这项内置能力。
-- Chrome 登录态导入确认页一直等待扩展：确认已在 Chrome 中加载 `extension/chrome` 解包扩展，并允许扩展访问要导入的目标域名。如果默认浏览器不是 Chrome，请手动把确认页 URL 复制到 Chrome。
+- Chrome 登录态导入确认页一直等待扩展：确认已在 Chrome 中加载 `extension/chrome` 解包扩展，并允许扩展访问要导入的目标域名。请使用 Chrome 打开确认页 URL。
 - 解析不到工具：检查 MCP server 是否能正常列出工具，工具名称和描述是否足够清楚，必要时提高 **最大工具数**。
 - 调用超时：分别检查 ToolHub 的 **超时毫秒** 和单个 MCP server 的 request/startup timeout。
 - 导入失败：检查 JSON 是否有效、server 名称是否重复、`stdio` 是否有 command，远程 transport 是否有 URL。

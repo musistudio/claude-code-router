@@ -1,7 +1,7 @@
 import { rmSync } from "node:fs";
 import { createServer, type AddressInfo } from "node:net";
 import path from "node:path";
-import { WebSocket } from "undici";
+import { CdpClient } from "@ccr/core/agents/cdp-client";
 
 type ClaudeAppCdpLogger = Pick<Console, "info" | "warn">;
 
@@ -18,20 +18,6 @@ type DevToolsTarget = {
   type?: string;
   url?: string;
   webSocketDebuggerUrl?: string;
-};
-
-type CdpError = {
-  code?: number;
-  data?: unknown;
-  message?: string;
-};
-
-type CdpMessage = {
-  error?: CdpError;
-  id?: number;
-  method?: string;
-  params?: unknown;
-  result?: unknown;
 };
 
 type FetchRequestPausedParams = {
@@ -99,7 +85,7 @@ async function forceOpenClaudeAppDesignViaCdp(options: {
     throw new Error(`Claude App CDP page target was not available on port ${options.cdpPort}.`);
   }
 
-  const client = await CdpClient.connect(target.webSocketDebuggerUrl);
+  const client = await CdpClient.connect(target.webSocketDebuggerUrl, { label: "Claude App" });
   try {
     client.on("Fetch.requestPaused", (params) => {
       void handleFetchRequestPaused(client, params as FetchRequestPausedParams, options.logger);
@@ -321,130 +307,6 @@ function reserveLoopbackPort(): Promise<number> {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-class CdpClient {
-  private readonly handlers = new Map<string, Array<(params: unknown) => void>>();
-  private nextId = 1;
-  private readonly pending = new Map<number, {
-    reject: (error: Error) => void;
-    resolve: (value: unknown) => void;
-  }>();
-
-  private constructor(private readonly ws: WebSocket) {
-    ws.addEventListener("message", (event) => this.handleMessage(event.data));
-    ws.addEventListener("close", () => this.rejectPending(new Error("CDP WebSocket closed.")));
-    ws.addEventListener("error", () => this.rejectPending(new Error("CDP WebSocket failed.")));
-  }
-
-  static connect(url: string): Promise<CdpClient> {
-    return new Promise((resolve, reject) => {
-      const ws = new WebSocket(url);
-      let settled = false;
-      const timer = setTimeout(() => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        try {
-          ws.close();
-        } catch {
-          // Ignore close failures during timeout cleanup.
-        }
-        reject(new Error("Timed out connecting to Claude App CDP WebSocket."));
-      }, 5_000);
-      ws.addEventListener("open", () => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        clearTimeout(timer);
-        resolve(new CdpClient(ws));
-      });
-      ws.addEventListener("error", () => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        clearTimeout(timer);
-        reject(new Error("Failed to connect to Claude App CDP WebSocket."));
-      });
-    });
-  }
-
-  close(): void {
-    if (this.ws.readyState === 0 || this.ws.readyState === 1) {
-      this.ws.close();
-    }
-  }
-
-  on(method: string, handler: (params: unknown) => void): void {
-    const handlers = this.handlers.get(method) || [];
-    handlers.push(handler);
-    this.handlers.set(method, handlers);
-  }
-
-  send(method: string, params?: Record<string, unknown>): Promise<unknown> {
-    if (this.ws.readyState !== 1) {
-      return Promise.reject(new Error("CDP WebSocket is not open."));
-    }
-    const id = this.nextId++;
-    const payload = params === undefined ? { id, method } : { id, method, params };
-    this.ws.send(JSON.stringify(payload));
-    return new Promise((resolve, reject) => {
-      this.pending.set(id, { reject, resolve });
-    });
-  }
-
-  private handleMessage(data: unknown): void {
-    let message: CdpMessage;
-    try {
-      message = JSON.parse(webSocketDataToString(data)) as CdpMessage;
-    } catch {
-      return;
-    }
-    if (typeof message.id === "number") {
-      const pending = this.pending.get(message.id);
-      if (!pending) {
-        return;
-      }
-      this.pending.delete(message.id);
-      if (message.error) {
-        pending.reject(new Error(message.error.message || `CDP command failed with code ${message.error.code || "unknown"}`));
-        return;
-      }
-      pending.resolve(message.result);
-      return;
-    }
-    if (message.method) {
-      for (const handler of this.handlers.get(message.method) || []) {
-        handler(message.params);
-      }
-    }
-  }
-
-  private rejectPending(error: Error): void {
-    for (const pending of this.pending.values()) {
-      pending.reject(error);
-    }
-    this.pending.clear();
-  }
-}
-
-function webSocketDataToString(data: unknown): string {
-  if (typeof data === "string") {
-    return data;
-  }
-  if (Buffer.isBuffer(data)) {
-    return data.toString("utf8");
-  }
-  if (data instanceof ArrayBuffer) {
-    return Buffer.from(data).toString("utf8");
-  }
-  if (ArrayBuffer.isView(data)) {
-    return Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString("utf8");
-  }
-  return String(data);
 }
 
 function nodeErrorMessage(error: unknown): string {

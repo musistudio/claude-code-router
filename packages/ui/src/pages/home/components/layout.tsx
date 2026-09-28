@@ -1,10 +1,12 @@
 import type { ComponentProps } from "react";
+import { MorphIcon } from "@musistudio/lucide-morph-react";
+import { collapseSidebarToExpandInspectorMorph } from "@/lib/morph-icon";
 import {
-  AnimatedIconSwap, AnimatePresence, AppConfig, AppCopy, Button, Check, cn, EndpointTitleBar,
-  AppUpdateStatus, Download, GatewayStatus, listSpringTransition, LucideIcon, motion, motionEase,
-  LoaderCircle, NavigationId, PanelLeftClose, PanelLeftOpen, RefreshCw,
+  AnimatePresence, AppConfig, AppCopy, Button, Check, CircleAlert, cn, EndpointTitleBar,
+  AppUpdateStatus, GatewayStatus, listSpringTransition, LucideIcon, motion, motionEase,
+  LoaderCircle, NavigationId, RefreshCw,
   reducedMotionTransition, ServiceControlButton, Settings, ViewId,
-  ViewMotionShell, viewUsesInternalScroll
+  useAppText, ViewMotionShell, viewUsesInternalScroll
 } from "../shared/index";
 import { ApiKeysView } from "./api-keys";
 import { AgentAnalysisView, OverviewView } from "./dashboard";
@@ -14,13 +16,42 @@ import { OnboardingView } from "./onboarding";
 import { ProfileView } from "./profiles";
 import { ModelsView, ProvidersView } from "./providers";
 import { RoutingView } from "./routing";
-import { ServerView } from "./server";
 import { VirtualModelsView } from "./virtual-models";
 
-type MainNavigationItem = {
+export type MainNavigationItem = {
   icon: LucideIcon;
   id: NavigationId;
 };
+
+export type SidebarNavigationGroup = {
+  id: "advanced" | "monitor" | "setup" | "workspace";
+  items: MainNavigationItem[];
+  label: string;
+};
+
+const sidebarNavigationGroupDefinitions: Array<{
+  id: SidebarNavigationGroup["id"];
+  itemIds: NavigationId[];
+  label: string;
+}> = [
+  { id: "workspace", itemIds: ["overview"], label: "Workspace" },
+  { id: "setup", itemIds: ["providers", "profile", "routing"], label: "Setup" },
+  { id: "monitor", itemIds: ["logs", "observability"], label: "Monitor" },
+  { id: "advanced", itemIds: ["virtual-models", "models", "api-keys", "extensions"], label: "Advanced" }
+];
+
+export function groupSidebarNavigation(visibleNavigation: MainNavigationItem[]): SidebarNavigationGroup[] {
+  const navigationById = new Map(visibleNavigation.map((item) => [item.id, item]));
+  return sidebarNavigationGroupDefinitions
+    .map((group) => ({
+      id: group.id,
+      items: group.itemIds
+        .map((id) => navigationById.get(id))
+        .filter((item): item is MainNavigationItem => Boolean(item)),
+      label: group.label
+    }))
+    .filter((group) => group.items.length > 0);
+}
 
 type MainViewProps = {
   apiKeys: ComponentProps<typeof ApiKeysView>;
@@ -33,20 +64,24 @@ type MainViewProps = {
   profile: ComponentProps<typeof ProfileView>;
   providers: ComponentProps<typeof ProvidersView>;
   routing: ComponentProps<typeof RoutingView>;
-  server: ComponentProps<typeof ServerView>;
   virtualModels: ComponentProps<typeof VirtualModelsView>;
 };
 
 export function OnboardingLayout({
+  gatewayStartupError,
   loaded,
   onboarding
 }: {
+  gatewayStartupError?: string;
   loaded: boolean;
   onboarding: ComponentProps<typeof OnboardingView>;
 }) {
   return (
     <main className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
       <div className="app-drag absolute inset-x-0 top-0 z-10 h-10" />
+      <div className="pointer-events-none absolute inset-x-0 top-12 z-30 px-5 max-[720px]:top-10 max-[720px]:px-3">
+        <GatewayStartupErrorBanner className="pointer-events-auto mx-auto max-w-2xl shadow-lg" message={gatewayStartupError} />
+      </div>
       {loaded ? <OnboardingView {...onboarding} /> : null}
     </main>
   );
@@ -55,15 +90,19 @@ export function OnboardingLayout({
 export function MainLayout({
   activeView,
   compactLayout,
+  config,
   copy,
   gatewayActionBusy,
   gatewayEndpoint,
+  gatewayStartupError,
   gatewayStatus,
+  gatewayTargetActive,
   isMac,
   needsTrafficLightSafeArea,
   agentAnalysisEnabled,
   networkCaptureEnabled,
   onOpenUpdate,
+  onOpenServerSettings,
   onOpenSettings,
   onSelectNavigationItem,
   onToggleSidebar,
@@ -73,20 +112,23 @@ export function MainLayout({
   updateActionBusy,
   updateStatus,
   viewProps,
-  requestLogsEnabled,
   visibleNavigation
 }: {
   activeView: ViewId;
   agentAnalysisEnabled: boolean;
   compactLayout: boolean;
+  config: AppConfig;
   copy: AppCopy;
   gatewayActionBusy: boolean;
   gatewayEndpoint: string;
+  gatewayStartupError?: string;
   gatewayStatus: GatewayStatus;
+  gatewayTargetActive?: boolean;
   isMac: boolean;
   needsTrafficLightSafeArea: boolean;
   networkCaptureEnabled: boolean;
   onOpenUpdate: () => void;
+  onOpenServerSettings: () => void;
   onOpenSettings: () => void;
   onSelectNavigationItem: (id: NavigationId) => void;
   onToggleSidebar: () => void;
@@ -103,64 +145,47 @@ export function MainLayout({
   const windowControlSafeAreaWidth = showUpdateButton
     ? (isMac ? 188 : 124)
     : (isMac ? 152 : 88);
-  const updateBusy =
-    updateActionBusy ||
-    updateStatus.state === "checking" ||
-    updateStatus.state === "downloading" ||
-    updateStatus.state === "installing";
-  const updateLabel = updateStatus.state === "downloaded"
-    ? copy.text["Update ready to install"] ?? "Update ready to install"
-    : updateStatus.state === "downloading"
-      ? copy.text["Downloading update"] ?? "Downloading update"
-      : updateStatus.state === "checking"
-        ? copy.text["Checking for updates"] ?? "Checking for updates"
-        : updateStatus.state === "available"
-          ? copy.text["Download update"] ?? "Download update"
-          : copy.text["Check for updates"] ?? "Check for updates";
+  const navigationGroups = groupSidebarNavigation(visibleNavigation);
 
   return (
     <>
-      <div className={cn("app-no-drag app-window-controls pointer-events-auto absolute top-2 z-[90] flex items-center gap-1", isMac ? "left-[76px]" : "left-3")}>
+      <div className={cn(
+        "app-no-drag app-window-controls pointer-events-auto absolute top-2 z-[90] flex items-center",
+        isMac ? "left-[84px] gap-0.5" : "left-3 gap-1"
+      )}>
         <Button
           aria-controls="primary-sidebar"
           aria-expanded={sidebarOpen}
           aria-label={sidebarOpen ? copy.sidebar.collapse : copy.sidebar.expand}
-          className="app-sidebar-toggle inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent bg-transparent p-0 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
+          className="app-sidebar-toggle inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent bg-transparent p-0 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
           onMouseDown={(event) => event.stopPropagation()}
           onClick={onToggleSidebar}
           title={sidebarOpen ? copy.sidebar.collapse : copy.sidebar.expand}
           type="button"
           unstyled
         >
-          <AnimatedIconSwap iconKey={sidebarOpen ? "close" : "open"}>
-            {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
-          </AnimatedIconSwap>
+          <MorphIcon
+            active={!sidebarOpen}
+            asset={collapseSidebarToExpandInspectorMorph}
+            color="currentColor"
+            duration={300}
+            size={16}
+            strokeWidth={2}
+          />
         </Button>
         <ServiceControlButton
           busy={gatewayActionBusy}
           onClick={toggleGatewayService}
           state={gatewayStatus.state}
+          targetActive={gatewayTargetActive}
         />
         {showUpdateButton ? (
-          <Button
-            aria-label={updateLabel}
-            className="app-no-drag inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent bg-transparent p-0 text-primary outline-none transition-colors hover:bg-primary/10 hover:text-primary focus-visible:ring-2 focus-visible:ring-ring/25"
-            onMouseDown={(event) => event.stopPropagation()}
-            onClick={onOpenUpdate}
-            title={updateLabel}
-            type="button"
-            unstyled
-          >
-            {updateBusy ? (
-              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-            ) : updateStatus.state === "downloaded" ? (
-              <Check className="h-3.5 w-3.5" />
-            ) : updateStatus.state === "available" ? (
-              <Download className="h-3.5 w-3.5" />
-            ) : (
-              <RefreshCw className="h-3.5 w-3.5" />
-            )}
-          </Button>
+          <UpdateEntryButton
+            actionBusy={updateActionBusy}
+            copy={copy}
+            onOpen={onOpenUpdate}
+            status={updateStatus}
+          />
         ) : null}
       </div>
 
@@ -170,58 +195,53 @@ export function MainLayout({
         }}
         aria-hidden={!sidebarOpen}
         className={cn(
-          "app-sidebar flex shrink-0 flex-col overflow-hidden bg-sidebar/95 max-[720px]:h-auto",
+          "app-sidebar flex min-h-0 shrink-0 flex-col overflow-hidden bg-sidebar/95 max-[720px]:h-auto",
           sidebarOpen && compactLayout && "border-b border-border"
         )}
         id="primary-sidebar"
         initial={false}
         style={{ pointerEvents: sidebarOpen ? "auto" : "none" }}
-        transition={shouldReduceMotion ? reducedMotionTransition : { damping: 35, mass: 0.78, stiffness: 430, type: "spring" }}
+        transition={shouldReduceMotion ? reducedMotionTransition : { duration: 0.3, ease: motionEase }}
       >
-        {sidebarOpen ? (
-          <motion.div
-            animate={{ opacity: 1 }}
-            className="flex min-h-0 w-[248px] flex-1 flex-col max-[720px]:w-full"
-            initial={{ opacity: 0 }}
-            transition={shouldReduceMotion ? reducedMotionTransition : { duration: 0.14, ease: motionEase }}
-          >
+        <AnimatePresence initial={false}>
+          {sidebarOpen ? (
+            <motion.div
+              animate={{ opacity: 1 }}
+              className="flex min-h-0 w-[248px] flex-1 flex-col max-[720px]:w-full"
+              exit={{ opacity: 0 }}
+              initial={{ opacity: 0 }}
+              transition={shouldReduceMotion ? reducedMotionTransition : { duration: 0.3, ease: motionEase }}
+            >
             <div className="flex h-14 shrink-0 max-[720px]:h-12">
               <div className="app-no-drag shrink-0" style={{ width: windowControlSafeAreaWidth }} />
               <div className="app-drag min-w-0 flex-1" />
             </div>
 
-            <nav className="flex min-h-0 flex-1 flex-col gap-1 px-2 py-3 max-[720px]:flex-none max-[720px]:flex-row max-[720px]:overflow-x-auto max-[720px]:py-2" aria-label={copy.sidebar.primaryNavigation}>
-              {visibleNavigation.map((item) => (
-                <Button
-                  className={cn(
-                    "flex h-9 min-w-0 items-center gap-2 rounded-md px-2 text-left text-[12px] font-medium text-muted-foreground transition-all duration-150 max-[720px]:min-w-[118px]",
-                    activeView === item.id
-                      ? "bg-card text-foreground shadow-[0_1px_3px_rgba(0,0,0,0.06)]"
-                      : "hover:bg-muted/80 hover:text-foreground"
-                  )}
-                  key={item.id}
-                  onClick={() => onSelectNavigationItem(item.id)}
-                  type="button"
-                  unstyled
-                >
-                  <motion.span
-                    className={cn(
-                      "flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors",
-                      activeView === item.id && "bg-primary/10 text-primary"
-                    )}
-                    layout="position"
-                    transition={shouldReduceMotion ? reducedMotionTransition : listSpringTransition}
-                  >
-                    <item.icon className="h-3.5 w-3.5" />
-                  </motion.span>
-                  <span className="min-w-0 flex-1 truncate">{copy.navigation[item.id]}</span>
-                </Button>
+            <nav className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2 py-3 max-[720px]:flex-none max-[720px]:flex-row max-[720px]:gap-1 max-[720px]:overflow-x-auto max-[720px]:overflow-y-hidden max-[720px]:py-2" aria-label={copy.sidebar.primaryNavigation}>
+              {navigationGroups.map((group) => (
+                <div className="grid min-w-0 gap-1 max-[720px]:contents" key={group.id}>
+                  <div className="px-2 text-[13px] font-medium text-muted-foreground max-[720px]:hidden">
+                    {copy.text[group.label] ?? group.label}
+                  </div>
+                  <div className="grid min-w-0 gap-1 max-[720px]:contents">
+                    {group.items.map((item) => (
+                      <SidebarNavigationButton
+                        active={activeView === item.id}
+                        item={item}
+                        key={item.id}
+                        label={copy.navigation[item.id]}
+                        onClick={() => onSelectNavigationItem(item.id)}
+                        shouldReduceMotion={shouldReduceMotion}
+                      />
+                    ))}
+                  </div>
+                </div>
               ))}
             </nav>
 
             <div className="grid shrink-0 gap-1 border-t border-border/60 p-2 max-[720px]:border-t max-[720px]:pt-2">
               <Button
-                className="flex h-9 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-[12px] font-medium text-muted-foreground transition-all duration-150 hover:bg-muted/80 hover:text-foreground"
+                className="flex h-9 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-[13px] font-medium text-muted-foreground transition-all duration-150 hover:bg-muted/80 hover:text-foreground"
                 onClick={onOpenSettings}
                 title={copy.settings.title}
                 type="button"
@@ -235,8 +255,9 @@ export function MainLayout({
             </div>
 
             <div className="h-3 shrink-0 max-[720px]:hidden" />
-          </motion.div>
-        ) : null}
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
       </motion.aside>
 
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -250,11 +271,16 @@ export function MainLayout({
             <div className="app-no-drag absolute left-0 top-0 h-full" style={{ width: windowControlSafeAreaWidth }} />
           ) : null}
           <EndpointTitleBar
-            config={viewProps.server.config as AppConfig}
+            config={config}
             endpoint={gatewayEndpoint}
             gatewayStatus={gatewayStatus}
           />
         </div>
+        <GatewayStartupErrorBanner
+          className="mx-5 mt-3 max-[720px]:mx-3"
+          message={gatewayStartupError}
+          onOpenServerSettings={onOpenServerSettings}
+        />
         <div
           className={cn(
             "min-h-0 flex-1 px-5 pb-5 pt-5 max-[720px]:px-3 max-[720px]:pb-3 max-[720px]:pt-3",
@@ -265,7 +291,6 @@ export function MainLayout({
             activeView={activeView}
             agentAnalysisEnabled={agentAnalysisEnabled}
             networkCaptureEnabled={networkCaptureEnabled}
-            requestLogsEnabled={requestLogsEnabled}
             viewProps={viewProps}
           />
         </div>
@@ -274,17 +299,150 @@ export function MainLayout({
   );
 }
 
+function SidebarNavigationButton({
+  active,
+  item,
+  label,
+  onClick,
+  shouldReduceMotion
+}: {
+  active: boolean;
+  item: MainNavigationItem;
+  label: string;
+  onClick: () => void;
+  shouldReduceMotion: boolean | null;
+}) {
+  return (
+    <Button
+      className={cn(
+        "flex h-9 min-w-0 items-center gap-2 rounded-md px-2 text-left text-[13px] font-medium text-muted-foreground transition-all duration-150 max-[720px]:min-w-[118px]",
+        active
+          ? "bg-card text-foreground shadow-[0_1px_3px_rgba(0,0,0,0.06)]"
+          : "hover:bg-muted/80 hover:text-foreground"
+      )}
+      onClick={onClick}
+      type="button"
+      unstyled
+    >
+      <motion.span
+        className={cn(
+          "flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors",
+          active && "bg-primary/10 text-primary"
+        )}
+        layout="position"
+        transition={shouldReduceMotion ? reducedMotionTransition : listSpringTransition}
+      >
+        <item.icon className="h-3.5 w-3.5" />
+      </motion.span>
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+    </Button>
+  );
+}
+
+export function UpdateEntryButton({
+  actionBusy,
+  copy,
+  onOpen,
+  status
+}: {
+  actionBusy: boolean;
+  copy: AppCopy;
+  onOpen: () => void;
+  status: AppUpdateStatus;
+}) {
+  const busy = actionBusy || status.state === "checking" || status.state === "downloading" || status.state === "installing";
+  const label = status.state === "downloaded"
+    ? copy.text["Update ready to install"] ?? "Update ready to install"
+    : status.state === "downloading"
+      ? copy.text["Downloading update"] ?? "Downloading update"
+      : status.state === "checking"
+        ? copy.text["Checking for updates"] ?? "Checking for updates"
+        : status.state === "available"
+          ? copy.text["Update available"] ?? "Update available"
+          : copy.text["Online updates"] ?? "Online updates";
+
+  return (
+    <Button
+      aria-label={label}
+      className="app-no-drag relative inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent bg-transparent p-0 text-primary outline-none transition-colors hover:bg-primary/10 hover:text-primary focus-visible:ring-2 focus-visible:ring-ring/25"
+      onMouseDown={(event) => event.stopPropagation()}
+      onClick={onOpen}
+      title={label}
+      type="button"
+      unstyled
+    >
+      {busy ? (
+        <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+      ) : status.state === "downloaded" ? (
+        <Check className="h-3.5 w-3.5" />
+      ) : (
+        <RefreshCw className="h-3.5 w-3.5" />
+      )}
+      {status.state === "available" ? (
+        <span
+          aria-hidden="true"
+          className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-amber-500 ring-2 ring-background"
+          data-update-available-indicator
+        />
+      ) : null}
+    </Button>
+  );
+}
+
+export function GatewayStartupErrorBanner({
+  className,
+  message,
+  onOpenServerSettings
+}: {
+  className?: string;
+  message?: string;
+  onOpenServerSettings?: () => void;
+}) {
+  const t = useAppText();
+  const detail = message?.trim();
+  if (!detail) {
+    return null;
+  }
+
+  return (
+    <div
+      aria-live="assertive"
+      className={cn(
+        "app-no-drag flex min-w-0 items-start gap-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive",
+        className
+      )}
+      role="alert"
+    >
+      <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+      <div className="min-w-0 flex-1">
+        <div className="font-semibold">{t("Service failed to start")}</div>
+        <div className="mt-0.5 whitespace-pre-wrap break-words">{detail}</div>
+      </div>
+      {onOpenServerSettings ? (
+        <Button
+          className="shrink-0 border-destructive/30 bg-background/80 text-destructive hover:bg-destructive/10"
+          onClick={onOpenServerSettings}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          <Settings className="h-3.5 w-3.5" />
+          {t("Server")}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 function MainViewSwitch({
   activeView,
   agentAnalysisEnabled,
   networkCaptureEnabled,
-  requestLogsEnabled,
   viewProps
 }: {
   activeView: ViewId;
   agentAnalysisEnabled: boolean;
   networkCaptureEnabled: boolean;
-  requestLogsEnabled: boolean;
   viewProps: MainViewProps;
 }) {
   return (
@@ -293,10 +451,9 @@ function MainViewSwitch({
         {activeView === "overview" ? <OverviewView {...viewProps.overview} /> : null}
         {activeView === "observability" && agentAnalysisEnabled ? <AgentAnalysisView {...viewProps.observability} /> : null}
         {activeView === "api-keys" ? <ApiKeysView {...viewProps.apiKeys} /> : null}
-        {activeView === "server" ? <ServerView {...viewProps.server} /> : null}
         {activeView === "profile" ? <ProfileView {...viewProps.profile} /> : null}
         {activeView === "networking" && networkCaptureEnabled ? <NetworkingView {...viewProps.networking} /> : null}
-        {activeView === "logs" && requestLogsEnabled ? <LogsView {...viewProps.logs} /> : null}
+        {activeView === "logs" ? <LogsView {...viewProps.logs} /> : null}
         {activeView === "providers" ? <ProvidersView {...viewProps.providers} /> : null}
         {activeView === "models" ? <ModelsView {...viewProps.models} /> : null}
         {activeView === "routing" ? <RoutingView {...viewProps.routing} /> : null}

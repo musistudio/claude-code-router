@@ -1,13 +1,19 @@
 import { app, dialog } from "electron";
 import { mkdirSync } from "node:fs";
+import { installSocketTypeOfServiceCompat } from "@ccr/core/platform/socket-compat";
+import { markDesktopAppRuntime } from "@ccr/core/runtime/desktop-app";
 import { resolveRuntimeDataDir, setRuntimeAppPaths } from "@ccr/core/runtime/app-paths";
 import { copyMissingDirectoryContents, sameFilesystemPath } from "@ccr/core/storage/migration";
 
-const appDataPath = app.getPath("appData");
-const homePath = app.getPath("home");
+installSocketTypeOfServiceCompat();
+markDesktopAppRuntime();
+
+const appDataPath = readConfiguredRuntimePath("CCR_INTERNAL_APP_DATA_DIR") ?? app.getPath("appData");
+const homePath = readConfiguredRuntimePath("CCR_INTERNAL_HOME_DIR") ?? app.getPath("home");
 setRuntimeAppPaths({
   appData: appDataPath,
-  home: homePath
+  home: homePath,
+  userData: readConfiguredRuntimePath("CCR_INTERNAL_USER_DATA_DIR")
 });
 const userDataPath = configureRuntimeUserDataPath(app.getPath("userData"));
 setRuntimeAppPaths({
@@ -47,6 +53,11 @@ function reportFatalStartupError(error: unknown): void {
   }
 
   app.exit(1);
+}
+
+function readConfiguredRuntimePath(key: string): string | undefined {
+  const value = process.env[key]?.trim();
+  return value || undefined;
 }
 
 function configureRuntimeUserDataPath(currentUserDataPath: string): string {

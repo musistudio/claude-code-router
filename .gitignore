@@ -10,6 +10,7 @@ release
 .claude
 .bot-gateway-state
 .agent-data
+.agent-console-remote-mode
 tmp
 release-local
 logs
@@ -18,3 +19,5 @@ test-results
 playwright-report
 blob-report
 .tmp
+.test-dist
+docker/local-ai-gateway/*.tgz

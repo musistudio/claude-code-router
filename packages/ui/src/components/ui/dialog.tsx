@@ -13,6 +13,30 @@ type MotionSafeSectionAttributes = Omit<
 >;
 
 const DialogStackContext = React.createContext(0);
+export const DialogScopeContext = React.createContext<{ id: string; titleId: string } | null>(null);
+const dialogRootSelector = "[data-ui-dialog-root]";
+
+function dialogFocusTargets(root: HTMLElement): HTMLElement[] {
+  const portals = Array.from(root.ownerDocument.querySelectorAll<HTMLElement>("[data-ui-dialog-owner]"))
+    .filter((portal) => portal.dataset.uiDialogOwner === root.id);
+  return [root, ...portals].flatMap((scope) => Array.from(scope.querySelectorAll<HTMLElement>(
+    'button, a[href], input, select, textarea, summary, [tabindex], [contenteditable="true"]'
+  ))).filter((element) => element.tabIndex >= 0 && !element.matches(":disabled") &&
+    !element.closest('[inert], [aria-hidden="true"]') && element.getClientRects().length > 0);
+}
+
+function dialogOwnsElement(root: HTMLElement, element: Element | null): boolean {
+  return Boolean(element && (root.contains(element) || element.closest<HTMLElement>("[data-ui-dialog-owner]")?.dataset.uiDialogOwner === root.id));
+}
+
+function isTopMostDialogRoot(dialogElement: HTMLElement | null | undefined): boolean {
+  if (!dialogElement) {
+    return false;
+  }
+
+  const dialogRoots = Array.from(dialogElement.ownerDocument.querySelectorAll<HTMLElement>(dialogRootSelector));
+  return dialogRoots[dialogRoots.length - 1] === dialogElement;
+}
 
 function DialogStackLayer({
   children,
@@ -38,12 +62,79 @@ function Dialog({
   ...props
 }: DialogProps) {
   const shouldReduceMotion = useReducedMotion();
+  const rootRef = React.useRef<HTMLDivElement>(null);
+  const id = React.useId();
+  const scope = React.useMemo(() => ({ id, titleId: `${id}-title` }), [id]);
+  const onOpenChangeRef = React.useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
+
+  React.useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const dialogElement = rootRef.current;
+    const ownerDocument = dialogElement?.ownerDocument ?? (typeof document === "undefined" ? undefined : document);
+    if (!ownerDocument || !dialogElement) {
+      return;
+    }
+
+    const previousFocus = ownerDocument.activeElement instanceof HTMLElement ? ownerDocument.activeElement : null;
+    const focusFirst = () => {
+      const target = dialogFocusTargets(dialogElement)[0] ?? dialogElement.querySelector<HTMLElement>('[role="dialog"]');
+      target?.focus({ preventScroll: true });
+    };
+    if (isTopMostDialogRoot(dialogElement) && !dialogOwnsElement(dialogElement, ownerDocument.activeElement)) {
+      focusFirst();
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || !isTopMostDialogRoot(dialogElement)) {
+        return;
+      }
+      if (event.key === "Escape") {
+        // Portalled menus handle Escape themselves before their owning dialog.
+        if (Array.from(ownerDocument.querySelectorAll<HTMLElement>("[data-ui-dialog-owner]"))
+          .some((portal) => portal.dataset.uiDialogOwner === dialogElement.id && portal.childElementCount > 0)) {
+          return;
+        }
+        event.preventDefault();
+        onOpenChangeRef.current?.(false);
+      } else if (event.key === "Tab") {
+        const targets = dialogFocusTargets(dialogElement);
+        const index = targets.indexOf(ownerDocument.activeElement as HTMLElement);
+        if (targets.length === 0) {
+          event.preventDefault();
+          focusFirst();
+        } else if (index < 0 || (event.shiftKey ? index === 0 : index === targets.length - 1)) {
+          event.preventDefault();
+          targets[event.shiftKey ? targets.length - 1 : 0].focus();
+        }
+      }
+    };
+    const handleFocusIn = (event: FocusEvent) => {
+      if (isTopMostDialogRoot(dialogElement) && !dialogOwnsElement(dialogElement, event.target as Element)) {
+        focusFirst();
+      }
+    };
+
+    ownerDocument.addEventListener("keydown", handleKeyDown);
+    ownerDocument.addEventListener("focusin", handleFocusIn);
+    return () => {
+      ownerDocument.removeEventListener("keydown", handleKeyDown);
+      ownerDocument.removeEventListener("focusin", handleFocusIn);
+      if (previousFocus?.isConnected) {
+        previousFocus.focus({ preventScroll: true });
+      }
+    };
+  }, [open]);
 
   if (!open) {
     return null;
   }
 
   return (
+    <DialogScopeContext.Provider value={scope}>
     <motion.div
       animate={{ opacity: 1 }}
       className={cn("fixed inset-0 z-[100] flex items-center justify-center overflow-hidden bg-black/28 p-3 sm:p-6", className)}
@@ -56,10 +147,14 @@ function Dialog({
         }
       }}
       transition={shouldReduceMotion ? { duration: 0.12, ease: "easeOut" } : { duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+      data-ui-dialog-root=""
+      id={id}
+      ref={rootRef}
       {...props}
     >
       {children}
     </motion.div>
+    </DialogScopeContext.Provider>
   );
 }
 
@@ -69,6 +164,7 @@ const DialogContent = React.forwardRef<HTMLElement, DialogContentProps>(
   ({ className, ...props }, ref) => {
     const shouldReduceMotion = useReducedMotion();
     const stackDepth = React.useContext(DialogStackContext);
+    const scope = React.useContext(DialogScopeContext);
     const stackedScale = Math.max(0.96, 1 - stackDepth * 0.015);
 
     return (
@@ -76,11 +172,13 @@ const DialogContent = React.forwardRef<HTMLElement, DialogContentProps>(
         animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: stackDepth > 0 ? stackedScale : 1, y: 0 }}
         aria-hidden={stackDepth > 0 ? true : undefined}
         aria-modal={stackDepth > 0 ? undefined : true}
+        aria-labelledby={props["aria-label"] ? undefined : scope?.titleId}
         className={cn("flex max-h-[calc(100dvh-1.5rem)] w-full max-w-[680px] flex-col overflow-hidden rounded-md border border-border bg-card shadow-xl", className)}
         exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.98, y: 10 }}
         initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.98, y: 14 }}
         ref={ref}
         role="dialog"
+        tabIndex={-1}
         transition={shouldReduceMotion ? { duration: 0.12, ease: "easeOut" } : { type: "spring", stiffness: 520, damping: 38, mass: 0.75 }}
         {...props}
       />
@@ -123,9 +221,10 @@ const DialogFooter = React.forwardRef<HTMLElement, React.HTMLAttributes<HTMLElem
 DialogFooter.displayName = "DialogFooter";
 
 const DialogTitle = React.forwardRef<HTMLHeadingElement, React.HTMLAttributes<HTMLHeadingElement>>(
-  ({ className, ...props }, ref) => (
-    <h2 className={cn("truncate text-[13px] font-semibold", className)} ref={ref} {...props} />
-  )
+  ({ className, ...props }, ref) => {
+    const scope = React.useContext(DialogScopeContext);
+    return <h2 className={cn("truncate text-[14px] font-semibold", className)} id={scope?.titleId} ref={ref} {...props} />;
+  }
 );
 
 DialogTitle.displayName = "DialogTitle";
@@ -138,4 +237,13 @@ const DialogDescription = React.forwardRef<HTMLDivElement, React.HTMLAttributes<
 
 DialogDescription.displayName = "DialogDescription";
 
-export { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogStackLayer, DialogTitle };
+export {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogStackLayer,
+  DialogTitle
+};

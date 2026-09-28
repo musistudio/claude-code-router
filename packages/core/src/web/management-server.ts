@@ -6,25 +6,43 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import packageJson from "../../package.json";
-import { loadPersistedAppSetting, replacePersistedAppSetting } from "@ccr/core/config/app-config-store";
+import { loadOnboardingFinished, markOnboardingFinished } from "@ccr/core/config/onboarding-state";
 import { scanBotHandoffBluetoothTargets, scanBotHandoffWifiTargets } from "@ccr/core/agents/bot-gateway/handoff-scan-service";
 import { cancelBotGatewayQrLogin, startBotGatewayQrLogin, waitBotGatewayQrLogin } from "@ccr/core/agents/bot-gateway/qr-login-service";
 import { syncClaudeAppGatewayConfig, restoreClaudeAppGatewayConfig } from "@ccr/core/agents/claude-app/gateway-service";
+import { getAppInfoPaths } from "@ccr/core/agents/app-info-paths";
 import { loadAppConfig, saveApiKeysConfig, saveAppConfig } from "@ccr/core/config/config";
-import { API_KEYS_DB_FILE, APP_CONFIG_DB_FILE, APP_NAME, CONFIGDIR, CONFIG_FILE, DATADIR, GATEWAY_CONFIG_FILE, LEGACY_CONFIG_FILE, ONBOARDING_FINISHED_FILE, PROXY_CA_CERT_FILE, REQUEST_LOGS_DB_FILE, USAGE_DB_FILE } from "@ccr/core/config/constants";
+import {
+  APP_CONFIG_DB_FILE,
+  APP_NAME,
+  CONFIGDIR,
+  DATADIR,
+  LEGACY_ACTIVE_CONFIG_FILE,
+  LEGACY_APP_CONFIG_DB_FILES,
+  LEGACY_API_KEYS_DB_FILES,
+  LEGACY_CONFIG_FILE,
+  LEGACY_WINDOWS_CONFIG_FILE,
+  PROXY_CA_CERT_FILE,
+  REQUEST_LOGS_DB_FILE,
+  USAGE_DB_FILE
+} from "@ccr/core/config/constants";
 import { detectProviderIcon } from "@ccr/core/providers/icons";
 import { fetchProviderManifest } from "@ccr/core/providers/manifest-service";
-import { getLocalAgentProviderCandidates, importLocalAgentProvider } from "@ccr/core/agents/local-providers/service";
+import { getLocalAgentProviderCandidates, importLocalAgentProvider, probeLocalAgentProvider } from "@ccr/core/agents/local-providers/service";
 import { getProviderCatalogModels } from "@ccr/core/providers/model-catalog";
+import { getOpenRouterProviderCatalog } from "@ccr/core/providers/openrouter-provider-catalog";
 import { getProviderPresets } from "@ccr/core/providers/presets/index";
 import { checkGatewayProviderConnectivity, probeGatewayProvider, probeGatewayProviderCandidates } from "@ccr/core/providers/probe";
+import { stopProviderModelAutoRefreshService, syncProviderModelAutoRefreshService } from "@ccr/core/providers/model-auto-refresh";
 import { applyProfileConfig } from "@ccr/core/profiles/service";
 import { getProfileOpenCommand, getProfileRuntimeStatus, openProfileFromCcr, stopProfileFromCcr } from "@ccr/core/profiles/launch-service";
+import { getPluginMarketplace } from "@ccr/core/plugins/marketplace";
 import { ensureProxyCertificateAuthority } from "@ccr/core/proxy/certificates";
 import { proxyService } from "@ccr/core/proxy/service";
 import { listMcpServerTools } from "@ccr/core/mcp/tool-discovery";
-import { getAgentAnalysis, getAgentTracePayload, getRequestLogDetail, getRequestLogs } from "@ccr/core/observability/request-log-store";
-import { getUsageStats } from "@ccr/core/usage/store";
+import { closeRequestLogRuntime, getAgentAnalysis, getAgentTracePayload, getRequestLogBodyChunk, getRequestLogDetail, getRequestLogs } from "@ccr/core/observability/request-log-store";
+import { shouldRecordRequestLogs } from "@ccr/core/observability/raw-trace-sync";
+import { getUsageStats, resetOverviewStatistics } from "@ccr/core/usage/store";
 import { gatewayService } from "@ccr/core/gateway/service";
 import { shouldRestartGatewayForRuntimeConfigChange } from "@ccr/core/gateway/runtime-change";
 import { getProviderAccountSnapshots, invalidateProviderAccountSnapshotCache, resetCodexRateLimitCredit, testProviderAccountConnector } from "@ccr/core/providers/account-service";
@@ -42,14 +60,17 @@ import type {
   BotGatewayQrLoginWaitRequest,
   BotGatewayQrWindowOpenRequest,
   GatewayPluginAppConfig,
+  GatewayPluginPermission,
+  GatewayPluginSurface,
   GatewayProviderConnectivityCheckRequest,
   GatewayProviderProbeCandidatesRequest,
   GatewayProviderProbeRequest,
   GatewayStatus,
   LocalAgentProviderImportRequest,
+  LocalAgentProviderProbeRequest,
+  OpenRouterProviderCatalogRequest,
   PluginDependency,
   PluginDirectorySelection,
-  PluginMarketplaceEntry,
   ProfileApplyResult,
   ProfileOpenRequest,
   ProviderAccountResetRequest,
@@ -58,11 +79,18 @@ import type {
   ProviderCatalogModelsRequest,
   ProviderIconDetectionRequest,
   ProviderManifestFetchRequest,
+  RequestLogBodyChunkRequest,
   RequestLogDetailRequest,
   RequestLogListFilter,
+  RouteScriptTestRequest,
+  RouteScriptValidationRequest,
   UsageStatsFilter,
   UsageStatsRange
 } from "@ccr/core/contracts/app";
+import { GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS } from "@ccr/core/contracts/app";
+
+const gatewayPluginPermissionIdSet = new Set<string>(GATEWAY_PLUGIN_PERMISSION_IDS);
+const gatewayPluginSurfaceIdSet = new Set<string>(GATEWAY_PLUGIN_SURFACE_IDS);
 
 export type WebManagementServerOptions = {
   authToken?: string;
@@ -94,7 +122,6 @@ type WebManagementSecurityContext = {
 
 const defaultWebHost = "127.0.0.1";
 const defaultWebPort = 3458;
-const onboardingFinishedAtSettingKey = "onboardingFinishedAt";
 const maxRpcBodyBytes = 8 * 1024 * 1024;
 const webAuthHeader = "x-ccr-web-auth";
 const webAuthQueryParam = "ccr_web_token";
@@ -103,24 +130,6 @@ const homeHtmlFile = path.join(staticRoot, "pages", "home", "index.html");
 const rendererAssetsRoot = path.join(staticRoot, "assets");
 const webBridgeScriptTag = '    <script src="../../assets/web-client-bridge.js"></script>';
 
-const pluginMarketplace: PluginMarketplaceEntry[] = [
-  {
-    capabilities: ["Wrapper runtime", "Claude App proxy", "Claude Design", "Model routing"],
-    dependencies: [],
-    description: "Routes Claude App Design traffic through the local CCR wrapper backend with configurable model routing.",
-    id: "claude-design",
-    modulePath: path.join(__dirname, "..", "marketplace", "plugins", "claude-design-plugin.cjs"),
-    name: "Claude Design"
-  },
-  {
-    capabilities: ["Wrapper runtime", "Proxy mode", "Cursor", "Model routing", "OpenAI/Anthropic/Gemini forwarding"],
-    dependencies: [],
-    description: "Routes Cursor-compatible LLM traffic captured by proxy mode into the local CCR gateway.",
-    id: "cursor-proxy",
-    modulePath: path.join(__dirname, "..", "marketplace", "plugins", "cursor-proxy-plugin.cjs"),
-    name: "Cursor Proxy"
-  }
-];
 
 export async function startWebManagementServer(options: WebManagementServerOptions = {}): Promise<WebManagementServerRuntime> {
   const host = options.host?.trim() || readEnvString("CCR_WEB_HOST") || defaultWebHost;
@@ -157,6 +166,7 @@ export async function startWebManagementServer(options: WebManagementServerOptio
     close: async () => {
       await closeServer(server);
       await stopConfiguredServices();
+      await closeRequestLogRuntime();
     },
     server,
     url
@@ -166,6 +176,20 @@ export async function startWebManagementServer(options: WebManagementServerOptio
 async function handleRequest(request: IncomingMessage, response: ServerResponse, security: WebManagementSecurityContext): Promise<void> {
   if (!isAllowedWebRequestHost(request, security)) {
     sendText(response, 403, "Forbidden host");
+    return;
+  }
+
+  // CORS: allow cross-origin browsers (e.g. the docs setup wizard) to call the
+  // RPC endpoint. Origin-gated to loopback + CCR_WEB_ALLOWED_ORIGINS. This only
+  // relaxes the browser same-origin policy; the x-ccr-web-auth token still
+  // authorizes /api/ccr/rpc, so no credential is exposed.
+  const corsOrigin = allowedWebCorsOrigin(request);
+  if (corsOrigin) {
+    applyWebCorsHeaders(response, corsOrigin);
+  }
+  if (request.method === "OPTIONS") {
+    response.writeHead(204);
+    response.end();
     return;
   }
 
@@ -196,10 +220,6 @@ async function handleRpcRequest(request: IncomingMessage, response: ServerRespon
   }
   if (!isJsonRequest(request)) {
     sendJson(response, 415, { error: { message: "RPC requests must use application/json." }, ok: false });
-    return;
-  }
-  if (!isAllowedWebRequestOrigin(request, security)) {
-    sendJson(response, 403, { error: { message: "Forbidden RPC origin." }, ok: false });
     return;
   }
   if (!hasValidWebAuthToken(request, security)) {
@@ -247,10 +267,20 @@ const rpcHandlers: Record<string, RpcHandler> = {
     const synced = await syncClaudeAppGatewayConfig(baseConfig);
     const savedConfig = synced.config;
     let runtimeStatus = gatewayService.getStatus();
-    if (synced.configChanged || shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig) || runtimeStatus.state !== "running") {
+    const restartRequired = synced.configChanged ||
+      shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig) ||
+      runtimeStatus.state !== "running";
+    if (runtimeStatus.gatewayManagedExternally) {
+      if (restartRequired) {
+        runtimeStatus = await gatewayService.restart(savedConfig);
+      } else {
+        await gatewayService.updateConfig(savedConfig);
+        runtimeStatus = gatewayService.getStatus();
+      }
+    } else if (restartRequired) {
       runtimeStatus = await gatewayService.start(savedConfig);
     } else {
-      gatewayService.updateConfig(savedConfig);
+      await gatewayService.updateConfig(savedConfig);
     }
     if (config || synced.configChanged) {
       invalidateProviderAccountSnapshotCache();
@@ -266,7 +296,17 @@ const rpcHandlers: Record<string, RpcHandler> = {
   },
   applyProfile: async () => applyProfileConfig(await loadAppConfig()),
   cancelBotGatewayQrLogin: (request) => cancelBotGatewayQrLogin(request as BotGatewayQrLoginCancelRequest),
-  checkProviderConnectivity: (request) => checkGatewayProviderConnectivity(request as GatewayProviderConnectivityCheckRequest),
+  checkProviderConnectivity: async (request) => {
+    const config = await loadAppConfig();
+    return checkGatewayProviderConnectivity(request as GatewayProviderConnectivityCheckRequest, {
+      requestLog: {
+        bodyCapturePolicy: config.observability.requestLogBodyCapture,
+        enabled: shouldRecordRequestLogs(config),
+        maxBodyBytes: config.observability.requestLogMaxBodyBytes,
+        successSampleRate: config.observability.requestLogSuccessSampleRate
+      }
+    });
+  },
   clearProxyNetworkCaptures: () => proxyService.clearNetworkCaptures(),
   closeBotGatewayQrWindow: (_request) => ({ closed: false }),
   detectProviderIcon: (request) => detectProviderIcon(request as ProviderIconDetectionRequest),
@@ -285,17 +325,19 @@ const rpcHandlers: Record<string, RpcHandler> = {
       serviceToken === process.env.CCR_SERVICE_INSTANCE_TOKEN
   }),
   getLocalAgentProviderCandidates: () => getLocalAgentProviderCandidates(),
-  getOnboardingFinished: async () => Boolean(readString(await loadPersistedAppSetting(onboardingFinishedAtSettingKey)) || existsSync(ONBOARDING_FINISHED_FILE)),
-  getPluginMarketplace: () => pluginMarketplace,
+  getOnboardingFinished: () => loadOnboardingFinished(),
+  getPluginMarketplace,
   getProfileOpenCommand: async (request) => getProfileOpenCommand(await loadAppConfig(), request as ProfileOpenRequest),
   getProfileRuntimeStatus: () => getProfileRuntimeStatus(),
   getProviderAccountSnapshots: (provider, options) => getProviderAccountSnapshots(provider as string | undefined, options as ProviderAccountSnapshotRequestOptions | undefined),
   getProviderCatalogModels: (request) => getProviderCatalogModels(request as ProviderCatalogModelsRequest),
+  getOpenRouterProviderCatalog: (request) => getOpenRouterProviderCatalog(request as OpenRouterProviderCatalogRequest),
   getProviderPresets: () => getProviderPresets(),
   getProxyCertificateStatus: () => proxyService.getCertificateStatus(),
   getProxyNetworkCaptures: () => proxyService.getNetworkCaptures(),
   getProxyStatus: () => proxyService.getStatus(),
   getRequestLogDetail: (request) => getRequestLogDetail(request as RequestLogDetailRequest),
+  getRequestLogBodyChunk: (request) => getRequestLogBodyChunk(request as RequestLogBodyChunkRequest),
   getRequestLogs: (filter) => getRequestLogs(filter as RequestLogListFilter | undefined),
   getUpdateStatus: () => unsupportedUpdateStatus,
   getUsageStats: (range, filter) => getUsageStats(range as UsageStatsRange | undefined, filter as UsageStatsFilter | undefined),
@@ -322,7 +364,12 @@ const rpcHandlers: Record<string, RpcHandler> = {
       opened: true
     };
   },
-  openBuiltInBrowser: async () => {
+  openBuiltInBrowser: async (url) => {
+    const targetUrl = readString(url);
+    if (targetUrl) {
+      await openSystemExternal(targetUrl);
+      return;
+    }
     const config = await loadAppConfig();
     const appUrl = firstConfiguredBrowserAppUrl(config) || "about:blank";
     if (appUrl === "about:blank") {
@@ -333,13 +380,14 @@ const rpcHandlers: Record<string, RpcHandler> = {
   openProfile: async (request) => {
     const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(await loadAppConfig());
     const config = syncedClaudeAppConfig.config;
-    const status = await gatewayService.start(config);
+    const status = await gatewayService.ensureStarted(config);
     if (status.state !== "running") {
       throw new Error(status.lastError || "CCR gateway did not start.");
     }
     logProfileApplyResult(await applyProfileConfig(config));
     return openProfileFromCcr(config, request as ProfileOpenRequest);
   },
+  probeLocalAgentProvider: (request) => probeLocalAgentProvider(request as LocalAgentProviderProbeRequest),
   probeProvider: (request) => probeGatewayProvider(request as GatewayProviderProbeRequest),
   probeProviderCandidates: (request) => probeGatewayProviderCandidates(request as GatewayProviderProbeCandidatesRequest),
   quitApp: async () => {
@@ -348,14 +396,14 @@ const rpcHandlers: Record<string, RpcHandler> = {
   restartGateway: async () => {
     const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(await loadAppConfig());
     const config = syncedClaudeAppConfig.config;
-    const status = await gatewayService.start(config);
+    const status = await gatewayService.restart(config);
     await applyProfileIfServiceRunning(config, status);
     return status;
   },
   restartProxy: async () => {
     const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(await loadAppConfig());
     const config = syncedClaudeAppConfig.config;
-    const status = await gatewayService.start(config);
+    const status = await gatewayService.restart(config);
     await applyProfileIfServiceRunning(config, status);
     return proxyService.getStatus();
   },
@@ -364,11 +412,12 @@ const rpcHandlers: Record<string, RpcHandler> = {
     await revealFile(PROXY_CA_CERT_FILE);
   },
   resetCodexRateLimitCredit: (request) => resetCodexRateLimitCredit(request as ProviderAccountResetRequest),
+  resetOverviewStatistics: () => resetOverviewStatistics(),
   saveApiKeys: async (apiKeys) => {
     const savedConfig = await saveApiKeysConfig(apiKeys as ApiKeyConfig[]);
     const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(savedConfig);
     const nextConfig = syncedClaudeAppConfig.config;
-    gatewayService.updateConfig(nextConfig);
+    await gatewayService.updateConfig(nextConfig);
     logProfileApplyResult(await applyProfileConfig(nextConfig));
     invalidateProviderAccountSnapshotCache();
     return nextConfig;
@@ -386,22 +435,32 @@ const rpcHandlers: Record<string, RpcHandler> = {
     const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(savedConfig);
     savedConfig = syncedClaudeAppConfig.config;
     let runtimeStatus = gatewayService.getStatus();
-    if (syncedClaudeAppConfig.configChanged || shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig)) {
+    const restartRequired = syncedClaudeAppConfig.configChanged ||
+      shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig);
+    if (runtimeStatus.gatewayManagedExternally) {
+      if (restartRequired) {
+        runtimeStatus = await gatewayService.restart(savedConfig);
+      } else {
+        await gatewayService.updateConfig(savedConfig);
+        runtimeStatus = gatewayService.getStatus();
+      }
+    } else if (restartRequired) {
       runtimeStatus = await gatewayService.start(savedConfig);
     } else {
-      gatewayService.updateConfig(savedConfig);
+      await gatewayService.updateConfig(savedConfig);
     }
     if ((options as AppSaveConfigOptions | undefined)?.applyProfile !== false) {
       await applyProfileIfServiceRunning(savedConfig, runtimeStatus);
     }
     invalidateProviderAccountSnapshotCache();
+    syncProviderModelAutoRefresh(savedConfig);
     return savedConfig;
   },
   scanBotHandoffBluetoothTargets: () => scanBotHandoffBluetoothTargets(),
   scanBotHandoffWifiTargets: () => scanBotHandoffWifiTargets(),
   selectPluginDirectory: (directory) => inspectPluginDirectory(readRequiredString(directory, "Plugin directory path is required.")),
   setOnboardingFinished: async () => {
-    await replacePersistedAppSetting(onboardingFinishedAtSettingKey, new Date().toISOString());
+    await markOnboardingFinished();
     return true;
   },
   setProxyNetworkCaptureEnabled: (enabled) => proxyService.setNetworkCaptureEnabled(Boolean(enabled)),
@@ -409,13 +468,15 @@ const rpcHandlers: Record<string, RpcHandler> = {
   startGateway: async () => {
     const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(await loadAppConfig());
     const config = syncedClaudeAppConfig.config;
-    const status = await gatewayService.start(config);
+    const status = await gatewayService.ensureStarted(config);
     await applyProfileIfServiceRunning(config, status);
     return status;
   },
   stopGateway: () => gatewayService.stop(),
   stopProfile: async (request) => stopProfileFromCcr(await loadAppConfig(), request as ProfileOpenRequest),
   testProviderAccountConnector: (request) => testProviderAccountConnector(request as ProviderAccountTestRequest),
+  testRouteScript: async (request) => gatewayService.testRouteScript(await loadAppConfig(), request as RouteScriptTestRequest),
+  validateRouteScript: (request) => gatewayService.validateRouteScript(request as RouteScriptValidationRequest),
   updateCheck: () => unsupportedUpdateStatus,
   updateDownload: () => unsupportedUpdateStatus,
   updateInstall: () => {
@@ -432,12 +493,12 @@ async function startConfiguredServices(reason: string): Promise<void> {
     } catch (error) {
       console.error(`Failed to sync Claude App gateway config during ${reason}: ${formatError(error)}`);
     }
-    const status = await gatewayService.start(config);
+    const status = await gatewayService.ensureStarted(config);
     if (status.state === "error") {
       console.error(`Failed to start gateway during ${reason}: ${status.lastError}`);
     }
     if (status.state === "running") {
-      const profileResult = await applyProfileConfig(config);
+      const profileResult = await applyProfileConfig(config, { excludeAgents: ["zcode"] });
       logProfileApplyResult(profileResult);
     }
     if (config.proxy.enabled && config.proxy.systemProxy) {
@@ -447,12 +508,14 @@ async function startConfiguredServices(reason: string): Promise<void> {
         console.error(`Proxy mode is enabled, but system proxy is ${proxyStatus.systemProxy.state} during ${reason}${details}`);
       }
     }
+    syncProviderModelAutoRefresh(config);
   } catch (error) {
     console.error(`Failed to start configured services during ${reason}: ${formatError(error)}`);
   }
 }
 
 async function stopConfiguredServices(): Promise<void> {
+  stopProviderModelAutoRefreshService();
   await gatewayService.stop({ proxyRestoreTimeoutMs: 30_000 }).catch((error) => {
     console.error(`Failed to stop gateway: ${formatError(error)}`);
   });
@@ -470,6 +533,17 @@ async function applyProfileIfServiceRunning(config: AppConfig, status: GatewaySt
   logProfileApplyResult(await applyProfileConfig(config));
 }
 
+function syncProviderModelAutoRefresh(config: AppConfig): void {
+  syncProviderModelAutoRefreshService(config, {
+    logger: console,
+    onConfigChanged: async (nextConfig) => {
+      await gatewayService.updateConfig(nextConfig);
+      await applyProfileIfServiceRunning(nextConfig, gatewayService.getStatus());
+      invalidateProviderAccountSnapshotCache();
+    }
+  });
+}
+
 function logProfileApplyResult(result: ProfileApplyResult): void {
   for (const client of result.clients) {
     if (!client.ok) {
@@ -479,19 +553,21 @@ function logProfileApplyResult(result: ProfileApplyResult): void {
 }
 
 function getCliAppInfo(): AppInfo {
+  const { chatgptAppPath, opencodeAppPath, workbuddyAppPath } = getAppInfoPaths();
   return {
-    appConfigDbFile: APP_CONFIG_DB_FILE,
-    apiKeysDbFile: API_KEYS_DB_FILE,
+    ...(chatgptAppPath ? { chatgptAppPath } : {}),
+    configDbFile: APP_CONFIG_DB_FILE,
     configDir: CONFIGDIR,
-    configFile: CONFIG_FILE,
     dataDir: DATADIR,
-    gatewayConfigFile: GATEWAY_CONFIG_FILE,
+    desktop: false,
     launchAtLoginSupported: false,
     name: APP_NAME,
+    ...(opencodeAppPath ? { opencodeAppPath } : {}),
     platform: process.platform,
     requestLogsDbFile: REQUEST_LOGS_DB_FILE,
     usageDbFile: USAGE_DB_FILE,
-    version: packageJson.version
+    version: packageJson.version,
+    ...(workbuddyAppPath ? { workbuddyAppPath } : {})
   };
 }
 
@@ -580,30 +656,41 @@ function isAllowedWebRequestHost(request: IncomingMessage, security: WebManageme
   return Boolean(hostname && isAllowedWebHostname(hostname, security));
 }
 
-function isAllowedWebRequestOrigin(request: IncomingMessage, security: WebManagementSecurityContext): boolean {
+const loopbackWebCorsHosts = new Set(["localhost", "127.0.0.1", "::1", "0:0:0:0:0:0:0:1"]);
+
+/**
+ * Returns the request `Origin` if cross-origin callers are permitted, else
+ * undefined. Permits loopback origins (any port) unconditionally so local tools
+ * like the docs setup wizard work, plus any exact origin listed in the
+ * `CCR_WEB_ALLOWED_ORIGINS` env var (comma-separated) for remote deployments.
+ */
+function allowedWebCorsOrigin(request: IncomingMessage): string | undefined {
   const origin = readHeaderValue(request.headers.origin);
-  if (origin && !isAllowedWebOriginValue(origin, security)) {
-    return false;
+  if (!origin) return undefined;
+  const normalizedOrigin = origin.replace(/\/$/, "");
+  const configured = readEnvString("CCR_WEB_ALLOWED_ORIGINS");
+  if (configured) {
+    const allow = new Set(
+      configured
+        .split(",")
+        .map((value) => value.trim().replace(/\/$/, ""))
+        .filter(Boolean)
+    );
+    if (allow.has(normalizedOrigin)) return origin;
   }
-
-  const referer = readHeaderValue(request.headers.referer);
-  if (!origin && referer && !isAllowedWebOriginValue(referer, security)) {
-    return false;
+  try {
+    if (loopbackWebCorsHosts.has(normalizeHostname(new URL(origin).hostname))) return origin;
+  } catch {
+    /* malformed origin — treat as not allowed */
   }
-
-  return true;
+  return undefined;
 }
 
-function isAllowedWebOriginValue(value: string, security: WebManagementSecurityContext): boolean {
-  try {
-    const url = new URL(value);
-    const port = url.port ? Number(url.port) : url.protocol === "http:" ? 80 : url.protocol === "https:" ? 443 : undefined;
-    return url.protocol === "http:" &&
-      port === security.port &&
-      isAllowedWebHostname(normalizeHostname(url.hostname), security);
-  } catch {
-    return false;
-  }
+function applyWebCorsHeaders(response: ServerResponse, origin: string): void {
+  response.setHeader("Access-Control-Allow-Origin", origin);
+  response.setHeader("Vary", "Origin");
+  response.setHeader("Access-Control-Allow-Headers", "Content-Type, x-ccr-web-auth");
+  response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
 }
 
 function isAllowedWebHostname(hostname: string, security: WebManagementSecurityContext): boolean {
@@ -727,7 +814,7 @@ async function exportAppData(): Promise<AppDataExportResult> {
       version: packageJson.version
     },
     appState: {
-      onboardingFinished: Boolean(readString(await loadPersistedAppSetting(onboardingFinishedAtSettingKey)) || existsSync(ONBOARDING_FINISHED_FILE))
+      onboardingFinished: await loadOnboardingFinished()
     },
     config: await loadAppConfig(),
     exportedAt,
@@ -773,7 +860,8 @@ function readDataExportFiles(): Array<{ base64: string; name: string; path: stri
 function dataExportCandidateFiles(): string[] {
   return uniqueStrings([
     ...sqliteDataFiles(APP_CONFIG_DB_FILE),
-    ...sqliteDataFiles(API_KEYS_DB_FILE),
+    ...LEGACY_APP_CONFIG_DB_FILES.flatMap(sqliteDataFiles),
+    ...LEGACY_API_KEYS_DB_FILES.flatMap(sqliteDataFiles),
     ...sqliteDataFiles(REQUEST_LOGS_DB_FILE),
     ...sqliteDataFiles(USAGE_DB_FILE)
   ]);
@@ -786,12 +874,9 @@ function sqliteDataFiles(file: string): string[] {
 function assertExportTargetIsNotInternalDataFile(file: string): void {
   const target = path.resolve(file);
   const reserved = new Set([
-    CONFIG_FILE,
+    LEGACY_ACTIVE_CONFIG_FILE,
+    LEGACY_WINDOWS_CONFIG_FILE,
     LEGACY_CONFIG_FILE,
-    APP_CONFIG_DB_FILE,
-    API_KEYS_DB_FILE,
-    REQUEST_LOGS_DB_FILE,
-    USAGE_DB_FILE,
     ...dataExportCandidateFiles()
   ].map((item) => path.resolve(item)));
   if (reserved.has(target)) {
@@ -820,14 +905,282 @@ function inspectPluginDirectory(directory: string): PluginDirectorySelection {
     "plugin";
   const name = readString(manifest?.name) || readString(packageJsonManifest?.displayName) || readString(packageJsonManifest?.name);
   const apps = readPluginApps(manifest, packageJsonManifest);
+  const permissions = readPluginPermissions(manifest, packageJsonManifest);
+  const surfaces = readPluginSurfaces(manifest, packageJsonManifest);
   return {
     ...(apps.length ? { apps } : {}),
     dependencies: readPluginDependencies(directory, manifest, packageJsonManifest),
     directory,
     id,
-    modulePath: resolvePluginDirectoryModule(directory, moduleValue),
-    ...(name ? { name } : {})
+    modulePath: resolvePluginDirectoryModule(directory, moduleValue, Boolean(manifest || packageJsonManifest)),
+    ...(name ? { name } : {}),
+    ...(permissions ? { permissions } : {}),
+    ...(surfaces ? { surfaces } : {})
   };
+}
+
+function readPluginPermissions(
+  manifest: Record<string, unknown> | undefined,
+  packageJsonManifest: Record<string, unknown> | undefined
+): GatewayPluginPermission[] | undefined {
+  const values = [
+    manifest?.permissions,
+    readRecord(manifest?.ccr)?.permissions,
+    readRecord(manifest?.ccrPlugin)?.permissions,
+    readRecord(packageJsonManifest?.ccr)?.permissions,
+    readRecord(packageJsonManifest?.ccrPlugin)?.permissions
+  ];
+  const parsedValues = values.map(parsePluginPermissions).filter((value): value is GatewayPluginPermission[] => Boolean(value));
+  return parsedValues.length > 0 ? [...new Set(parsedValues.flat())] : undefined;
+}
+
+function parsePluginPermissions(value: unknown): GatewayPluginPermission[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const permissions: GatewayPluginPermission[] = [];
+  const seen = new Set<GatewayPluginPermission>();
+  const add = (rawValue: unknown): void => {
+    const permission = normalizePluginPermission(rawValue);
+    if (!permission || seen.has(permission)) {
+      return;
+    }
+    seen.add(permission);
+    permissions.push(permission);
+  };
+
+  if (typeof value === "string") {
+    add(value);
+  } else if (Array.isArray(value)) {
+    value.forEach(add);
+  } else {
+    const record = readRecord(value);
+    if (!record) {
+      return permissions;
+    }
+    for (const [key, enabled] of Object.entries(record)) {
+      if (enabled === false) {
+        continue;
+      }
+      if (isAllPluginPermissionsKey(key)) {
+        GATEWAY_PLUGIN_PERMISSION_IDS.forEach(add);
+      } else {
+        add(key);
+      }
+    }
+  }
+
+  return permissions;
+}
+
+function readPluginSurfaces(
+  manifest: Record<string, unknown> | undefined,
+  packageJsonManifest: Record<string, unknown> | undefined
+): PluginDirectorySelection["surfaces"] | undefined {
+  const values = [
+    manifest?.surfaces,
+    manifest?.surface,
+    readRecord(manifest?.ccr)?.surfaces,
+    readRecord(manifest?.ccr)?.surface,
+    readRecord(manifest?.ccrPlugin)?.surfaces,
+    readRecord(manifest?.ccrPlugin)?.surface,
+    readRecord(packageJsonManifest?.ccr)?.surfaces,
+    readRecord(packageJsonManifest?.ccr)?.surface,
+    readRecord(packageJsonManifest?.ccrPlugin)?.surfaces,
+    readRecord(packageJsonManifest?.ccrPlugin)?.surface
+  ];
+  const parsedValues = values.map(parsePluginSurfaces).filter((value): value is PluginDirectorySelection["surfaces"] => Boolean(value));
+  return parsedValues.length > 0 ? Object.assign({}, ...parsedValues) as PluginDirectorySelection["surfaces"] : undefined;
+}
+
+function parsePluginSurfaces(value: unknown): PluginDirectorySelection["surfaces"] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const surfaces: PluginDirectorySelection["surfaces"] = {};
+  const setSurface = (rawValue: unknown, enabled = true): boolean => {
+    const surface = normalizePluginSurface(rawValue);
+    if (!surface) {
+      return false;
+    }
+    surfaces[surface] = enabled;
+    return true;
+  };
+
+  if (typeof value === "string") {
+    if (isAllPluginSurfacesKey(value)) {
+      GATEWAY_PLUGIN_SURFACE_IDS.forEach((surface) => {
+        surfaces[surface] = true;
+      });
+      return surfaces;
+    }
+    if (!setSurface(value)) {
+      return undefined;
+    }
+    GATEWAY_PLUGIN_SURFACE_IDS.forEach((surface) => {
+      surfaces[surface] ??= false;
+    });
+  } else if (Array.isArray(value)) {
+    let matched = false;
+    for (const item of value) {
+      if (typeof item === "string" && isAllPluginSurfacesKey(item)) {
+        GATEWAY_PLUGIN_SURFACE_IDS.forEach((surface) => {
+          surfaces[surface] = true;
+        });
+        matched = true;
+      } else {
+        matched = setSurface(item) || matched;
+      }
+    }
+    if (!matched) {
+      return undefined;
+    }
+    GATEWAY_PLUGIN_SURFACE_IDS.forEach((surface) => {
+      surfaces[surface] ??= false;
+    });
+  } else {
+    const record = readRecord(value);
+    if (!record) {
+      return undefined;
+    }
+    for (const [key, enabled] of Object.entries(record)) {
+      if (isAllPluginSurfacesKey(key)) {
+        GATEWAY_PLUGIN_SURFACE_IDS.forEach((surface) => {
+          surfaces[surface] = enabled !== false;
+        });
+      } else {
+        setSurface(key, enabled !== false);
+      }
+    }
+  }
+
+  return Object.keys(surfaces).length > 0 ? surfaces : undefined;
+}
+
+function normalizePluginPermission(value: unknown): GatewayPluginPermission | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase().replace(/[\s_]+/g, "-");
+  const mapped = pluginPermissionAlias(normalized);
+  return gatewayPluginPermissionIdSet.has(mapped) ? mapped as GatewayPluginPermission : undefined;
+}
+
+function normalizePluginSurface(value: unknown): GatewayPluginSurface | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase().replace(/[\s_]+/g, "-");
+  const mapped = pluginSurfaceAlias(normalized);
+  return gatewayPluginSurfaceIdSet.has(mapped) ? mapped as GatewayPluginSurface : undefined;
+}
+
+function pluginSurfaceAlias(value: string): string {
+  switch (value) {
+    case "app":
+    case "browser-app":
+    case "browser-apps":
+    case "ui":
+      return "apps";
+    case "gateway-route":
+    case "route":
+    case "routes":
+    case "gateway-routes":
+    case "proxy-route":
+    case "proxy":
+    case "proxy-routes":
+    case "http-backend":
+    case "http-backends":
+    case "backend":
+    case "backends":
+    case "core-gateway":
+    case "core-gateway-config":
+    case "fusion-profile":
+    case "fusion-profiles":
+    case "virtual-model":
+    case "virtual-models":
+    case "virtual-model-profile":
+    case "virtual-model-profiles":
+    case "request":
+    case "requests":
+      return "gateway";
+    case "core-provider-plugin":
+    case "provider-plugin":
+    case "provider-plugins":
+    case "provider-account":
+    case "provider-account-connector":
+    case "provider-account-connectors":
+    case "providers":
+      return "provider";
+    default:
+      return value;
+  }
+}
+
+function pluginPermissionAlias(value: string): string {
+  switch (value) {
+    case "code":
+    case "execute-code":
+    case "trusted":
+    case "trusted-code":
+      return "trusted-code";
+    case "app":
+    case "browser-app":
+    case "browser-apps":
+      return "apps";
+    case "gateway-route":
+    case "route":
+    case "routes":
+      return "gateway-routes";
+    case "gateway-request-transform":
+    case "gateway-request-transforms":
+    case "request-transform":
+    case "request-transforms":
+      return "gateway-request-transforms";
+    case "proxy":
+    case "proxy-route":
+      return "proxy-routes";
+    case "backend":
+    case "backends":
+    case "http-backend":
+      return "http-backends";
+    case "provider-account":
+    case "provider-account-connector":
+      return "provider-account-connectors";
+    case "core-gateway":
+      return "core-gateway-config";
+    case "provider-plugin":
+    case "provider-plugins":
+    case "core-provider-plugin":
+      return "core-provider-plugins";
+    case "fusion-profile":
+    case "fusion-profiles":
+    case "virtual-model":
+    case "virtual-models":
+    case "virtual-model-profile":
+      return "virtual-model-profiles";
+    case "sqlite":
+    case "data-store":
+    case "store":
+      return "sqlite-store";
+    case "launcher":
+    case "mac-launcher":
+      return "system-launcher";
+    default:
+      return value;
+  }
+}
+
+function isAllPluginPermissionsKey(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "*" || normalized === "all";
+}
+
+function isAllPluginSurfacesKey(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "*" || normalized === "all";
 }
 
 function readPluginApps(
@@ -866,7 +1219,7 @@ function parsePluginAppItem(value: unknown): GatewayPluginAppConfig | undefined 
 
   const record = value as Record<string, unknown>;
   const name = readString(record.name) || readString(record.title);
-  const url = readString(record.url) || readString(record.href) || readString(record.target);
+  const url = normalizePluginAppUrl(readString(record.url) || readString(record.href) || readString(record.target));
   if (!name || !url) {
     return undefined;
   }
@@ -880,6 +1233,23 @@ function parsePluginAppItem(value: unknown): GatewayPluginAppConfig | undefined 
     name,
     url
   };
+}
+
+function normalizePluginAppUrl(value: string | undefined): string {
+  const trimmed = value?.trim() || "";
+  if (!trimmed) {
+    return "";
+  }
+  if (/^https?:\/\//i.test(trimmed)) {
+    return new URL(trimmed).toString();
+  }
+  if (trimmed.startsWith("//")) {
+    throw new Error("Plugin app URL cannot be protocol-relative.");
+  }
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
+    throw new Error("Plugin app URL must be an http(s) URL or a CCR gateway path.");
+  }
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 }
 
 function readPluginDependencies(
@@ -969,9 +1339,12 @@ function looksLikeDependencyModulePath(value: string): boolean {
   return value.startsWith(".") || value.startsWith("/") || value.startsWith("~");
 }
 
-function resolvePluginDirectoryModule(directory: string, moduleValue: string | undefined): string {
+function resolvePluginDirectoryModule(directory: string, moduleValue: string | undefined, hasManifest = false): string {
   if (moduleValue) {
     return path.isAbsolute(moduleValue) ? moduleValue : path.join(directory, moduleValue);
+  }
+  if (hasManifest) {
+    return "";
   }
 
   for (const filename of ["index.cjs", "index.mjs", "index.js", "plugin.cjs", "plugin.mjs", "plugin.js"]) {
@@ -981,7 +1354,7 @@ function resolvePluginDirectoryModule(directory: string, moduleValue: string | u
     }
   }
 
-  return directory;
+  return "";
 }
 
 function readFirstJson(files: string[]): Record<string, unknown> | undefined {
@@ -1010,12 +1383,36 @@ function firstConfiguredBrowserAppUrl(config: AppConfig): string | undefined {
     if (plugin.enabled === false) {
       continue;
     }
-    const app = plugin.apps?.find((candidate) => readString(candidate.url));
+    const app = configuredBrowserAppsForPlugin(plugin.id, plugin.apps)?.find((candidate) => readString(candidate.url));
     if (app?.url) {
-      return app.url;
+      return resolveGatewayBrowserAppUrl(config, app.url);
     }
   }
   return undefined;
+}
+
+function configuredBrowserAppsForPlugin(_pluginId: string, apps: GatewayPluginAppConfig[] | undefined): GatewayPluginAppConfig[] {
+  if (apps?.length) {
+    return apps;
+  }
+  return [];
+}
+
+function resolveGatewayBrowserAppUrl(config: AppConfig, url: string): string {
+  const trimmed = url.trim();
+  if (/^https?:\/\//i.test(trimmed) || trimmed === "about:blank") {
+    return trimmed;
+  }
+  const path = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  const host = normalizeGatewayBrowserAppHost(config.gateway?.host || config.HOST || "127.0.0.1");
+  const port = config.gateway?.port || config.PORT || 3456;
+  return `http://${host}:${port}${path}`;
+}
+
+function normalizeGatewayBrowserAppHost(host: string): string {
+  if (!host || host === "0.0.0.0") return "127.0.0.1";
+  if (host === "::" || host === "[::]") return "[::1]";
+  return host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
 }
 
 async function revealFile(file: string): Promise<void> {
@@ -1031,7 +1428,7 @@ async function revealFile(file: string): Promise<void> {
 }
 
 export function openSystemExternal(target: string): Promise<void> {
-  const url = normalizeExternalHttpTarget(target);
+  const url = normalizeExternalTarget(target);
   if (!url) {
     return Promise.resolve();
   }
@@ -1045,6 +1442,14 @@ export function openSystemExternal(target: string): Promise<void> {
 }
 
 export function normalizeExternalHttpTarget(target: unknown): string | undefined {
+  const url = normalizeExternalTarget(target);
+  if (!url?.startsWith("http://") && !url?.startsWith("https://")) {
+    return undefined;
+  }
+  return url;
+}
+
+function normalizeExternalTarget(target: unknown): string | undefined {
   const trimmed = typeof target === "string" ? target.trim() : "";
   if (!trimmed || trimmed === "about:blank") {
     return undefined;
@@ -1055,10 +1460,13 @@ export function normalizeExternalHttpTarget(target: unknown): string | undefined
   } catch {
     throw new Error("External URL must be a valid absolute URL.");
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("Only http and https URLs can be opened.");
+  if (url.protocol === "http:" || url.protocol === "https:") {
+    return url.toString();
   }
-  return url.toString();
+  if (url.protocol === "ccr:" && url.hostname.toLowerCase() === "plugin") {
+    return url.toString();
+  }
+  throw new Error("Only http, https, and CCR plugin URLs can be opened.");
 }
 
 function execDetached(command: string, args: string[]): Promise<void> {

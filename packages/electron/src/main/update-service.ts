@@ -10,9 +10,11 @@ type UpdateCheckOptions = {
 };
 
 const startupCheckDelayMs = 12_000;
+const defaultUpdateSource = "GitHub Releases";
 
 class AppUpdateService {
   private activeSilentCheckFailureRestoreStatus?: AppUpdateStatus;
+  private configuredUpdateSource = defaultUpdateSource;
   private initialized = false;
   private installingUpdate = false;
   private prepareInstall?: InstallPreparation;
@@ -34,7 +36,7 @@ class AppUpdateService {
     this.initialized = true;
     this.configureUpdater();
     this.registerUpdaterEvents();
-    this.publishStatus({ feedUrl: autoUpdater.getFeedURL() || undefined });
+    this.publishStatus({ feedUrl: this.configuredUpdateSource });
 
     if (this.isUpdaterSupported()) {
       this.queueStartupCheck();
@@ -166,17 +168,18 @@ class AppUpdateService {
       autoUpdater.quitAndInstall(false, true);
     } catch (error) {
       this.installingUpdate = false;
-      this.publishStatus({
+      const status = this.publishStatus({
         lastError: formatError(error),
         state: "error"
       });
-      throw error;
+      throw new Error(status.lastError);
     }
   }
 
   private configureUpdater(): void {
     const feedUrl = readEnvString("CCR_UPDATE_FEED_URL");
     if (feedUrl) {
+      this.configuredUpdateSource = feedUrl;
       autoUpdater.setFeedURL({
         provider: "generic",
         url: feedUrl
@@ -304,7 +307,7 @@ class AppUpdateService {
       ...this.status,
       ...patch,
       currentVersion: app.getVersion(),
-      feedUrl: autoUpdater.getFeedURL() || this.status.feedUrl,
+      feedUrl: this.configuredUpdateSource,
       supported: this.isUpdaterSupported()
     });
     windowsManager.broadcast(IPC_CHANNELS.appUpdateStatusChanged, this.status);
@@ -355,7 +358,18 @@ function formatReleaseNotes(notes: UpdateInfo["releaseNotes"]): string | undefin
 }
 
 function formatError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  const message = error instanceof Error ? error.message : String(error);
+  if (isCodeSignatureValidationError(message)) {
+    return "Downloaded update failed code-signature validation. Download the latest installer manually, or try again after the package is re-signed.";
+  }
+  return message;
+}
+
+function isCodeSignatureValidationError(message: string): boolean {
+  return (
+    /code signature at url\b/i.test(message) &&
+    /did not pass validation/i.test(message)
+  ) || /code failed to satisfy specified code requirement/i.test(message);
 }
 
 function readEnvString(name: string): string | undefined {

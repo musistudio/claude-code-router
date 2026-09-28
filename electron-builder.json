@@ -3,7 +3,8 @@
   "productName": "Claude Code Router",
   "asar": true,
   "asarUnpack": [
-    "**/*.node"
+    "**/*.node",
+    "dist/bundled-plugins/**"
   ],
   "electronLanguages": ["en-US", "zh-CN", "zh-TW", "zh_CN", "zh_TW"],
   "npmRebuild": true,

@@ -39,7 +39,12 @@ type LocalAgentModelCatalog = {
 };
 
 const zcodeDefaultModels = ["GLM-5.2", "GLM-5-Turbo"];
-const zcodeDefaultBaseUrl = "https://zcode.z.ai/api/v1/zcode-plan/anthropic";
+export const zcodeDefaultBaseUrl = "https://zcode.z.ai/api/v1/zcode-plan/anthropic";
+
+export type ZcodeLocalProviderCredential = {
+  apiKey: string;
+  baseUrl: string;
+};
 
 export function zcodeCandidate(): LocalAgentProviderCandidate {
   const configuredProvider = readZcodeConfiguredProvider();
@@ -106,6 +111,11 @@ export function importZcodeProvider(candidate: LocalAgentProviderCandidate, prov
       apiKeyAuthPlugin("zcode-api-key-internal", configuredProvider.apiKey, providerInternalNamePlaceholder)
     ]
   };
+}
+
+export function readZcodeLocalProviderCredential(): ZcodeLocalProviderCredential | undefined {
+  const provider = readZcodeConfiguredProvider();
+  return provider ? { apiKey: provider.apiKey, baseUrl: provider.baseUrl } : undefined;
 }
 
 function zcodeProviderAccountConfig(baseUrl: string): ProviderAccountConfig | undefined {
@@ -177,7 +187,7 @@ function readZcodeConfiguredProviders(sourceFile: string): ZcodeConfiguredProvid
 }
 
 function readZcodeRuntime(): { baseUrl: string } & LocalAgentModelCatalog {
-  const cache = readJsonRecord(path.join(os.homedir(), ".zcode", "v2", "bots-model-cache.v2.json"));
+  const cache = readJsonRecord(path.join(zcodeStorageRoot(), "v2", "bots-model-cache.v2.json"));
   const providers = Array.isArray(cache?.providers)
     ? cache.providers.filter((provider): provider is Record<string, unknown> => isRecord(provider))
     : [];
@@ -292,15 +302,26 @@ function isZcodeModelProvider(providerId: string, provider: Record<string, unkno
 }
 
 function zcodeCredentialFiles(): string[] {
+  const storageRoot = zcodeStorageRoot();
   return uniqueStrings([
-    path.join(os.homedir(), ".zcode", "v2", "credentials.json"),
-    path.join(os.homedir(), ".zcode", "credentials.json")
+    path.join(storageRoot, "v2", "credentials.json"),
+    path.join(storageRoot, "credentials.json")
   ]);
 }
 
 function zcodeConfigFiles(): string[] {
+  const storageRoot = zcodeStorageRoot();
   return uniqueStrings([
-    path.join(os.homedir(), ".zcode", "v2", "config.json"),
-    path.join(os.homedir(), ".zcode", "cli", "config.json")
+    path.join(storageRoot, "v2", "config.json"),
+    path.join(storageRoot, "cli", "config.json")
   ]);
+}
+
+function zcodeStorageRoot(): string {
+  const explicitRoot = process.env.ZCODE_STORAGE_DIR?.trim() || process.env.ZCODE_HOME?.trim();
+  if (explicitRoot) {
+    return explicitRoot;
+  }
+  const homeDir = process.env.CCR_INTERNAL_HOME_DIR?.trim() || process.env.HOME?.trim() || process.env.USERPROFILE?.trim() || os.homedir();
+  return path.join(homeDir, ".zcode");
 }

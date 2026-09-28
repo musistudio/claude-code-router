@@ -1,0 +1,84 @@
+name: Docker Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to build, usually a release tag.
+        required: true
+        default: v3.0.21
+      version:
+        description: Docker version tag without leading v.
+        required: true
+        default: 3.0.21
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-release-${{ inputs.version }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: musistudio/claude-code-router
+
+jobs:
+  docker:
+    name: Build and Push
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out release ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Prepare metadata
+        id: meta
+        shell: bash
+        run: |
+          version="${{ inputs.version }}"
+          ref="${{ inputs.ref }}"
+          package_version="$(node -p "require('./package.json').version")"
+
+          if [[ "$version" != "$package_version" ]]; then
+            echo "Input version $version does not match package.json version $package_version"
+            exit 1
+          fi
+
+          if [[ "$ref" == v* && "${ref#v}" != "$version" ]]; then
+            echo "Input ref $ref does not match version $version"
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "major_minor=${version%.*}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+            ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.major_minor }}
+            ${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Inspect pushed image
+        run: docker buildx imagetools inspect "${IMAGE_NAME}:${{ steps.meta.outputs.version }}"

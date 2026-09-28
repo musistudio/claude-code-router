@@ -33,6 +33,8 @@ const zhExactErrorMessages: Record<string, string> = {
   "Network capture MCP is disabled.": "网络捕获 MCP 已禁用。",
   "No available models": "没有可用模型",
   "No available models. Configure at least one provider with a model before starting CCR Gateway or opening an agent through CCR.": "没有可用模型。请先配置至少一个包含模型的供应商，再启动 CCR 网关或通过 CCR 打开 Agent。",
+  "OpenCode CLI API key was not found.": "未找到 OpenCode CLI API key。",
+  "OpenCode CLI public models were not found.": "未找到 OpenCode CLI 公共模型。",
   "No Bot Gateway conversationRef is available for inbound bot response.": "没有可用于入站 Bot 响应的 Bot Gateway conversationRef。",
   "No Bot Gateway conversationRef is configured and no inbound bot event context is available.": "未配置 Bot Gateway conversationRef，且没有可用的入站 Bot 事件上下文。",
   "No endpoint candidates available.": "没有可用的端点候选项。",
@@ -273,8 +275,8 @@ const zhPatternErrorMessages: PatternTranslator[] = [
     translate: (endpoint, status) => `CDP ${endpoint} 返回 HTTP ${status}`
   },
   {
-    pattern: /^Timed out waiting for Codex App response: (.+)$/,
-    translate: (requestId) => `等待 Codex App 响应超时：${requestId}`
+    pattern: /^Timed out waiting for (?:ChatGPT|Codex App) response: (.+)$/,
+    translate: (requestId) => `等待 ChatGPT 响应超时：${requestId}`
   },
   {
     pattern: /^No active turn for thread (.+)$/,

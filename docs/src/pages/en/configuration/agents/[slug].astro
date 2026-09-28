@@ -1,0 +1,23 @@
+---
+import DocPage from "../../../../components/DocPage.astro";
+import { configurationSlugFromPath, enConfigurationAgentDocs } from "../../../../configuration-docs";
+import { pageKeyFromSlug } from "../../../../docs-structure";
+
+export function getStaticPaths() {
+  return Object.entries(enConfigurationAgentDocs).map(([filePath, mod]) => {
+    const slug = configurationSlugFromPath(filePath);
+
+    return {
+      params: { slug },
+      props: {
+        mod,
+        activeSidebarItem: pageKeyFromSlug("configuration", "en", slug),
+      },
+    };
+  });
+}
+
+const { mod, activeSidebarItem } = Astro.props;
+---
+
+<DocPage locale="en" pageKey="configuration" doc={mod} activeSidebarItem={activeSidebarItem} />

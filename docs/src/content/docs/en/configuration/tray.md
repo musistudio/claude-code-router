@@ -1,11 +1,11 @@
 ---
-title: Tray Configuration
-pageTitle: Tray Configuration
-eyebrow: Detailed Configuration
+title: Tray configuration
+pageTitle: Tray configuration
+eyebrow: Detailed configuration
 lead: Configure the CCR system tray icon, balance progress, and tray window widgets.
 ---
 
-## Top Fields
+## Top fields
 
 | Field | Capability |
 | --- | --- |
@@ -16,7 +16,7 @@ lead: Configure the CCR system tray icon, balance progress, and tray window widg
 
 If no account data is available, the page shows `No account data is available. Enable account monitoring on a provider first.` This usually means no provider has `Fetch usage` enabled, or usage fetching has not succeeded yet.
 
-## Tray Window Layout
+## Tray window layout
 
 | Area | Capability |
 | --- | --- |
@@ -24,7 +24,7 @@ If no account data is available, the page shows `No account data is available. E
 | Preview | Middle preview area showing the current tray window layout. Widgets can be dragged to reorder. |
 | Component properties | Right-side editor for the selected widget's `Style`, or for removing the widget. |
 
-## Component Types
+## Component types
 
 | Component | Capability |
 | --- | --- |

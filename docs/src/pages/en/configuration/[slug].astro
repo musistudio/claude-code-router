@@ -1,35 +1,17 @@
 ---
 import DocPage from "../../../components/DocPage.astro";
+import { pageKeyFromSlug } from "../../../docs-structure";
 import { configurationSlugFromPath, enConfigurationDocs } from "../../../configuration-docs";
 
 export function getStaticPaths() {
-  const activeLabels: Record<string, string> = {
-    "api-keys": "API Keys",
-    overview: "Overview Dashboard",
-    providers: "Provider Config",
-    "provider-deeplink": "One click import",
-    routing: "Routing Config",
-    profiles: "Agent Config",
-    observability: "Logs & Observability",
-    "fusion-models": "Fusion Models",
-    "fusion-vision": "Built-In Vision",
-    "fusion-web-search": "Built-In Web Search",
-    "fusion-mcp-tool": "Custom MCP Tool",
-    toolhub: "ToolHub",
-    extensions: "Extension Mechanism",
-    server: "Server",
-    tray: "Tray Configuration",
-    bots: "Bots And IM Agent Relay",
-    "bot-setup": "Setup",
-    "configuration-file": "Config Database Location",
-  };
-
-  return Object.entries(enConfigurationDocs).map(([filePath, mod]) => {
+  return Object.entries(enConfigurationDocs).flatMap(([filePath, mod]) => {
     const slug = configurationSlugFromPath(filePath);
+    const pageKey = pageKeyFromSlug("configuration", "en", slug);
+    if (!pageKey) return [];
 
     return {
       params: { slug },
-      props: { mod, activeSidebarItem: activeLabels[slug] },
+      props: { mod, activeSidebarItem: pageKey },
     };
   });
 }

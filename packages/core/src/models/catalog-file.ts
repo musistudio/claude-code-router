@@ -7,16 +7,17 @@ export type LoadedModelCatalogPayload = {
 };
 
 export function loadModelCatalogPayload(): LoadedModelCatalogPayload | undefined {
-  for (const candidate of modelCatalogPathCandidates()) {
-    if (!existsSync(candidate)) {
-      continue;
-    }
-    return {
-      loadedFrom: candidate,
-      payload: JSON.parse(readFileSync(candidate, "utf8")) as unknown
-    };
-  }
-  return undefined;
+  const candidate = resolveModelCatalogPath();
+  return candidate
+    ? {
+        loadedFrom: candidate,
+        payload: JSON.parse(readFileSync(candidate, "utf8")) as unknown
+      }
+    : undefined;
+}
+
+export function resolveModelCatalogPath(): string | undefined {
+  return modelCatalogPathCandidates().find((candidate) => existsSync(candidate));
 }
 
 export function modelCatalogPathCandidates(): string[] {

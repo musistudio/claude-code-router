@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { createRoot } from "react-dom/client";
-import { ArrowLeft, ArrowRight, Check, KeyRound, LoaderCircle, Plus, RotateCw, Search, UserRound, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, KeyRound, LoaderCircle, Plus, RotateCw, UserRound, X } from "lucide-react";
 import type { BuiltInBrowserState, ChromeLoginImportJob, ChromeLoginImportRequest } from "@ccr/core/contracts/app";
 
 declare global {
@@ -31,14 +31,17 @@ const browserHomeUrl = "about:blank";
 function BrowserChrome() {
   const [state, setState] = useState<BuiltInBrowserState>(emptyState);
   const [addressDraft, setAddressDraft] = useState("");
-  const [homeDraft, setHomeDraft] = useState("");
+  const [chromeImportDialogOpen, setChromeImportDialogOpen] = useState(false);
+  const [chromeImportDomainsDraft, setChromeImportDomainsDraft] = useState("");
+  const [chromeImportError, setChromeImportError] = useState("");
   const [chromeImportJob, setChromeImportJob] = useState<ChromeLoginImportJob | undefined>();
+  const [chromeImportMessage, setChromeImportMessage] = useState("");
+  const [chromeImportStarting, setChromeImportStarting] = useState(false);
   const activeTab = useMemo(
     () => state.tabs.find((tab) => tab.id === state.activeTabId),
     [state.activeTabId, state.tabs]
   );
   const handoff = state.automationHandoff;
-  const homeVisible = activeTab?.url === browserHomeUrl;
 
   useEffect(() => {
     let cancelled = false;
@@ -57,10 +60,6 @@ function BrowserChrome() {
   useEffect(() => {
     setAddressDraft(activeTab?.url || "");
   }, [activeTab?.id, activeTab?.url]);
-
-  useEffect(() => {
-    setHomeDraft("");
-  }, [activeTab?.id]);
 
   useEffect(() => {
     if (!chromeImportJob || chromeImportJob.status !== "pending") {
@@ -93,31 +92,29 @@ function BrowserChrome() {
     void run(window.ccrBrowser?.navigate(addressDraft, activeTab?.id));
   }
 
-  function submitHomeNavigation(event: FormEvent<HTMLFormElement>) {
+  async function submitChromeLoginImport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    void run(window.ccrBrowser?.navigate(homeDraft, activeTab?.id));
-  }
-
-  function navigateTo(url: string) {
-    setHomeDraft(url);
-    void run(window.ccrBrowser?.navigate(url, activeTab?.id));
-  }
-
-  async function startChromeLoginImport() {
-    const defaultDomain = activeTabDomain(activeTab?.url);
-    const rawDomains = window.prompt("Chrome domain(s) to import. Separate multiple domains with commas.", defaultDomain);
-    if (!rawDomains) {
-      return;
-    }
-    const domains = parseImportDomains(rawDomains);
+    const domains = parseImportDomains(chromeImportDomainsDraft);
     if (domains.length === 0) {
+      setChromeImportError("Enter at least one domain.");
       return;
     }
-    const job = await window.ccrBrowser?.startChromeLoginImport({ domains, openConfirmationPage: true });
-    if (!job) {
-      return;
+    setChromeImportError("");
+    setChromeImportMessage("");
+    setChromeImportStarting(true);
+    try {
+      const job = await window.ccrBrowser?.startChromeLoginImport({ domains, openConfirmationPage: true });
+      if (!job) {
+        throw new Error("Chrome login import is unavailable.");
+      }
+      setChromeImportJob(job);
+      setChromeImportDomainsDraft(job.domains.join(", "));
+      setChromeImportMessage("Confirmation page opened. If it did not open in Chrome, copy the extension import URL into the Chrome extension popup.");
+    } catch (error) {
+      setChromeImportError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setChromeImportStarting(false);
     }
-    setChromeImportJob(job);
   }
 
   function chromeImportTitle(): string {
@@ -138,14 +135,30 @@ function BrowserChrome() {
 
   async function handleChromeImportButton() {
     if (chromeImportJob?.status === "pending") {
-      try {
-        await navigator.clipboard.writeText(chromeImportJob.confirmUrl);
-      } catch {
-        window.prompt("Open this Chrome import confirmation URL.", chromeImportJob.confirmUrl);
-      }
+      setChromeImportDialogOpen(true);
+      setChromeImportError("");
+      setChromeImportMessage("Chrome import is pending.");
       return;
     }
-    await startChromeLoginImport();
+    setChromeImportDomainsDraft(activeTabDomain(activeTab?.url));
+    setChromeImportDialogOpen(true);
+    setChromeImportError("");
+    setChromeImportMessage("");
+  }
+
+  async function copyChromeImportUrl(kind: "confirm" | "import") {
+    const url = kind === "confirm" ? chromeImportJob?.confirmUrl : chromeImportJob?.importUrl;
+    if (!url) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setChromeImportError("");
+      setChromeImportMessage(kind === "confirm" ? "Confirmation page URL copied." : "Extension import URL copied.");
+    } catch (error) {
+      setChromeImportMessage("");
+      setChromeImportError(error instanceof Error ? error.message : String(error));
+    }
   }
 
   return (
@@ -257,37 +270,68 @@ function BrowserChrome() {
         </div>
       ) : null}
 
-      {homeVisible ? (
-        <main className="home-page">
-          <section className="home-content" aria-label="New tab">
-            <form className="home-search" onSubmit={submitHomeNavigation}>
-              <Search className="home-search-icon" size={18} strokeWidth={2.2} />
+      {chromeImportDialogOpen ? (
+        <div className="chrome-import-backdrop" role="presentation">
+          <form className="chrome-import-dialog" onSubmit={submitChromeLoginImport}>
+            <div className="chrome-import-header">
+              <div className="chrome-import-title">Import login from Chrome</div>
+              <button
+                className="icon-button"
+                onClick={() => setChromeImportDialogOpen(false)}
+                title="Close"
+                type="button"
+              >
+                <X size={14} strokeWidth={2.3} />
+              </button>
+            </div>
+            <label className="chrome-import-field">
+              <span>Domains</span>
               <input
-                aria-label="Search or enter address"
-                autoComplete="off"
                 autoFocus
-                onChange={(event) => setHomeDraft(event.target.value)}
-                placeholder="Search or enter address"
+                disabled={chromeImportStarting || chromeImportJob?.status === "pending"}
+                onChange={(event) => setChromeImportDomainsDraft(event.target.value)}
+                placeholder="example.com, auth.example.com"
                 spellCheck={false}
-                value={homeDraft}
+                value={chromeImportDomainsDraft}
               />
-            </form>
-            {state.apps.length > 0 ? (
-              <div className="installed-apps" aria-label="Installed apps">
-                {state.apps.map((app) => (
-                  <button className="installed-app" key={`${app.pluginId}:${app.id}`} onClick={() => navigateTo(app.url)} type="button">
-                    <span className="installed-app-icon">{app.icon?.trim() || app.name.trim().slice(0, 1).toUpperCase()}</span>
-                    <span className="installed-app-copy">
-                      <span className="installed-app-name">{app.name}</span>
-                      <span className="installed-app-meta">{app.description || app.pluginId}</span>
-                    </span>
-                  </button>
-                ))}
-              </div>
+            </label>
+            {chromeImportJob?.status === "pending" ? (
+              <>
+                <label className="chrome-import-field">
+                  <span>Extension import URL</span>
+                  <input readOnly value={chromeImportJob.importUrl} />
+                </label>
+                <label className="chrome-import-field">
+                  <span>Confirmation page URL</span>
+                  <input readOnly value={chromeImportJob.confirmUrl} />
+                </label>
+              </>
             ) : null}
-          </section>
-        </main>
+            {chromeImportError ? <div className="chrome-import-error" role="alert">{chromeImportError}</div> : null}
+            {chromeImportMessage ? <div className="chrome-import-message" role="status">{chromeImportMessage}</div> : null}
+            <div className="chrome-import-actions">
+              {chromeImportJob?.status === "pending" ? (
+                <>
+                  <button className="chrome-import-button primary" onClick={() => void copyChromeImportUrl("import")} type="button">
+                    Copy import URL
+                  </button>
+                  <button className="chrome-import-button" onClick={() => void copyChromeImportUrl("confirm")} type="button">
+                    Copy page URL
+                  </button>
+                </>
+              ) : (
+                <button className="chrome-import-button primary" disabled={chromeImportStarting} type="submit">
+                  {chromeImportStarting ? "Starting" : "Start import"}
+                </button>
+              )}
+              <button className="chrome-import-button" onClick={() => setChromeImportDialogOpen(false)} type="button">
+                Close
+              </button>
+            </div>
+          </form>
+        </div>
       ) : null}
+
     </div>
   );
 }
@@ -370,6 +414,7 @@ style.textContent = `
     grid-template-rows: 38px 44px minmax(0, 1fr);
     height: 100%;
     min-width: 0;
+    position: relative;
     width: 100%;
   }
 
@@ -579,118 +624,121 @@ style.textContent = `
     background: #14532d;
   }
 
-  .home-page {
-    align-items: flex-start;
-    background:
-      linear-gradient(135deg, color-mix(in srgb, #0f766e 9%, Canvas), transparent 34%),
-      linear-gradient(315deg, color-mix(in srgb, #2563eb 8%, Canvas), transparent 38%),
-      Canvas;
+  .chrome-import-backdrop {
+    align-items: start;
+    background: color-mix(in srgb, Canvas 82%, transparent);
+    bottom: 0;
     display: flex;
     justify-content: center;
-    min-height: 0;
-    overflow: auto;
-    padding: 96px 24px 56px;
+    left: 0;
+    padding: 28px 16px;
+    position: fixed;
+    right: 0;
+    top: 82px;
+    z-index: 20;
   }
 
-  .home-content {
-    align-items: center;
-    display: flex;
-    flex-direction: column;
-    max-width: 720px;
-    min-width: 0;
-    text-align: center;
-    width: min(720px, 100%);
+  .browser-shell.has-handoff .chrome-import-backdrop {
+    top: 126px;
   }
 
-  .home-search {
-    -webkit-app-region: no-drag;
-    max-width: 640px;
-    position: relative;
-    width: 100%;
-  }
-
-  .home-search input {
+  .chrome-import-dialog {
     background: Canvas;
-    border-radius: 14px;
-    box-shadow: 0 18px 45px color-mix(in srgb, CanvasText 10%, transparent);
-    font-size: 15px;
-    height: 50px;
-    padding-left: 44px;
-  }
-
-  .home-search-icon {
-    color: color-mix(in srgb, CanvasText 48%, transparent);
-    left: 16px;
-    pointer-events: none;
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 1;
-  }
-
-  .installed-apps {
+    border: 1px solid color-mix(in srgb, CanvasText 14%, transparent);
+    border-radius: 8px;
+    box-shadow: 0 18px 45px color-mix(in srgb, CanvasText 12%, transparent);
     display: grid;
     gap: 12px;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    margin-top: 22px;
-    max-width: 640px;
-    width: 100%;
+    max-width: 520px;
+    padding: 14px;
+    width: min(520px, 100%);
   }
 
-  .installed-app {
+  .chrome-import-header {
     align-items: center;
-    background: Canvas;
-    border: 1px solid color-mix(in srgb, CanvasText 11%, transparent);
-    border-radius: 12px;
-    box-shadow: 0 12px 28px color-mix(in srgb, CanvasText 7%, transparent);
     display: flex;
-    gap: 11px;
+    gap: 8px;
+    justify-content: space-between;
     min-width: 0;
-    padding: 12px;
-    text-align: left;
   }
 
-  .installed-app:hover {
-    background: color-mix(in srgb, CanvasText 4%, Canvas);
-  }
-
-  .installed-app-icon {
-    align-items: center;
-    background: color-mix(in srgb, #0f766e 14%, Canvas);
-    border-radius: 10px;
-    color: color-mix(in srgb, #0f766e 74%, CanvasText);
-    display: inline-flex;
-    flex: 0 0 auto;
-    font-size: 14px;
+  .chrome-import-title {
+    font-size: 13px;
     font-weight: 750;
-    height: 36px;
-    justify-content: center;
-    width: 36px;
-  }
-
-  .installed-app-copy {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-  }
-
-  .installed-app-name,
-  .installed-app-meta {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .installed-app-name {
-    font-size: 13px;
-    font-weight: 700;
+  .chrome-import-field {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
   }
 
-  .installed-app-meta {
-    color: color-mix(in srgb, CanvasText 54%, transparent);
+  .chrome-import-field span {
+    color: color-mix(in srgb, CanvasText 62%, transparent);
     font-size: 11px;
+    font-weight: 650;
+  }
+
+  .chrome-import-error,
+  .chrome-import-message {
+    border-radius: 7px;
+    font-size: 12px;
+    line-height: 1.4;
+    padding: 8px 9px;
+  }
+
+  .chrome-import-error {
+    background: color-mix(in srgb, #dc2626 9%, Canvas);
+    color: color-mix(in srgb, #b91c1c 82%, CanvasText);
+  }
+
+  .chrome-import-message {
+    background: color-mix(in srgb, #0f766e 10%, Canvas);
+    color: color-mix(in srgb, #0f766e 82%, CanvasText);
+  }
+
+  .chrome-import-actions {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: end;
+  }
+
+  .chrome-import-button {
+    align-items: center;
+    background: color-mix(in srgb, CanvasText 5%, Canvas);
+    border: 1px solid color-mix(in srgb, CanvasText 13%, transparent);
+    border-radius: 7px;
+    display: inline-flex;
+    font-size: 12px;
+    font-weight: 650;
+    height: 30px;
+    justify-content: center;
+    min-width: 86px;
+    padding: 0 10px;
+  }
+
+  .chrome-import-button:hover:not(:disabled) {
+    background: color-mix(in srgb, CanvasText 9%, Canvas);
+  }
+
+  .chrome-import-button:disabled {
+    cursor: default;
+    opacity: 0.54;
+  }
+
+  .chrome-import-button.primary {
+    background: #166534;
+    border-color: #166534;
+    color: white;
+  }
+
+  .chrome-import-button.primary:hover:not(:disabled) {
+    background: #14532d;
   }
 
   .spin {
@@ -704,14 +752,6 @@ style.textContent = `
   }
 
   @media (max-width: 720px) {
-    .home-page {
-      padding: 48px 16px 40px;
-    }
-
-    .installed-apps {
-      grid-template-columns: 1fr;
-    }
-
     .automation-handoff {
       gap: 6px;
       grid-template-columns: minmax(0, 1fr) auto;

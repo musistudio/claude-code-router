@@ -5,46 +5,99 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
-const testsOutDir = path.join(projectRoot, "dist", "tests");
-const rendererRoot = path.join(projectRoot, "packages", "ui", "src");
-const cliSourceRoot = path.join(projectRoot, "packages", "cli", "src");
-const coreSourceRoot = path.join(projectRoot, "packages", "core", "src");
-const testSuites = [
-  { name: "main", testDir: path.join(projectRoot, "tests", "main") },
-  { name: "renderer", testDir: path.join(projectRoot, "tests", "renderer") }
-];
-const requestedSuites = new Set(process.argv.slice(2));
-const suiteNames = new Set(testSuites.map((suite) => suite.name));
-const unknownSuites = [...requestedSuites].filter((suite) => !suiteNames.has(suite));
-const selectedSuites = requestedSuites.size === 0
-  ? testSuites
-  : testSuites.filter((suite) => requestedSuites.has(suite.name));
+const ccrExtensionsRoot = path.resolve(process.env.CCR_EXTENSIONS_DIR || path.join(projectRoot, "..", "ccr-extensions"));
+const testsOutDir = path.join(projectRoot, ".test-dist");
+const packageRoots = {
+  cli: path.join(projectRoot, "packages", "cli", "src"),
+  core: path.join(projectRoot, "packages", "core", "src"),
+  electron: path.join(projectRoot, "packages", "electron", "src"),
+  ui: path.join(projectRoot, "packages", "ui", "src")
+};
+const testProjects = {
+  architecture: {
+    testDir: path.join(projectRoot, "tests", "architecture")
+  },
+  cli: {
+    runtimeEntryPoints: {
+      "runtime/cli": path.join(packageRoots.cli, "cli.ts")
+    },
+    testDir: path.join(projectRoot, "packages", "cli", "test")
+  },
+  core: {
+    runtimeEntryPoints: {
+      "runtime/fusion-vision-mcp": path.join(packageRoots.core, "mcp", "fusion-vision-mcp.ts"),
+      "runtime/gateway-bootstrap": path.join(packageRoots.core, "gateway", "core-runtime", "gateway-bootstrap.ts"),
+      "runtime/local-agent-auth-provider-hook": path.join(packageRoots.core, "gateway", "core-runtime", "local-agent-auth-provider-hook.ts"),
+      "runtime/media-tools-proxy-mcp": path.join(packageRoots.core, "mcp", "media-tools-proxy-mcp.ts"),
+      "runtime/request-log-worker": path.join(packageRoots.core, "observability", "request-log-worker.ts"),
+      "runtime/router-plugin": path.join(packageRoots.core, "gateway", "core-runtime", "router-plugin.ts"),
+      "runtime/route-script-worker": path.join(packageRoots.core, "routing", "route-script-worker.ts"),
+      "runtime/upstream-header-sanitizer": path.join(packageRoots.core, "gateway", "core-runtime", "upstream-header-sanitizer.ts"),
+      "runtime/toolhub-mcp": path.join(packageRoots.core, "mcp", "toolhub-mcp.ts")
+    },
+    testDirs: [
+      {
+        dir: path.join(projectRoot, "packages", "core", "test")
+      },
+      {
+        dir: path.join(ccrExtensionsRoot, "plugins", "claude-design", "test"),
+        outputPrefix: "plugins/claude-design"
+      }
+    ]
+  },
+  electron: {
+    testDir: path.join(projectRoot, "packages", "electron", "test")
+  },
+  ui: {
+    testDir: path.join(projectRoot, "packages", "ui", "test")
+  }
+};
 
-if (unknownSuites.length > 0) {
-  throw new Error(`Unknown test suite: ${unknownSuites.join(", ")}`);
+const args = process.argv.slice(2);
+const scopeIndex = args.indexOf("--scope");
+const scope = scopeIndex >= 0 ? args[scopeIndex + 1] : undefined;
+if (scopeIndex >= 0 && !scope) {
+  throw new Error("--scope requires a test directory name such as unit or integration");
+}
+const requestedProjects = new Set(args.filter((arg, index) =>
+  arg !== "--scope" && (scopeIndex < 0 || index !== scopeIndex + 1)
+));
+const projectNames = new Set(Object.keys(testProjects));
+const unknownProjects = [...requestedProjects].filter((project) => !projectNames.has(project));
+const selectedProjects = requestedProjects.size === 0
+  ? Object.entries(testProjects)
+  : Object.entries(testProjects).filter(([name]) => requestedProjects.has(name));
+
+if (unknownProjects.length > 0) {
+  throw new Error(`Unknown test project: ${unknownProjects.join(", ")}`);
 }
 
-rmSync(testsOutDir, { force: true, recursive: true });
+for (const [name, project] of selectedProjects) {
+  const projectOutDir = path.join(testsOutDir, name);
+  const entryPoints = {};
+  for (const testRoot of projectTestRoots(project)) {
+    const scopedTestDir = scope ? path.join(testRoot.dir, scope) : testRoot.dir;
+    Object.assign(entryPoints, testEntryPoints(scopedTestDir, testRoot.outputPrefix));
+  }
+  if (!scope || scope === "integration" || scope === "unit") {
+    Object.assign(entryPoints, project.runtimeEntryPoints ?? {});
+  }
 
-for (const suite of selectedSuites) {
-  const entryPoints = [
-    ...findTestFiles(suite.testDir),
-    ...runtimeEntryPointsForSuite(suite.name)
-  ];
-  if (entryPoints.length === 0) {
+  rmSync(projectOutDir, { force: true, recursive: true });
+  if (Object.keys(entryPoints).length === 0) {
     continue;
   }
 
   await esbuild.build({
     absWorkingDir: projectRoot,
     bundle: true,
-    entryNames: "[name]",
     entryPoints,
     external: [
       "better-sqlite3",
       "electron"
     ],
     format: "cjs",
+    jsx: "automatic",
     legalComments: "none",
     loader: {
       ".gif": "file",
@@ -56,21 +109,33 @@ for (const suite of selectedSuites) {
       ".webp": "file"
     },
     logLevel: "info",
-    outdir: path.join(testsOutDir, suite.name),
+    outdir: projectOutDir,
     platform: "node",
     plugins: [rendererAliasPlugin(), packageAliasPlugin()],
     target: "node22"
   });
 }
 
-function runtimeEntryPointsForSuite(suiteName) {
-  if (suiteName !== "main") {
-    return [];
+function projectTestRoots(project) {
+  if (Array.isArray(project.testDirs)) {
+    return project.testDirs.map((entry) => ({
+      dir: entry.dir,
+      outputPrefix: entry.outputPrefix || ""
+    }));
   }
-  return [
-    path.join(coreSourceRoot, "mcp", "fusion-vision-mcp.ts"),
-    path.join(coreSourceRoot, "mcp", "toolhub-mcp.ts")
-  ];
+  return [{
+    dir: project.testDir,
+    outputPrefix: ""
+  }];
+}
+
+function testEntryPoints(testDir, outputPrefix = "") {
+  const prefix = outputPrefix ? `${outputPrefix.replace(/^\/+|\/+$/g, "")}/` : "";
+  return Object.fromEntries(findTestFiles(testDir).map((file) => {
+    const relative = path.relative(testDir, file).replace(/\\/g, "/");
+    const outputName = `test/${prefix}${relative.replace(/\.(mjs|ts|tsx)$/, "")}`;
+    return [outputName, file];
+  }));
 }
 
 function findTestFiles(dir) {
@@ -96,7 +161,7 @@ function rendererAliasPlugin() {
     name: "renderer-test-alias",
     setup(build) {
       build.onResolve({ filter: /^@\// }, (args) => {
-        return { path: resolveRendererImport(args.path.slice(2)) };
+        return { path: resolvePackageImport(packageRoots.ui, args.path.slice(2)) };
       });
     }
   };
@@ -106,18 +171,15 @@ function packageAliasPlugin() {
   return {
     name: "test-package-alias",
     setup(build) {
-      build.onResolve({ filter: /^@ccr\/cli\// }, (args) => {
-        return { path: resolvePackageImport(cliSourceRoot, args.path.slice("@ccr/cli/".length)) };
-      });
-      build.onResolve({ filter: /^@ccr\/core\// }, (args) => {
-        return { path: resolvePackageImport(coreSourceRoot, args.path.slice("@ccr/core/".length)) };
+      build.onResolve({ filter: /^@ccr\/(cli|core|electron|ui)\// }, (args) => {
+        const match = args.path.match(/^@ccr\/(cli|core|electron|ui)\/(.+)$/);
+        if (!match) {
+          return undefined;
+        }
+        return { path: resolvePackageImport(packageRoots[match[1]], match[2]) };
       });
     }
   };
-}
-
-function resolveRendererImport(importPath) {
-  return resolvePackageImport(rendererRoot, importPath);
 }
 
 function resolvePackageImport(rootDir, importPath) {

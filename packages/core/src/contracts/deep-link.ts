@@ -5,7 +5,10 @@ import type {
   ProviderAccountMappedMeterConfig,
   ProviderDeepLinkPayload,
   ProviderDeepLinkRequest,
-  ProviderManifestDeepLinkPayload
+  ProviderManifestDeepLinkPayload,
+  ProviderModelCapabilities,
+  ProviderModelMetadata,
+  ProviderModelPricing
 } from "@ccr/core/contracts/app";
 import { providerUrlWithDefaultScheme } from "@ccr/core/providers/url";
 
@@ -151,6 +154,7 @@ export function parseProviderDeepLinkPayload(rawUrl: string): ProviderDeepLinkPa
   const models = readDeepLinkModels(params, payload);
   const modelDescriptions = readDeepLinkModelDescriptions(params, payload, models);
   const modelDisplayNames = readDeepLinkModelDisplayNames(params, payload, models);
+  const modelMetadata = readDeepLinkModelMetadata(params, payload, models);
   const account = readDeepLinkAccount(params, payload);
   const source = boundedString(
     firstStringParam(params, ["source"]) ??
@@ -165,6 +169,7 @@ export function parseProviderDeepLinkPayload(rawUrl: string): ProviderDeepLinkPa
     ...(icon ? { icon } : {}),
     ...(modelDescriptions ? { modelDescriptions } : {}),
     ...(modelDisplayNames ? { modelDisplayNames } : {}),
+    ...(modelMetadata ? { modelMetadata } : {}),
     models,
     ...(name ? { name } : {}),
     ...(protocol ? { protocol } : {}),
@@ -224,6 +229,7 @@ function parseProviderPayloadFields(
   const models = readDeepLinkModels(params, payload);
   const modelDescriptions = readDeepLinkModelDescriptions(params, payload, models);
   const modelDisplayNames = readDeepLinkModelDisplayNames(params, payload, models);
+  const modelMetadata = readDeepLinkModelMetadata(params, payload, models);
   const account = readDeepLinkAccount(params, payload);
   const source = boundedString(
     firstStringParam(params, ["source"]) ??
@@ -240,6 +246,7 @@ function parseProviderPayloadFields(
     ...(icon ? { icon } : {}),
     ...(modelDescriptions ? { modelDescriptions } : {}),
     ...(modelDisplayNames ? { modelDisplayNames } : {}),
+    ...(modelMetadata ? { modelMetadata } : {}),
     models,
     ...(name ? { name } : {}),
     ...(protocol ? { protocol } : {}),
@@ -604,6 +611,217 @@ function readDeepLinkModelDescriptions(
   }
 
   return Object.keys(descriptions).length > 0 ? descriptions : undefined;
+}
+
+function readDeepLinkModelMetadata(
+  params: URLSearchParams,
+  payload: Record<string, unknown> | undefined,
+  models: string[]
+): Record<string, ProviderModelMetadata> | undefined {
+  const modelIds = new Set(models);
+  const metadata: Record<string, ProviderModelMetadata> = {};
+  const explicit = parseJsonValueParam(params, payload, ["modelMetadata", "model_metadata"]);
+  if (!isRecord(explicit)) {
+    return undefined;
+  }
+  for (const [rawModel, rawMetadata] of Object.entries(explicit)) {
+    const model = rawModel.trim();
+    if (!model || !modelIds.has(model)) {
+      continue;
+    }
+    const normalized = normalizeDeepLinkModelMetadata(rawMetadata);
+    if (normalized) {
+      metadata[model] = normalized;
+    }
+  }
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
+function normalizeDeepLinkModelMetadata(value: unknown): ProviderModelMetadata | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const capabilities = normalizeDeepLinkModelCapabilities(value.capabilities);
+  const contextWindow = positiveInteger(value.contextWindow ?? value.context_window);
+  const effectiveContextWindowPercent = percentage(value.effectiveContextWindowPercent ?? value.effective_context_window_percent);
+  const maxContextWindow = positiveInteger(value.maxContextWindow ?? value.max_context_window);
+  const maxOutputTokens = positiveInteger(value.maxOutputTokens ?? value.max_output_tokens ?? value.outputTokens ?? value.output_tokens);
+  const openRouterDiscountRouting = normalizeDeepLinkOpenRouterDiscountRouting(value.openRouterDiscountRouting ?? value.open_router_discount_routing);
+  const pricing = normalizeDeepLinkModelPricing(value.pricing);
+  const defaultReasoningLevelValue = value.defaultReasoningLevel ?? value.default_reasoning_level;
+  const defaultReasoningLevel = defaultReasoningLevelValue === null
+    ? null
+    : normalizedString(defaultReasoningLevelValue);
+  const defaultReasoningSummary = normalizedString(value.defaultReasoningSummary ?? value.default_reasoning_summary);
+  const supportedReasoningLevels = normalizeDeepLinkReasoningLevels(value.supportedReasoningLevels ?? value.supported_reasoning_levels);
+  const supportsFastModeValue = value.supportsFastMode ?? value.supports_fast_mode;
+  const supportsReasoningSummariesValue = value.supportsReasoningSummaries ?? value.supports_reasoning_summaries;
+  const metadata: ProviderModelMetadata = {
+    ...(Array.isArray(value.additionalSpeedTiers) ? { additionalSpeedTiers: value.additionalSpeedTiers } : {}),
+    ...(Array.isArray(value.additional_speed_tiers) ? { additionalSpeedTiers: value.additional_speed_tiers } : {}),
+    ...(capabilities ? { capabilities } : {}),
+    ...(contextWindow ? { contextWindow } : {}),
+    ...(value.contextWindowPinned === true || value.context_window_pinned === true ? { contextWindowPinned: true } : {}),
+    ...(defaultReasoningLevel !== undefined ? { defaultReasoningLevel } : {}),
+    ...(defaultReasoningSummary ? { defaultReasoningSummary } : {}),
+    ...(effectiveContextWindowPercent ? { effectiveContextWindowPercent } : {}),
+    ...(maxContextWindow ? { maxContextWindow } : {}),
+    ...(maxOutputTokens ? { maxOutputTokens } : {}),
+    ...(openRouterDiscountRouting ? { openRouterDiscountRouting } : {}),
+    ...(pricing ? { pricing } : {}),
+    ...(Array.isArray(value.serviceTiers) ? { serviceTiers: value.serviceTiers } : {}),
+    ...(Array.isArray(value.service_tiers) ? { serviceTiers: value.service_tiers } : {}),
+    ...(typeof supportsFastModeValue === "boolean" ? { supportsFastMode: supportsFastModeValue } : {}),
+    ...(supportedReasoningLevels ? { supportedReasoningLevels } : {}),
+    ...(typeof supportsReasoningSummariesValue === "boolean" ? { supportsReasoningSummaries: supportsReasoningSummariesValue } : {})
+  };
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
+function normalizeDeepLinkOpenRouterDiscountRouting(value: unknown): ProviderModelMetadata["openRouterDiscountRouting"] {
+  if (value === true) {
+    return { enabled: true };
+  }
+  if (value === false || !isRecord(value)) {
+    return undefined;
+  }
+  const routing: NonNullable<ProviderModelMetadata["openRouterDiscountRouting"]> = {};
+  for (const [camelKey, snakeKey] of [
+    ["allowFallbacks", "allow_fallbacks"],
+    ["enabled", "enabled"],
+    ["requireParameters", "require_parameters"],
+    ["respectExistingProviderOrder", "respect_existing_provider_order"]
+  ] as const) {
+    const raw = value[camelKey] ?? value[snakeKey];
+    if (typeof raw === "boolean") {
+      routing[camelKey] = raw;
+    }
+  }
+  for (const [camelKey, snakeKey] of [
+    ["cacheHitRate", "cache_hit_rate"],
+    ["minSavingsRatio", "min_savings_ratio"],
+    ["minSavingsUsd", "min_savings_usd"],
+    ["minUptime5m", "min_uptime_5m"],
+    ["outputTokenRatio", "output_token_ratio"]
+  ] as const) {
+    const raw = value[camelKey] ?? value[snakeKey];
+    const parsed = nonNegativeNumber(raw);
+    if (parsed !== undefined) {
+      routing[camelKey] = parsed;
+    }
+  }
+  for (const [camelKey, snakeKey] of [
+    ["endpointTtlMs", "endpoint_ttl_ms"],
+    ["minOutputTokens", "min_output_tokens"]
+  ] as const) {
+    const raw = value[camelKey] ?? value[snakeKey];
+    const parsed = positiveInteger(raw);
+    if (parsed !== undefined) {
+      routing[camelKey] = parsed;
+    }
+  }
+  const priceTtlMs = positiveInteger(value.priceTtlMs ?? value.price_ttl_ms);
+  if (routing.endpointTtlMs === undefined && priceTtlMs !== undefined) {
+    routing.endpointTtlMs = priceTtlMs;
+  }
+  const providerBlacklist = normalizedStringList(value.providerBlacklist ?? value.provider_blacklist ?? value.ignoredProviders ?? value.ignored_providers ?? value.ignore);
+  if (providerBlacklist.length > 0) {
+    routing.providerBlacklist = providerBlacklist;
+  }
+  return Object.keys(routing).length > 0 ? routing : undefined;
+}
+
+function normalizeDeepLinkReasoningLevels(value: unknown): ProviderModelMetadata["supportedReasoningLevels"] {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const levels = value.flatMap((item) => {
+    if (typeof item === "string" && item.trim()) {
+      const effort = item.trim();
+      return [{ description: effort, effort }];
+    }
+    if (!isRecord(item)) {
+      return [];
+    }
+    const effort = normalizedString(item.effort);
+    if (!effort) {
+      return [];
+    }
+    return [{ description: normalizedString(item.description) ?? effort, effort }];
+  });
+  return levels.length > 0 ? levels : value.length === 0 ? [] : undefined;
+}
+
+function normalizedString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function normalizedStringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => normalizedStringList(item));
+  }
+  const text = normalizedString(value);
+  return text ? splitModelValue(text) : [];
+}
+
+function normalizeDeepLinkModelCapabilities(value: unknown): ProviderModelCapabilities | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const capabilities: ProviderModelCapabilities = {};
+  const fields: Array<keyof ProviderModelCapabilities> = ["imageInput", "webSearch"];
+  for (const field of fields) {
+    const snakeCaseField = field.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+    const candidate = value[field] ?? value[snakeCaseField];
+    if (typeof candidate === "boolean") {
+      capabilities[field] = candidate;
+    }
+  }
+  return Object.keys(capabilities).length > 0 ? capabilities : undefined;
+}
+
+function normalizeDeepLinkModelPricing(value: unknown): ProviderModelPricing | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const pricing: ProviderModelPricing = {};
+  const fields: Array<keyof ProviderModelPricing> = [
+    "cacheReadUsdPerMillionTokens",
+    "cacheWriteUsdPerMillionTokens",
+    "cacheWrite1hUsdPerMillionTokens",
+    "cacheWrite5mUsdPerMillionTokens",
+    "inputUsdPerMillionTokens",
+    "outputUsdPerMillionTokens"
+  ];
+  for (const field of fields) {
+    const snakeCaseField = field.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+    const durationSnakeCaseField = snakeCaseField.replace(/([a-z])([0-9])/g, "$1_$2");
+    const candidate = nonNegativeNumber(value[field] ?? value[durationSnakeCaseField] ?? value[snakeCaseField]);
+    if (candidate !== undefined) {
+      pricing[field] = candidate;
+    }
+  }
+  return Object.keys(pricing).length > 0 ? pricing : undefined;
+}
+
+function finiteNumber(value: unknown): number | undefined {
+  const parsed = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function nonNegativeNumber(value: unknown): number | undefined {
+  const parsed = finiteNumber(value);
+  return parsed !== undefined && parsed >= 0 ? parsed : undefined;
+}
+
+function percentage(value: unknown): number | undefined {
+  const parsed = finiteNumber(value);
+  return parsed !== undefined && parsed > 0 && parsed <= 100 ? parsed : undefined;
+}
+
+function positiveInteger(value: unknown): number | undefined {
+  const parsed = finiteNumber(value);
+  return parsed !== undefined && parsed > 0 ? Math.trunc(parsed) : undefined;
 }
 
 function readPayloadModelId(value: unknown): string | undefined {

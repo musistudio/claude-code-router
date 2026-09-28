@@ -1,15 +1,49 @@
+import { useDraftClose } from "./unsaved-changes";
 import {
-  AddProfileDraft, AgentLogo, AnimatedIconSwap, AnimatedPopover, AnimatePresence, AppConfig, Badge, BotGatewaySavedConfig, botGatewaySavedConfigLabel, BotHandoffScanTarget, Button,
-	  Card, CardContent, CardHeader, CardTitle, Check, ChevronDown, Copy,
-	  cn, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader,
-	  DialogTitle, Field, GatewayProviderConfig, Info, Input, KeyValueRowsControl, LoaderCircle, motion,
-  normalizeProfileScope, normalizeProfileSurface, parseProfileModelValue, Pencil, Plus, PopoverContent,
-  profileAgentLabel, profileAgentOptions, ProfileConfig, profileModelDisplayValue, profileModelMatchesQuery, profileModelProviderMatchesQuery,
-  profileModelOptionDisplayName, profileModelProviderOptions, profileOpenSurfaces, profileScopeLabel, profileScopeOptions, profileSummaryItems, profileSurfaceLabel, profileSurfaceOptions,
-  Play, Power, RefreshCw, Search, Select, SelectControl, Terminal, Toggle, translateOptions, Trash2, useAppErrorText, useAppText, type ProfileOpenSurface, type ProfileRuntimeStatus, type ReactNode, type VirtualModelProfileConfig,
-  copyTextToClipboard,
-  useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, X
+  AddProfileDraft, AddRoutingRuleDraft, AgentLogo, AnimatedIconSwap, AnimatedPopover, AnimatePresence, AppConfig, Badge, BotGatewaySavedConfig, botGatewaySavedConfigLabel, BotHandoffScanTarget, Button,
+  Card, CardContent, CardHeader, CardTitle, Check, ChevronDown, CircleAlert, Copy,
+  createKeyValueDraftRow,
+  createRoutingRuleDraft, createRoutingRuleDraftFromRule,
+  cn, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader,
+  DialogTitle, Field, GatewayProviderConfig, Info, Input, KeyValueRowsControl, LoaderCircle, motion,
+  normalizeProfileScope, normalizeProfileSurface, Pencil, Plus, PopoverContent,
+  profileAgentLabel, profileAgentOptions, ProfileConfig, type ProfileAgentOption, profileModelProviderOptions, profileOpenSurfaces, profileScopeLabel, profileScopeOptions, profileSummaryItems, profileSurfaceLabel, profileSurfaceOptions,
+  Play, Power, RefreshCw, Search, Select, SelectControl, Settings, Terminal, Toggle, translateOptions, Trash2, useAppErrorText, useAppText, useLayoutEffect, type KeyValueDraftRow, type ProfileOpenSurface, type ProfileRuntimeStatus, type ReactDragEvent, type ReactNode, type VirtualModelProfileConfig,
+  copyTextToClipboard, formatClaudeSettingsDraft, formatRouterRuleCondition, formatRouterRuleTarget, isClaudeSettingsDraftValid, isPlainRecord, isRoutingRuleDraftSubmittable, normalizeProviderModelSelector, routerRuleTypeLabel, routingRuleFromDraft, type RouterRule, uniqueStrings, useResolvedAppLanguage, validateProfileEnvRows,
+  useCallback, useEffect, useMemo, useRef, useState, X
 } from "../shared/index";
+import claudeCodeConfigOptionsJson from "@/generated/claude-code-config-options.json";
+import { PopoverPortal } from "@/components/ui/popover";
+import { Tooltip } from "@/components/ui/tooltip";
+import { ModelMultiSelector, ModelSelector } from "./model-selector";
+import { AddRoutingRuleDialog } from "./routing";
+
+const useClientLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+
+type ClaudeCodeConfigOption = {
+  default?: string;
+  description?: {
+    en?: string;
+    zh?: string;
+  };
+  enumValues?: string[];
+  example?: string;
+  key: string;
+  path?: string[];
+  scope?: string;
+  type?: string;
+  valueKind?: string;
+};
+
+type ClaudeCodeConfigCatalog = {
+  env: ClaudeCodeConfigOption[];
+  generatedAt?: string;
+  settings: ClaudeCodeConfigOption[];
+};
+
+const claudeCodeConfigOptions = claudeCodeConfigOptionsJson as ClaudeCodeConfigCatalog;
+const CLAUDE_CONFIG_SETTINGS_TAB = "settings";
+const CLAUDE_CONFIG_ENV_TAB = "env";
 
 type ProfileActionBusy = {
   profileId: string;
@@ -19,6 +53,7 @@ type ProfileActionBusy = {
 export function ProfileView({
   addProfile,
   applyError,
+  agentOptions = profileAgentOptions,
   copyProfileCliCommand,
   config,
   editProfile,
@@ -30,6 +65,7 @@ export function ProfileView({
   updateProfileItem
 }: {
   addProfile: (agent?: ProfileConfig["agent"]) => void;
+  agentOptions?: ProfileAgentOption[];
   applyError: string;
   copyProfileCliCommand: (index: number) => void;
   config: AppConfig;
@@ -43,6 +79,10 @@ export function ProfileView({
 }) {
   const t = useAppText();
   const profiles = config.profile.profiles;
+  const visibleAgentValues = new Set(agentOptions.map((option) => option.value));
+  const visibleProfiles = profiles
+    .map((profile, index) => ({ index, profile }))
+    .filter(({ profile }) => visibleAgentValues.has(profile.agent));
 
   return (
     <motion.div
@@ -55,9 +95,9 @@ export function ProfileView({
         <CardHeader>
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
-              <CardTitle>{t("Agent access")}</CardTitle>
+              <CardTitle>{t("Agent profiles")}</CardTitle>
               <p className="mt-1 text-[12px] text-muted-foreground">
-                {t("Choose where each agent uses CCR.")}
+                {t("Create profiles that tell each agent which model and entry mode to use.")}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -68,23 +108,24 @@ export function ProfileView({
             </div>
           </div>
         </CardHeader>
-        <CardContent className="min-h-0 flex-1 space-y-4 overflow-auto">
-          <div className="space-y-2">
-            {profiles.length === 0 ? (
-              <div className="flex h-32 items-center justify-center rounded-md border border-dashed border-border bg-muted/20 text-[12px] text-muted-foreground">
+        <CardContent className="min-h-0 flex-1 overflow-auto max-[720px]:p-3">
+          <div className="grid min-w-0 gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))] max-[720px]:gap-2.5">
+            {visibleProfiles.length === 0 ? (
+              <div className="col-span-full flex h-32 items-center justify-center rounded-md border border-dashed border-border bg-muted/20 text-[12px] text-muted-foreground">
                 {t("No profiles configured")}
               </div>
             ) : null}
-            {profiles.map((profile, index) => {
+            {visibleProfiles.map(({ profile, index }) => {
               const scope = normalizeProfileScope(profile.scope);
-              const surface = profile.agent === "zcode" ? "app" : normalizeProfileSurface(profile.surface);
+              const surface = profile.agent === "zcode" || profile.agent === "claude-design" ? "app" : normalizeProfileSurface(profile.surface);
               const openSurfaces = profileOpenSurfaces(profile);
               const summaryItems = profileSummaryItems(profile, config, t);
               const cliBusy = profileActionBusy?.profileId === profile.id && profileActionBusy.surface === "cli";
               const appBusy = profileActionBusy?.profileId === profile.id && profileActionBusy.surface === "app";
-              const appRunning = profileRuntimeStatus.profiles.some((entry) =>
+              const runtimeEntry = profileRuntimeStatus.profiles.find((entry) =>
                 entry.profileId === profile.id && entry.surface === "app" && entry.state === "running"
               );
+              const appRunning = Boolean(runtimeEntry);
               const appActionLabel = appRunning ? "Stop" : "Start";
               const appActionTooltip = `${t(appActionLabel)} ${t("App")}`;
               const cliActionTooltip = `${t("Copy")} ${t("CLI command")}`;
@@ -92,34 +133,74 @@ export function ProfileView({
               const profileActionDisabled = Boolean(profileActionBusy);
 
               return (
-                <div className="rounded-md border border-border bg-muted/20 p-3" key={profile.id}>
-                  <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
-                    <div className="flex min-w-0 flex-1 items-start gap-2">
+                <div
+                  className={cn(
+                    "flex min-h-[220px] min-w-0 flex-col rounded-md border border-border p-3 transition-colors",
+                    profile.enabled
+                      ? "bg-background hover:bg-muted/10"
+                      : "bg-muted/20"
+                  )}
+                  key={profile.id}
+                >
+                  <div className="flex min-w-0 items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2">
                       <AgentLogo agent={profile.agent} />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                          <span className="min-w-0 max-w-[180px] truncate text-[13px] font-semibold sm:max-w-[260px] md:max-w-[320px]">{profile.name || t("Unnamed")}</span>
-                          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                            {!profile.enabled ? <Badge variant="outline">{t("Disabled")}</Badge> : null}
-                            <Badge variant="secondary">{t(profileAgentLabel(profile.agent))}</Badge>
-                            <Badge variant={scope === "ccr" ? "success" : scope === "global" ? "warning" : "outline"}>
-                              {t(profileScopeLabel(scope))}
-                            </Badge>
-                            <Badge variant="outline">{t(profileSurfaceLabel(surface))}</Badge>
-                          </div>
-                        </div>
-                        <div className="mt-2 min-w-0 space-y-1.5">
-                          {summaryItems.map((item) => (
-                            <div className="grid min-w-0 grid-cols-[96px_minmax(0,1fr)] items-baseline gap-2 text-[12px] sm:grid-cols-[128px_minmax(0,1fr)]" key={item.label}>
-                              <div className="truncate text-muted-foreground">{item.label}</div>
-                              <div className="min-w-0 truncate font-medium text-foreground" title={item.value}>{item.value}</div>
-                            </div>
-                          ))}
+                      <div className="min-w-0">
+                        <div className="truncate text-[13px] font-semibold">
+                          {profile.name || t("Unnamed")}
                         </div>
                       </div>
                     </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <Toggle checked={profile.enabled} onChange={(enabled) => updateProfileItem(index, { enabled })} />
+                    <Toggle
+                      checked={profile.enabled}
+                      onChange={(enabled) =>
+                        updateProfileItem(index, { enabled })
+                      }
+                      title={t(profile.enabled ? "Enabled" : "Disabled")}
+                    />
+                  </div>
+                  <div className="mt-3 min-w-0 flex-1 space-y-1.5 border-t border-border/60 pt-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                      <Badge variant="secondary">{t(profileAgentLabel(profile.agent))}</Badge>
+                      <Badge variant={scope === "ccr" ? "success" : scope === "global" ? "warning" : "outline"}>
+                        {t(profileScopeLabel(scope))}
+                      </Badge>
+                      <Badge variant="outline">{t(profileSurfaceLabel(surface))}</Badge>
+                      {runtimeEntry?.botGateway ? (
+                        <Badge variant={runtimeEntry.botGateway.state === "connected" ? "success" : runtimeEntry.botGateway.lastError ? "warning" : "outline"}>
+                          {t("Bot")} · {t(runtimeEntry.botGateway.state === "connected" ? "Connected" : runtimeEntry.botGateway.state === "starting" ? "Starting" : runtimeEntry.botGateway.state)}
+                        </Badge>
+                      ) : null}
+                    </div>
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+                      {t("Configuration")}
+                    </div>
+                    {summaryItems.map((item) => (
+                      <div className="grid min-w-0 grid-cols-[92px_minmax(0,1fr)] items-baseline gap-2 text-[12px]" key={item.label}>
+                        <div className="truncate text-muted-foreground">{item.label}</div>
+                        <div className="min-w-0 truncate font-medium text-foreground" title={item.value}>{item.value}</div>
+                      </div>
+                    ))}
+                    {runtimeEntry?.botGateway ? (
+                      <div className="grid min-w-0 grid-cols-[92px_minmax(0,1fr)] items-baseline gap-2 text-[12px]">
+                        <div className="truncate text-muted-foreground">{t("Bot activity")}</div>
+                        <div className="min-w-0 truncate font-medium text-foreground" title={runtimeEntry.botGateway.lastError || runtimeEntry.botGateway.lastEventAt || ""}>
+                          {runtimeEntry.botGateway.lastError
+                            ? runtimeEntry.botGateway.lastError
+                            : runtimeEntry.botGateway.lastEventAt
+                              ? `${t("Last event")}: ${new Date(runtimeEntry.botGateway.lastEventAt).toLocaleString()}`
+                              : t("Waiting for messages")}
+                          {runtimeEntry.botGateway.outboxCount > 0 ? ` · ${runtimeEntry.botGateway.outboxCount} ${t("pending")}` : ""}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                  <div
+                    aria-label={`${profile.name || t("Profile")} ${t("Profile actions")}`}
+                    className="mt-3 flex min-w-0 items-center justify-between gap-2 border-t border-border/60 pt-2"
+                    role="group"
+                  >
+                    <div className="flex min-w-0 items-center gap-1">
                       {showProfileLaunchActions && openSurfaces.includes("cli") ? (
                         <ProfileActionTooltip label={cliActionTooltip}>
                           <Button
@@ -128,11 +209,17 @@ export function ProfileView({
                             onClick={() => copyProfileCliCommand(index)}
                             size="iconSm"
                             type="button"
-                            variant="ghost"
+                            variant="subtle"
                           >
-	                            <AnimatedIconSwap iconKey={cliBusy ? "busy" : "terminal"}>
-	                              {cliBusy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Terminal className="h-3.5 w-3.5" />}
-	                            </AnimatedIconSwap>
+                            <AnimatedIconSwap
+                              iconKey={cliBusy ? "busy" : "terminal"}
+                            >
+                              {cliBusy ? (
+                                <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Terminal className="h-3.5 w-3.5" />
+                              )}
+                            </AnimatedIconSwap>
                           </Button>
                         </ProfileActionTooltip>
                       ) : null}
@@ -141,23 +228,58 @@ export function ProfileView({
                           <Button
                             aria-label={`${appActionTooltip} ${profile.name || t("Profile")}`}
                             disabled={profileActionDisabled}
-                            onClick={() => appRunning ? stopProfileApp(index) : openProfileApp(index)}
+                            onClick={() =>
+                              appRunning
+                                ? stopProfileApp(index)
+                                : openProfileApp(index)
+                            }
                             size="iconSm"
                             type="button"
-                            variant={appRunning ? "outline" : "ghost"}
+                            variant={appRunning ? "outline" : "subtle"}
                           >
-	                            <AnimatedIconSwap iconKey={appBusy ? "busy" : appRunning ? "stop" : "play"}>
-	                              {appBusy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : appRunning ? <Power className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-	                            </AnimatedIconSwap>
+                            <AnimatedIconSwap
+                              iconKey={
+                                appBusy ? "busy" : appRunning ? "stop" : "play"
+                              }
+                            >
+                              {appBusy ? (
+                                <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                              ) : appRunning ? (
+                                <Power className="h-3.5 w-3.5" />
+                              ) : (
+                                <Play className="h-3.5 w-3.5" />
+                              )}
+                            </AnimatedIconSwap>
                           </Button>
                         </ProfileActionTooltip>
                       ) : null}
-                      <Button aria-label={`${t("Edit")} ${profile.name || t("Profile")}`} onClick={() => editProfile(index)} size="iconSm" title={t("Edit")} type="button" variant="ghost">
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button aria-label={t("Remove profile")} onClick={() => removeProfile(index)} size="iconSm" title={t("Remove profile")} type="button" variant="ghost">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                    </div>
+                    <div className="ml-auto flex shrink-0 items-center gap-1">
+                      <ProfileActionTooltip label={t("Edit")}>
+                        <Button
+                          aria-label={`${t("Edit")} ${
+                            profile.name || t("Profile")
+                          }`}
+                          onClick={() => editProfile(index)}
+                          size="iconSm"
+                          type="button"
+                          variant="ghost"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      </ProfileActionTooltip>
+                      <ProfileActionTooltip label={t("Remove profile")}>
+                        <Button
+                          aria-label={t("Remove profile")}
+                          className="hover:bg-destructive/10 hover:text-destructive focus-visible:text-destructive"
+                          onClick={() => removeProfile(index)}
+                          size="iconSm"
+                          type="button"
+                          variant="ghost"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </ProfileActionTooltip>
                     </div>
                   </div>
                 </div>
@@ -173,6 +295,99 @@ export function ProfileView({
         </CardContent>
       </Card>
     </motion.div>
+  );
+}
+
+function ManagedCompactSetting({
+  agent,
+  checked,
+  onChange
+}: {
+  agent: ProfileConfig["agent"];
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  const t = useAppText();
+  const title = t("CCR managed compact");
+
+  return (
+    <div className="rounded-md border border-border bg-muted/20 px-3 py-3">
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <AgentLogo agent={agent} className="h-6 w-6 rounded-[5px]" />
+            <div className="min-w-0">
+              <div className="truncate text-[13px] font-semibold">{title}</div>
+              <div className="mt-0.5 text-[12px] leading-5 text-muted-foreground">
+                {t("Use CCR context archive for this profile's auto compact requests.")}
+              </div>
+            </div>
+          </div>
+        </div>
+        <Toggle
+          checked={checked}
+          title={title}
+          onChange={onChange}
+        />
+      </div>
+    </div>
+  );
+}
+
+export function DeleteProfileDialog({
+  onClose,
+  onConfirm,
+  profile
+}: {
+  onClose: () => void;
+  onConfirm: () => void;
+  profile: ProfileConfig;
+}) {
+  const t = useAppText();
+  const name = profile.name || t("Unnamed");
+  const agent = t(profileAgentLabel(profile.agent));
+
+  return (
+    <Dialog onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-[520px]">
+        <DialogHeader>
+          <div className="min-w-0">
+            <DialogTitle>{t("Delete Profile")}</DialogTitle>
+          </div>
+          <Button aria-label={t("Close dialog")} onClick={onClose} size="iconSm" title={t("Close")} type="button" variant="ghost">
+            <X className="h-4 w-4" />
+          </Button>
+        </DialogHeader>
+
+        <DialogBody>
+          <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5">
+            <div className="flex items-start gap-2 text-[12px] font-medium text-destructive">
+              <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>{t("Delete this agent profile from the configuration?")}</span>
+            </div>
+            <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
+              <div className="truncate" title={name}>
+                <span className="font-medium text-foreground">{t("Name")}:</span> {name}
+              </div>
+              <div className="truncate" title={agent}>
+                <span className="font-medium text-foreground">{t("Agent")}:</span> {agent}
+              </div>
+              <div>{t("This action is applied immediately to the draft config and will auto-save with other changes.")}</div>
+            </div>
+          </div>
+        </DialogBody>
+
+        <DialogFooter>
+          <Button autoFocus onClick={onClose} type="button" variant="outline">
+            {t("Cancel")}
+          </Button>
+          <Button onClick={onConfirm} type="button" variant="destructive">
+            <Trash2 className="h-4 w-4" />
+            {t("Delete")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -291,15 +506,13 @@ function ProfileActionTooltip({
   label: string;
 }) {
   return (
-    <span className="group relative inline-flex shrink-0">
+    <Tooltip
+      content={<span className="block truncate whitespace-nowrap">{label}</span>}
+      contentClassName="max-w-[180px]"
+      side="top"
+    >
       {children}
-      <span
-        className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 max-w-[180px] -translate-x-1/2 rounded-md border border-border bg-popover px-2 py-1 text-[11px] font-medium leading-4 text-popover-foreground opacity-0 shadow-card transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
-        role="tooltip"
-      >
-        <span className="block truncate whitespace-nowrap">{label}</span>
-      </span>
-    </span>
+    </Tooltip>
   );
 }
 
@@ -331,64 +544,63 @@ function ProfileCliCommandBlock({
   );
 }
 
-function ProfileAgentTabs({
-  activeAgent,
-  profiles,
-  setActiveAgent
-}: {
-  activeAgent: ProfileConfig["agent"];
-  profiles: ProfileConfig[];
-  setActiveAgent: (agent: ProfileConfig["agent"]) => void;
-}) {
-  const t = useAppText();
-
-  return (
-    <div
-      aria-label={t("Agent profiles")}
-      className="grid grid-cols-1 gap-1 rounded-md border border-border bg-muted/20 p-1 sm:grid-cols-3"
-      role="tablist"
-    >
-      {profileAgentOptions.map((option) => {
-        const agent = option.value;
-        const selected = activeAgent === agent;
-        const count = profiles.filter((profile) => profile.agent === agent).length;
-
-        return (
-          <button
-            aria-selected={selected}
-            className={cn(
-              "flex h-11 min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[12px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
-              selected
-                ? "bg-background text-foreground shadow-card"
-                : "text-muted-foreground hover:bg-background/70 hover:text-foreground"
-            )}
-            key={agent}
-            onClick={() => setActiveAgent(agent)}
-            role="tab"
-            type="button"
-          >
-            <AgentLogo agent={agent} className="h-6 w-6 rounded-[5px]" />
-            <span className="min-w-0 flex-1 truncate">{t(profileAgentLabel(agent))}</span>
-            <Badge className="shrink-0" variant={selected ? "secondary" : "outline"}>
-              {count}
-            </Badge>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 function AgentSelectControl({
+  agentOptions,
   onChange,
   value
 }: {
+  agentOptions: ProfileAgentOption[];
   onChange: (agent: ProfileConfig["agent"]) => void;
   value: ProfileConfig["agent"];
 }) {
   const t = useAppText();
   const [open, setOpen] = useState(false);
+  const [popoverLayout, setPopoverLayout] = useState<{
+    left: number;
+    maxHeight: number;
+    offset: number;
+    placement: "above" | "below";
+    width: number;
+  }>();
+  const panelRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+
+  useClientLayoutEffect(() => {
+    if (!open) {
+      setPopoverLayout(undefined);
+      return;
+    }
+
+    function updatePopoverLayout() {
+      const root = rootRef.current;
+      if (!root) {
+        return;
+      }
+      const anchor = root.getBoundingClientRect();
+      const margin = 12;
+      const gap = 6;
+      const viewportHeight = window.innerHeight;
+      const listHeight = agentOptions.length * 36 + 8;
+      const below = Math.max(0, viewportHeight - anchor.bottom - margin - gap);
+      const above = Math.max(0, anchor.top - margin - gap);
+      const placement = below < listHeight && above > below ? "above" : "below";
+      setPopoverLayout({
+        left: Math.max(margin, Math.min(anchor.left, window.innerWidth - anchor.width - margin)),
+        maxHeight: Math.min(listHeight, Math.max(120, placement === "above" ? above : below)),
+        offset: placement === "above" ? viewportHeight - anchor.top + gap : anchor.bottom + gap,
+        placement,
+        width: anchor.width
+      });
+    }
+
+    updatePopoverLayout();
+    window.addEventListener("resize", updatePopoverLayout);
+    window.addEventListener("scroll", updatePopoverLayout, true);
+    return () => {
+      window.removeEventListener("resize", updatePopoverLayout);
+      window.removeEventListener("scroll", updatePopoverLayout, true);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) {
@@ -396,7 +608,8 @@ function AgentSelectControl({
     }
 
     const handlePointerDown = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (!rootRef.current?.contains(target) && !panelRef.current?.contains(target)) {
         setOpen(false);
       }
     };
@@ -438,363 +651,207 @@ function AgentSelectControl({
         <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
       </button>
 
-      <AnimatePresence initial={false}>
-        {open ? (
-          <AnimatedPopover className="absolute left-0 right-0 top-full z-50 mt-1">
-            <PopoverContent
-              className="overflow-hidden p-1"
-              id="profile-agent-select-options"
-              role="listbox"
-            >
-              {profileAgentOptions.map((option) => {
-                const agent = option.value;
-                const selected = value === agent;
-
-                return (
-                  <button
-                    aria-selected={selected}
-                    className={cn(
-                      "flex h-9 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[12px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
-                      selected ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
-                    )}
-                    key={agent}
-                    onClick={() => {
-                      onChange(agent);
-                      setOpen(false);
-                    }}
-                    role="option"
-                    type="button"
-                  >
-                    <AgentLogo agent={agent} className="h-6 w-6 rounded-[5px]" />
-                    <span className="min-w-0 flex-1 truncate">{t(profileAgentLabel(agent))}</span>
-                    {selected ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
-                  </button>
-                );
-              })}
-            </PopoverContent>
-          </AnimatedPopover>
-        ) : null}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-function ProfileModelSelector({
-  onChange,
-  placeholder,
-  providers,
-  value,
-  virtualModelProfiles = []
-}: {
-  onChange: (value: string) => void;
-  placeholder?: string;
-  providers: GatewayProviderConfig[];
-  value: string;
-  virtualModelProfiles?: VirtualModelProfileConfig[];
-}) {
-  const t = useAppText();
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [popoverLayout, setPopoverLayout] = useState<{
-    gridHeight: number;
-    left: number;
-    maxHeight: number;
-    offset: number;
-    placement: "above" | "below";
-    width: number;
-  }>();
-  const parsedValue = useMemo(() => parseProfileModelValue(value, providers, virtualModelProfiles), [providers, value, virtualModelProfiles]);
-  const providerOptions = useMemo(() => profileModelProviderOptions(providers, virtualModelProfiles), [providers, virtualModelProfiles]);
-  const filteredProviders = useMemo(
-    () => providerOptions.filter((provider) => profileModelProviderMatchesQuery(provider, query)),
-    [providerOptions, query]
-  );
-  const [activeProviderName, setActiveProviderName] = useState("");
-  const rootRef = useRef<HTMLDivElement>(null);
-  const activeProvider =
-    filteredProviders.find((provider) => provider.name === activeProviderName) ??
-    filteredProviders.find((provider) => provider.name === parsedValue.provider) ??
-    filteredProviders[0];
-  const filteredModels = activeProvider
-    ? activeProvider.models.filter((model) => profileModelMatchesQuery(activeProvider.name, model, query, profileModelOptionDisplayName(activeProvider, model)))
-    : [];
-  const displayValue = profileModelDisplayValue(value, parsedValue, providers, placeholder, virtualModelProfiles);
-
-  useLayoutEffect(() => {
-    if (!open) {
-      setPopoverLayout(undefined);
-      return;
-    }
-
-    function updatePopoverLayout() {
-      const root = rootRef.current;
-      if (!root) {
-        return;
-      }
-      const anchor = root.getBoundingClientRect();
-      const margin = 12;
-      const gap = 6;
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
-      const availableWidth = Math.max(240, viewportWidth - margin * 2);
-      const width = Math.min(560, availableWidth);
-      const left = Math.min(Math.max(margin, anchor.left), viewportWidth - margin - width);
-      const below = Math.max(0, viewportHeight - anchor.bottom - margin - gap);
-      const above = Math.max(0, anchor.top - margin - gap);
-      const placement = below < 240 && above > below ? "above" : "below";
-      const availableHeight = Math.max(144, placement === "above" ? above : below);
-      const maxHeight = Math.min(360, availableHeight);
-      const gridHeight = Math.max(128, Math.min(280, maxHeight - 58));
-      setPopoverLayout({
-        gridHeight,
-        left,
-        maxHeight,
-        offset: placement === "above" ? viewportHeight - anchor.top + gap : anchor.bottom + gap,
-        placement,
-        width
-      });
-    }
-
-    updatePopoverLayout();
-    window.addEventListener("resize", updatePopoverLayout);
-    window.addEventListener("scroll", updatePopoverLayout, true);
-    return () => {
-      window.removeEventListener("resize", updatePopoverLayout);
-      window.removeEventListener("scroll", updatePopoverLayout, true);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    function handlePointerDown(event: MouseEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setOpen(false);
-      }
-    }
-
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    if (activeProviderName && filteredProviders.some((provider) => provider.name === activeProviderName)) {
-      return;
-    }
-    setActiveProviderName(parsedValue.provider || filteredProviders[0]?.name || "");
-  }, [activeProviderName, filteredProviders, open, parsedValue.provider]);
-
-  function chooseModel(providerName: string, model: string) {
-    onChange(`${providerName}/${model}`);
-    setOpen(false);
-    setQuery("");
-    setActiveProviderName(providerName);
-  }
-
-  function openSelector() {
-    setOpen(true);
-    setQuery("");
-    setActiveProviderName(parsedValue.provider || providerOptions[0]?.name || "");
-  }
-
-  function clearValue(event: React.MouseEvent<HTMLButtonElement>) {
-    event.preventDefault();
-    event.stopPropagation();
-    onChange("");
-    setOpen(false);
-    setQuery("");
-  }
-
-  return (
-    <div className="relative min-w-0" ref={rootRef}>
-      <div
-        className={cn(
-          "flex h-10 w-full min-w-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-left text-[12px] shadow-[inset_0_1px_1px_rgba(0,0,0,0.03)] outline-none transition-[background-color,border-color,box-shadow,color] hover:border-muted-foreground/45 focus-visible:border-primary/60 focus-visible:ring-2 focus-visible:ring-ring/25",
-          open && "border-ring/35 bg-muted/40",
-          !value.trim() && "text-muted-foreground"
-        )}
-      >
-        <button
-          aria-expanded={open}
-          aria-haspopup="dialog"
-          className="min-w-0 flex-1 truncate text-left outline-none"
-          onClick={openSelector}
-          type="button"
-        >
-          {displayValue}
-        </button>
-        {value.trim() ? (
-          <button
-            aria-label={t("Clear")}
-            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
-            onClick={clearValue}
-            title={t("Clear")}
-            type="button"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        ) : null}
-        <button
-          aria-label={open ? t("Collapse") : t("Expand")}
-          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
-          onClick={openSelector}
-          title={open ? t("Collapse") : t("Expand")}
-          type="button"
-        >
-          <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} />
-        </button>
-      </div>
-
-      <AnimatePresence initial={false}>
-        {open ? (
-          <AnimatedPopover
-            className="fixed z-[70]"
-            placement={popoverLayout?.placement ?? "below"}
-            style={popoverLayout
-              ? {
+      <PopoverPortal open={open && Boolean(popoverLayout)}>
+        <AnimatePresence initial={false}>
+          {open && popoverLayout ? (
+            <AnimatedPopover
+              className="fixed z-[140]"
+              placement={popoverLayout.placement}
+              style={{
                 left: `${popoverLayout.left}px`,
                 maxHeight: `${popoverLayout.maxHeight}px`,
                 width: `${popoverLayout.width}px`,
                 ...(popoverLayout.placement === "above"
                   ? { bottom: `${popoverLayout.offset}px` }
                   : { top: `${popoverLayout.offset}px` })
-              }
-              : undefined}
-          >
-            <PopoverContent className="w-full overflow-hidden p-2">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  autoFocus
-                  aria-label={t("Search models")}
-                  className="h-9 pl-8"
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder={t("Search providers or models")}
-                  value={query}
-                />
-              </div>
+              }}
+            >
+              <PopoverContent
+                className="overflow-auto p-1"
+                id="profile-agent-select-options"
+                ref={panelRef}
+                role="listbox"
+                style={{ maxHeight: `${popoverLayout.maxHeight}px` }}
+              >
+                {agentOptions.map((option) => {
+                  const agent = option.value;
+                  const selected = value === agent;
 
-              {providerOptions.length === 0 ? (
-                <div className="mt-2 rounded-md border border-dashed border-border bg-muted/30 px-3 py-8 text-center text-[12px] text-muted-foreground">
-                  {t("No models configured")}
-                </div>
-              ) : (
-                <div
-                  className="mt-2 grid grid-cols-[minmax(112px,0.38fr)_minmax(0,1fr)] overflow-hidden rounded-md border border-border"
-                  style={{ height: `${popoverLayout?.gridHeight ?? 220}px` }}
-                >
-                  <div className="min-w-0 overflow-auto border-r border-border bg-muted/30 p-1">
-                    {filteredProviders.length === 0 ? (
-                      <div className="px-2 py-6 text-center text-[11px] text-muted-foreground">{t("No matching providers")}</div>
-                    ) : null}
-                    {filteredProviders.map((provider) => {
-                      const active = provider.name === activeProvider?.name;
-                      return (
-                        <button
-                          className={cn(
-                            "flex h-9 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[12px] outline-none transition-colors hover:bg-background focus-visible:ring-2 focus-visible:ring-ring/25",
-                            active && "bg-background text-primary"
-                          )}
-                          key={provider.name}
-                          onClick={() => setActiveProviderName(provider.name)}
-                          type="button"
-                        >
-                          <span className="min-w-0 flex-1 truncate">{provider.name}</span>
-                          <Badge className="shrink-0" variant="outline">{provider.models.length}</Badge>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div className="min-w-0 overflow-auto bg-background p-1">
-                    {!activeProvider ? (
-                      <div className="px-2 py-10 text-center text-[12px] text-muted-foreground">{t("No matching models")}</div>
-                    ) : null}
-                    {activeProvider && filteredModels.length === 0 ? (
-                      <div className="px-2 py-10 text-center text-[12px] text-muted-foreground">{t("No matching models")}</div>
-                    ) : null}
-                    {activeProvider && filteredModels.map((model) => {
-                      const selected = parsedValue.provider === activeProvider.name && parsedValue.model === model;
-                      const displayName = profileModelOptionDisplayName(activeProvider, model);
-                      return (
-                        <button
-                          className={cn(
-                            "flex h-9 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[12px] outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/25",
-                            selected && "bg-primary/10 text-primary"
-                          )}
-                          key={`${activeProvider.name}/${model}`}
-                          onClick={() => chooseModel(activeProvider.name, model)}
-                          type="button"
-                        >
-                          <span className="min-w-0 flex-1 truncate" title={displayName}>{displayName}</span>
-                          {selected ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </PopoverContent>
-          </AnimatedPopover>
-        ) : null}
-      </AnimatePresence>
+                  return (
+                    <button
+                      aria-selected={selected}
+                      className={cn(
+                        "flex h-9 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[12px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
+                        selected ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
+                      )}
+                      key={agent}
+                      onClick={() => {
+                        onChange(agent);
+                        setOpen(false);
+                      }}
+                      role="option"
+                      type="button"
+                    >
+                      <AgentLogo agent={agent} className="h-6 w-6 rounded-[5px]" />
+                      <span className="min-w-0 flex-1 truncate">{t(profileAgentLabel(agent))}</span>
+                      {selected ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
+                    </button>
+                  );
+                })}
+              </PopoverContent>
+            </AnimatedPopover>
+          ) : null}
+        </AnimatePresence>
+      </PopoverPortal>
     </div>
   );
 }
 
 export function AddProfileForm({
+  agentOptions = profileAgentOptions,
   botConfigs,
   draft,
   error,
+  mode = "add",
   onChange,
   onCreateBot,
   providers,
   virtualModelProfiles = []
 }: {
+  agentOptions?: ProfileAgentOption[];
   botConfigs: BotGatewaySavedConfig[];
   draft: AddProfileDraft;
   error: string;
+  mode?: "add" | "edit";
   onChange: (patch: Partial<AddProfileDraft>) => void;
   onCreateBot: () => void;
   providers: GatewayProviderConfig[];
   virtualModelProfiles?: VirtualModelProfileConfig[];
 }) {
   const t = useAppText();
+  const [advancedOpen, setAdvancedOpen] = useState(mode === "edit");
+  const [appPathDragActive, setAppPathDragActive] = useState(false);
+  const appPathLabel = profileAppPathLabel(draft.agent);
+  const showAppPathField = draft.surface !== "cli" && Boolean(appPathLabel);
+  const modelProviderOptions = useMemo(
+    () => profileModelProviderOptions(providers, virtualModelProfiles),
+    [providers, virtualModelProfiles]
+  );
+  const availableModelCount = modelProviderOptions.reduce((count, provider) => count + provider.models.length, 0);
+  const allAllowedModelValues = useMemo(
+    () => profileAllowedModelValues(modelProviderOptions),
+    [modelProviderOptions]
+  );
+  const hasExplicitAllowedModelSelection = draft.availableModels.length > 0;
+  const allowedModelSelectorValue = draft.availableModels.length > 0
+    ? draft.availableModels
+    : allAllowedModelValues;
+  const modelPlaceholder = firstProfileModelPlaceholder(modelProviderOptions);
+  const validation = profileDraftValidation(draft, botConfigs, availableModelCount);
+  const isClaudeDesignProfile = draft.agent === "claude-design";
+  const showAdvancedSettings = !isClaudeDesignProfile;
+  const optionalFieldLabel = t("Optional");
+  const requiredFieldLabel = t("Required");
+  const advancedIssueCount = [
+    validation.allowedModels,
+    validation.bot,
+    validation.claudeSettings,
+    validation.handoff,
+    validation.env
+  ].filter(Boolean).length;
+  const advancedSummary = advancedIssueCount > 0
+    ? t("Advanced settings need attention")
+    : t("Models, paths, routing, bot, compact, Claude settings, and env");
+  const handleAppPathDrop = useCallback((event: ReactDragEvent<HTMLElement>) => {
+    if (!showAppPathField) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    setAppPathDragActive(false);
+    const appPath = appPathFromDropEvent(event);
+    if (appPath) {
+      onChange({ appPath });
+    }
+  }, [onChange, showAppPathField]);
+  const handleAppPathDragOver = useCallback((event: ReactDragEvent<HTMLElement>) => {
+    if (!showAppPathField) {
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setAppPathDragActive(true);
+  }, [showAppPathField]);
+  const handleAppPathDragLeave = useCallback(() => {
+    setAppPathDragActive(false);
+  }, []);
 
   return (
     <>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label={t("Agent")}>
+      <div
+        className="grid grid-cols-1 gap-3 sm:grid-cols-2"
+        onDragLeave={showAppPathField ? handleAppPathDragLeave : undefined}
+        onDragOver={showAppPathField ? handleAppPathDragOver : undefined}
+        onDrop={showAppPathField ? handleAppPathDrop : undefined}
+      >
+        <Field label={t("Agent")} requirement="required" requirementLabel={requiredFieldLabel}>
           <AgentSelectControl
-            onChange={(agent) => onChange({ agent })}
+            agentOptions={agentOptions}
+            onChange={(agent) => onChange(agent === "grok" || agent === "kimi" || agent === "pi"
+              ? {
+                  agent,
+                  availableModels: [],
+                  botConfigId: "",
+                  botConfigured: true,
+                  botEnabled: false,
+                  model: "",
+                  scope: "ccr",
+                  surface: "cli"
+                }
+              : agent === "kilo"
+                ? {
+                    agent,
+                    botConfigId: "",
+                    botConfigured: true,
+                    botEnabled: false,
+                    surface: "cli"
+                  }
+              : agent === "claude-design"
+                ? {
+                    agent,
+                    availableModels: [],
+                    botConfigId: "",
+                    botConfigured: true,
+                    botEnabled: false,
+                    envRows: [],
+                    model: "",
+                    scope: "ccr",
+                    surface: "app"
+                  }
+              : agent === "workbuddy" || agent === "zcode"
+                  ? { agent, surface: "app" }
+                  : { agent })}
             value={draft.agent}
           />
         </Field>
-        <Field label={t("Profile name")}>
+        <Field label={t("Profile name")} requirement="required" requirementLabel={requiredFieldLabel}>
           <Input value={draft.name} onChange={(event) => onChange({ name: event.target.value })} />
+          {validation.name ? <ProfileFieldHint>{t(validation.name)}</ProfileFieldHint> : null}
         </Field>
-        <Field label={t("Effect scope")}>
+        <Field label={t("Effect scope")} requirement="required" requirementLabel={requiredFieldLabel}>
           <SelectControl
             onChange={(scope) => onChange({ scope: normalizeProfileScope(scope) })}
-            options={translateOptions(profileScopeOptions, t)}
+            options={translateOptions(
+              draft.agent === "grok" || draft.agent === "kimi" || draft.agent === "pi"
+                || draft.agent === "claude-design"
+                ? profileScopeOptions.filter((option) => option.value === "ccr")
+                : profileScopeOptions,
+              t
+            )}
             value={draft.scope}
           />
         </Field>
-        <Field label={t("Entry mode")}>
+        <Field label={t("Entry mode")} requirement="required" requirementLabel={requiredFieldLabel}>
           <SelectControl
             onChange={(surface) => {
               const nextSurface = normalizeProfileSurface(surface);
@@ -808,9 +865,11 @@ export function AddProfileForm({
                   });
             }}
             options={translateOptions(
-              draft.agent === "zcode"
+              draft.agent === "workbuddy" || draft.agent === "zcode" || draft.agent === "claude-design"
                 ? profileSurfaceOptions.filter((option) => option.value === "app")
-                : profileSurfaceOptions,
+                : draft.agent === "grok" || draft.agent === "kimi" || draft.agent === "pi" || draft.agent === "kilo"
+                    ? profileSurfaceOptions.filter((option) => option.value === "cli")
+                    : profileSurfaceOptions,
               t
             )}
             value={draft.surface}
@@ -818,63 +877,215 @@ export function AddProfileForm({
         </Field>
         {draft.agent === "claude-code" ? (
           <>
-            <Field label={t("Model override")}>
-              <ProfileModelSelector
-	                placeholder={t("Keep Claude Code default")}
-	                providers={providers}
-	                value={draft.model}
-	                virtualModelProfiles={virtualModelProfiles}
-	                onChange={(model) => onChange({ model })}
-	              />
+            <Field label={t("Default model")} requirement="required" requirementLabel={requiredFieldLabel}>
+              <ModelSelector
+                placeholder={modelPlaceholder || t("Select default model")}
+                providers={providers}
+                value={draft.model}
+                virtualModelProfiles={virtualModelProfiles}
+                onChange={(model) => onChange({ model })}
+              />
+              {validation.defaultModel ? <ProfileFieldHint>{t(validation.defaultModel)}</ProfileFieldHint> : null}
             </Field>
-            <Field label={t("Small fast model")}>
-              <ProfileModelSelector
-	                placeholder={t("Keep Claude Code default")}
-	                providers={providers}
-	                value={draft.smallFastModel}
-	                virtualModelProfiles={virtualModelProfiles}
-	                onChange={(smallFastModel) => onChange({ smallFastModel })}
-	              />
+            <Field label={t("Fable model")} requirement="optional" requirementLabel={optionalFieldLabel}>
+              <ModelSelector
+                placeholder={t("Keep Claude Code default")}
+                providers={providers}
+                value={draft.fableModel}
+                virtualModelProfiles={virtualModelProfiles}
+                onChange={(fableModel) => onChange({ fableModel })}
+              />
+            </Field>
+            <Field label={t("Opus model")} requirement="optional" requirementLabel={optionalFieldLabel}>
+              <ModelSelector
+                placeholder={t("Keep Claude Code default")}
+                providers={providers}
+                value={draft.opusModel}
+                virtualModelProfiles={virtualModelProfiles}
+                onChange={(opusModel) => onChange({ opusModel })}
+              />
+            </Field>
+            <Field label={t("Sonnet model")} requirement="optional" requirementLabel={optionalFieldLabel}>
+              <ModelSelector
+                placeholder={t("Keep Claude Code default")}
+                providers={providers}
+                value={draft.sonnetModel}
+                virtualModelProfiles={virtualModelProfiles}
+                onChange={(sonnetModel) => onChange({ sonnetModel })}
+              />
+            </Field>
+            <Field label={t("Haiku model")} requirement="optional" requirementLabel={optionalFieldLabel}>
+              <ModelSelector
+                placeholder={t("Keep Claude Code default")}
+                providers={providers}
+                value={draft.haikuModel}
+                virtualModelProfiles={virtualModelProfiles}
+                onChange={(haikuModel) => onChange({ haikuModel, smallFastModel: haikuModel })}
+              />
             </Field>
           </>
-        ) : (
+        ) : draft.agent === "grok" ? (
+          <Field className="sm:col-span-2" label={t("Grok model")} requirement="optional" requirementLabel={optionalFieldLabel}>
+            <ModelSelector
+              placeholder={modelPlaceholder}
+              providers={providers}
+              value={draft.model}
+              virtualModelProfiles={virtualModelProfiles}
+              onChange={(model) => onChange({ model })}
+            />
+          </Field>
+        ) : draft.agent === "pi" ? (
+          <Field className="sm:col-span-2" label={t("Pi model")} requirement="optional" requirementLabel={optionalFieldLabel}>
+            <ModelSelector
+              placeholder={modelPlaceholder}
+              providers={providers}
+              value={draft.model}
+              virtualModelProfiles={virtualModelProfiles}
+              onChange={(model) => onChange({ model })}
+            />
+          </Field>
+        ) : draft.agent === "kimi" ? (
           <>
-            <Field label={t("Provider ID")}>
-              <Input value={draft.providerId} onChange={(event) => onChange({ providerId: event.target.value })} />
+            <Field className="sm:col-span-2" label={t("Kimi model")} requirement="required" requirementLabel={requiredFieldLabel}>
+              <ModelSelector
+                placeholder={modelPlaceholder}
+                providers={providers}
+                value={draft.model}
+                virtualModelProfiles={virtualModelProfiles}
+                onChange={(model) => onChange({ model })}
+              />
+              {validation.kimiModel ? <ProfileFieldHint>{t(validation.kimiModel)}</ProfileFieldHint> : null}
             </Field>
-            <Field label={t("Provider name")}>
-              <Input value={draft.providerName} onChange={(event) => onChange({ providerName: event.target.value })} />
-            </Field>
-            {draft.agent !== "zcode" ? (
-              <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
-                <span className="text-[12px] font-medium">{t("Show all sessions")}</span>
-                <Toggle checked={draft.showAllSessions} onChange={(showAllSessions) => onChange({ showAllSessions })} />
-              </div>
-            ) : null}
-            <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : "Codex model")}>
-              <ProfileModelSelector
-	                placeholder={providers[0]?.models[0] && providers[0]?.name ? `${providers[0].name}/${providers[0].models[0]}` : ""}
-	                providers={providers}
-	                value={draft.model}
-	                virtualModelProfiles={virtualModelProfiles}
-	                onChange={(model) => onChange({ model })}
-	              />
+          </>
+        ) : draft.agent === "claude-design" ? null : (
+          <>
+            <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : draft.agent === "opencode" ? "OpenCode model" : draft.agent === "kilo" ? "Kilo model" : draft.agent === "workbuddy" ? "Workbuddy model" : "Codex model")} requirement="optional" requirementLabel={optionalFieldLabel}>
+              <ModelSelector
+                placeholder={modelPlaceholder}
+                providers={providers}
+                value={draft.model}
+                virtualModelProfiles={virtualModelProfiles}
+                onChange={(model) => onChange({ model })}
+              />
             </Field>
           </>
         )}
-        {draft.surface !== "cli" ? (
+        {showAdvancedSettings ? (
           <div className="sm:col-span-2">
-            <BotGatewaySelectForm botConfigs={botConfigs} draft={draft} onChange={onChange} onCreateBot={onCreateBot} />
+            <button
+              className={cn(
+                "flex min-h-9 w-full min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2 text-left outline-none transition-colors hover:bg-muted/35 focus-visible:ring-2 focus-visible:ring-ring/25",
+                advancedOpen && "rounded-b-none"
+              )}
+              onClick={() => setAdvancedOpen((current) => !current)}
+              type="button"
+            >
+              <span className="min-w-0">
+                <span className="block truncate text-[12px] font-semibold text-foreground">{t("Advanced settings")}</span>
+                <span className={cn("mt-0.5 block truncate text-[11px]", advancedIssueCount > 0 ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground")}>
+                  {advancedSummary}
+                </span>
+              </span>
+              <span className="flex shrink-0 items-center gap-2">
+                {advancedIssueCount > 0 ? <Badge variant="warning">{advancedIssueCount}</Badge> : null}
+                <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", advancedOpen && "rotate-180")} />
+              </span>
+            </button>
+            <AnimatePresence initial={false}>
+              {advancedOpen ? (
+                <motion.div
+                  animate={{ height: "auto", opacity: 1 }}
+                  className="overflow-hidden"
+                  exit={{ height: 0, opacity: 0 }}
+                  initial={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.16 }}
+                >
+                  <div className="grid grid-cols-1 gap-3 rounded-b-md border border-t-0 border-border bg-background/60 p-3 sm:grid-cols-2">
+                    {draft.agent === "claude-code" || draft.agent === "codex" ? (
+                      <ProfileEnhancedRouteSetting draft={draft} onChange={onChange} />
+                    ) : null}
+                    <ProfileRoutingSettings
+                      draft={draft}
+                      onChange={onChange}
+                      providers={providers}
+                    />
+                    <Field className="sm:col-span-2" label={t("Allowed model list")} requirement="optional" requirementLabel={optionalFieldLabel}>
+                      <ModelMultiSelector
+                        providers={providers}
+                        hasExplicitSelection={hasExplicitAllowedModelSelection}
+                        requiredValues={draft.model.trim() ? [draft.model] : []}
+                        value={allowedModelSelectorValue}
+                        virtualModelProfiles={virtualModelProfiles}
+                        onChange={(availableModels) => {
+                          const nextAvailableModels = normalizeAllowedModelSelection(availableModels, allAllowedModelValues);
+                          onChange({
+                            availableModels: nextAvailableModels,
+                            model: nextAvailableModels.length === 0 || nextAvailableModels.includes(draft.model) ? draft.model : nextAvailableModels[0] ?? ""
+                          });
+                        }}
+                      />
+                      {validation.allowedModels ? <ProfileFieldHint>{t(validation.allowedModels)}</ProfileFieldHint> : null}
+                    </Field>
+                    {draft.agent === "codex" ? (
+                      <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
+                        <span className="text-[12px] font-medium">{t("Show all sessions")}</span>
+                        <Toggle checked={draft.showAllSessions} onChange={(showAllSessions) => onChange({ showAllSessions })} />
+                      </div>
+                    ) : null}
+                    {draft.agent === "claude-code" || draft.agent === "codex" ? (
+                      <div className="sm:col-span-2">
+                        <ManagedCompactSetting
+                          agent={draft.agent}
+                          checked={draft.managedCompact}
+                          onChange={(managedCompact) => onChange({ managedCompact })}
+                        />
+                      </div>
+                    ) : null}
+                    {draft.surface !== "cli" ? (
+                      <div className="sm:col-span-2">
+                        <BotGatewaySelectForm botConfigs={botConfigs} draft={draft} onChange={onChange} onCreateBot={onCreateBot} />
+                        {validation.bot ? <ProfileFieldHint>{t(validation.bot)}</ProfileFieldHint> : null}
+                        {validation.handoff ? <ProfileFieldHint>{t(validation.handoff)}</ProfileFieldHint> : null}
+                      </div>
+                    ) : null}
+                    {showAppPathField && appPathLabel ? (
+                      <Field className="sm:col-span-2" label={t(appPathLabel)} requirement="optional" requirementLabel={optionalFieldLabel}>
+                        <Input
+                          className={appPathDragActive ? "border-primary bg-primary/5" : undefined}
+                          placeholder={t("Drop the app here or paste the executable path")}
+                          value={draft.appPath}
+                          onChange={(event) => onChange({ appPath: event.target.value })}
+                        />
+                      </Field>
+                    ) : null}
+                    {draft.agent === "claude-code" ? (
+                      <ClaudeConfigEditor
+                        draft={draft}
+                        error={validation.claudeSettings ? t(validation.claudeSettings) : ""}
+                        onChange={onChange}
+                      />
+                    ) : null}
+                    <Field className="sm:col-span-2" label={t("Environment variables")} requirement="optional" requirementLabel={optionalFieldLabel}>
+                      <KeyValueRowsControl
+                        addLabel={t("Add env variable")}
+                        rows={draft.envRows}
+                        onChange={(envRows) => onChange({ envRows })}
+                      />
+                      {validation.env ? <ProfileFieldHint>{t(validation.env)}</ProfileFieldHint> : null}
+                    </Field>
+                  </div>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
           </div>
         ) : null}
-        <Field className="sm:col-span-2" label={t("Environment variables")}>
-          <KeyValueRowsControl
-            addLabel={t("Add env variable")}
-            rows={draft.envRows}
-            onChange={(envRows) => onChange({ envRows })}
-          />
-        </Field>
       </div>
+      {validation.models ? (
+        <div className="mt-3 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[12px] text-amber-700 dark:text-amber-300">
+          <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>{t(validation.models)}</span>
+        </div>
+      ) : null}
       {error ? (
         <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
           {t(error)}
@@ -882,6 +1093,837 @@ export function AddProfileForm({
       ) : null}
     </>
   );
+}
+
+function ProfileRoutingSettings({
+  draft,
+  onChange,
+  providers
+}: {
+  draft: AddProfileDraft;
+  onChange: (patch: Partial<AddProfileDraft>) => void;
+  providers: GatewayProviderConfig[];
+}) {
+  const t = useAppText();
+  const [ruleDialog, setRuleDialog] = useState<{ draft: AddRoutingRuleDraft; index?: number }>();
+  const canSubmitRule = ruleDialog ? isRoutingRuleDraftSubmittable(ruleDialog.draft) : false;
+
+  function openAddRuleDialog() {
+    setRuleDialog({
+      draft: createRoutingRuleDraft()
+    });
+  }
+
+  function openEditRuleDialog(index: number) {
+    const rule = draft.routingRules[index];
+    if (!rule) {
+      return;
+    }
+    setRuleDialog({
+      draft: createProfileRoutingRuleDraftFromRule(rule),
+      index
+    });
+  }
+
+  function updateRuleDialog(patch: Partial<AddRoutingRuleDraft>) {
+    setRuleDialog((current) => current ? { ...current, draft: { ...current.draft, ...patch } } : current);
+  }
+
+  function submitRuleDialog() {
+    if (!ruleDialog || !canSubmitRule) {
+      return;
+    }
+    const rule = routingRuleFromDraft(
+      ruleDialog.draft,
+      draft.routingRules,
+      ruleDialog.index === undefined ? undefined : draft.routingRules[ruleDialog.index]
+    );
+    const routingRules = ruleDialog.index === undefined
+      ? [...draft.routingRules, rule]
+      : draft.routingRules.map((item, index) => index === ruleDialog.index ? rule : item);
+    onChange({
+      routingEnabled: true,
+      routingRules
+    });
+    setRuleDialog(undefined);
+  }
+
+  function removeRule(index: number) {
+    onChange({
+      routingRules: draft.routingRules.filter((_, ruleIndex) => ruleIndex !== index)
+    });
+  }
+
+  return (
+    <div className="sm:col-span-2 rounded-md border border-border bg-muted/20 p-3">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[12px] font-semibold">{t("Profile routing")}</div>
+          {draft.routingEnabled ? (
+            <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+              {`${draft.routingRules.length} ${t(draft.routingRules.length === 1 ? "route" : "routes")}`}
+            </div>
+          ) : null}
+        </div>
+        <Toggle
+          checked={draft.routingEnabled}
+          onChange={(routingEnabled) => onChange({ routingEnabled })}
+        />
+      </div>
+      {draft.routingEnabled ? (
+        <div className="mt-3 grid grid-cols-1 gap-3 border-t border-border/70 pt-3">
+          <div className="rounded-md border border-border bg-background p-3">
+            <div className="flex min-w-0 items-center justify-between gap-3">
+              <span className="text-[12px] font-medium">{t("Profile routes")}</span>
+              <Button onClick={openAddRuleDialog} size="sm" type="button" variant="outline">
+                <Plus className="h-3.5 w-3.5" />
+                {t("Add")}
+              </Button>
+            </div>
+            <div className="mt-3 space-y-2 border-t border-border/70 pt-3">
+              {draft.routingRules.length === 0 ? (
+                <div className="rounded-md border border-dashed border-border bg-muted/20 px-3 py-2 text-[12px] text-muted-foreground">
+                  {t("No routing rules configured")}
+                </div>
+              ) : draft.routingRules.map((rule, index) => (
+                <div className="grid min-w-0 grid-cols-[1fr_auto] gap-2 rounded-md border border-border px-3 py-2" key={`${rule.id}-${index}`}>
+                  <button
+                    className="min-w-0 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
+                    onClick={() => openEditRuleDialog(index)}
+                    type="button"
+                  >
+                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                      <span className="truncate text-[12px] font-semibold">{rule.name || t("Unnamed")}</span>
+                      <Badge variant={rule.enabled ? "success" : "outline"}>{t(rule.enabled ? "Enabled" : "Disabled")}</Badge>
+                      <Badge variant="outline">{t(routerRuleTypeLabel(rule.type))}</Badge>
+                    </div>
+                    <div className="mt-1 min-w-0 truncate text-[11px] text-muted-foreground" title={formatRouterRuleCondition(rule)}>
+                      {formatRouterRuleCondition(rule)}
+                    </div>
+                    <div className="mt-0.5 min-w-0 truncate font-mono text-[11px] text-muted-foreground" title={formatRouterRuleTarget(rule)}>
+                      {formatRouterRuleTarget(rule)}
+                    </div>
+                  </button>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button aria-label={t("Edit")} onClick={() => openEditRuleDialog(index)} size="iconSm" title={t("Edit")} type="button" variant="ghost">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button aria-label={t("Remove")} onClick={() => removeRule(index)} size="iconSm" title={t("Remove")} type="button" variant="ghost">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {ruleDialog ? (
+        <AddRoutingRuleDialog
+          canSubmit={canSubmitRule}
+          draft={ruleDialog.draft}
+          mode={ruleDialog.index === undefined ? "add" : "edit"}
+          onChange={updateRuleDialog}
+          onClose={() => setRuleDialog(undefined)}
+          onSubmit={submitRuleDialog}
+          allowedRuleTypes={["condition"]}
+          providers={providers}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function ProfileEnhancedRouteSetting({
+  draft,
+  onChange
+}: {
+  draft: AddProfileDraft;
+  onChange: (patch: Partial<AddProfileDraft>) => void;
+}) {
+  const t = useAppText();
+  const enhancedRouteDescription = draft.agent === "codex"
+    ? t("Enhanced route description Codex")
+    : t("Enhanced route description Claude Code");
+
+  return (
+    <div className="sm:col-span-2 rounded-md border border-border bg-muted/20 p-3">
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="text-[12px] font-semibold">{t("Enhanced route")}</span>
+          <Tooltip
+            aria-label={enhancedRouteDescription}
+            className="h-5 w-5 items-center justify-center rounded-full text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+            content={enhancedRouteDescription}
+            contentClassName="w-[260px] max-w-[calc(100vw-64px)] whitespace-normal px-2.5 py-2 text-left font-medium leading-4"
+            side="right"
+            tabIndex={0}
+          >
+            <button
+              aria-label={enhancedRouteDescription}
+              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
+              type="button"
+            >
+              <Info className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          </Tooltip>
+        </span>
+        <Toggle
+          checked={draft.routingEnhancedRoute}
+          onChange={(routingEnhancedRoute) => onChange({ routingEnhancedRoute })}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ClaudeConfigEditor({
+  draft,
+  error,
+  onChange
+}: {
+  draft: AddProfileDraft;
+  error: string;
+  onChange: (patch: Partial<AddProfileDraft>) => void;
+}) {
+  const t = useAppText();
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="sm:col-span-2 rounded-md border border-border bg-muted/20 p-3">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-2">
+            <Settings className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="truncate text-[12px] font-semibold">{t("Claude settings")}</span>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button onClick={() => setOpen(true)} size="sm" type="button" variant="outline">
+            <Settings className="h-3.5 w-3.5" />
+            {t("Edit Claude settings")}
+          </Button>
+        </div>
+      </div>
+      {error ? <ProfileFieldHint>{error}</ProfileFieldHint> : null}
+      {open ? (
+        <Dialog onOpenChange={setOpen} open>
+          <DialogContent className="h-[min(780px,calc(100dvh-1.5rem))] max-w-[980px]">
+            <DialogHeader>
+              <DialogTitle>{t("Claude settings")}</DialogTitle>
+              <Button aria-label={t("Close dialog")} onClick={() => setOpen(false)} size="iconSm" title={t("Close")} type="button" variant="ghost">
+                <X className="h-4 w-4" />
+              </Button>
+            </DialogHeader>
+            <DialogBody className="overflow-hidden p-0">
+              <ClaudeConfigEditorContent
+                draft={draft}
+                error={error}
+                onChange={onChange}
+              />
+            </DialogBody>
+            <DialogFooter>
+              <Button onClick={() => setOpen(false)} type="button" variant="outline">
+                {t("Done")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+    </div>
+  );
+}
+
+function ClaudeConfigEditorContent({
+  draft,
+  error,
+  onChange
+}: {
+  draft: AddProfileDraft;
+  error: string;
+  onChange: (patch: Partial<AddProfileDraft>) => void;
+}) {
+  const t = useAppText();
+  const language = useResolvedAppLanguage();
+  const [tab, setTab] = useState<typeof CLAUDE_CONFIG_SETTINGS_TAB | typeof CLAUDE_CONFIG_ENV_TAB>(CLAUDE_CONFIG_SETTINGS_TAB);
+  const [query, setQuery] = useState("");
+  const [configuredFilter, setConfiguredFilter] = useState("all");
+  const [rawInputs, setRawInputs] = useState<Record<string, string>>({});
+  const [inputErrors, setInputErrors] = useState<Record<string, string>>({});
+  const settings = useMemo(() => claudeSettingsDraftObject(draft.claudeSettingsText), [draft.claudeSettingsText]);
+  const env = useMemo(() => envRowsRecord(draft.envRows), [draft.envRows]);
+  const options = tab === CLAUDE_CONFIG_SETTINGS_TAB ? claudeCodeConfigOptions.settings : claudeCodeConfigOptions.env;
+  const filteredOptions = useMemo(() =>
+    options.filter((option) => claudeConfigOptionVisible(option, {
+      configuredFilter,
+      env,
+      language,
+      query,
+      settings,
+      tab
+    })),
+  [configuredFilter, env, language, options, query, settings, tab]);
+
+  function clearInputState(inputId: string) {
+    setRawInputs((current) => {
+      if (!hasOwnValue(current, inputId)) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[inputId];
+      return next;
+    });
+    setInputErrors((current) => {
+      if (!hasOwnValue(current, inputId)) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[inputId];
+      return next;
+    });
+  }
+
+  function setInputError(inputId: string, value: string, issue: string) {
+    setRawInputs((current) => ({ ...current, [inputId]: value }));
+    setInputErrors((current) => ({ ...current, [inputId]: issue }));
+  }
+
+  function updateSetting(option: ClaudeCodeConfigOption, value: unknown | undefined) {
+    const nextSettings = cloneSettingsObject(settings);
+    const pathParts = claudeConfigOptionPath(option);
+    if (value === undefined) {
+      deleteSettingsPath(nextSettings, pathParts);
+    } else {
+      setSettingsPath(nextSettings, pathParts, value);
+    }
+    onChange({ claudeSettingsText: formatClaudeSettingsDraft(nextSettings) });
+  }
+
+  function updateSettingInput(option: ClaudeCodeConfigOption, value: string) {
+    const inputId = claudeConfigInputId(CLAUDE_CONFIG_SETTINGS_TAB, option.key);
+    const parsed = parseClaudeConfigInputValue(option, value);
+    if (!parsed.ok) {
+      setInputError(inputId, value, parsed.error);
+      return;
+    }
+    clearInputState(inputId);
+    updateSetting(option, parsed.value);
+  }
+
+  function updateEnv(option: ClaudeCodeConfigOption, value: string) {
+    const inputId = claudeConfigInputId(CLAUDE_CONFIG_ENV_TAB, option.key);
+    clearInputState(inputId);
+    onChange({ envRows: updateEnvRows(draft.envRows, option.key, value) });
+  }
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex min-w-0 flex-wrap items-center gap-2 border-b border-border p-3">
+        <div className="grid h-8 shrink-0 grid-cols-2 rounded-md border border-border bg-background p-0.5">
+          {([
+            { label: "Settings", value: CLAUDE_CONFIG_SETTINGS_TAB },
+            { label: "Environment", value: CLAUDE_CONFIG_ENV_TAB }
+          ] as const).map((item) => (
+            <button
+              className={cn(
+                "h-7 rounded-[5px] px-3 text-[12px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
+                tab === item.value ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+              )}
+              key={item.value}
+              onClick={() => setTab(item.value)}
+              type="button"
+            >
+              {t(item.label)}
+            </button>
+          ))}
+        </div>
+        <div className="relative min-w-[220px] flex-1">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            className="h-8 pl-8"
+            placeholder={t(tab === CLAUDE_CONFIG_SETTINGS_TAB ? "Search Claude settings" : "Search environment variables")}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
+        <div className="min-w-[150px] shrink-0">
+          <SelectControl
+            onChange={setConfiguredFilter}
+            options={translateOptions([
+              { label: "All items", value: "all" },
+              { label: "Configured", value: "configured" },
+              { label: "Unset", value: "unset" }
+            ], t)}
+            value={configuredFilter}
+          />
+        </div>
+      </div>
+
+      {error ? (
+        <div className="border-b border-border px-3 py-2">
+          <ProfileFieldHint>{error}</ProfileFieldHint>
+        </div>
+      ) : null}
+
+      <div className="min-h-0 flex-1 overflow-auto bg-background">
+        {filteredOptions.length === 0 ? (
+          <div className="px-3 py-8 text-center text-[12px] text-muted-foreground">
+            {t(tab === CLAUDE_CONFIG_SETTINGS_TAB ? "No matching Claude settings" : "No matching environment variables")}
+          </div>
+        ) : filteredOptions.map((option) => {
+          const inputId = claudeConfigInputId(tab, option.key);
+          const description = claudeConfigOptionDescription(option, language);
+          const currentValue = tab === CLAUDE_CONFIG_SETTINGS_TAB
+            ? readSettingsPath(settings, claudeConfigOptionPath(option))
+            : env[option.key];
+          const active = currentValue !== undefined;
+          const managedOnly = tab === CLAUDE_CONFIG_SETTINGS_TAB && isManagedOnlyClaudeSetting(option);
+          const rawValue = hasOwnValue(rawInputs, inputId)
+            ? rawInputs[inputId]
+            : formatClaudeConfigInputValue(currentValue);
+          const inputError = inputErrors[inputId];
+
+          return (
+            <div className="grid min-w-0 gap-2 border-b border-border/60 p-3 last:border-b-0" key={`${tab}-${option.key}`}>
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                <code className="min-w-0 truncate rounded border border-border bg-muted/30 px-1.5 py-0.5 font-mono text-[11px] font-semibold">
+                  {option.key}
+                </code>
+                {option.valueKind ? <Badge variant="outline">{option.valueKind}</Badge> : null}
+                {active ? <Badge variant="success">{t("Set")}</Badge> : null}
+              </div>
+              {description ? (
+                <div className="text-[11px] leading-4 text-muted-foreground">
+                  {description}
+                </div>
+              ) : null}
+              <div className="flex min-w-0 items-start gap-2">
+                {tab === CLAUDE_CONFIG_SETTINGS_TAB && option.valueKind === "boolean" ? (
+                  <div className="flex min-h-8 flex-1 items-center">
+                    <Toggle
+                      checked={currentValue === true}
+                      disabled={managedOnly}
+                      onChange={(checked) => updateSetting(option, checked)}
+                      title={option.key}
+                    />
+                  </div>
+                ) : (
+                  <Input
+                    className="min-h-8 flex-1 font-mono text-[12px]"
+                    disabled={managedOnly}
+                    placeholder={managedOnly ? t("Managed settings can only be set by administrators.") : claudeConfigPlaceholder(option, tab)}
+                    value={managedOnly ? "" : rawValue}
+                    onChange={(event) =>
+                      tab === CLAUDE_CONFIG_SETTINGS_TAB
+                        ? updateSettingInput(option, event.target.value)
+                        : updateEnv(option, event.target.value)}
+                  />
+                )}
+                {active ? (
+                  <Button
+                    aria-label={`${t("Remove")} ${option.key}`}
+                    disabled={managedOnly}
+                    onClick={() =>
+                      tab === CLAUDE_CONFIG_SETTINGS_TAB
+                        ? updateSetting(option, undefined)
+                        : updateEnv(option, "")}
+                    size="iconSm"
+                    title={t("Remove")}
+                    type="button"
+                    variant="ghost"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                ) : null}
+              </div>
+              {inputError ? <ProfileFieldHint>{t(inputError)}</ProfileFieldHint> : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function claudeConfigInputId(tab: string, key: string): string {
+  return `${tab}:${key}`;
+}
+
+function claudeConfigOptionPath(option: ClaudeCodeConfigOption): string[] {
+  return option.path?.length ? option.path : option.key.split(".").filter(Boolean);
+}
+
+function claudeConfigOptionDescription(option: ClaudeCodeConfigOption, language: "en" | "zh"): string {
+  return option.description?.[language]?.trim() || option.description?.en?.trim() || "";
+}
+
+function claudeConfigOptionMatches(option: ClaudeCodeConfigOption, query: string, language: "en" | "zh"): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+  return [
+    option.key,
+    option.type ?? "",
+    option.valueKind ?? "",
+    option.default ?? "",
+    claudeConfigOptionDescription(option, language)
+  ].some((value) => value.toLowerCase().includes(normalizedQuery));
+}
+
+function claudeConfigOptionVisible(
+  option: ClaudeCodeConfigOption,
+  filter: {
+    configuredFilter: string;
+    env: Record<string, string>;
+    language: "en" | "zh";
+    query: string;
+    settings: Record<string, unknown>;
+    tab: typeof CLAUDE_CONFIG_SETTINGS_TAB | typeof CLAUDE_CONFIG_ENV_TAB;
+  }
+): boolean {
+  if (!claudeConfigOptionMatches(option, filter.query, filter.language)) {
+    return false;
+  }
+  const active = isClaudeConfigOptionActive(option, filter.tab, filter.settings, filter.env);
+  if (filter.configuredFilter === "configured") {
+    return active;
+  }
+  if (filter.configuredFilter === "unset") {
+    return !active;
+  }
+  return true;
+}
+
+function isClaudeConfigOptionActive(
+  option: ClaudeCodeConfigOption,
+  tab: typeof CLAUDE_CONFIG_SETTINGS_TAB | typeof CLAUDE_CONFIG_ENV_TAB,
+  settings: Record<string, unknown>,
+  env: Record<string, string>
+): boolean {
+  return tab === CLAUDE_CONFIG_SETTINGS_TAB
+    ? readSettingsPath(settings, claudeConfigOptionPath(option)) !== undefined
+    : env[option.key] !== undefined;
+}
+
+function claudeSettingsDraftObject(value: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return isPlainRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function envRowsRecord(rows: KeyValueDraftRow[]): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const row of rows) {
+    const key = row.key.trim();
+    if (key) {
+      result[key] = row.value;
+    }
+  }
+  return result;
+}
+
+function updateEnvRows(rows: KeyValueDraftRow[], key: string, value: string): KeyValueDraftRow[] {
+  const nextRows = rows.filter((row) => row.key.trim() !== key);
+  return value.trim()
+    ? [...nextRows, createKeyValueDraftRow(key, value)]
+    : nextRows;
+}
+
+function cloneSettingsObject(value: Record<string, unknown>): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+}
+
+function readSettingsPath(value: Record<string, unknown>, pathParts: string[]): unknown {
+  let current: unknown = value;
+  for (const key of pathParts) {
+    if (!isPlainRecord(current) || !hasOwnValue(current, key)) {
+      return undefined;
+    }
+    current = current[key];
+  }
+  return current;
+}
+
+function setSettingsPath(target: Record<string, unknown>, pathParts: string[], value: unknown): void {
+  const key = pathParts[0];
+  if (!key) {
+    return;
+  }
+  if (pathParts.length === 1) {
+    target[key] = value;
+    return;
+  }
+  const current = target[key];
+  const child = isPlainRecord(current) ? current : {};
+  target[key] = child;
+  setSettingsPath(child, pathParts.slice(1), value);
+}
+
+function deleteSettingsPath(target: Record<string, unknown>, pathParts: string[]): boolean {
+  const key = pathParts[0];
+  if (!key || !hasOwnValue(target, key)) {
+    return false;
+  }
+  if (pathParts.length === 1) {
+    delete target[key];
+    return true;
+  }
+  const child = target[key];
+  if (!isPlainRecord(child)) {
+    return false;
+  }
+  const changed = deleteSettingsPath(child, pathParts.slice(1));
+  if (changed && Object.keys(child).length === 0) {
+    delete target[key];
+  }
+  return changed;
+}
+
+function hasOwnValue(value: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+type ClaudeConfigInputParseResult =
+  | { ok: true; value: unknown | undefined }
+  | { error: string; ok: false };
+
+function parseClaudeConfigInputValue(option: ClaudeCodeConfigOption, value: string): ClaudeConfigInputParseResult {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return { ok: true, value: undefined };
+  }
+  switch (option.valueKind) {
+    case "boolean": {
+      const normalized = trimmed.toLowerCase();
+      if (normalized === "true" || normalized === "false") {
+        return { ok: true, value: normalized === "true" };
+      }
+      return { error: "Enter true or false.", ok: false };
+    }
+    case "integer": {
+      const parsed = Number(trimmed);
+      return Number.isInteger(parsed)
+        ? { ok: true, value: parsed }
+        : { error: "Enter an integer.", ok: false };
+    }
+    case "number": {
+      const parsed = Number(trimmed);
+      return Number.isFinite(parsed)
+        ? { ok: true, value: parsed }
+        : { error: "Enter a number.", ok: false };
+    }
+    case "array": {
+      try {
+        const parsed = JSON.parse(trimmed) as unknown;
+        return Array.isArray(parsed)
+          ? { ok: true, value: parsed }
+          : { error: "Enter a JSON array.", ok: false };
+      } catch {
+        return { error: "Enter a JSON array.", ok: false };
+      }
+    }
+    case "object": {
+      try {
+        const parsed = JSON.parse(trimmed) as unknown;
+        return isPlainRecord(parsed)
+          ? { ok: true, value: parsed }
+          : { error: "Enter a JSON object.", ok: false };
+      } catch {
+        return { error: "Enter a JSON object.", ok: false };
+      }
+    }
+    default:
+      return { ok: true, value };
+  }
+}
+
+function formatClaudeConfigInputValue(value: unknown): string {
+  if (value === undefined) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return JSON.stringify(value);
+}
+
+function claudeConfigPlaceholder(option: ClaudeCodeConfigOption, tab: string): string {
+  if (tab === CLAUDE_CONFIG_ENV_TAB) {
+    return option.example?.trim() || option.default?.trim() || "";
+  }
+  const exampleValue = claudeConfigExampleValue(option);
+  if (exampleValue !== undefined) {
+    return formatClaudeConfigInputValue(exampleValue);
+  }
+  switch (option.valueKind) {
+    case "array":
+      return "[]";
+    case "boolean":
+      return "true";
+    case "integer":
+    case "number":
+      return "1";
+    case "object":
+      return "{}";
+    default:
+      return option.default?.trim() || "";
+  }
+}
+
+function claudeConfigExampleValue(option: ClaudeCodeConfigOption): unknown {
+  if (!option.example?.trim()) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(option.example) as unknown;
+    return isPlainRecord(parsed) ? readSettingsPath(parsed, claudeConfigOptionPath(option)) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isManagedOnlyClaudeSetting(option: ClaudeCodeConfigOption): boolean {
+  const scope = option.scope?.trim().toLowerCase() ?? "";
+  return scope.startsWith("managed") && !scope.includes("any file");
+}
+
+function createProfileRoutingRuleDraftFromRule(rule: RouterRule): AddRoutingRuleDraft {
+  const draft = createRoutingRuleDraftFromRule(rule);
+  return draft.type === "condition"
+    ? draft
+    : {
+        ...createRoutingRuleDraft(),
+        enabled: rule.enabled,
+        name: rule.name
+      };
+}
+
+function ProfileFieldHint({ children }: { children: ReactNode }) {
+  return <div className="text-[11px] leading-4 text-amber-700 dark:text-amber-300">{children}</div>;
+}
+
+function firstProfileModelPlaceholder(providers: ReturnType<typeof profileModelProviderOptions>): string {
+  const provider = providers[0];
+  const model = provider?.models[0];
+  return provider && model ? `${provider.name}/${model}` : "";
+}
+
+function profileAllowedModelValues(providers: ReturnType<typeof profileModelProviderOptions>): string[] {
+  return uniqueStrings(providers.flatMap((provider) =>
+    provider.models.map((model) => normalizeProviderModelSelector(`${provider.name}/${model}`))
+  ).filter(Boolean));
+}
+
+function normalizeAllowedModelSelection(value: string[], allValues: string[]): string[] {
+  const selected = uniqueStrings(value.map(normalizeProviderModelSelector).filter(Boolean));
+  const allSelected = allValues.length > 0 &&
+    selected.length === allValues.length &&
+    selected.every((model) => allValues.includes(model));
+  return allSelected ? [] : selected;
+}
+
+function profileDraftValidation(
+  draft: AddProfileDraft,
+  botConfigs: BotGatewaySavedConfig[],
+  availableModelCount: number
+): Partial<Record<"allowedModels" | "bot" | "claudeSettings" | "defaultModel" | "env" | "handoff" | "kimiModel" | "models" | "name", string>> {
+  const issues: Partial<Record<"allowedModels" | "bot" | "claudeSettings" | "defaultModel" | "env" | "handoff" | "kimiModel" | "models" | "name", string>> = {};
+  if (!draft.name.trim()) {
+    issues.name = "Profile name is required.";
+  }
+  if (draft.agent !== "claude-design" && availableModelCount === 0) {
+    issues.models = "Configure at least one enabled provider model before saving an agent profile.";
+  }
+  if (draft.agent === "claude-code" && !draft.model.trim()) {
+    issues.defaultModel = "Default model is required.";
+  }
+  if (draft.availableModels.length > 0 && !draft.model.trim()) {
+    issues.allowedModels = "Default model is required when allowed model list is set.";
+  }
+  if (draft.agent === "kimi") {
+    if (!draft.model.trim()) {
+      issues.kimiModel = "Kimi model is required.";
+    }
+  }
+  if (draft.surface !== "cli" && draft.botEnabled && !botConfigs.some((config) => config.id === draft.botConfigId.trim())) {
+    issues.bot = "Select an existing bot or turn Bot off.";
+  }
+  if (draft.surface !== "cli" && draft.botEnabled && draft.botHandoffEnabled && !profileNumberDraftValid(draft.botHandoffIdleSeconds, 30, 86_400)) {
+    issues.handoff = "Idle seconds must be between 30 and 86400.";
+  }
+  if (!validateProfileEnvRows(draft.envRows)) {
+    issues.env = "Environment variable rows need valid keys.";
+  }
+  if (draft.agent === "claude-code" && !isClaudeSettingsDraftValid(draft.claudeSettingsText)) {
+    issues.claudeSettings = "Claude settings JSON must be an object.";
+  }
+  return issues;
+}
+
+function profileNumberDraftValid(value: string, min: number, max: number): boolean {
+  const numeric = Number(value.trim());
+  return Number.isFinite(numeric) && numeric >= min && numeric <= max;
+}
+
+function profileAppPathLabel(agent: ProfileConfig["agent"]): "APP_PATH" | undefined {
+  if (agent === "claude-code" || agent === "codex" || agent === "opencode" || agent === "workbuddy") {
+    return "APP_PATH";
+  }
+  return undefined;
+}
+
+function appPathFromDropEvent(event: ReactDragEvent<HTMLElement>): string {
+  for (const file of Array.from(event.dataTransfer.files ?? [])) {
+    const path = filePathFromDroppedFile(file);
+    if (path) {
+      return path;
+    }
+  }
+  return appPathFromDroppedText(
+    event.dataTransfer.getData("text/uri-list") ||
+    event.dataTransfer.getData("text/plain")
+  );
+}
+
+function filePathFromDroppedFile(file: File): string {
+  try {
+    const bridgedPath = window.ccr?.getFilePath?.(file)?.trim();
+    if (bridgedPath) {
+      return bridgedPath;
+    }
+  } catch {
+    // Fall through to Electron versions that still expose File.path.
+  }
+  const legacyPath = (file as File & { path?: string }).path?.trim();
+  return legacyPath || "";
+}
+
+function appPathFromDroppedText(value: string): string {
+  const line = value
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .find((item) => item && !item.startsWith("#")) || "";
+  if (!line) {
+    return "";
+  }
+  if (!line.startsWith("file:")) {
+    return line;
+  }
+  try {
+    const pathname = decodeURIComponent(new URL(line).pathname);
+    return /^\/[A-Za-z]:\//.test(pathname)
+      ? pathname.slice(1)
+      : pathname;
+  } catch {
+    return "";
+  }
 }
 
 const ADD_BOT_SELECT_VALUE = "__add_bot__";
@@ -912,6 +1954,7 @@ function BotGatewaySelectForm({
 }) {
   const t = useAppText();
   const formatError = useAppErrorText();
+  const requiredFieldLabel = t("Required");
   const options = [
     { label: t("None"), value: "none" },
     ...botConfigs.map((config) => ({ label: botGatewaySavedConfigLabel(config, t), value: config.id })),
@@ -1008,25 +2051,28 @@ function BotGatewaySelectForm({
       <div className="flex min-w-0 items-center justify-between gap-3">
         <span className="flex min-w-0 items-center gap-1.5">
           <span className="text-[12px] font-medium">{t("Bot")}</span>
-          <button
-            aria-label={botScopeHint}
-            className="group relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
-            type="button"
+          <Tooltip
+            content={botScopeHint}
+            contentClassName="w-[260px] max-w-[calc(100vw-64px)] whitespace-normal px-2 py-1.5 text-left font-medium leading-4 sm:w-[280px]"
+            side="bottom"
           >
-            <Info
-              aria-hidden="true"
-              className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
-            />
-            <span className="pointer-events-none invisible absolute left-0 top-full z-[90] mt-1.5 w-[260px] max-w-[calc(100vw-64px)] whitespace-normal rounded-md border border-border bg-popover px-2 py-1.5 text-left text-[11px] font-medium leading-4 text-popover-foreground opacity-0 shadow-card transition-opacity group-hover:visible group-hover:opacity-100 group-focus:visible group-focus:opacity-100 sm:w-[280px]">
-              {botScopeHint}
-            </span>
-          </button>
+            <button
+              aria-label={botScopeHint}
+              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
+              type="button"
+            >
+              <Info
+                aria-hidden="true"
+                className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+              />
+            </button>
+          </Tooltip>
         </span>
         <Toggle checked={draft.botEnabled} onChange={updateEnabled} />
       </div>
       {draft.botEnabled ? (
         <div className="mt-3 space-y-3 border-t border-border/70 pt-3">
-          <Field label={t("Select bot")}>
+          <Field label={t("Select bot")} requirement="required" requirementLabel={requiredFieldLabel}>
             <SelectControl onChange={updateBot} options={options} value={selectedValue} />
           </Field>
           {selectedBot ? (
@@ -1042,7 +2088,7 @@ function BotGatewaySelectForm({
                 </div>
                 {draft.botHandoffEnabled ? (
                   <div className="mt-3 grid grid-cols-1 gap-3 border-t border-border/70 pt-3 sm:grid-cols-2">
-                    <Field label={t("Idle seconds")}>
+                    <Field label={t("Idle seconds")} requirement="required" requirementLabel={requiredFieldLabel}>
                       <Input
                         min={30}
                         max={86400}
@@ -1066,6 +2112,9 @@ function BotGatewaySelectForm({
                       onRefresh={() => void scanHandoffTargets("bluetooth")}
                       onSelect={(botHandoffPhoneBluetoothTargets) => onChange({ botHandoffPhoneBluetoothTargets })}
                     />
+                    <div className="sm:col-span-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] leading-4 text-amber-700 dark:text-amber-300">
+                      {t("Phone presence targets are experimental and do not affect runtime handoff yet. Handoff currently uses screen lock and idle time.")}
+                    </div>
                   </div>
                 ) : null}
               </div>
@@ -1184,6 +2233,7 @@ function handoffTargetMatchesSavedValue(target: BotHandoffScanTarget, savedValue
 }
 
 export function AddProfileDialog({
+  agentOptions,
   botConfigs,
   canSubmit,
   draft,
@@ -1197,6 +2247,7 @@ export function AddProfileDialog({
   virtualModelProfiles = [],
   onSubmit
 }: {
+  agentOptions?: ProfileAgentOption[];
   botConfigs: BotGatewaySavedConfig[];
   canSubmit: boolean;
   draft: AddProfileDraft;
@@ -1211,9 +2262,11 @@ export function AddProfileDialog({
   onSubmit: () => Promise<boolean> | boolean | void;
 }) {
   const t = useAppText();
+  const { close, confirmation } = useDraftClose(draft, onClose);
 
   return (
-	    <Dialog onOpenChange={(open) => !open && !submitting && onClose()} open>
+    <>
+    <Dialog onOpenChange={(open) => !open && !submitting && close()} open>
       <DialogContent>
         <DialogHeader>
           <div>
@@ -1221,24 +2274,36 @@ export function AddProfileDialog({
           </div>
         </DialogHeader>
         <DialogBody>
-	          <AddProfileForm botConfigs={botConfigs} draft={draft} error={error} onChange={onChange} onCreateBot={onCreateBot} providers={providers} virtualModelProfiles={virtualModelProfiles} />
+          <AddProfileForm
+            agentOptions={agentOptions}
+            botConfigs={botConfigs}
+            draft={draft}
+            error={error}
+            mode={mode}
+            onChange={onChange}
+            onCreateBot={onCreateBot}
+            providers={providers}
+            virtualModelProfiles={virtualModelProfiles}
+          />
         </DialogBody>
         <DialogFooter>
           <div className="flex justify-end gap-2">
-	            <Button disabled={submitting} onClick={onClose} type="button" variant="outline">
-	              {t("Cancel")}
-	            </Button>
-	            <Button disabled={!canSubmit || submitting} onClick={() => void onSubmit()} type="button">
-		              {submitting || mode === "add" ? (
-		                <AnimatedIconSwap iconKey={submitting ? "submitting" : "add"}>
-		                  {submitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-		                </AnimatedIconSwap>
-		              ) : null}
-	              {mode === "edit" ? t("Save") : t("Add")}
-	            </Button>
+            <Button disabled={submitting} onClick={close} type="button" variant="outline">
+              {t("Cancel")}
+            </Button>
+            <Button disabled={!canSubmit || submitting} onClick={() => void onSubmit()} type="button">
+              {submitting || mode === "add" ? (
+                <AnimatedIconSwap iconKey={submitting ? "submitting" : "add"}>
+                  {submitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                </AnimatedIconSwap>
+              ) : null}
+              {mode === "edit" ? t("Save") : t("Add")}
+            </Button>
           </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    {confirmation}
+    </>
   );
 }

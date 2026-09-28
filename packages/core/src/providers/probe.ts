@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type {
   GatewayProviderConnectivityCheckReport,
   GatewayProviderConnectivityCheckRequest,
@@ -9,9 +9,14 @@ import type {
   GatewayProviderProbeProtocolResult,
   GatewayProviderProbeRequest,
   GatewayProviderProbeResult,
+  GatewayProviderCapabilityProtocol,
   GatewayProviderProtocol
 } from "@ccr/core/contracts/app";
-import { providerApiKeySafetyIssue } from "@ccr/core/providers/presets/index";
+import { codexDefaultBaseUrl, readCodexAuth } from "@ccr/core/agents/local-providers/codex";
+import { opencodeCatalogProtocolModelMap } from "@ccr/core/agents/local-providers/opencode";
+import { localAgentProviderApiKey } from "@ccr/core/agents/local-providers/shared";
+import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue } from "@ccr/core/providers/presets/index";
+import { getProviderCatalogModels } from "@ccr/core/providers/model-catalog";
 import { fetchWithSystemProxy } from "@ccr/core/proxy/system-proxy-fetch";
 import {
   compactProviderUrl,
@@ -24,11 +29,13 @@ import {
   newApiKeyUsageAccountConfig,
   type DetectedProviderKind
 } from "@ccr/core/providers/new-api";
+import { recordGatewayRequestLog } from "@ccr/core/observability/request-log-store";
+import { requestLogSampled } from "@ccr/core/observability/raw-trace-sync";
 
 type ModelSource = NonNullable<GatewayProviderProbeResult["modelSource"]>;
 
 type ParsedProviderUrl = ParsedProviderBaseUrl & {
-  hints: GatewayProviderProtocol[];
+  hints: GatewayProviderCapabilityProtocol[];
 };
 
 type FetchJsonResult = {
@@ -62,12 +69,24 @@ type ProbeCacheEntry = {
   result: GatewayProviderProbeResult;
 };
 
-const protocolOrder: GatewayProviderProtocol[] = [
+type GatewayProviderConnectivityCheckOptions = {
+  requestLog?: {
+    bodyCapturePolicy?: "all" | "errors" | "none";
+    enabled?: boolean;
+    maxBodyBytes?: number;
+    successSampleRate?: number;
+  };
+};
+
+const protocolOrder: GatewayProviderCapabilityProtocol[] = [
   "openai_responses",
   "openai_chat_completions",
   "anthropic_messages",
   "gemini_generate_content",
-  "gemini_interactions"
+  "gemini_interactions",
+  "openai_image_generations",
+  "openai_video_generations",
+  "xai_video_generations"
 ];
 
 const modelSourceOrder: ModelSource[] = ["openai", "anthropic", "gemini"];
@@ -77,8 +96,22 @@ const protocolProbeCacheMs = 60 * 1000;
 const connectivityProbeCacheMs = 15 * 1000;
 const failedProbeCacheMs = 10 * 1000;
 const maxProbeCacheEntries = 500;
+const codexOauthTokenEndpoint = "https://auth.openai.com/oauth/token";
+const codexOauthClientId = "app_EMoamEEZ73f0CkXaXp7hrann";
+const codexOauthDefaultScope = "openid profile email offline_access";
+const codexOauthRequiredScopes = ["api.connectors.read", "api.connectors.invoke"];
+const codexOauthDefaultTimeoutMs = 8_000;
+const codexProbeOauthCache = new Map<string, CodexProbeOauthRefreshResult>();
+const inFlightCodexProbeOauthRefreshes = new Map<string, Promise<CodexProbeOauthRefreshResult>>();
 const probeCache = new Map<string, ProbeCacheEntry>();
 const inFlightProbes = new Map<string, Promise<GatewayProviderProbeResult>>();
+
+type CodexProbeOauthRefreshResult = {
+  accessToken?: string;
+  accountId?: string;
+  expiresAtMs: number;
+  refreshToken?: string;
+};
 
 export async function probeGatewayProvider(request: GatewayProviderProbeRequest): Promise<GatewayProviderProbeResult> {
   pruneProbeCache();
@@ -132,11 +165,12 @@ export async function probeGatewayProviderCandidates(
 
     try {
       const probe = await probeGatewayProvider({
-        apiKey: mode === "connectivity" || mode === "models" ? request.apiKey : undefined,
+        apiKey: request.apiKey,
         baseUrl: candidate.baseUrl,
         forceRefresh: request.forceRefresh,
         mode,
         models: mode === "connectivity" ? request.models ?? [] : [],
+        providerPlugins: request.providerPlugins,
         protocols
       });
       results.push({ candidate, probe });
@@ -149,11 +183,14 @@ export async function probeGatewayProviderCandidates(
 }
 
 export async function checkGatewayProviderConnectivity(
-  request: GatewayProviderConnectivityCheckRequest
+  request: GatewayProviderConnectivityCheckRequest,
+  options: GatewayProviderConnectivityCheckOptions = {}
 ): Promise<GatewayProviderConnectivityCheckReport> {
   const models = uniqueStrings(request.models);
   const checks = await Promise.all(
     models.map(async (model) => {
+      const startedAtMs = Date.now();
+      const startedAt = new Date(startedAtMs).toISOString();
       try {
         const result = await probeGatewayProviderCandidates({
           apiKey: request.apiKey,
@@ -161,10 +198,12 @@ export async function checkGatewayProviderConnectivity(
           forceRefresh: request.forceRefresh,
           mode: "connectivity",
           models: [model],
+          providerPlugins: request.providerPlugins,
           protocols: request.protocols
         });
         if (!result) {
           return {
+            durationMs: Date.now() - startedAtMs,
             model,
             probe: undefined,
             report: {
@@ -172,12 +211,14 @@ export async function checkGatewayProviderConnectivity(
               model,
               protocols: [],
               supported: false
-            }
+            },
+            startedAt
           };
         }
 
         const supported = providerProbeHasSupportedProtocol(result.probe);
         return {
+          durationMs: Date.now() - startedAtMs,
           model,
           probe: result.probe,
           report: {
@@ -187,10 +228,12 @@ export async function checkGatewayProviderConnectivity(
             model,
             protocols: result.probe.protocols,
             supported
-          }
+          },
+          startedAt
         };
       } catch (error) {
         return {
+          durationMs: Date.now() - startedAtMs,
           model,
           probe: undefined,
           report: {
@@ -198,11 +241,15 @@ export async function checkGatewayProviderConnectivity(
             model,
             protocols: [],
             supported: false
-          }
+          },
+          startedAt
         };
       }
     })
   );
+  for (const check of checks) {
+    recordProviderConnectivityRequestLog(request, check, options.requestLog);
+  }
   const reports = checks.map((check) => check.report);
   return {
     failed: reports.filter((item) => !item.supported),
@@ -212,10 +259,86 @@ export async function checkGatewayProviderConnectivity(
   };
 }
 
+function recordProviderConnectivityRequestLog(
+  request: GatewayProviderConnectivityCheckRequest,
+  check: {
+    durationMs: number;
+    model: string;
+    report: GatewayProviderConnectivityCheckReport["results"][number];
+    startedAt: string;
+  },
+  options: GatewayProviderConnectivityCheckOptions["requestLog"]
+): void {
+  if (!options?.enabled) {
+    return;
+  }
+
+  const protocol = check.report.protocols.find((item) => item.supported) ?? check.report.protocols[0];
+  const candidate = protocol
+    ? request.candidates.find((item) => item.baseUrl === protocol.baseUrl)
+    : request.candidates[0];
+  const successful = check.report.supported;
+  const requestId = randomUUID();
+  if (successful && !requestLogSampled(requestId, options.successSampleRate ?? 1)) {
+    return;
+  }
+  const bodyCapturePolicy = options.bodyCapturePolicy ?? "all";
+  const captureBody = bodyCapturePolicy === "all" || (bodyCapturePolicy === "errors" && !successful);
+  const responseBodyText = JSON.stringify({
+    message: check.report.message,
+    protocols: check.report.protocols.map((item) => ({
+      endpoint: item.endpoint,
+      message: item.message,
+      protocol: item.protocol,
+      status: item.status,
+      supported: item.supported
+    })),
+    supported: check.report.supported
+  });
+
+  recordGatewayRequestLog({
+    bodyCapturePolicy,
+    captureBody,
+    client: "provider-connectivity-check",
+    completedAt: new Date(new Date(check.startedAt).getTime() + check.durationMs).toISOString(),
+    durationMs: check.durationMs,
+    error: successful ? undefined : check.report.message,
+    maxBodyBytes: options.maxBodyBytes,
+    method: "POST",
+    model: check.model,
+    path: "/__ccr/provider-connectivity",
+    providerName: providerProbeCandidateName(candidate),
+    providerProtocol: protocol?.protocol as GatewayProviderProtocol | undefined,
+    requestedModel: check.model,
+    requestBody: Buffer.from(JSON.stringify({
+      candidates: request.candidates.map((item) => ({
+        baseUrl: item.baseUrl,
+        name: providerProbeCandidateName(item),
+        protocols: item.protocols
+      })),
+      model: check.model,
+      protocols: request.protocols
+    })),
+    requestHeaders: {},
+    requestId,
+    resolvedModel: check.model,
+    responseBodyText,
+    responseHeaders: {},
+    startedAt: check.startedAt,
+    statusCode: protocol?.status ?? (successful ? 200 : 599),
+    url: protocol?.endpoint ?? candidate?.baseUrl ?? "provider-connectivity-check"
+  });
+}
+
+function providerProbeCandidateName(candidate: GatewayProviderProbeCandidate | undefined): string | undefined {
+  const value: unknown = candidate;
+  return isRecord(value) ? readString(value.name) : undefined;
+}
+
 async function resolveGatewayProviderProbe(request: GatewayProviderProbeRequest): Promise<GatewayProviderProbeResult> {
   const mode = request.mode ?? "protocols";
   const safetyIssue = providerApiKeySafetyIssue({
-    apiKey: mode === "connectivity" || mode === "models" ? request.apiKey : undefined,
+    apiKey: request.apiKey,
     baseUrl: request.baseUrl
   });
   if (safetyIssue) {
@@ -223,33 +346,61 @@ async function resolveGatewayProviderProbe(request: GatewayProviderProbeRequest)
   }
 
   const parsed = parseProviderUrl(request.baseUrl);
-  const protocols = uniqueProtocols(request.protocols ?? []);
+  const protocols = providerProbeProtocolsForBaseUrl(request.baseUrl, request.protocols ?? []);
   const typedModels = uniqueStrings(request.models ?? []);
   const modelProbe = mode !== "models" || request.skipModelDiscovery
     ? { models: [] }
-    : await probeModels(parsed, request.apiKey, protocols);
-  const models = (mode === "connectivity" || mode === "models") && modelProbe.models.length > 0
-    ? modelProbe.models
+    : await probeModels(parsed, request.apiKey, protocols, request.providerPlugins ?? []);
+  const openCodeProtocolModelMap = modelProbe.models.length > 0
+    ? opencodeCatalogProtocolModelMap(request.baseUrl, protocols)
+    : undefined;
+  const openCodeProtocolModels = openCodeProtocolModelMap
+    ? uniqueStrings(Object.values(openCodeProtocolModelMap).flatMap((models) => models ?? []))
+    : undefined;
+  const resolvedModelProbe = openCodeProtocolModels && openCodeProtocolModels.length > 0
+    ? { ...modelProbe, models: modelProbe.models.filter((model) => openCodeProtocolModels.includes(model)) }
+    : modelProbe;
+  const resolvedOpenCodeProtocolModelMap = openCodeProtocolModels && openCodeProtocolModels.length > 0
+    ? intersectProtocolModels(openCodeProtocolModelMap ?? {}, resolvedModelProbe.models)
+    : undefined;
+  const models = (mode === "connectivity" || mode === "models") && resolvedModelProbe.models.length > 0
+    ? resolvedModelProbe.models
     : typedModels;
-  const protocolResults = await probeProtocols(parsed, request.apiKey, models, protocols, mode);
-  const detectedProtocol = detectProtocol(parsed, protocolResults, modelProbe.source, protocols);
+  const protocolResults = await probeProtocols(parsed, request.apiKey, models, protocols, mode, request.providerPlugins ?? []);
+  const detectedProtocol = detectProtocol(parsed, protocolResults, resolvedModelProbe.source, protocols);
   const normalizedBaseUrl = detectedProtocol
-    ? resolveProbeBaseUrl(parsed, detectedProtocol, protocolResults, modelProbe)
+    ? resolveProbeBaseUrl(parsed, detectedProtocol, protocolResults, resolvedModelProbe)
     : parsed.normalizedInputBaseUrl;
   const detectedProvider = detectProvider(protocolResults);
   const account = detectedProvider === "new-api" ? newApiKeyUsageAccountConfig(normalizedBaseUrl) : undefined;
+  const catalog = getProviderCatalogModels({ baseUrl: normalizedBaseUrl });
 
   return {
     ...(account ? { account } : {}),
     capabilities: capabilitiesFromProtocolResults(protocolResults),
+    catalogModelMetadata: catalog.modelMetadata,
     ...(detectedProvider ? { detectedProvider } : {}),
     detectedProtocol,
-    modelDisplayNames: modelProbe.modelDisplayNames,
-    modelSource: modelProbe.source,
-    models: modelProbe.models,
+    modelDisplayNames: resolvedModelProbe.modelDisplayNames,
+    modelSource: resolvedModelProbe.source,
+    models: resolvedModelProbe.models,
     normalizedBaseUrl,
+    ...(resolvedOpenCodeProtocolModelMap ? { protocolModels: resolvedOpenCodeProtocolModelMap } : {}),
     protocols: protocolResults
   };
+}
+
+function intersectProtocolModels(
+  protocolModels: Partial<Record<GatewayProviderCapabilityProtocol, string[]>>,
+  discoveredModels: string[]
+): Partial<Record<GatewayProviderCapabilityProtocol, string[]>> {
+  const discovered = new Set(discoveredModels);
+  return Object.fromEntries(
+    Object.entries(protocolModels).map(([protocol, models]) => [
+      protocol,
+      (models ?? []).filter((model) => discovered.has(model))
+    ])
+  );
 }
 
 function providerProbeCacheKey(request: GatewayProviderProbeRequest): string {
@@ -258,7 +409,8 @@ function providerProbeCacheKey(request: GatewayProviderProbeRequest): string {
     baseUrl: request.baseUrl.trim(),
     mode: request.mode ?? "protocols",
     models: uniqueStrings(request.models ?? []),
-    protocols: uniqueProtocols(request.protocols ?? []),
+    providerPluginsHash: hashSensitiveValue(JSON.stringify(request.providerPlugins ?? [])),
+    protocols: providerProbeProtocolsForBaseUrl(request.baseUrl, request.protocols ?? []),
     skipModelDiscovery: request.skipModelDiscovery === true
   });
 }
@@ -314,11 +466,14 @@ function mergeProviderProbeCandidateResults(
   );
   const models = uniqueStrings(results.flatMap((result) => result.probe.models));
   const protocols = results.flatMap((result) => result.probe.protocols);
-  const detectedCapability = capabilities.find((capability) => capability.type === usable.probe.detectedProtocol) ?? capabilities[0];
+  const detectedCapability = capabilities.find((capability) => capability.type === usable.probe.detectedProtocol)
+    ?? capabilities.find((capability) => isChatProtocol(capability.type));
   const probe: GatewayProviderProbeResult = {
     ...usable.probe,
     capabilities,
-    detectedProtocol: detectedCapability?.type ?? usable.probe.detectedProtocol,
+    detectedProtocol: detectedCapability && isChatProtocol(detectedCapability.type)
+      ? detectedCapability.type
+      : usable.probe.detectedProtocol,
     models,
     normalizedBaseUrl: detectedCapability?.baseUrl ?? usable.probe.normalizedBaseUrl,
     protocols
@@ -338,7 +493,12 @@ function providerProbeCapabilities(
   candidate: GatewayProviderProbeCandidate,
   probe: GatewayProviderProbeResult
 ): GatewayProviderCapability[] {
-  const detectedCapabilities = mergeProviderCapabilities(probe.capabilities ?? []);
+  const allowedProtocols = new Set(providerProbeProtocolsForBaseUrl(
+    candidate.baseUrl,
+    (probe.capabilities ?? []).map((capability) => capability.type)
+  ));
+  const detectedCapabilities = mergeProviderCapabilities(probe.capabilities ?? [])
+    .filter((capability) => allowedProtocols.has(capability.type));
   const presetCapabilities = providerProbePresetCapabilities(candidate);
   return mergeProviderCapabilities(detectedCapabilities, presetCapabilities);
 }
@@ -348,16 +508,29 @@ function providerProbePresetCapabilities(candidate: GatewayProviderProbeCandidat
     return [];
   }
 
-  return uniqueProtocols(candidate.declaredProtocols ?? []).map((type) => ({
+  return providerProbeProtocolsForBaseUrl(candidate.baseUrl, candidate.declaredProtocols ?? []).map((type) => ({
     baseUrl: providerProbeCandidateBaseUrlForProtocol(candidate.baseUrl, type),
     source: "preset" as const,
     type
   }));
 }
 
-function providerProbeCandidateBaseUrlForProtocol(baseUrl: string, protocol: GatewayProviderProtocol): string {
+function providerProbeProtocolsForBaseUrl(
+  baseUrl: string,
+  requestedProtocols: GatewayProviderCapabilityProtocol[]
+): GatewayProviderCapabilityProtocol[] {
+  if (findProviderPresetByBaseUrl(baseUrl)?.id === "nvidia") {
+    // NVIDIA NIM's official OpenAI-compatible endpoint only exposes Chat
+    // Completions. Never probe /responses: an auth-only response can otherwise
+    // be mistaken for protocol support and persisted as a false capability.
+    return ["openai_chat_completions"];
+  }
+  return uniqueProtocols(requestedProtocols);
+}
+
+function providerProbeCandidateBaseUrlForProtocol(baseUrl: string, protocol: GatewayProviderCapabilityProtocol): string {
   try {
-    return providerBaseUrlForProtocol(parseProviderBaseUrl(baseUrl), protocol);
+    return providerBaseUrlForCapability(parseProviderBaseUrl(baseUrl), protocol);
   } catch {
     return baseUrl.trim();
   }
@@ -402,13 +575,15 @@ function capabilitiesFromProtocolResults(results: GatewayProviderProbeProtocolRe
 async function probeModels(
   parsed: ParsedProviderUrl,
   apiKey: string | undefined,
-  allowedProtocols: GatewayProviderProtocol[] = []
+  allowedProtocols: GatewayProviderCapabilityProtocol[] = [],
+  providerPlugins: unknown[] = []
 ): Promise<ModelProbeResult> {
   for (const source of orderedModelSources(parsed, allowedProtocols)) {
-    const result = await fetchModelsForSource(parsed, source, apiKey);
+    const result = await fetchModelsForSource(parsed, source, apiKey, providerPlugins);
     if (result.models.length > 0) {
       return {
         baseUrl: result.baseUrl,
+        modelDisplayNames: result.modelDisplayNames,
         models: result.models,
         source
       };
@@ -420,15 +595,27 @@ async function probeModels(
   };
 }
 
-async function fetchModelsForSource(parsed: ParsedProviderUrl, source: ModelSource, apiKey: string | undefined): Promise<ModelFetchResult> {
+async function fetchModelsForSource(
+  parsed: ParsedProviderUrl,
+  source: ModelSource,
+  apiKey: string | undefined,
+  providerPlugins: unknown[] = []
+): Promise<ModelFetchResult> {
   if (source === "openai") {
     for (const baseUrl of parsed.openaiBaseUrlCandidates) {
-      const result = await requestJson(`${baseUrl}/models`, {
-        headers: {
-          ...openAiHeaders(apiKey)
+      const request = await providerProbeAuthRequest(
+        `${baseUrl}/models`,
+        {
+          headers: {
+            ...openAiHeaders(apiKey)
+          },
+          method: "GET"
         },
-        method: "GET"
-      });
+        providerPlugins,
+        apiKey,
+        { model: "" }
+      );
+      const result = await requestJson(request.url, request.init);
       const modelList = parseModelList(result.payload, "openai");
       if (modelList.models.length > 0) {
         return {
@@ -445,12 +632,19 @@ async function fetchModelsForSource(parsed: ParsedProviderUrl, source: ModelSour
 
   if (source === "anthropic") {
     for (const baseUrl of parsed.anthropicBaseUrlCandidates) {
-      const result = await requestJson(`${baseUrl}/v1/models`, {
-        headers: {
-          ...anthropicHeaders(apiKey)
+      const request = await providerProbeAuthRequest(
+        `${baseUrl}/v1/models`,
+        {
+          headers: {
+            ...anthropicHeaders(apiKey)
+          },
+          method: "GET"
         },
-        method: "GET"
-      });
+        providerPlugins,
+        apiKey,
+        { model: "" }
+      );
+      const result = await requestJson(request.url, request.init);
       const modelList = parseModelList(result.payload, "anthropic");
       if (modelList.models.length > 0) {
         return {
@@ -465,12 +659,19 @@ async function fetchModelsForSource(parsed: ParsedProviderUrl, source: ModelSour
     };
   }
 
-  const result = await requestJson(withGeminiKey(`${parsed.geminiBaseUrl}/v1beta/models`, apiKey), {
-    headers: {
-      ...geminiHeaders(apiKey)
+  const request = await providerProbeAuthRequest(
+    withGeminiKey(geminiApiEndpoint(parsed.geminiBaseUrl, "models"), apiKey),
+    {
+      headers: {
+        ...geminiHeaders(apiKey)
+      },
+      method: "GET"
     },
-    method: "GET"
-  });
+    providerPlugins,
+    apiKey,
+    { model: "" }
+  );
+  const result = await requestJson(request.url, request.init);
   return {
     baseUrl: parsed.geminiBaseUrl,
     ...parseModelList(result.payload, "gemini")
@@ -481,15 +682,16 @@ async function probeProtocols(
   parsed: ParsedProviderUrl,
   apiKey: string | undefined,
   models: string[],
-  allowedProtocols: GatewayProviderProtocol[] = [],
-  mode: NonNullable<GatewayProviderProbeRequest["mode"]> = "protocols"
+  allowedProtocols: GatewayProviderCapabilityProtocol[] = [],
+  mode: NonNullable<GatewayProviderProbeRequest["mode"]> = "protocols",
+  providerPlugins: unknown[] = []
 ): Promise<GatewayProviderProbeProtocolResult[]> {
   const results: GatewayProviderProbeProtocolResult[] = [];
 
   for (const protocol of orderedProtocols(parsed, allowedProtocols)) {
     results.push(
-      mode === "connectivity"
-        ? await probeProtocolConnectivity(parsed, apiKey, models, protocol)
+      mode === "connectivity" && isChatProtocol(protocol)
+        ? await probeProtocolConnectivity(parsed, apiKey, models, protocol, providerPlugins)
         : await probeProtocolSupport(parsed, apiKey, protocol)
     );
   }
@@ -500,10 +702,10 @@ async function probeProtocols(
 async function probeProtocolSupport(
   parsed: ParsedProviderUrl,
   apiKey: string | undefined,
-  protocol: GatewayProviderProtocol
+  protocol: GatewayProviderCapabilityProtocol
 ): Promise<GatewayProviderProbeProtocolResult> {
   const endpoints = endpointsForProtocol(parsed, protocol, undefined);
-  const endpoint = endpoints[0]?.endpoint ?? providerBaseUrlForProtocol(parsed, protocol);
+  const endpoint = endpoints[0]?.endpoint ?? providerBaseUrlForCapability(parsed, protocol);
   let firstResult: GatewayProviderProbeProtocolResult | undefined;
 
   for (const candidate of endpoints) {
@@ -538,11 +740,12 @@ async function probeProtocolConnectivity(
   parsed: ParsedProviderUrl,
   apiKey: string | undefined,
   models: string[],
-  protocol: GatewayProviderProtocol
+  protocol: GatewayProviderCapabilityProtocol,
+  providerPlugins: unknown[] = []
 ): Promise<GatewayProviderProbeProtocolResult> {
   const model = pickProbeModel(models, protocol);
   const endpoints = endpointsForProtocol(parsed, protocol, model);
-  const endpoint = endpoints[0]?.endpoint ?? providerBaseUrlForProtocol(parsed, protocol);
+  const endpoint = endpoints[0]?.endpoint ?? providerBaseUrlForCapability(parsed, protocol);
 
   if (!model) {
     return {
@@ -556,7 +759,14 @@ async function probeProtocolConnectivity(
   let firstResult: GatewayProviderProbeProtocolResult | undefined;
 
   for (const candidate of endpoints) {
-    const result = await requestJson(candidate.endpoint, requestForProtocol(protocol, model, apiKey));
+    const request = await providerProbeAuthRequest(
+      candidate.endpoint,
+      requestForProtocol(protocol, model, apiKey),
+      providerPlugins,
+      apiKey,
+      { model }
+    );
+    const result = await requestJson(request.url, request.init);
     const message = readResponseMessage(result);
     const supported = isProtocolSupported(result.status, message, protocol);
     const probeResult = {
@@ -583,7 +793,7 @@ async function probeProtocolConnectivity(
   };
 }
 
-function requestForProtocol(protocol: GatewayProviderProtocol, model: string, apiKey: string | undefined): RequestInit {
+function requestForProtocol(protocol: GatewayProviderCapabilityProtocol, model: string, apiKey: string | undefined): RequestInit {
   if (protocol === "openai_responses") {
     return {
       body: JSON.stringify({
@@ -665,15 +875,515 @@ function requestForProtocol(protocol: GatewayProviderProtocol, model: string, ap
   };
 }
 
-function requestForProtocolSupport(protocol: GatewayProviderProtocol, apiKey: string | undefined): RequestInit {
+function requestForProtocolSupport(protocol: GatewayProviderCapabilityProtocol, apiKey: string | undefined): RequestInit {
   return {
-    body: JSON.stringify({}),
+    body: JSON.stringify(mediaProbeBody(protocol)),
     headers: {
       "content-type": "application/json",
       ...headersForProtocol(protocol, apiKey)
     },
     method: "POST"
   };
+}
+
+function mediaProbeBody(protocol: GatewayProviderCapabilityProtocol): Record<string, unknown> {
+  if (protocol === "openai_image_generations") {
+    return {
+      model: "__ccr_media_protocol_probe__",
+      n: 0,
+      prompt: ""
+    };
+  }
+  if (protocol === "openai_video_generations" || protocol === "xai_video_generations") {
+    return {
+      duration: 0,
+      model: "__ccr_media_protocol_probe__",
+      prompt: ""
+    };
+  }
+  return {};
+}
+
+async function providerProbeAuthRequest(
+  url: string,
+  init: RequestInit,
+  providerPlugins: unknown[],
+  apiKey: string | undefined,
+  context: { model: string }
+): Promise<{ init: RequestInit; url: string }> {
+  const auth = providerPlugins
+    .map(providerPluginAuth)
+    .find((item): item is Record<string, unknown> => Boolean(item));
+  let codexOauth = providerPlugins
+    .map(providerPluginCodexOauth)
+    .find((item): item is Record<string, unknown> => Boolean(item));
+  let requestTransform = providerPlugins
+    .map(providerPluginRequest)
+    .find((item): item is Record<string, unknown> => Boolean(item));
+  const liveCodexAuth = providerProbeLiveCodexOauth(url, apiKey);
+  if (codexOauth && liveCodexAuth) {
+    codexOauth = {
+      ...codexOauth,
+      ...liveCodexAuth.codexOauth
+    };
+  } else {
+    codexOauth ??= liveCodexAuth?.codexOauth;
+  }
+  requestTransform ??= liveCodexAuth?.request;
+  if (codexOauth && apiKey === localAgentProviderApiKey && isCodexProbeEndpoint(url)) {
+    requestTransform = withCodexProbeBackendRequestTransform(requestTransform);
+  }
+  let request = { init, url };
+
+  if (auth) {
+    request = providerProbeStaticAuthRequest(request.url, request.init, auth);
+  }
+
+  if (codexOauth) {
+    request = await providerProbeCodexOauthRequest(request.url, request.init, codexOauth);
+  }
+
+  if (liveCodexAuth?.isFedrampAccount) {
+    const headers = new Headers(request.init.headers);
+    headers.set("X-OpenAI-Fedramp", "true");
+    request = {
+      ...request,
+      init: {
+        ...request.init,
+        headers
+      }
+    };
+  }
+
+  if (requestTransform) {
+    request = providerProbeRequestTransformRequest(request.url, request.init, requestTransform, context);
+  }
+
+  return request;
+}
+
+function providerProbeLiveCodexOauth(
+  url: string,
+  apiKey: string | undefined
+): { codexOauth: Record<string, unknown>; isFedrampAccount?: boolean; request: Record<string, unknown> } | undefined {
+  if (apiKey !== localAgentProviderApiKey || !isCodexProbeEndpoint(url)) {
+    return undefined;
+  }
+
+  const auth = readCodexAuth();
+  if (!auth?.accessToken && !auth?.refreshToken) {
+    return undefined;
+  }
+  return {
+    codexOauth: {
+      ...(auth.accessToken ? { accessToken: auth.accessToken } : {}),
+      ...(auth.accountId ? { accountId: auth.accountId } : {}),
+      refreshIfMissingAccessToken: true,
+      ...(auth.refreshToken ? { refreshToken: auth.refreshToken } : {}),
+      required: true
+    },
+    isFedrampAccount: auth.isFedrampAccount,
+    request: codexProbeBackendRequestTransform()
+  };
+}
+
+function isCodexProbeEndpoint(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const codexBase = new URL(codexDefaultBaseUrl);
+    return parsed.origin === codexBase.origin &&
+      parsed.pathname.toLowerCase().startsWith(codexBase.pathname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+function providerProbeStaticAuthRequest(
+  url: string,
+  init: RequestInit,
+  auth: Record<string, unknown>
+): { init: RequestInit; url: string } {
+  const headers = new Headers(init.headers);
+  for (const header of readStringArray(auth.removeHeaders)) {
+    headers.delete(header);
+  }
+  for (const [name, value] of Object.entries(isRecord(auth.headers) ? auth.headers : {})) {
+    const headerValue = readString(value);
+    if (headerValue) {
+      headers.set(name, headerValue);
+    }
+  }
+
+  const nextUrl = new URL(url);
+  for (const [name, value] of Object.entries(isRecord(auth.query) ? auth.query : {})) {
+    const queryValue = readString(value);
+    if (queryValue) {
+      nextUrl.searchParams.set(name, queryValue);
+    }
+  }
+
+  return {
+    init: {
+      ...init,
+      headers
+    },
+    url: nextUrl.toString()
+  };
+}
+
+function providerProbeRequestTransformRequest(
+  url: string,
+  init: RequestInit,
+  requestTransform: Record<string, unknown>,
+  context: { model: string }
+): { init: RequestInit; url: string } {
+  const headers = new Headers(init.headers);
+  for (const [name, value] of Object.entries(isRecord(requestTransform.headers) ? requestTransform.headers : {})) {
+    const headerValue = renderProviderProbeTemplate(readString(value), context);
+    if (headerValue) {
+      headers.set(name, headerValue);
+    }
+  }
+
+  const nextUrl = new URL(url);
+  for (const [name, value] of Object.entries(isRecord(requestTransform.query) ? requestTransform.query : {})) {
+    const queryValue = renderProviderProbeTemplate(readString(value), context);
+    if (queryValue) {
+      nextUrl.searchParams.set(name, queryValue);
+    }
+  }
+
+  const transformedBody = providerProbeTransformedJsonBody(init.body, requestTransform, context);
+  return {
+    init: {
+      ...init,
+      body: transformedBody ?? init.body,
+      headers
+    },
+    url: nextUrl.toString()
+  };
+}
+
+function providerProbeTransformedJsonBody(
+  body: BodyInit | null | undefined,
+  requestTransform: Record<string, unknown>,
+  context: { model: string }
+): string | undefined {
+  const payload = requestBodyJsonObject(body);
+  if (!payload) {
+    return undefined;
+  }
+
+  let changed = false;
+  for (const path of readStringArray(requestTransform.bodyRemove)) {
+    changed = deleteJsonPath(payload, path) || changed;
+  }
+  const bodyMerge = isRecord(requestTransform.bodyMerge) ? requestTransform.bodyMerge : undefined;
+  if (bodyMerge) {
+    const renderedMerge = renderJsonTemplateValues(bodyMerge, context);
+    if (isRecord(renderedMerge)) {
+      mergeJsonObject(payload, renderedMerge);
+      changed = true;
+    }
+  }
+  const bodySet = isRecord(requestTransform.bodySet) ? requestTransform.bodySet : undefined;
+  if (bodySet) {
+    for (const [path, value] of Object.entries(bodySet)) {
+      setJsonPath(payload, path, renderJsonTemplateValues(value, context));
+      changed = true;
+    }
+  }
+
+  return changed ? JSON.stringify(payload) : undefined;
+}
+
+function requestBodyJsonObject(body: BodyInit | null | undefined): Record<string, unknown> | undefined {
+  if (typeof body !== "string") {
+    return undefined;
+  }
+  const payload = parseJson(body);
+  return isRecord(payload) ? { ...payload } : undefined;
+}
+
+function deleteJsonPath(target: Record<string, unknown>, path: string): boolean {
+  const parts = jsonPathParts(path);
+  if (parts.length === 0) {
+    return false;
+  }
+  const parent = jsonPathParent(target, parts);
+  const key = parts[parts.length - 1];
+  if (!parent || key === undefined || !Object.prototype.hasOwnProperty.call(parent, key)) {
+    return false;
+  }
+  delete parent[key];
+  return true;
+}
+
+function setJsonPath(target: Record<string, unknown>, path: string, value: unknown): void {
+  const parts = jsonPathParts(path);
+  if (parts.length === 0) {
+    return;
+  }
+  let current = target;
+  for (const part of parts.slice(0, -1)) {
+    const next = current[part];
+    if (!isRecord(next)) {
+      current[part] = {};
+    }
+    current = current[part] as Record<string, unknown>;
+  }
+  const key = parts[parts.length - 1];
+  if (key !== undefined) {
+    current[key] = value;
+  }
+}
+
+function jsonPathParent(target: Record<string, unknown>, parts: string[]): Record<string, unknown> | undefined {
+  let current: unknown = target;
+  for (const part of parts.slice(0, -1)) {
+    if (!isRecord(current)) {
+      return undefined;
+    }
+    current = current[part];
+  }
+  return isRecord(current) ? current : undefined;
+}
+
+function jsonPathParts(path: string): string[] {
+  return path.split(".").map((part) => part.trim()).filter(Boolean);
+}
+
+function mergeJsonObject(target: Record<string, unknown>, source: Record<string, unknown>): void {
+  for (const [key, value] of Object.entries(source)) {
+    if (isRecord(value) && isRecord(target[key])) {
+      mergeJsonObject(target[key], value);
+    } else {
+      target[key] = value;
+    }
+  }
+}
+
+function renderJsonTemplateValues(value: unknown, context: { model: string }): unknown {
+  if (typeof value === "string") {
+    return renderProviderProbeTemplate(value, context);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => renderJsonTemplateValues(item, context));
+  }
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, renderJsonTemplateValues(item, context)])
+    );
+  }
+  return value;
+}
+
+function renderProviderProbeTemplate(value: string | undefined, context: { model: string }): string | undefined {
+  return value
+    ?.split("{{ model }}").join(context.model)
+    .split("{{ request.body.model }}").join(context.model)
+    .split("{{ upstreamRequest.body.model }}").join(context.model);
+}
+
+function codexProbeBackendRequestTransform(): Record<string, unknown> {
+  return withCodexProbeBackendRequestTransform();
+}
+
+function withCodexProbeBackendRequestTransform(requestTransform: Record<string, unknown> = {}): Record<string, unknown> {
+  const bodyRemove = readStringArray(requestTransform.bodyRemove);
+  return {
+    ...requestTransform,
+    bodyRemove: uniqueStrings([...bodyRemove, "max_output_tokens", "stop"])
+  };
+}
+
+async function providerProbeCodexOauthRequest(
+  url: string,
+  init: RequestInit,
+  codexOauth: Record<string, unknown>
+): Promise<{ init: RequestInit; url: string }> {
+  const requiredScopes = codexRequiredScopes(codexOauth.requiredScopes);
+  const scope = codexOauthScope(readString(codexOauth.scope), requiredScopes);
+  let accessToken = readString(codexOauth.accessToken) || readString(codexOauth.access_token);
+  let refreshToken = readString(codexOauth.refreshToken) || readString(codexOauth.refresh_token);
+  let accountId = readString(codexOauth.accountId) || readString(codexOauth.account_id);
+
+  if (refreshToken && shouldRefreshCodexProbeToken(accessToken, codexOauth, requiredScopes)) {
+    const refreshed = await refreshCodexProbeAccessToken(codexOauth, refreshToken, scope);
+    accessToken = refreshed.accessToken || accessToken;
+    refreshToken = refreshed.refreshToken || refreshToken;
+    accountId = refreshed.accountId || accountId;
+  }
+
+  const required = readBoolean(codexOauth.required) !== false;
+  if (!accessToken) {
+    if (required) {
+      throw new Error("Codex OAuth access token is required but missing.");
+    }
+    return { init, url };
+  }
+
+  const missingScopes = codexMissingRequiredScopes(accessToken, requiredScopes);
+  if (missingScopes.length > 0 && required) {
+    throw new Error(`Codex OAuth access token is missing required scopes: ${missingScopes.join(", ")}.`);
+  }
+
+  const headers = new Headers(init.headers);
+  const authHeader = readString(codexOauth.authHeader) || "authorization";
+  const authScheme = readString(codexOauth.authScheme) || "Bearer";
+  headers.set(authHeader, authScheme ? `${authScheme} ${accessToken}` : accessToken);
+
+  accountId = accountId || codexAccountIdFromToken(accessToken);
+  if (accountId) {
+    headers.set("ChatGPT-Account-Id", accountId);
+  }
+
+  return {
+    init: {
+      ...init,
+      headers
+    },
+    url
+  };
+}
+
+function providerPluginAuth(plugin: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(plugin) || !isRecord(plugin.auth)) {
+    return undefined;
+  }
+  return plugin.auth;
+}
+
+function providerPluginCodexOauth(plugin: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(plugin) || !isRecord(plugin.codexOauth)) {
+    return undefined;
+  }
+  return plugin.codexOauth;
+}
+
+function providerPluginRequest(plugin: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(plugin) || !isRecord(plugin.request)) {
+    return undefined;
+  }
+  return plugin.request;
+}
+
+function readStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map(readString).filter((item): item is string => Boolean(item))
+    : [];
+}
+
+async function refreshCodexProbeAccessToken(
+  codexOauth: Record<string, unknown>,
+  refreshToken: string,
+  scope: string
+): Promise<CodexProbeOauthRefreshResult> {
+  const tokenEndpoint =
+    readString(codexOauth.tokenEndpoint) ||
+    readString(process.env.CODEX_REFRESH_TOKEN_URL_OVERRIDE) ||
+    codexOauthTokenEndpoint;
+  const clientId = readString(codexOauth.clientId) || codexOauthClientId;
+  const cacheKey = [
+    tokenEndpoint,
+    clientId,
+    scope,
+    hashSensitiveValue(refreshToken)
+  ].join("\n");
+  const now = Date.now();
+  const cached = codexProbeOauthCache.get(cacheKey);
+  if (cached?.accessToken && cached.expiresAtMs > now + 60_000) {
+    return cached;
+  }
+  const inFlight = inFlightCodexProbeOauthRefreshes.get(cacheKey);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const refresh = refreshCodexProbeAccessTokenUncached(codexOauth, refreshToken, scope, tokenEndpoint, clientId, now)
+    .finally(() => {
+      if (inFlightCodexProbeOauthRefreshes.get(cacheKey) === refresh) {
+        inFlightCodexProbeOauthRefreshes.delete(cacheKey);
+      }
+    });
+  inFlightCodexProbeOauthRefreshes.set(cacheKey, refresh);
+  return refresh;
+}
+
+async function refreshCodexProbeAccessTokenUncached(
+  codexOauth: Record<string, unknown>,
+  refreshToken: string,
+  scope: string,
+  tokenEndpoint: string,
+  clientId: string,
+  now: number
+): Promise<CodexProbeOauthRefreshResult> {
+  const timeoutMs = Math.max(1, Number(codexOauth.timeoutMs) || codexOauthDefaultTimeoutMs);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetchWithSystemProxy(tokenEndpoint, {
+      body: JSON.stringify({
+        client_id: clientId,
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+        scope
+      }),
+      headers: {
+        "content-type": "application/json"
+      },
+      method: "POST",
+      signal: controller.signal
+    });
+    const text = await response.text();
+    const payload = parseJson(text);
+    if (!response.ok) {
+      throw new Error(`Codex OAuth token refresh returned HTTP ${response.status}${codexTokenRefreshErrorMessage(payload, text)}`);
+    }
+    if (!isRecord(payload)) {
+      throw new Error("Codex OAuth token refresh returned an invalid JSON payload.");
+    }
+
+    const accessToken = readString(payload.access_token) || readString(payload.accessToken);
+    if (!accessToken) {
+      throw new Error("Codex OAuth token refresh did not return an access token.");
+    }
+
+    const result = {
+      accessToken,
+      accountId: readString(payload.account_id) || readString(payload.accountId) || codexAccountIdFromToken(accessToken),
+      expiresAtMs: codexTokenExpiresAtMs(accessToken) ?? now + 30 * 60 * 1000,
+      refreshToken: readString(payload.refresh_token) || readString(payload.refreshToken) || refreshToken
+    };
+    codexProbeOauthCache.set([
+      tokenEndpoint,
+      clientId,
+      scope,
+      hashSensitiveValue(refreshToken)
+    ].join("\n"), result);
+    pruneCodexProbeOauthCache();
+    return result;
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`Codex OAuth token refresh timed out after ${timeoutMs}ms.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function pruneCodexProbeOauthCache(): void {
+  if (codexProbeOauthCache.size <= maxProbeCacheEntries) {
+    return;
+  }
+  const oldestEntries = [...codexProbeOauthCache.entries()]
+    .sort(([, left], [, right]) => left.expiresAtMs - right.expiresAtMs)
+    .slice(0, codexProbeOauthCache.size - maxProbeCacheEntries);
+  for (const [key] of oldestEntries) {
+    codexProbeOauthCache.delete(key);
+  }
 }
 
 async function requestJson(url: string, init: RequestInit): Promise<FetchJsonResult> {
@@ -728,7 +1438,7 @@ function parseProviderUrl(value: string): ParsedProviderUrl {
 
 function endpointsForProtocol(
   parsed: ParsedProviderUrl,
-  protocol: GatewayProviderProtocol,
+  protocol: GatewayProviderCapabilityProtocol,
   model: string | undefined
 ): ProtocolEndpoint[] {
   if (protocol === "openai_responses") {
@@ -762,58 +1472,97 @@ function endpointsForProtocol(
     return [
       {
         baseUrl: parsed.geminiBaseUrl,
-        endpoint: `${parsed.geminiBaseUrl}/v1beta/interactions`
+        endpoint: geminiApiEndpoint(parsed.geminiBaseUrl, "interactions", "v1beta")
       },
       {
         baseUrl: parsed.geminiBaseUrl,
-        endpoint: `${parsed.geminiBaseUrl}/v1/interactions`
+        endpoint: geminiApiEndpoint(parsed.geminiBaseUrl, "interactions", "v1")
       }
     ];
+  }
+
+  if (protocol === "openai_image_generations") {
+    return parsed.openaiBaseUrlCandidates.map((baseUrl) => ({
+      baseUrl,
+      endpoint: `${baseUrl}/images/generations`
+    }));
+  }
+
+  if (protocol === "openai_video_generations" || protocol === "xai_video_generations") {
+    return parsed.openaiBaseUrlCandidates.map((baseUrl) => ({
+      baseUrl,
+      endpoint: `${baseUrl}/videos/generations`
+    }));
   }
 
   const encodedModel = encodeURIComponent(stripGeminiModelPrefix(model || "model"));
   return [
     {
       baseUrl: parsed.geminiBaseUrl,
-      endpoint: `${parsed.geminiBaseUrl}/v1beta/models/${encodedModel}:generateContent`
+      endpoint: geminiApiEndpoint(parsed.geminiBaseUrl, `models/${encodedModel}:generateContent`)
     }
   ];
 }
 
+function geminiApiEndpoint(baseUrl: string, path: string, defaultVersion: "v1" | "v1beta" = "v1beta"): string {
+  const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
+  if (/\/v1(?:beta)?$/i.test(normalizedBaseUrl)) {
+    return `${normalizedBaseUrl}/${path}`;
+  }
+  return `${normalizedBaseUrl}/${defaultVersion}/${path}`;
+}
+
 function withGeminiKey(url: string, apiKey: string | undefined): string {
-  if (!apiKey) {
+  const key = apiKeyCredentialValue(apiKey);
+  if (!key) {
     return url;
   }
 
   const parsed = new URL(url);
-  parsed.searchParams.set("key", apiKey);
+  parsed.searchParams.set("key", key);
   return compactProviderUrl(parsed);
 }
 
 function openAiHeaders(apiKey: string | undefined): Record<string, string> {
-  return apiKey
-    ? {
-        authorization: `Bearer ${apiKey}`
-      }
-    : {};
+  return authorizationHeaders(apiKey);
 }
 
 function anthropicHeaders(apiKey: string | undefined): Record<string, string> {
+  const key = apiKeyCredentialValue(apiKey);
   return {
     "anthropic-version": "2023-06-01",
-    ...(apiKey ? { "x-api-key": apiKey } : {})
+    ...authorizationHeaders(apiKey),
+    ...(key ? { "x-api-key": key } : {})
   };
 }
 
 function geminiHeaders(apiKey: string | undefined): Record<string, string> {
-  return apiKey
-    ? {
-        "x-goog-api-key": apiKey
-      }
-    : {};
+  const key = apiKeyCredentialValue(apiKey);
+  return {
+    ...(key?.startsWith("AIza") ? {} : authorizationHeaders(apiKey)),
+    ...(key ? { "x-goog-api-key": key } : {})
+  };
 }
 
-function headersForProtocol(protocol: GatewayProviderProtocol, apiKey: string | undefined): Record<string, string> {
+function authorizationHeaders(apiKey: string | undefined): Record<string, string> {
+  const trimmed = apiKey?.trim();
+  if (!trimmed) {
+    return {};
+  }
+  return {
+    authorization: /^Bearer\s+/i.test(trimmed) ? trimmed : `Bearer ${trimmed}`
+  };
+}
+
+function apiKeyCredentialValue(apiKey: string | undefined): string | undefined {
+  const trimmed = apiKey?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  return trimmed.replace(/^Bearer\s+/i, "");
+}
+
+function headersForProtocol(protocol: GatewayProviderCapabilityProtocol, apiKey: string | undefined): Record<string, string> {
   if (protocol === "anthropic_messages") {
     return anthropicHeaders(apiKey);
   }
@@ -898,7 +1647,7 @@ function stripGeminiModelPrefix(value: string): string {
   return value.replace(/^models\//i, "");
 }
 
-function pickProbeModel(models: string[], protocol: GatewayProviderProtocol): string | undefined {
+function pickProbeModel(models: string[], protocol: GatewayProviderCapabilityProtocol): string | undefined {
   const candidates = uniqueStrings(models);
   if (candidates.length === 0) {
     return undefined;
@@ -922,8 +1671,8 @@ function pickProbeModel(models: string[], protocol: GatewayProviderProtocol): st
 
 function orderedProtocols(
   parsed: ParsedProviderUrl,
-  allowedProtocols: GatewayProviderProtocol[] = []
-): GatewayProviderProtocol[] {
+  allowedProtocols: GatewayProviderCapabilityProtocol[] = []
+): GatewayProviderCapabilityProtocol[] {
   const ordered = uniqueProtocols([...parsed.hints, ...protocolOrder]);
   if (allowedProtocols.length === 0) {
     return ordered;
@@ -934,7 +1683,7 @@ function orderedProtocols(
 
 function orderedModelSources(
   parsed: ParsedProviderUrl,
-  allowedProtocols: GatewayProviderProtocol[] = []
+  allowedProtocols: GatewayProviderCapabilityProtocol[] = []
 ): ModelSource[] {
   const allowedSources = allowedProtocols.length > 0
     ? new Set(allowedProtocols.map(protocolModelSource))
@@ -949,7 +1698,7 @@ function orderedModelSources(
   return ordered.filter((source) => allowedSources.has(source));
 }
 
-function protocolModelSource(protocol: GatewayProviderProtocol): ModelSource {
+function protocolModelSource(protocol: GatewayProviderCapabilityProtocol): ModelSource {
   if (protocol === "anthropic_messages") {
     return "anthropic";
   }
@@ -959,15 +1708,27 @@ function protocolModelSource(protocol: GatewayProviderProtocol): ModelSource {
   return "openai";
 }
 
-function orderedProtocolFallback(allowedProtocols: GatewayProviderProtocol[] = []): GatewayProviderProtocol | undefined {
-  if (allowedProtocols.length === 0) {
-    return undefined;
-  }
-  const allowed = new Set(allowedProtocols);
-  return protocolOrder.find((protocol) => allowed.has(protocol)) ?? allowedProtocols[0];
+function isChatProtocol(protocol: GatewayProviderCapabilityProtocol): protocol is GatewayProviderProtocol {
+  return protocol !== "openai_image_generations" &&
+    protocol !== "openai_video_generations" &&
+    protocol !== "xai_video_generations";
 }
 
-function protocolIsAllowed(protocol: GatewayProviderProtocol, allowedProtocols: GatewayProviderProtocol[]): boolean {
+function isMediaProtocol(protocol: GatewayProviderCapabilityProtocol): boolean {
+  return !isChatProtocol(protocol);
+}
+
+function orderedProtocolFallback(allowedProtocols: GatewayProviderCapabilityProtocol[] = []): GatewayProviderProtocol | undefined {
+  const chatProtocols = allowedProtocols.filter(isChatProtocol);
+  if (chatProtocols.length === 0) {
+    return undefined;
+  }
+  const allowed = new Set(chatProtocols);
+  return protocolOrder.find((protocol): protocol is GatewayProviderProtocol => isChatProtocol(protocol) && allowed.has(protocol))
+    ?? chatProtocols[0];
+}
+
+function protocolIsAllowed(protocol: GatewayProviderProtocol, allowedProtocols: GatewayProviderCapabilityProtocol[]): boolean {
   return allowedProtocols.length === 0 || allowedProtocols.includes(protocol);
 }
 
@@ -975,14 +1736,16 @@ function detectProtocol(
   parsed: ParsedProviderUrl,
   protocols: GatewayProviderProbeProtocolResult[],
   modelSource: ModelSource | undefined,
-  allowedProtocols: GatewayProviderProtocol[] = []
+  allowedProtocols: GatewayProviderCapabilityProtocol[] = []
 ): GatewayProviderProtocol | undefined {
-  const supported = protocols.find((item) => item.supported);
+  const supported = protocols.find((item) => item.supported && isChatProtocol(item.protocol));
   if (supported) {
-    return supported.protocol;
+    return supported.protocol as GatewayProviderProtocol;
   }
 
-  const hinted = parsed.hints.find((protocol) => protocolIsAllowed(protocol, allowedProtocols));
+  const hinted = parsed.hints.find((protocol): protocol is GatewayProviderProtocol =>
+    isChatProtocol(protocol) && protocolIsAllowed(protocol, allowedProtocols)
+  );
   if (hinted) {
     return hinted;
   }
@@ -1034,9 +1797,9 @@ function resolveProbeBaseUrl(
   return providerBaseUrlForProtocol(parsed, protocol);
 }
 
-function protocolHints(value: string): GatewayProviderProtocol[] {
+function protocolHints(value: string): GatewayProviderCapabilityProtocol[] {
   const normalized = value.toLowerCase();
-  const hints: GatewayProviderProtocol[] = [];
+  const hints: GatewayProviderCapabilityProtocol[] = [];
 
   if (normalized.includes("chat/completions")) {
     hints.push("openai_chat_completions");
@@ -1059,6 +1822,12 @@ function protocolHints(value: string): GatewayProviderProtocol[] {
   if (normalized.includes("generativelanguage.googleapis.com")) {
     hints.push("gemini_interactions");
   }
+  if (normalized.includes("images/generations")) {
+    hints.push("openai_image_generations");
+  }
+  if (normalized.includes("videos/generations")) {
+    hints.push("openai_video_generations");
+  }
 
   return hints;
 }
@@ -1066,7 +1835,7 @@ function protocolHints(value: string): GatewayProviderProtocol[] {
 function isProtocolSupported(
   status: number | undefined,
   message: string,
-  protocol?: GatewayProviderProtocol
+  _protocol?: GatewayProviderCapabilityProtocol
 ): boolean {
   if (status === undefined) {
     return false;
@@ -1080,7 +1849,7 @@ function isProtocolSupported(
     return true;
   }
 
-  if (status === 400) {
+  if (status === 400 || status === 422) {
     const normalized = message.toLowerCase();
     if (/not found|unknown endpoint|unknown route|no route/.test(normalized)) {
       return false;
@@ -1094,8 +1863,8 @@ function isProtocolSupported(
 export function isProviderProtocolEndpointSupportedForProbe(
   status: number | undefined,
   message: string,
-  protocol: GatewayProviderProtocol,
-  hints: GatewayProviderProtocol[] = []
+  protocol: GatewayProviderCapabilityProtocol,
+  hints: GatewayProviderCapabilityProtocol[] = []
 ): boolean {
   if (isProtocolSupported(status, message, protocol)) {
     return true;
@@ -1103,14 +1872,17 @@ export function isProviderProtocolEndpointSupportedForProbe(
 
   if (status === 401 || status === 403) {
     const normalized = message.toLowerCase();
-    return (hints.length === 0 || protocolMatchesHints(protocol, hints)) &&
+    const hintMatches = isMediaProtocol(protocol)
+      ? status === 401 || hints.includes(protocol)
+      : hints.length === 0 || protocolMatchesHints(protocol, hints);
+    return hintMatches &&
       !/not found|unknown endpoint|unknown route|no route/.test(normalized);
   }
 
   return false;
 }
 
-function protocolMatchesHints(protocol: GatewayProviderProtocol, hints: GatewayProviderProtocol[]): boolean {
+function protocolMatchesHints(protocol: GatewayProviderCapabilityProtocol, hints: GatewayProviderCapabilityProtocol[]): boolean {
   if (hints.includes(protocol)) {
     return true;
   }
@@ -1165,6 +1937,157 @@ function parseJson(value: string): unknown {
   }
 }
 
+function codexRequiredScopes(value: unknown): string[] {
+  if (value === undefined) {
+    return [...codexOauthRequiredScopes];
+  }
+  if (!Array.isArray(value)) {
+    return [...codexOauthRequiredScopes];
+  }
+  if (value.length === 0) {
+    return [];
+  }
+
+  const scopes: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (typeof item !== "string" || !item.trim()) {
+      return [...codexOauthRequiredScopes];
+    }
+    for (const scope of item.split(/\s+/)) {
+      const normalized = scope.trim();
+      if (normalized && !seen.has(normalized)) {
+        seen.add(normalized);
+        scopes.push(normalized);
+      }
+    }
+  }
+  return scopes.length > 0 ? scopes : [...codexOauthRequiredScopes];
+}
+
+function codexOauthScope(configuredScope: string | undefined, requiredScopes: string[]): string {
+  return uniqueStrings([
+    ...((configuredScope || codexOauthDefaultScope).split(/\s+/)),
+    ...requiredScopes
+  ]).join(" ");
+}
+
+function shouldRefreshCodexProbeToken(
+  accessToken: string | undefined,
+  codexOauth: Record<string, unknown>,
+  requiredScopes: string[]
+): boolean {
+  if (readBoolean(codexOauth.forceRefresh)) {
+    return true;
+  }
+  if (!accessToken) {
+    return readBoolean(codexOauth.refreshIfMissingAccessToken) !== false;
+  }
+  if (codexAccessTokenExpired(accessToken)) {
+    return true;
+  }
+  return codexMissingRequiredScopes(accessToken, requiredScopes).length > 0;
+}
+
+function codexAccessTokenExpired(token: string | undefined): boolean {
+  const expiresAtMs = codexTokenExpiresAtMs(token);
+  return expiresAtMs !== undefined && Date.now() >= expiresAtMs - 60_000;
+}
+
+function codexTokenExpiresAtMs(token: string | undefined): number | undefined {
+  const payload = codexJwtPayload(token);
+  const exp = typeof payload?.exp === "number" && Number.isFinite(payload.exp) ? payload.exp : undefined;
+  return exp !== undefined ? exp * 1000 : undefined;
+}
+
+function codexMissingRequiredScopes(token: string, requiredScopes: string[]): string[] {
+  if (requiredScopes.length === 0) {
+    return [];
+  }
+  const payload = codexJwtPayload(token);
+  if (!payload) {
+    return [];
+  }
+  const scopes = codexTokenScopes(payload);
+  if (scopes.length === 0) {
+    return [];
+  }
+  return requiredScopes.filter((scope) => !scopes.includes(scope));
+}
+
+function codexTokenScopes(payload: Record<string, unknown>): string[] {
+  const scopes: string[] = [];
+  const pushScope = (value: unknown) => {
+    if (typeof value === "string") {
+      scopes.push(...value.split(/\s+/));
+      return;
+    }
+    if (Array.isArray(value)) {
+      scopes.push(...value.map(readString).filter((item): item is string => Boolean(item)));
+    }
+  };
+  pushScope(payload.scope);
+  pushScope(payload.scopes);
+  pushScope(payload.scp);
+  return uniqueStrings(scopes);
+}
+
+function codexAccountIdFromToken(token: string): string | undefined {
+  const payload = codexJwtPayload(token);
+  if (!payload) {
+    return undefined;
+  }
+  const auth = isRecord(payload["https://api.openai.com/auth"])
+    ? payload["https://api.openai.com/auth"]
+    : {};
+  return readString(auth.chatgpt_account_id) ||
+    readString(auth.account_id) ||
+    readString(auth.accountId) ||
+    readString(payload.account_id) ||
+    readString(payload.accountId);
+}
+
+function codexJwtPayload(token: string | undefined): Record<string, unknown> | undefined {
+  const encoded = token?.split(".")[1];
+  if (!encoded) {
+    return undefined;
+  }
+  try {
+    const padded = encoded.padEnd(encoded.length + ((4 - encoded.length % 4) % 4), "=");
+    const decoded = Buffer.from(padded.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+    const payload = JSON.parse(decoded) as unknown;
+    return isRecord(payload) ? payload : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function codexTokenRefreshErrorMessage(payload: unknown, text: string): string {
+  const message = readPayloadMessage(payload);
+  if (message) {
+    return `: ${message}`;
+  }
+  const trimmed = text.trim();
+  return trimmed ? `: ${trimmed.slice(0, 500)}` : "";
+}
+
+function readBoolean(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true") {
+    return true;
+  }
+  if (normalized === "false") {
+    return false;
+  }
+  return undefined;
+}
+
 function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
@@ -1189,8 +2112,15 @@ function uniqueStrings(values: string[]): string[] {
   return result;
 }
 
-function uniqueProtocols(values: GatewayProviderProtocol[]): GatewayProviderProtocol[] {
+function uniqueProtocols(values: GatewayProviderCapabilityProtocol[]): GatewayProviderCapabilityProtocol[] {
   return values.filter((value, index) => values.indexOf(value) === index);
+}
+
+function providerBaseUrlForCapability(
+  parsed: ParsedProviderBaseUrl,
+  protocol: GatewayProviderCapabilityProtocol
+): string {
+  return isChatProtocol(protocol) ? providerBaseUrlForProtocol(parsed, protocol) : parsed.openaiBaseUrl;
 }
 
 function uniqueProtocolEndpoints(values: ProtocolEndpoint[]): ProtocolEndpoint[] {

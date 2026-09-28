@@ -1,8 +1,8 @@
 ---
 title: 一键导入供应商
 pageTitle: 一键导入供应商
-eyebrow: 详细配置
-lead: 快速添加常见模型供应商，确认无误后即可保存，减少手动配置的繁琐步骤。
+eyebrow: 一键导入
+lead: 通过预设按钮或 ccr://provider 深度链接（deeplink）一键导入模型供应商：CCR 先展示将写入的配置，确认后再保存。供应商也可以嵌入按钮或发布 manifest，让用户从网页完成导入。
 ---
 
 ## 一键导入
@@ -25,6 +25,10 @@ lead: 快速添加常见模型供应商，确认无误后即可保存，减少�
   <a class="provider-import-button provider-openrouter" href="ccr://provider?name=OpenRouter&amp;base_url=https%3A%2F%2Fopenrouter.ai%2Fapi%2Fv1&amp;protocol=openai_chat_completions&amp;models=%7Eopenai%2Fgpt-latest%2C%7Eanthropic%2Fclaude-opus-latest%2C%7Eanthropic%2Fclaude-sonnet-latest%2Cgoogle%2Fgemini-3.5-flash%2Cz-ai%2Fglm-5.2" aria-label="导入 OpenRouter 路由供应商">
     <span class="provider-import-icon-shell"><img src="../../provider-icons/openrouter.ico" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">OpenRouter 路由</span><span class="provider-import-meta">OpenAI compatible gateway</span></span>
+  </a>
+  <a class="provider-import-button provider-nvidia" href="ccr://provider?name=NVIDIA&amp;base_url=https%3A%2F%2Fintegrate.api.nvidia.com%2Fv1&amp;protocol=openai_chat_completions&amp;models=nvidia%2Fnemotron-3-super-120b-a12b%2Cnvidia%2Fnemotron-3-ultra-550b-a55b&amp;source=https%3A%2F%2Fbuild.nvidia.com%2Fmodels" aria-label="导入 NVIDIA NIM 供应商">
+    <span class="provider-import-icon-shell"><img src="../../provider-icons/nvidia.svg" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">NVIDIA</span><span class="provider-import-meta">NIM Chat Completions</span></span>
   </a>
   <a class="provider-import-button provider-deepseek" href="ccr://provider?name=DeepSeek&amp;base_url=https%3A%2F%2Fapi.deepseek.com&amp;protocol=openai_chat_completions&amp;models=deepseek-v4-pro%2Cdeepseek-v4-flash%2Cdeepseek-v3.2%2Cdeepseek-reasoner%2Cdeepseek-chat" aria-label="导入 DeepSeek 深度求索供应商">
     <span class="provider-import-icon-shell"><img src="../../provider-icons/deepseek.ico" alt="" loading="lazy" /></span>
@@ -78,13 +82,37 @@ lead: 快速添加常见模型供应商，确认无误后即可保存，减少�
     <span class="provider-import-icon-shell"><img src="../../provider-icons/teamorouter.png" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">TeamoRouter</span><span class="provider-import-meta">Anthropic / Chat / Responses</span></span>
   </a>
-  <a class="provider-import-button provider-code0" href="ccr://provider?name=code0.ai&amp;base_url=https%3A%2F%2Fconsole.code0.ai&amp;protocol=anthropic_messages&amp;source=https%3A%2F%2Fcode0.ai%3Fsource%3Dclaudecoderouter" aria-label="导入 code0.ai 供应商">
+  <a class="provider-import-button provider-unity2" href="ccr://provider?name=Unity2.Ai&amp;base_url=https%3A%2F%2Funity2.ai%2Fv1&amp;protocol=openai_chat_completions&amp;source=https%3A%2F%2Funity2.ai%2Fregister%3Fsource%3Dclaudecoderouter" aria-label="导入 Unity2.Ai 供应商">
+    <span class="provider-import-icon-shell"><img src="../../provider-icons/unity2.jpg" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">Unity2.Ai</span><span class="provider-import-meta">OpenAI 兼容网关</span></span>
+  </a>
+  <a class="provider-import-button provider-code0" href="ccr://provider?name=code0.ai&amp;base_url=https%3A%2F%2Fconsole.code0.ai&amp;protocol=anthropic_messages&amp;source=https%3A%2F%2Fcode0.ai%2Fagent%2Fregister%2F9n9jOsSnYQoemIVL%3Futm_source%3Dclaudecoderouter%26utm_medium%3Dpartner%26utm_campaign%3Dclaudecoderouter_2026%26utm_content%3Ddefault" aria-label="导入 code0.ai 供应商">
     <span class="provider-import-icon-shell"><img src="../../provider-icons/code0.png" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">code0.ai</span><span class="provider-import-meta">Anthropic / Chat / Responses</span></span>
   </a>
-  <a class="provider-import-button provider-claudeapi" href="ccr://provider?name=claudeapi&amp;base_url=https%3A%2F%2Fgw.claudeapi.com&amp;protocol=anthropic_messages&amp;source=https%3A%2F%2Fwww.claudeapi.com%3Fsource%3Dclaudecoderouter" aria-label="导入 claudeapi 供应商">
+  <a class="provider-import-button provider-claudeapi" href="ccr://provider?name=claudeapi&amp;base_url=https%3A%2F%2Fgw.claudeapi.com&amp;protocol=anthropic_messages&amp;source=https%3A%2F%2Fconsole.claudeapi.com%2Fagent%2Fregister%2FLbmB7Y9kPloyzhwF%3Futm_source%3Dclaudecoderouter%26utm_medium%3Dpartner%26utm_campaign%3Dclaudecoderouter_2026%26utm_content%3Ddefault" aria-label="导入 claudeapi 供应商">
     <span class="provider-import-icon-shell"><img src="../../provider-icons/claudeapi.png" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">claudeapi</span><span class="provider-import-meta">Anthropic Messages</span></span>
+  </a>
+  <a class="provider-import-button provider-qiniu-ai" href="ccr://provider?name=%E4%B8%83%E7%89%9B%E4%BA%91+AI&amp;base_url=https%3A%2F%2Fapi.qnaigc.com&amp;protocol=openai_chat_completions&amp;source=https%3A%2F%2Fs.qiniu.com%2FAVjMVf" aria-label="导入七牛云 AI 供应商">
+    <span class="provider-import-icon-shell"><img src="../../provider-icons/qiniu-ai.png" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">七牛云 AI</span><span class="provider-import-meta">Chat / Responses / Anthropic / Gemini Generate</span></span>
+  </a>
+  <a class="provider-import-button provider-fenno" href="ccr://provider?name=Fenno.ai&amp;base_url=https%3A%2F%2Fapi.fenno.ai&amp;protocol=openai_chat_completions&amp;source=https%3A%2F%2Fapi.fenno.ai%2Fregister%3Fredirect%3D%2Fpurchase%3Ftab%3Dsubscription%2526group%3D16%26aff%3D9HHHAB5QLAES" aria-label="导入 Fenno.ai 供应商">
+    <span class="provider-import-icon-shell"><img src="../../provider-icons/fenno.jpg" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">Fenno.ai</span><span class="provider-import-meta">Chat / Responses / Anthropic</span></span>
+  </a>
+  <a class="provider-import-button provider-infistar-ai" href="ccr://provider?name=%E6%97%A0%E9%99%90%E6%98%9F%E6%B2%B3&amp;base_url=https%3A%2F%2Finfistar.ai%2Fv1&amp;protocol=openai_chat_completions&amp;models=gpt-4o&amp;source=https%3A%2F%2Finfistar.ai%2Fregister%3Faff%3DCCRCCR%26ref_source%3Dlink" aria-label="导入无限星河供应商">
+    <span class="provider-import-icon-shell"><img src="../../provider-icons/infistar-ai.jpg" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">无限星河</span><span class="provider-import-meta">OpenAI 兼容网关</span></span>
+  </a>
+  <a class="provider-import-button provider-minimax" href="ccr://provider?name=MiniMax+%28Global%29&amp;base_url=https%3A%2F%2Fapi.minimax.io%2Fv1&amp;protocol=openai_chat_completions&amp;models=MiniMax-M3&amp;source=https%3A%2F%2Fplatform.minimax.io%2Fdocs" aria-label="导入 MiniMax 全球供应商">
+    <span class="provider-import-icon-shell"><img src="../../provider-icons/minimax.ico" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">MiniMax（全球）</span><span class="provider-import-meta">Chat Completions</span></span>
+  </a>
+  <a class="provider-import-button provider-minimax" href="ccr://provider?name=MiniMax+%28China%29&amp;base_url=https%3A%2F%2Fapi.minimaxi.com%2Fv1&amp;protocol=openai_chat_completions&amp;models=MiniMax-M3&amp;source=https%3A%2F%2Fplatform.minimaxi.com%2Fdocs" aria-label="导入 MiniMax 国内供应商">
+    <span class="provider-import-icon-shell"><img src="../../provider-icons/minimax.ico" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">MiniMax（国内）</span><span class="provider-import-meta">Chat Completions</span></span>
   </a>
 </div>
 
@@ -142,13 +170,13 @@ CCR 也提供了一个无框架的按钮脚本，供应商可以嵌入到自己�
 
 | 参数 | 说明 |
 | --- | --- |
-| `name` | Provider 展示名称 |
-| `base_url` | Provider API Base URL，直链导入时必填 |
-| `api_key` | 可选 Provider API Key |
+| `name` | 供应商展示名称 |
+| `base_url` | 供应商 API Base URL，直链导入时必填 |
+| `api_key` | 可选供应商 API Key |
 | `protocol` | 协议类型，支持 `openai_chat_completions`、`openai_responses`、`anthropic_messages`、`gemini_generate_content`、`gemini_interactions` |
 | `models` | 模型列表。HTML 中用逗号或换行分隔，JS 中可传字符串或数组 |
-| `icon` | Provider 图标 URL |
-| `source` | Provider 官网或配置来源 |
+| `icon` | 供应商图标 URL |
+| `source` | 供应商官网或配置来源 |
 | `manifest` | 远程 manifest URL。传入后按钮会生成 manifest 导入链接 |
 | `payload` | JSON 或 base64url JSON 配置。JS 中也可以传对象 |
 | `usage_url` | 可选账号用量接口 |
@@ -198,12 +226,12 @@ Manifest 可以把供应商信息放在顶层 `provider` 对象中：
 
 | 字段 | 说明 |
 | --- | --- |
-| `provider.name` | Provider 展示名称 |
-| `provider.base_url` | Provider API Base URL，必填 |
+| `provider.name` | 供应商展示名称 |
+| `provider.base_url` | 供应商 API Base URL，必填 |
 | `provider.protocol` | 协议类型 |
 | `provider.models` | 模型列表，字符串数组 |
-| `provider.icon` | Provider 图标 URL |
-| `provider.source` | Provider 官网或配置来源 |
+| `provider.icon` | 供应商图标 URL |
+| `provider.source` | 供应商官网或配置来源 |
 | `provider.account.enabled` | 是否启用账号用量读取 |
 | `provider.account.refreshIntervalMs` | 用量刷新间隔，单位毫秒 |
 | `provider.account.connectors` | 用量读取 connector 列表 |
@@ -270,13 +298,13 @@ Manifest 可以把供应商信息放在顶层 `provider` 对象中：
 
 | 参数 | 说明 |
 | --- | --- |
-| `name` | Provider 展示名称 |
-| `base_url` | Provider API Base URL，必填 |
-| `api_key` | 可选 Provider API Key |
+| `name` | 供应商展示名称 |
+| `base_url` | 供应商 API Base URL，必填 |
+| `api_key` | 可选供应商 API Key |
 | `protocol` | 协议类型，支持 `openai_chat_completions`、`openai_responses`、`anthropic_messages`、`gemini_generate_content`、`gemini_interactions` |
 | `models` | 模型列表，支持逗号或换行分隔，也可以重复传入 |
-| `icon` | Provider 图标 URL |
-| `source` | Provider 官网或配置来源 |
+| `icon` | 供应商图标 URL |
+| `source` | 供应商官网或配置来源 |
 | `manifest` | 远程 manifest URL |
 | `payload` | JSON 或 base64url JSON 配置 |
 | `usage_url` | 可选账号用量接口 |

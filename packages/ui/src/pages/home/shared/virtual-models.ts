@@ -1,388 +1,59 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type HTMLAttributes, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
-  closestCenter,
-  DndContext,
-  DragOverlay,
-  getFirstCollision,
-  KeyboardSensor,
-  MeasuringStrategy,
-  pointerWithin,
-  PointerSensor,
-  rectIntersection,
-  useSensor,
-  useSensors,
-  type CollisionDetection,
-  type DragEndEvent,
-  type DragOverEvent,
-  type DragStartEvent
-} from "@dnd-kit/core";
-import { arrayMove, rectSortingStrategy, SortableContext, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
-import {
-  Activity,
-  ArrowDown,
-  ArrowUp,
-  Box,
-  Boxes,
-  Braces,
-  Check,
-  CheckCircle2,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  CircleAlert,
-  Copy,
-  Database,
-  ExternalLink,
-  FolderOpen,
-  Gauge,
-  Globe,
-  Info,
-  KeyRound,
-  Layers3,
-  LoaderCircle,
-  MoveRight,
-  Network,
-  Palette,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Pause,
-  Pencil,
-  Play,
-  Plus,
-  Power,
-  QrCode,
-  RefreshCw,
-  Route,
-  Search,
-  Server,
-  Settings,
-  ShieldCheck,
-  Terminal,
-  Trash2,
-  UserRound,
-  X,
-  type LucideIcon
-} from "lucide-react";
-import {
-  Area,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  ComposedChart,
-  LabelList,
-  Line,
-  Pie,
-  PieChart,
-  Tooltip,
-  XAxis,
-  YAxis
-} from "recharts";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { PopoverContent } from "@/components/ui/popover";
-import { Select } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
-import appLogoUrl from "@/assets/logo.png";
-import claudeCodeLogoUrl from "@/assets/agent-logos/claude-code.png";
-import codexLogoUrl from "@/assets/agent-logos/codex.png";
-import onboardingMascotSpriteUrl from "@/assets/onboarding/mascot-transition.svg";
-import anthropicProviderIconUrl from "@/assets/provider-icons/anthropic.png";
-import bailianProviderIconUrl from "@/assets/provider-icons/bailian.ico";
-import deepseekProviderIconUrl from "@/assets/provider-icons/deepseek.ico";
-import geminiProviderIconUrl from "@/assets/provider-icons/gemini.svg";
-import mistralProviderIconUrl from "@/assets/provider-icons/mistral.webp";
-import moonshotProviderIconUrl from "@/assets/provider-icons/moonshot.ico";
-import openaiProviderIconUrl from "@/assets/provider-icons/openai.png";
-import openrouterProviderIconUrl from "@/assets/provider-icons/openrouter.ico";
-import siliconflowProviderIconUrl from "@/assets/provider-icons/siliconflow.png";
-import zaiGlobalCodingProviderIconUrl from "@/assets/provider-icons/zai-global-coding.svg";
-import zaiGlobalGeneralProviderIconUrl from "@/assets/provider-icons/zai-global-general.svg";
-import zhipuCnCodingProviderIconUrl from "@/assets/provider-icons/zhipu-cn-coding.png";
-import zhipuCnGeneralProviderIconUrl from "@/assets/provider-icons/zhipu-cn-general.png";
-import trayCyanIconUrl from "@/assets/tray-cyan.png";
-import trayOrangeIconUrl from "@/assets/tray-orange.png";
-import trayVioletIconUrl from "@/assets/tray-violet.png";
-import {
-  BUILTIN_FUSION_TOOL_SERVER_NAME,
+  BUILTIN_FUSION_GROK_MEDIA_TOOL_NAME,
+  BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME,
   BUILTIN_FUSION_VISION_TOOL_NAME,
+  BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME,
   BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME,
-  CLAUDE_CODE_DEFAULT_ENV,
-  DEFAULT_OVERVIEW_WIDGETS,
-  DEFAULT_TRAY_COMPONENT_VARIANTS,
-  DEFAULT_TRAY_WIDGETS,
-  DEFAULT_TRAY_WINDOW_MODULES,
-  enforceSingleEnabledGlobalProfilePerAgent,
-  normalizeProfileScopeValue,
-  OVERVIEW_WIDGET_SIZE_VALUES,
-  TRAY_SINGLETON_WIDGET_TYPES,
-  TRAY_TOP_WIDGET_TYPES,
-  TRAY_WINDOW_MODULE_IDS
+  GROK_MEDIA_CAPABILITIES_TOOL_NAME,
+  GROK_MEDIA_FUSION_TOOL_NAMES,
+  GROK_MEDIA_IMAGE_EDIT_TOOL_NAME,
+  GROK_MEDIA_IMAGE_GENERATE_TOOL_NAME,
+  GROK_MEDIA_JOB_CANCEL_TOOL_NAME,
+  GROK_MEDIA_JOB_GET_TOOL_NAME,
+  GROK_MEDIA_VIDEO_START_TOOL_NAME,
+  MEDIA_IMAGE_EDIT_TOOL_PREFIX,
+  MEDIA_IMAGE_GENERATE_TOOL_PREFIX,
+  MEDIA_JOB_CANCEL_TOOL_PREFIX,
+  MEDIA_JOB_GET_TOOL_PREFIX,
+  MEDIA_VIDEO_START_TOOL_PREFIX,
+  ROUTER_FALLBACK_MAX_RETRY_COUNT
 } from "@ccr/core/contracts/app";
 import type {
-  AgentAnalysisFilter,
-  AgentAnalysisSessionSelection,
-  AgentAnalysisSnapshot,
-  AgentKind,
   AppConfig,
-  AppInfo,
-  AppUpdateStatus,
-  ApiKeyConfig,
-  ApiKeyLimitConfig,
-  BotGatewayQrLoginCancelRequest,
-  BotGatewayQrLoginCancelResult,
-  BotGatewayQrLoginStartRequest,
-  BotGatewayQrLoginStartResult,
-  BotGatewayQrLoginWaitRequest,
-  BotGatewayQrLoginWaitResult,
-  BotGatewayQrWindowOpenResult,
-  BotGatewayRuntimeConfig,
-  BotGatewaySavedConfig,
-  BotHandoffScanTarget,
-  GatewayProviderConfig,
-  GatewayProviderCapability,
-  GatewayPluginAppConfig,
-  GatewayProviderConnectivityCheckModelResult,
-  GatewayProviderConnectivityCheckReport,
-  GatewayProviderProbeCandidate,
-  GatewayProviderProbeCandidateResult,
-  GatewayProviderProbeResult,
-  GatewayProviderProtocol,
   GatewayMcpServerConfig,
   GatewayMcpServerTransport,
-  GatewayMcpStdioMessageMode,
-  GatewayMcpToolInfo,
-  GatewayStatus,
-  OverviewMetricKind,
-  OverviewWidgetConfig,
-  OverviewWidgetSize,
-  OverviewWidgetType,
-  OverviewWidgetVariant,
-  PluginDependency,
-  PluginDirectorySelection,
-  PluginMarketplaceEntry,
-  ProviderAccountConfig,
-  ProviderAccountConnectorConfig,
-  ProviderAccountHttpJsonConnectorConfig,
-  ProviderAccountMeter,
-  ProviderAccountStandardConnectorConfig,
-  ProviderAccountSnapshot,
-  ProviderAccountTestPath,
-  ProviderAccountTestResult,
-  ProviderCredentialConfig,
-  ProviderDeepLinkPayload,
-  ProviderDeepLinkRequest,
-  ProfileConfig,
-  ProfileOpenSurface,
-  CodexProfileConfigFormat,
-  ProfileScope,
-  ProfileSurface,
-  ProxyCertificateInstallResult,
-  ProxyCertificateStatus,
-  ProxyNetworkBody,
-  ProxyNetworkExchange,
-  ProxyNetworkSnapshot,
-  ProxyStatus,
-  RequestLogBody,
-  RequestLogEntry,
-  RequestLogListFilter,
-  RequestLogPage,
-  RequestLogStatusFilter,
-  RouterConfig,
-  RouterFallbackConfig,
-  RouterFallbackMode,
-  RouterRule,
-  RouterRuleCondition,
-  RouterRuleOperator,
-  RouterRuleRewrite,
-  RouterRuleRewriteOperation,
-  RouterRuleType,
-  TrayBalanceProgressConfig,
-  TrayComponentVariants,
-  TrayWidgetConfig,
-  TrayWidgetType,
-  TrayWidgetVariant,
-  TrayWindowModuleId,
-  UsageComparisonRow,
-  UsageSeriesPoint,
-  UsageStatsFilter,
-  UsageStatsRange,
-  UsageStatsSnapshot,
-  UsageTotals,
-  VirtualModelBaseModelMode,
-  VirtualModelExecutionMode,
   VirtualModelFusionCustomToolConfig,
+  VirtualModelFusionMediaConfig,
   VirtualModelFusionVisionConfig,
   VirtualModelFusionWebSearchConfig,
   VirtualModelFusionWebSearchProvider,
-  VirtualModelProfileConfig,
-  VirtualModelToolVisibility
+  VirtualModelProfileConfig
 } from "@ccr/core/contracts/app";
 import {
-  customProviderPresetId,
-  defaultProviderAccountConfig,
-  standardProviderAccountConfig,
-  type ProviderIdentitySafetyIssue,
-  type ProviderPreset,
-  type ProviderPresetEndpoint
-} from "@ccr/core/providers/presets/types";
-import {
-  findProviderPresetByBaseUrlInList,
-  findProviderPresetInList,
-  primaryProviderPresetEndpoint as primaryProviderPresetEndpointFromPreset,
-  providerApiKeySafetyIssueInList,
-  providerEndpointCanReceiveProviderApiKeyInList,
-  providerIdentitySafetyIssueInList
-} from "@ccr/core/providers/presets/utils";
-import { normalizeProviderBaseUrl, providerUrlWithDefaultScheme } from "@ccr/core/providers/url";
-import {
-  fallbackConfig,
-  fallbackGatewayStatus,
-  fallbackInfo,
-  fallbackProxyCertificateStatus,
-  fallbackProxyNetworkSnapshot,
-  fallbackProxyStatus,
-  fallbackUpdateStatus
-} from "./fallbacks";
-import {
-  AppI18nContext,
-  appCopy,
-  languagePreferenceStorageKey,
-  translateOptions,
-  translateText,
-  useAppText,
-  type AppCopy
-} from "./i18n";
-import {
-  AnimatedDisclosure,
-  AnimatedFieldSlot,
-  AnimatedListItem,
-  disclosureSpringTransition,
-  listSpringTransition,
-  motionEase,
-  pageSpringTransition,
-  reducedMotionTransition,
-  ViewMotionShell
-} from "./motion";
-import {
-  clientInitial,
-  formatBytes,
-  formatDuration,
-  formatHeaderName,
-  formatNetworkDateTime,
-  formatNetworkHeaders,
-  formatNetworkRequestRaw,
-  formatNetworkResponseRaw,
-  formatNetworkTime,
-  networkCodeLabel,
-  networkExchangeMatchesQuery,
-  networkHeaderRows,
-  networkLifecycleLabel,
-  networkQueryRows,
-  networkRowId,
-  networkStatusLabel,
-  networkStatusVariant,
-  networkSummaryRows
-} from "./network";
-import {
-  agentKindLabel,
-  compactId,
-  compactUserAgent,
-  createEmptyAgentAnalysis,
-  createEmptyAgentConcurrencySeries,
-  createEmptyRequestLogPage,
-  createEmptyUsageSeries,
-  createEmptyUsageStats,
-  emptyUsageTotals,
-  formatAxisNumber,
-  formatCompactNumber,
-  formatPercent,
-  formatStatusCodeCounts,
-  formatToolCounts,
-  formatUsdCost,
-  logSelectOptions,
-  normalizeAgentFilterValue
-} from "./usage";
-import {
-  agentAnalysisRangeOptions,
-  agentFilterOptions,
-  apiKeyExpirationOptions,
-  apiKeyLimitMetricOptions,
-  claudeDesignRouteRuleTypeOptions,
   customFusionToolName,
   defaultFusionWebSearchProvider,
   fusionToolOptions,
   fusionWebSearchEnvKeysByProvider,
   fusionWebSearchProviderOptions,
-  getDefaultOnboardingStep,
-  getNextOnboardingStep,
-  isOnboardingProfileReady,
-  isOnboardingProviderReady,
-  legacyRouterRuleTypes,
   legacyUnimcpPackageName,
   legacyUnimcpServerName,
-  limitWindowOptions,
-  mcpServerStartupTimeoutMs,
-  mcpServerTransportOptions,
-  mcpStdioMessageModeOptions,
-  navigation,
-  onboardingStepOrder,
-  overviewMetricOptions,
-  overviewWidgetSizeOptions,
-  profileAgentOptions,
-  profileScopeOptions,
-  profileSurfaceOptions,
-  providerAccountModeOptions,
-  providerPresetIconUrls,
-  providerProtocolOptions,
-  providerUsageMethodOptions,
-  requestLogPageSizeOptions,
-  requestLogStatusOptions,
-  removedLegacyRouterRuleIds,
-  routerConditionSourceOptions,
-  routerFallbackModeOptions,
-  routerRewriteOperationOptions,
-  routerRuleOperatorOptions,
-  routerRuleTypeOptions,
-  trayMascotIconUrls,
-  usageRangeOptions,
-  virtualModelBaseModeOptions,
-  virtualModelClientToolsPolicyOptions,
-  virtualModelExecutionModeOptions,
-  virtualModelMatchModeOptions,
-  virtualModelToolVisibilityOptions
+  mcpServerStartupTimeoutMs
 } from "./options";
-import type { AgentFilterValue, RouterConditionSource } from "./options";
-import type { MotionSafeDivAttributes } from "./motion";
 
-
-import { isPlainRecord, stringValue, uniqueStrings } from "./common";
+import { isPlainRecord, normalizeProviderModelSelector, stringValue, uniqueStrings } from "./common";
 import { sanitizeConfigId } from "./extensions";
 import { createRouteModelOptions, numberValue } from "./providers";
+import { createGrokMediaModelOptions, migrateLegacyGrokMediaModelSelector } from "@ccr/core/media/models";
 import { clampNumber } from "./services";
-import { fusionCustomToolMetadataKey, fusionVisionMetadataKey, fusionWebSearchMetadataKey } from "./types";
+import { fusionCustomToolMetadataKey, fusionMediaMetadataKey, fusionVisionMetadataKey, fusionWebSearchMetadataKey } from "./types";
 import type { KeyValueDraftRow, McpServerDraft, VirtualModelDraft, VirtualModelMatchMode, VirtualModelToolDraft } from "./types";
 
 export function createVirtualModelDraft(config: AppConfig): VirtualModelDraft {
   const profiles = config.virtualModelProfiles ?? [];
   const key = uniqueVirtualModelKey(profiles);
   const defaultModel = createRouteModelOptions(config.Providers)[0]?.value ?? "";
+  const defaultImageModel = createGrokMediaModelOptions(config.Providers, "image")[0]?.value ?? "";
+  const defaultVideoModel = createGrokMediaModelOptions(config.Providers, "video")[0]?.value ?? "";
   return {
     baseModelMode: "fixed",
     clientToolsPolicy: "allow",
@@ -397,6 +68,9 @@ export function createVirtualModelDraft(config: AppConfig): VirtualModelDraft {
     fixedModel: defaultModel,
     id: uniqueVirtualModelId(profiles, key),
     includeInGatewayModels: true,
+    imageGenerationFallbackModels: [],
+    imageGenerationModel: defaultImageModel,
+    imageGenerationRetryCount: "0",
     instructionsAppend: "",
     instructionsPrepend: "",
     instructionsReplace: "",
@@ -405,14 +79,17 @@ export function createVirtualModelDraft(config: AppConfig): VirtualModelDraft {
     matchMultimodal: true,
     matchMode: "alias",
     matchWebSearch: false,
-    maxToolCalls: "8",
-    maxTurns: "6",
     prefixesText: "",
     suffixesText: "",
     toolChoiceText: "",
     tools: [],
     toolsText: BUILTIN_FUSION_VISION_TOOL_NAME,
+    visionFallbackModels: [],
     visionModel: defaultModel,
+    visionRetryCount: "0",
+    videoGenerationFallbackModels: [],
+    videoGenerationModel: defaultVideoModel,
+    videoGenerationRetryCount: "0",
     webSearchEnvRows: createFusionWebSearchEnvRows(defaultFusionWebSearchProvider),
     webSearchProvider: defaultFusionWebSearchProvider,
     executionMode: "tool_loop"
@@ -428,10 +105,12 @@ export function createVirtualModelDraftFromProfile(profile: VirtualModelProfileC
   const toolDrafts = (profile.tools ?? []).map((tool, index) => createVirtualModelToolDraft(tool, index));
   const visionConfig = fusionVisionConfigFromProfile(profile);
   const webSearchConfig = fusionWebSearchConfigFromProfile(profile);
+  const mediaConfig = fusionMediaConfigFromProfile(profile);
   const selectedToolNames = selectedFusionToolNamesFromProfile(toolDrafts, profile);
   const flags = fusionToolExecutionFlagsFromTools(selectedToolNames);
   const routeModelOptions = createRouteModelOptions(config?.Providers ?? []);
   const defaultVisionModel = routeModelOptions[0]?.value ?? "";
+  const providers = config?.Providers ?? [];
   const customToolConfig = fusionCustomToolConfigFromProfile(profile);
   const customToolName = selectedToolNames.find((toolName) => !isBuiltInFusionToolName(toolName)) ?? customFusionToolName;
   const configuredMcpServers = config?.agent?.mcpServers ?? [];
@@ -458,6 +137,9 @@ export function createVirtualModelDraftFromProfile(profile: VirtualModelProfileC
     fixedModel: profile.baseModel?.fixedModel ?? "",
     id: profile.id,
     includeInGatewayModels: profile.materialization?.includeInGatewayModels !== false,
+    imageGenerationFallbackModels: normalizeMediaFallbackModelSelectors(providers, mediaConfig?.imageFallbackModelSelectors, "image"),
+    imageGenerationModel: migrateLegacyGrokMediaModelSelector(providers, mediaConfig?.imageModelSelector, "image") ?? "",
+    imageGenerationRetryCount: String(mediaConfig?.imageRetryCount ?? 0),
     instructionsAppend: profile.instructions?.append ?? "",
     instructionsPrepend: profile.instructions?.prepend ?? "",
     instructionsReplace: profile.instructions?.replace ?? "",
@@ -466,14 +148,17 @@ export function createVirtualModelDraftFromProfile(profile: VirtualModelProfileC
     matchMultimodal: flags.matchMultimodal,
     matchMode: "alias",
     matchWebSearch: flags.matchWebSearch,
-    maxToolCalls: String(profile.execution?.maxToolCalls ?? 8),
-    maxTurns: String(profile.execution?.maxTurns ?? 6),
     prefixesText: (profile.match?.prefixes ?? []).join(", "),
     suffixesText: (profile.match?.suffixes ?? []).join(", "),
     toolChoiceText: formatVirtualModelToolChoice(profile.toolChoice),
     tools: toolDrafts,
     toolsText: selectedToolNames.join(", "),
+    visionFallbackModels: visionConfig?.fallbackModels ?? [],
     visionModel: visionConfig?.modelSelector ?? visionConfig?.model ?? defaultVisionModel,
+    visionRetryCount: String(visionConfig?.retryCount ?? 0),
+    videoGenerationFallbackModels: normalizeMediaFallbackModelSelectors(providers, mediaConfig?.videoFallbackModelSelectors, "video"),
+    videoGenerationModel: migrateLegacyGrokMediaModelSelector(providers, mediaConfig?.videoModelSelector, "video") ?? "",
+    videoGenerationRetryCount: String(mediaConfig?.videoRetryCount ?? 0),
     webSearchEnvRows: createFusionWebSearchEnvRows(webSearchConfig?.provider ?? defaultFusionWebSearchProvider, keyValueRowsFromRecord(webSearchConfig?.env ?? {})),
     webSearchProvider: webSearchConfig?.provider ?? defaultFusionWebSearchProvider,
     executionMode: "tool_loop"
@@ -546,10 +231,21 @@ export function fusionVisionConfigFromProfile(profile: VirtualModelProfileConfig
   const config: VirtualModelFusionVisionConfig = {
     apiKey: stringValue(value.apiKey),
     baseUrl: stringValue(value.baseUrl),
+    fallbackModels: Array.isArray(value.fallbackModels)
+      ? uniqueStrings(value.fallbackModels.map((model) => normalizeProviderModelSelector(stringValue(model))).filter(Boolean))
+      : [],
     model: stringValue(value.model),
     modelSelector: stringValue(value.modelSelector),
     toolName: stringValue(value.toolName)
   };
+  const retryCount = typeof value.retryCount === "number"
+    ? value.retryCount
+    : typeof value.retryCount === "string"
+      ? numberValue(value.retryCount)
+      : 0;
+  if (retryCount) {
+    config.retryCount = clampNumber(retryCount, 0, ROUTER_FALLBACK_MAX_RETRY_COUNT);
+  }
   const timeoutMs = typeof value.timeoutMs === "number"
     ? value.timeoutMs
     : typeof value.timeoutMs === "string"
@@ -558,7 +254,7 @@ export function fusionVisionConfigFromProfile(profile: VirtualModelProfileConfig
   if (timeoutMs) {
     config.timeoutMs = timeoutMs;
   }
-  return config.apiKey || config.baseUrl || config.model || config.modelSelector || config.toolName || config.timeoutMs ? config : undefined;
+  return config.apiKey || config.baseUrl || config.model || config.modelSelector || config.toolName || config.timeoutMs || config.retryCount || config.fallbackModels?.length ? config : undefined;
 }
 
 export function fusionVisionConfigFromDraft(draft: VirtualModelDraft, key: string): VirtualModelFusionVisionConfig | undefined {
@@ -569,8 +265,16 @@ export function fusionVisionConfigFromDraft(draft: VirtualModelDraft, key: strin
   if (!model) {
     return undefined;
   }
+  const fallbackModels = uniqueStrings(
+    draft.visionFallbackModels
+      .map((fallbackModel) => normalizeProviderModelSelector(fallbackModel))
+      .filter(Boolean)
+  );
+  const retryCount = clampNumber(numberValue(draft.visionRetryCount), 0, ROUTER_FALLBACK_MAX_RETRY_COUNT);
   return {
+    ...(fallbackModels.length ? { fallbackModels } : {}),
     ...(model ? { modelSelector: model } : {}),
+    ...(retryCount > 0 ? { retryCount } : {}),
     toolName: fusionVisionToolName(key)
   };
 }
@@ -626,6 +330,103 @@ export function fusionWebSearchConfigFromDraft(draft: VirtualModelDraft, key: st
 export function fusionWebSearchToolName(key: string): string {
   const normalized = sanitizeConfigId(key).replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
   return `${normalized || "fusion"}_web_search`;
+}
+
+export function fusionMediaConfigFromProfile(profile: VirtualModelProfileConfig): VirtualModelFusionMediaConfig | undefined {
+  const value = profile.metadata?.[fusionMediaMetadataKey];
+  if (!isPlainRecord(value)) {
+    return undefined;
+  }
+  const config: VirtualModelFusionMediaConfig = {
+    imageEditToolName: stringValue(value.imageEditToolName),
+    imageFallbackModelSelectors: modelSelectorListValue(value.imageFallbackModelSelectors),
+    imageGenerateToolName: stringValue(value.imageGenerateToolName),
+    imageModelSelector: stringValue(value.imageModelSelector),
+    imageRetryCount: retryCountValue(value.imageRetryCount),
+    jobCancelToolName: stringValue(value.jobCancelToolName),
+    jobGetToolName: stringValue(value.jobGetToolName),
+    videoFallbackModelSelectors: modelSelectorListValue(value.videoFallbackModelSelectors),
+    videoModelSelector: stringValue(value.videoModelSelector),
+    videoRetryCount: retryCountValue(value.videoRetryCount),
+    videoStartToolName: stringValue(value.videoStartToolName)
+  };
+  return Object.values(config).some((value) => Array.isArray(value) ? value.length > 0 : Boolean(value)) ? config : undefined;
+}
+
+export function fusionMediaConfigFromDraft(draft: VirtualModelDraft, key: string): VirtualModelFusionMediaConfig | undefined {
+  const selectedTools = selectedFusionToolNames(draft.toolsText);
+  const imageEnabled = selectedTools.some(isFusionImageGenerationToolName);
+  const videoEnabled = selectedTools.some(isFusionVideoGenerationToolName);
+  if (!imageEnabled && !videoEnabled) {
+    return undefined;
+  }
+  const imageModelSelector = normalizeProviderModelSelector(draft.imageGenerationModel);
+  const videoModelSelector = normalizeProviderModelSelector(draft.videoGenerationModel);
+  const imageFallbackModelSelectors = uniqueStrings(
+    draft.imageGenerationFallbackModels
+      .map((model) => normalizeProviderModelSelector(model))
+      .filter((model) => Boolean(model && model !== imageModelSelector))
+  );
+  const videoFallbackModelSelectors = uniqueStrings(
+    draft.videoGenerationFallbackModels
+      .map((model) => normalizeProviderModelSelector(model))
+      .filter((model) => Boolean(model && model !== videoModelSelector))
+  );
+  const imageRetryCount = clampNumber(numberValue(draft.imageGenerationRetryCount), 0, ROUTER_FALLBACK_MAX_RETRY_COUNT);
+  const videoRetryCount = clampNumber(numberValue(draft.videoGenerationRetryCount), 0, ROUTER_FALLBACK_MAX_RETRY_COUNT);
+  return {
+    ...(imageEnabled ? {
+      imageEditToolName: fusionMediaToolName(MEDIA_IMAGE_EDIT_TOOL_PREFIX, key),
+      ...(imageFallbackModelSelectors.length ? { imageFallbackModelSelectors } : {}),
+      imageGenerateToolName: fusionMediaToolName(MEDIA_IMAGE_GENERATE_TOOL_PREFIX, key),
+      imageModelSelector,
+      ...(imageRetryCount > 0 ? { imageRetryCount } : {})
+    } : {}),
+    ...(videoEnabled ? {
+      jobCancelToolName: fusionMediaToolName(MEDIA_JOB_CANCEL_TOOL_PREFIX, key),
+      jobGetToolName: fusionMediaToolName(MEDIA_JOB_GET_TOOL_PREFIX, key),
+      ...(videoFallbackModelSelectors.length ? { videoFallbackModelSelectors } : {}),
+      videoModelSelector,
+      ...(videoRetryCount > 0 ? { videoRetryCount } : {}),
+      videoStartToolName: fusionMediaToolName(MEDIA_VIDEO_START_TOOL_PREFIX, key)
+    } : {})
+  };
+}
+
+function modelSelectorListValue(value: unknown): string[] {
+  if (typeof value === "string") {
+    return uniqueStrings(value.split(/\r?\n|,/g).map((item) => normalizeProviderModelSelector(item)).filter(Boolean));
+  }
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return uniqueStrings(value.map((item) => normalizeProviderModelSelector(stringValue(item))).filter(Boolean));
+}
+
+function normalizeMediaFallbackModelSelectors(
+  providers: AppConfig["Providers"],
+  selectors: string[] | undefined,
+  kind: "image" | "video"
+): string[] {
+  return uniqueStrings(
+    (selectors ?? [])
+      .map((selector) => migrateLegacyGrokMediaModelSelector(providers, selector, kind) ?? normalizeProviderModelSelector(selector))
+      .filter(Boolean)
+  );
+}
+
+function retryCountValue(value: unknown): number | undefined {
+  const retryCount = typeof value === "number" && Number.isFinite(value)
+    ? value
+    : typeof value === "string"
+      ? numberValue(value)
+      : undefined;
+  return retryCount === undefined ? undefined : clampNumber(retryCount, 0, ROUTER_FALLBACK_MAX_RETRY_COUNT);
+}
+
+export function fusionMediaToolName(prefix: string, key: string): string {
+  const normalized = sanitizeConfigId(key).replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
+  return `${prefix}_${normalized || "fusion"}`;
 }
 
 export function fusionCustomToolConfigFromProfile(profile: VirtualModelProfileConfig): VirtualModelFusionCustomToolConfig | undefined {
@@ -703,6 +504,12 @@ export function validateVirtualModelDraft(draft: VirtualModelDraft): string {
   if (flags.matchMultimodal && !draft.visionModel.trim()) {
     return "Vision model is required.";
   }
+  if (selectedTools.some(isFusionImageGenerationToolName) && !draft.imageGenerationModel.trim()) {
+    return "Image generation model is required.";
+  }
+  if (selectedTools.some(isFusionVideoGenerationToolName) && !draft.videoGenerationModel.trim()) {
+    return "Video generation model is required.";
+  }
   if (flags.matchWebSearch && !validateKeyValueRows(draft.webSearchEnvRows)) {
     return "Environment variable keys are required when values are set.";
   }
@@ -727,24 +534,30 @@ export function virtualModelProfileFromDraft(
   const displayName = titleFromConfigKey(primaryMatchValue) || primaryMatchValue || draft.displayName.trim() || key;
   const fusionVisionConfig = fusionVisionConfigFromDraft(draft, id);
   const fusionWebSearchConfig = fusionWebSearchConfigFromDraft(draft, id);
+  const fusionMediaConfig = fusionMediaConfigFromDraft(draft, id);
   const fusionCustomToolConfig = fusionCustomToolConfigFromDraft(draft);
   const selectedTools = selectedFusionToolNames(draft.toolsText);
-  const toolNames = selectedTools.map((toolName) => {
+  const toolNames = selectedTools.flatMap((toolName) => {
     if (fusionVisionConfig?.toolName && isFusionVisionToolName(toolName)) {
-      return fusionVisionConfig.toolName;
+      return [fusionVisionConfig.toolName];
     }
     if (fusionWebSearchConfig?.toolName && isFusionWebSearchToolName(toolName)) {
-      return fusionWebSearchConfig.toolName;
+      return [fusionWebSearchConfig.toolName];
     }
-    return toolName;
+    if (isFusionImageGenerationToolName(toolName) && fusionMediaConfig) {
+      return [fusionMediaConfig.imageGenerateToolName, fusionMediaConfig.imageEditToolName].filter((name): name is string => Boolean(name));
+    }
+    if (isFusionVideoGenerationToolName(toolName) && fusionMediaConfig) {
+      return [fusionMediaConfig.videoStartToolName, fusionMediaConfig.jobGetToolName, fusionMediaConfig.jobCancelToolName].filter((name): name is string => Boolean(name));
+    }
+    return [toolName];
   });
   const tools = virtualModelToolsFromDraft(draft, toolNames);
-  const maxToolCalls = numberValue(draft.maxToolCalls);
-  const maxTurns = numberValue(draft.maxTurns);
   const flags = fusionToolExecutionFlagsFromTools(toolNames);
   const metadata = {
     ...(fusionVisionConfig ? { [fusionVisionMetadataKey]: fusionVisionConfig } : {}),
     ...(fusionWebSearchConfig ? { [fusionWebSearchMetadataKey]: fusionWebSearchConfig } : {}),
+    ...(fusionMediaConfig ? { [fusionMediaMetadataKey]: fusionMediaConfig } : {}),
     ...(fusionCustomToolConfig ? { [fusionCustomToolMetadataKey]: fusionCustomToolConfig } : {})
   };
   return {
@@ -754,8 +567,6 @@ export function virtualModelProfileFromDraft(
     execution: {
       clientToolsPolicy: "allow",
       ...flags,
-      maxToolCalls: clampNumber(maxToolCalls || Math.max(tools.length, 1), 1, 50),
-      maxTurns: clampNumber(maxTurns || 6, 1, 50),
       mode: "tool_loop",
       streamMode: "optimistic"
     },
@@ -863,14 +674,7 @@ export function parseVirtualModelTextList(value: string): string[] {
 }
 
 export function normalizeCoreModelSelector(value: string): string {
-  const trimmed = value.trim();
-  const commaIndex = trimmed.indexOf(",");
-  if (commaIndex > 0 && commaIndex < trimmed.length - 1) {
-    const provider = trimmed.slice(0, commaIndex).trim();
-    const model = trimmed.slice(commaIndex + 1).trim();
-    return provider && model ? `${provider}/${model}` : trimmed;
-  }
-  return trimmed;
+  return normalizeProviderModelSelector(value);
 }
 
 export function uniqueVirtualModelKey(profiles: VirtualModelProfileConfig[]): string {
@@ -958,18 +762,25 @@ export function virtualModelToolSummary(profile: VirtualModelProfileConfig): str
   }
   const visionConfig = fusionVisionConfigFromProfile(profile);
   const webSearchConfig = fusionWebSearchConfigFromProfile(profile);
+  const mediaConfig = fusionMediaConfigFromProfile(profile);
   const customToolConfig = fusionCustomToolConfigFromProfile(profile);
-  return profile.tools.map((tool) => {
+  return uniqueStrings(profile.tools.map((tool) => {
     if (visionConfig?.toolName && tool.name === visionConfig.toolName) {
       return `${fusionToolDisplayName(BUILTIN_FUSION_VISION_TOOL_NAME)}${visionConfig.modelSelector || visionConfig.model ? ` (${visionConfig.modelSelector || visionConfig.model})` : ""}`;
     }
     if (webSearchConfig?.toolName && tool.name === webSearchConfig.toolName) {
       return `${fusionToolDisplayName(BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME)}${webSearchConfig.provider ? ` (${fusionWebSearchProviderLabel(webSearchConfig.provider)})` : ""}`;
     }
+    if (isFusionImageGenerationToolName(tool.name)) {
+      return `${fusionToolDisplayName(BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME)}${mediaConfig?.imageModelSelector ? ` (${mediaConfig.imageModelSelector})` : ""}`;
+    }
+    if (isFusionVideoGenerationToolName(tool.name)) {
+      return `${fusionToolDisplayName(BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME)}${mediaConfig?.videoModelSelector ? ` (${mediaConfig.videoModelSelector})` : ""}`;
+    }
     return customToolConfig?.mcpServerName
       ? `${customToolConfig.mcpServerName} / ${fusionToolDisplayName(tool.name)}`
       : fusionToolDisplayName(tool.name);
-  }).join(", ");
+  })).join(", ");
 }
 
 export function normalizeFusionToolName(name: string): string {
@@ -986,7 +797,38 @@ export function isFusionToolName(name: string): boolean {
 
 export function isBuiltInFusionToolName(name: string): boolean {
   const normalized = normalizeFusionToolName(name);
-  return isFusionVisionToolName(normalized) || isFusionWebSearchToolName(normalized);
+  return isFusionVisionToolName(normalized) || isFusionWebSearchToolName(normalized) || isFusionImageGenerationToolName(normalized) || isFusionVideoGenerationToolName(normalized) || isGrokMediaFusionToolName(normalized);
+}
+
+export function isGrokMediaFusionToolName(name: string): boolean {
+  const normalized = normalizeFusionToolName(name);
+  return normalized === BUILTIN_FUSION_GROK_MEDIA_TOOL_NAME || (GROK_MEDIA_FUSION_TOOL_NAMES as readonly string[]).includes(normalized);
+}
+
+export function isFusionImageGenerationToolName(name: string): boolean {
+  const normalized = normalizeFusionToolName(name);
+  return normalized === BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME ||
+    normalized === GROK_MEDIA_IMAGE_GENERATE_TOOL_NAME ||
+    normalized === GROK_MEDIA_IMAGE_EDIT_TOOL_NAME ||
+    normalized.startsWith(`${MEDIA_IMAGE_GENERATE_TOOL_PREFIX}_`) ||
+    normalized.startsWith(`${MEDIA_IMAGE_EDIT_TOOL_PREFIX}_`);
+}
+
+export function isFusionVideoGenerationToolName(name: string): boolean {
+  const normalized = normalizeFusionToolName(name);
+  return normalized === BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME ||
+    normalized === GROK_MEDIA_VIDEO_START_TOOL_NAME ||
+    normalized === GROK_MEDIA_JOB_GET_TOOL_NAME ||
+    normalized === GROK_MEDIA_JOB_CANCEL_TOOL_NAME ||
+    normalized.startsWith(`${MEDIA_VIDEO_START_TOOL_PREFIX}_`) ||
+    normalized.startsWith(`${MEDIA_JOB_GET_TOOL_PREFIX}_`) ||
+    normalized.startsWith(`${MEDIA_JOB_CANCEL_TOOL_PREFIX}_`);
+}
+
+export function virtualModelProfilesUseMediaTools(profiles: VirtualModelProfileConfig[]): boolean {
+  return profiles.some((profile) => profile.enabled !== false && profile.tools?.some((tool) =>
+    isFusionImageGenerationToolName(tool.name) || isFusionVideoGenerationToolName(tool.name) || isGrokMediaFusionToolName(tool.name)
+  ));
 }
 
 export function isFusionVisionToolName(name: string): boolean {
@@ -1017,18 +859,31 @@ export function selectedFusionToolNameFromProfile(toolDrafts: VirtualModelToolDr
 export function selectedFusionToolNamesFromProfile(toolDrafts: VirtualModelToolDraft[], profile: VirtualModelProfileConfig): string[] {
   const visionConfig = fusionVisionConfigFromProfile(profile);
   const webSearchConfig = fusionWebSearchConfigFromProfile(profile);
+  const mediaConfig = fusionMediaConfigFromProfile(profile);
   const directTools = uniqueStrings(
     toolDrafts
       .map((tool) => normalizeFusionToolName(tool.name))
       .filter(isFusionToolName)
-      .map((toolName) => {
+      .flatMap((toolName) => {
         if (visionConfig?.toolName && toolName === visionConfig.toolName) {
-          return BUILTIN_FUSION_VISION_TOOL_NAME;
+          return [BUILTIN_FUSION_VISION_TOOL_NAME];
         }
         if (webSearchConfig?.toolName && toolName === webSearchConfig.toolName) {
-          return BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME;
+          return [BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME];
         }
-        return toolName;
+        if (toolName === BUILTIN_FUSION_GROK_MEDIA_TOOL_NAME) {
+          return [BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME, BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME];
+        }
+        if (toolName === GROK_MEDIA_CAPABILITIES_TOOL_NAME) {
+          return [];
+        }
+        if ((mediaConfig?.imageGenerateToolName === toolName || mediaConfig?.imageEditToolName === toolName) || isFusionImageGenerationToolName(toolName)) {
+          return [BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME];
+        }
+        if ([mediaConfig?.videoStartToolName, mediaConfig?.jobGetToolName, mediaConfig?.jobCancelToolName].includes(toolName) || isFusionVideoGenerationToolName(toolName)) {
+          return [BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME];
+        }
+        return [toolName];
       })
   );
   if (directTools.length > 0) {
@@ -1070,12 +925,20 @@ export function fusionToolDescription(name: string): string {
 
 export function fusionToolDisplayName(name: string): string {
   const normalized = fusionToolBaseName(name);
+  if (normalized === BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME) return "Image generation";
+  if (normalized === BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME) return "Video generation";
   const option = fusionToolOptions.find((item) => item.value === normalized);
   return option?.label ?? normalized;
 }
 
 export function fusionToolBaseName(name: string): string {
   const normalized = normalizeFusionToolName(name);
+  if (isFusionImageGenerationToolName(normalized)) {
+    return BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME;
+  }
+  if (isFusionVideoGenerationToolName(normalized)) {
+    return BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME;
+  }
   if (isFusionVisionToolName(normalized)) {
     return BUILTIN_FUSION_VISION_TOOL_NAME;
   }
@@ -1112,7 +975,7 @@ export function virtualModelExecutionSummary(profile: VirtualModelProfileConfig)
     execution?.matchMultimodal ? "image" : "",
     execution?.matchWebSearch ? "web search" : ""
   ].filter(Boolean);
-  return `${execution?.mode || "tool_loop"} · ${execution?.maxTurns ?? 6}/${execution?.maxToolCalls ?? 8}${features.length ? ` · ${features.join(", ")}` : ""}`;
+  return `${execution?.mode || "tool_loop"}${features.length ? ` · ${features.join(", ")}` : ""}`;
 }
 
 export function createMcpServerDraft(servers: GatewayMcpServerConfig[] = []): McpServerDraft {

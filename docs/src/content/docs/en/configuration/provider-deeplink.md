@@ -1,11 +1,11 @@
 ---
-title: One click import
-pageTitle: One click import
-eyebrow: Detailed Configuration
-lead: Quickly add common model providers, review the details, and save them without filling everything in by hand.
+title: One-click provider import
+pageTitle: One-click provider import
+eyebrow: Import
+lead: "Import a model provider into CCR with a preset button or a ccr://provider deeplink: CCR previews the config before anything is saved. Providers can also embed a button or publish a manifest so users can import from a webpage."
 ---
 
-## One-Click Import
+## One-click import
 
 Choose a provider below to get started. CCR shows what will be added before saving it; when using a custom entry point, make sure the source is one you trust.
 
@@ -25,6 +25,10 @@ Choose a provider below to get started. CCR shows what will be added before savi
   <a class="provider-import-button provider-openrouter" href="ccr://provider?name=OpenRouter&amp;base_url=https%3A%2F%2Fopenrouter.ai%2Fapi%2Fv1&amp;protocol=openai_chat_completions&amp;models=%7Eopenai%2Fgpt-latest%2C%7Eanthropic%2Fclaude-opus-latest%2C%7Eanthropic%2Fclaude-sonnet-latest%2Cgoogle%2Fgemini-3.5-flash%2Cz-ai%2Fglm-5.2" aria-label="Import OpenRouter provider">
     <span class="provider-import-icon-shell"><img src="../../../provider-icons/openrouter.ico" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">OpenRouter</span><span class="provider-import-meta">OpenAI compatible gateway</span></span>
+  </a>
+  <a class="provider-import-button provider-nvidia" href="ccr://provider?name=NVIDIA&amp;base_url=https%3A%2F%2Fintegrate.api.nvidia.com%2Fv1&amp;protocol=openai_chat_completions&amp;models=nvidia%2Fnemotron-3-super-120b-a12b%2Cnvidia%2Fnemotron-3-ultra-550b-a55b&amp;source=https%3A%2F%2Fbuild.nvidia.com%2Fmodels" aria-label="Import NVIDIA NIM provider">
+    <span class="provider-import-icon-shell"><img src="../../../provider-icons/nvidia.svg" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">NVIDIA</span><span class="provider-import-meta">NIM Chat Completions</span></span>
   </a>
   <a class="provider-import-button provider-deepseek" href="ccr://provider?name=DeepSeek&amp;base_url=https%3A%2F%2Fapi.deepseek.com&amp;protocol=openai_chat_completions&amp;models=deepseek-v4-pro%2Cdeepseek-v4-flash%2Cdeepseek-v3.2%2Cdeepseek-reasoner%2Cdeepseek-chat" aria-label="Import DeepSeek provider">
     <span class="provider-import-icon-shell"><img src="../../../provider-icons/deepseek.ico" alt="" loading="lazy" /></span>
@@ -78,17 +82,41 @@ Choose a provider below to get started. CCR shows what will be added before savi
     <span class="provider-import-icon-shell"><img src="../../../provider-icons/teamorouter.png" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">TeamoRouter</span><span class="provider-import-meta">Anthropic / Chat / Responses</span></span>
   </a>
-  <a class="provider-import-button provider-code0" href="ccr://provider?name=code0.ai&amp;base_url=https%3A%2F%2Fconsole.code0.ai&amp;protocol=anthropic_messages&amp;source=https%3A%2F%2Fcode0.ai%3Fsource%3Dclaudecoderouter" aria-label="Import code0.ai provider">
+  <a class="provider-import-button provider-unity2" href="ccr://provider?name=Unity2.Ai&amp;base_url=https%3A%2F%2Funity2.ai%2Fv1&amp;protocol=openai_chat_completions&amp;source=https%3A%2F%2Funity2.ai%2Fregister%3Fsource%3Dclaudecoderouter" aria-label="Import Unity2.Ai provider">
+    <span class="provider-import-icon-shell"><img src="../../../provider-icons/unity2.jpg" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">Unity2.Ai</span><span class="provider-import-meta">OpenAI compatible gateway</span></span>
+  </a>
+  <a class="provider-import-button provider-code0" href="ccr://provider?name=code0.ai&amp;base_url=https%3A%2F%2Fconsole.code0.ai&amp;protocol=anthropic_messages&amp;source=https%3A%2F%2Fcode0.ai%2Fagent%2Fregister%2F9n9jOsSnYQoemIVL%3Futm_source%3Dclaudecoderouter%26utm_medium%3Dpartner%26utm_campaign%3Dclaudecoderouter_2026%26utm_content%3Ddefault" aria-label="Import code0.ai provider">
     <span class="provider-import-icon-shell"><img src="../../../provider-icons/code0.png" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">code0.ai</span><span class="provider-import-meta">Anthropic / Chat / Responses</span></span>
   </a>
-  <a class="provider-import-button provider-claudeapi" href="ccr://provider?name=claudeapi&amp;base_url=https%3A%2F%2Fgw.claudeapi.com&amp;protocol=anthropic_messages&amp;source=https%3A%2F%2Fwww.claudeapi.com%3Fsource%3Dclaudecoderouter" aria-label="Import claudeapi provider">
+  <a class="provider-import-button provider-claudeapi" href="ccr://provider?name=claudeapi&amp;base_url=https%3A%2F%2Fgw.claudeapi.com&amp;protocol=anthropic_messages&amp;source=https%3A%2F%2Fconsole.claudeapi.com%2Fagent%2Fregister%2FLbmB7Y9kPloyzhwF%3Futm_source%3Dclaudecoderouter%26utm_medium%3Dpartner%26utm_campaign%3Dclaudecoderouter_2026%26utm_content%3Ddefault" aria-label="Import claudeapi provider">
     <span class="provider-import-icon-shell"><img src="../../../provider-icons/claudeapi.png" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">claudeapi</span><span class="provider-import-meta">Anthropic Messages</span></span>
   </a>
+  <a class="provider-import-button provider-qiniu-ai" href="ccr://provider?name=%E4%B8%83%E7%89%9B%E4%BA%91+AI&amp;base_url=https%3A%2F%2Fapi.qnaigc.com&amp;protocol=openai_chat_completions&amp;source=https%3A%2F%2Fs.qiniu.com%2FAVjMVf" aria-label="Import Qiniu Cloud AI provider">
+    <span class="provider-import-icon-shell"><img src="../../../provider-icons/qiniu-ai.png" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">Qiniu Cloud AI</span><span class="provider-import-meta">Chat / Responses / Anthropic / Gemini Generate</span></span>
+  </a>
+  <a class="provider-import-button provider-fenno" href="ccr://provider?name=Fenno.ai&amp;base_url=https%3A%2F%2Fapi.fenno.ai&amp;protocol=openai_chat_completions&amp;source=https%3A%2F%2Fapi.fenno.ai%2Fregister%3Fredirect%3D%2Fpurchase%3Ftab%3Dsubscription%2526group%3D16%26aff%3D9HHHAB5QLAES" aria-label="Import Fenno.ai provider">
+    <span class="provider-import-icon-shell"><img src="../../../provider-icons/fenno.jpg" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">Fenno.ai</span><span class="provider-import-meta">Chat / Responses / Anthropic</span></span>
+  </a>
+  <a class="provider-import-button provider-infistar-ai" href="ccr://provider?name=%E6%97%A0%E9%99%90%E6%98%9F%E6%B2%B3&amp;base_url=https%3A%2F%2Finfistar.ai%2Fv1&amp;protocol=openai_chat_completions&amp;models=gpt-4o&amp;source=https%3A%2F%2Finfistar.ai%2Fregister%3Faff%3DCCRCCR%26ref_source%3Dlink" aria-label="Import 无限星河 provider">
+    <span class="provider-import-icon-shell"><img src="../../../provider-icons/infistar-ai.jpg" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">无限星河</span><span class="provider-import-meta">OpenAI compatible gateway</span></span>
+  </a>
+  <a class="provider-import-button provider-minimax" href="ccr://provider?name=MiniMax+%28Global%29&amp;base_url=https%3A%2F%2Fapi.minimax.io%2Fv1&amp;protocol=openai_chat_completions&amp;models=MiniMax-M3&amp;source=https%3A%2F%2Fplatform.minimax.io%2Fdocs" aria-label="Import MiniMax global provider">
+    <span class="provider-import-icon-shell"><img src="../../../provider-icons/minimax.ico" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">MiniMax (Global)</span><span class="provider-import-meta">Chat Completions</span></span>
+  </a>
+  <a class="provider-import-button provider-minimax" href="ccr://provider?name=MiniMax+%28China%29&amp;base_url=https%3A%2F%2Fapi.minimaxi.com%2Fv1&amp;protocol=openai_chat_completions&amp;models=MiniMax-M3&amp;source=https%3A%2F%2Fplatform.minimaxi.com%2Fdocs" aria-label="Import MiniMax China provider">
+    <span class="provider-import-icon-shell"><img src="../../../provider-icons/minimax.ico" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">MiniMax (China)</span><span class="provider-import-meta">Chat Completions</span></span>
+  </a>
 </div>
 
-## Embeddable Button Component
+## Embeddable button component
 
 CCR also ships a framework-free button script that providers can embed on their own webpages so users can import that provider into CCR with one click. The script registers Web Components automatically.
 
@@ -136,7 +164,7 @@ For larger configs, pass a manifest:
 </script>
 ```
 
-### Render Parameters
+### Render parameters
 
 `CCRProviderButtons.render(target, options)` and `<ccr-provider-button>` support the same parameter set. Parameter names match the `ccr://provider` protocol:
 
@@ -184,7 +212,7 @@ For larger configs, put JSON in `payload`. The value can be URL-encoded JSON or 
 ccr://provider?payload=%7B%22name%22%3A%22Example%20AI%22%2C%22base_url%22%3A%22https%3A%2F%2Fapi.example.com%2Fv1%22%2C%22models%22%3A%5B%22example-chat%22%5D%7D
 ```
 
-## Manifest Import
+## Manifest import
 
 Providers can also pass a manifest URL:
 
@@ -266,7 +294,7 @@ Complete manifest example:
 }
 ```
 
-## Supported Parameters
+## Supported parameters
 
 | Parameter | Description |
 | --- | --- |

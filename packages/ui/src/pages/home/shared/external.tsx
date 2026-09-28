@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type HTMLAttributes, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type HTMLAttributes, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
   closestCenter,
   DndContext,
@@ -35,6 +35,8 @@ import {
   Copy,
   Database,
   Download,
+  Eye,
+  EyeOff,
   ExternalLink,
   FolderOpen,
   Gauge,
@@ -99,6 +101,7 @@ import { Label } from "@/components/ui/label";
 import { PopoverContent } from "@/components/ui/popover";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import appLogoUrl from "@/assets/logo.png";
@@ -125,13 +128,11 @@ import {
   BUILTIN_FUSION_TOOL_SERVER_NAME,
   BUILTIN_FUSION_VISION_TOOL_NAME,
   BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME,
-  CLAUDE_CODE_DEFAULT_ENV,
   DEFAULT_OVERVIEW_WIDGETS,
   DEFAULT_TRAY_COMPONENT_VARIANTS,
   DEFAULT_TRAY_WIDGETS,
   DEFAULT_TRAY_WINDOW_MODULES,
   enforceSingleEnabledGlobalProfilePerAgent,
-  normalizeProfileScopeValue,
   OVERVIEW_WIDGET_SIZE_VALUES,
   TRAY_SINGLETON_WIDGET_TYPES,
   TRAY_TOP_WIDGET_TYPES,
@@ -166,10 +167,6 @@ import type {
   GatewayProviderConfig,
   GatewayProviderCapability,
   GatewayPluginAppConfig,
-  GatewayProviderConnectivityCheckModelResult,
-  GatewayProviderConnectivityCheckReport,
-  GatewayProviderProbeCandidate,
-  GatewayProviderProbeCandidateResult,
   GatewayProviderProbeResult,
   GatewayProviderProtocol,
   GatewayMcpServerConfig,
@@ -182,6 +179,9 @@ import type {
   OverviewWidgetSize,
   OverviewWidgetType,
   OverviewWidgetVariant,
+  OpenRouterProviderCatalogItem,
+  OpenRouterProviderCatalogRequest,
+  OpenRouterProviderCatalogResult,
   PluginDependency,
   PluginDirectorySelection,
   PluginMarketplaceEntry,
@@ -209,6 +209,7 @@ import type {
   ProxyNetworkSnapshot,
   ProxyStatus,
   RequestLogBody,
+  RequestLogBodyChunk,
   RequestLogEntry,
   RequestLogListFilter,
   RequestLogPage,
@@ -217,10 +218,6 @@ import type {
   RouterFallbackConfig,
   RouterFallbackMode,
   RouterRule,
-  RouterRuleCondition,
-  RouterRuleOperator,
-  RouterRuleRewrite,
-  RouterRuleRewriteOperation,
   RouterRuleType,
   TrayBalanceProgressConfig,
   TrayComponentVariants,
@@ -344,9 +341,6 @@ import {
   getNextOnboardingStep,
   isOnboardingProfileReady,
   isOnboardingProviderReady,
-  legacyRouterRuleTypes,
-  legacyUnimcpPackageName,
-  legacyUnimcpServerName,
   limitWindowOptions,
   mcpServerStartupTimeoutMs,
   mcpServerTransportOptions,
@@ -555,14 +549,14 @@ export {
   sortableKeyboardCoordinates, useSortable, CSS, AnimatePresence, LayoutGroup, motion, useReducedMotion,
   Activity, ArrowDown, ArrowUp, Box, Boxes, Braces, Check, CheckCircle2,
   ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Copy, Database, Download, FolderOpen,
-  ExternalLink, Gauge, Globe, Info, KeyRound, Layers3, LoaderCircle, MoveRight, Network,
+  ExternalLink, Eye, EyeOff, Gauge, Globe, Info, KeyRound, Layers3, LoaderCircle, MoveRight, Network,
   Palette, PanelLeftClose, PanelLeftOpen, Pause, Pencil, Play, Plus,
   Power, QrCode, RefreshCw, Route, Search, Server, Settings, ShieldCheck,
   Terminal, Trash2, UserRound, X, Area, Bar, BarChart, CartesianGrid,
   Cell, ComposedChart, LabelList, Line, Pie, PieChart, Tooltip,
   XAxis, YAxis, Badge, Button, Card, CardContent, CardHeader,
   CardTitle, Checkbox, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogStackLayer,
-  DialogTitle, Input, Label, PopoverContent, Select, Switch, Textarea,
+  DialogTitle, Input, Label, PopoverContent, Select, Switch, Tabs, TabsContent, TabsList, TabsTrigger, Textarea,
   cn, appLogoUrl, claudeCodeLogoUrl, codexLogoUrl, onboardingMascotSpriteUrl, anthropicProviderIconUrl, bailianProviderIconUrl, deepseekProviderIconUrl,
   geminiProviderIconUrl, mistralProviderIconUrl, moonshotProviderIconUrl, openaiProviderIconUrl, openrouterProviderIconUrl, siliconflowProviderIconUrl, zaiGlobalCodingProviderIconUrl,
   zaiGlobalGeneralProviderIconUrl, zhipuCnCodingProviderIconUrl, zhipuCnGeneralProviderIconUrl, trayCyanIconUrl, trayOrangeIconUrl, trayVioletIconUrl, BUILTIN_FUSION_TOOL_SERVER_NAME,
@@ -571,15 +565,15 @@ export {
   providerIdentitySafetyIssue, getProviderPresets, setProviderPresets, standardProviderAccountConfig, normalizeProviderBaseUrl, providerUrlWithDefaultScheme
 };
 export type {
-  HTMLAttributes, ReactPointerEvent, ReactNode, CollisionDetection, DragEndEvent, DragOverEvent, DragStartEvent,
+  HTMLAttributes, ReactDragEvent, ReactPointerEvent, ReactNode, CollisionDetection, DragEndEvent, DragOverEvent, DragStartEvent,
   LucideIcon, AgentAnalysisFilter, AgentAnalysisSessionSelection, AgentAnalysisSnapshot, AgentAnalysisTrace, AgentAnalysisTracePayloadFullResult, AgentAnalysisTracePayloadRequest, AgentAnalysisTraceRun, AgentAnalysisTraceRunKind, AgentKind, AppConfig, AppInfo, AppSaveConfigOptions, AppUpdateStatus, ApiKeyConfig,
   ApiKeyLimitConfig, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginCancelResult, BotGatewayQrLoginStartRequest, BotGatewayQrLoginStartResult, BotGatewayQrLoginWaitRequest, BotGatewayQrLoginWaitResult, BotGatewayQrWindowOpenResult, BotGatewayRuntimeConfig, BotGatewaySavedConfig, BotHandoffScanTarget, GatewayProviderConfig, GatewayProviderCapability, GatewayPluginAppConfig, GatewayProviderProbeResult, GatewayProviderProtocol, GatewayMcpServerConfig,
   GatewayMcpServerTransport, GatewayMcpStdioMessageMode, GatewayMcpToolInfo, GatewayStatus, OverviewMetricKind, OverviewWidgetConfig, OverviewWidgetSize, OverviewWidgetType,
-  OverviewWidgetVariant, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProviderAccountConfig, ProviderAccountConnectorConfig, ProviderAccountHttpJsonConnectorConfig,
+  OverviewWidgetVariant, OpenRouterProviderCatalogItem, OpenRouterProviderCatalogRequest, OpenRouterProviderCatalogResult, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProviderAccountConfig, ProviderAccountConnectorConfig, ProviderAccountHttpJsonConnectorConfig,
   ProviderAccountMeter, ProviderAccountStandardConnectorConfig, ProviderAccountSnapshot, ProviderAccountTestPath, ProviderAccountTestResult, ProviderDeepLinkPayload, ProviderDeepLinkRequest,
   ProviderCredentialConfig,
   ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, CodexProfileConfigFormat, ProfileScope, ProfileSurface, ProxyCertificateInstallResult, ProxyCertificateStatus, ProxyNetworkBody,
-  ProxyNetworkExchange, ProxyNetworkSnapshot, ProxyStatus, RequestLogBody, RequestLogEntry, RequestLogListFilter, RequestLogPage,
+  ProxyNetworkExchange, ProxyNetworkSnapshot, ProxyStatus, RequestLogBody, RequestLogBodyChunk, RequestLogEntry, RequestLogListFilter, RequestLogPage,
   RequestLogStatusFilter, RouterConfig, RouterFallbackConfig, RouterFallbackMode, RouterRule, RouterRuleType, TrayComponentVariants,
   TrayBalanceProgressConfig, TrayWidgetConfig, TrayWidgetType, TrayWidgetVariant, TrayWindowModuleId, UsageComparisonRow, UsageSeriesPoint, UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, UsageTotals,
   VirtualModelBaseModelMode, VirtualModelExecutionMode, VirtualModelFusionCustomToolConfig, VirtualModelFusionVisionConfig, VirtualModelFusionWebSearchConfig, VirtualModelFusionWebSearchProvider, VirtualModelProfileConfig, VirtualModelToolVisibility, ProviderIdentitySafetyIssue, ProviderPreset, ProviderPresetEndpoint

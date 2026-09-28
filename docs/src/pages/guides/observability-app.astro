@@ -1,0 +1,34 @@
+---
+import "@/styles/globals.css";
+import "../../components/interactive/demo.css";
+import ObservabilityViewDemo from "../../components/interactive/ObservabilityViewDemo.tsx";
+---
+<!doctype html>
+<html lang="zh-CN" class="interactive-demo-html">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CCR — Observability (demo)</title>
+    <script is:inline>
+      (() => {
+        document.documentElement.lang =
+          new URLSearchParams(location.search).get("locale") === "en" ? "en" : "zh-CN";
+        try {
+          const storedTheme = localStorage.getItem("ccr-docs-theme");
+          const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          document.documentElement.dataset.theme =
+            storedTheme === "light" || storedTheme === "dark"
+              ? storedTheme
+              : prefersDark
+                ? "dark"
+                : "light";
+        } catch {
+          document.documentElement.dataset.theme = "light";
+        }
+      })();
+    </script>
+  </head>
+  <body class="interactive-demo-page">
+    <ObservabilityViewDemo client:only="react" />
+  </body>
+</html>
