@@ -1004,6 +1004,9 @@ export function AddProfileForm({
                     {draft.agent === "claude-code" || draft.agent === "codex" ? (
                       <ProfileEnhancedRouteSetting draft={draft} onChange={onChange} />
                     ) : null}
+                    {draft.agent === "claude-code" ? (
+                      <ProfileClaudeDefaultModelListSetting draft={draft} onChange={onChange} />
+                    ) : null}
                     <ProfileRoutingSettings
                       draft={draft}
                       onChange={onChange}
@@ -1271,6 +1274,47 @@ function ProfileEnhancedRouteSetting({
         <Toggle
           checked={draft.routingEnhancedRoute}
           onChange={(routingEnhancedRoute) => onChange({ routingEnhancedRoute })}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ProfileClaudeDefaultModelListSetting({
+  draft,
+  onChange
+}: {
+  draft: AddProfileDraft;
+  onChange: (patch: Partial<AddProfileDraft>) => void;
+}) {
+  const t = useAppText();
+  const description = t("Default model list description");
+
+  return (
+    <div className="sm:col-span-2 rounded-md border border-border bg-muted/20 p-3">
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="text-[12px] font-semibold">{t("Default model list")}</span>
+          <Tooltip
+            aria-label={description}
+            className="h-5 w-5 items-center justify-center rounded-full text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+            content={description}
+            contentClassName="w-[260px] max-w-[calc(100vw-64px)] whitespace-normal px-2.5 py-2 text-left font-medium leading-4"
+            side="right"
+            tabIndex={0}
+          >
+            <button
+              aria-label={description}
+              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
+              type="button"
+            >
+              <Info className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          </Tooltip>
+        </span>
+        <Toggle
+          checked={draft.claudeDefaultModelList}
+          onChange={(claudeDefaultModelList) => onChange({ claudeDefaultModelList })}
         />
       </div>
     </div>

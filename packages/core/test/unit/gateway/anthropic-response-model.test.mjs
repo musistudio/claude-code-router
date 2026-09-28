@@ -2,9 +2,15 @@ import assert from "node:assert/strict";
 import { Readable, Writable } from "node:stream";
 import test from "node:test";
 import { ClaudeCodeRouterPlugin } from "@ccr/core/gateway/claude-code-router-plugin.ts";
+import { createGatewayPlugin } from "@ccr/core/gateway/core-runtime/router-plugin.ts";
+import { ccrClientVisibleModelResponseHookKey } from "@ccr/core/gateway/core-runtime/router-plugin-contract.ts";
 import {
+  maxRewritableAnthropicJsonBodyBytes,
+  rewriteAnthropicMessageModelJsonStream,
+  rewriteAnthropicMessageModelPayload,
   rewriteAnthropicMessageStartModelStream,
   rewriteAnthropicSseBlockMessageStartModelForTest,
+  shouldRewriteAnthropicMessageModelJson,
   shouldRewriteAnthropicMessageStartModel
 } from "@ccr/core/gateway/features/anthropic-response-model.ts";
 import { GatewayRequestPipeline } from "@ccr/core/gateway/request/pipeline.ts";
@@ -82,6 +88,118 @@ test("gateway pipeline returns the Claude Code visible model when upstream respo
   assert.match(result.output, /"type":"thinking"/);
 });
 
+test("Anthropic JSON response model rewrite activates only for Anthropic JSON with a model", () => {
+  assert.equal(shouldRewriteAnthropicMessageModelJson({
+    contentType: "application/json",
+    model: "kimi-test/k3",
+    protocol: "anthropic_messages"
+  }), true);
+  assert.equal(shouldRewriteAnthropicMessageModelJson({
+    contentType: "application/json; charset=utf-8",
+    model: "kimi-test/k3",
+    protocol: "anthropic_messages"
+  }), true);
+  assert.equal(shouldRewriteAnthropicMessageModelJson({
+    contentType: "text/event-stream",
+    model: "kimi-test/k3",
+    protocol: "anthropic_messages"
+  }), false);
+  assert.equal(shouldRewriteAnthropicMessageModelJson({
+    contentType: "application/json",
+    model: "kimi-test/k3",
+    protocol: "openai_chat_completions"
+  }), false);
+  assert.equal(shouldRewriteAnthropicMessageModelJson({
+    contentType: "application/json",
+    model: "",
+    protocol: "anthropic_messages"
+  }), false);
+});
+
+test("Anthropic message payload rewrite only touches message objects", () => {
+  const message = { id: "msg_1", model: "k3", role: "assistant", type: "message" };
+  assert.deepEqual(rewriteAnthropicMessageModelPayload(message, "kimi-test/k3"), {
+    id: "msg_1",
+    model: "kimi-test/k3",
+    role: "assistant",
+    type: "message"
+  });
+  assert.equal(rewriteAnthropicMessageModelPayload({ ...message, model: "kimi-test/k3" }, "kimi-test/k3"), undefined);
+  assert.equal(rewriteAnthropicMessageModelPayload({ input_tokens: 12 }, "kimi-test/k3"), undefined);
+  assert.equal(rewriteAnthropicMessageModelPayload({ model: "k3", object: "chat.completion" }, "kimi-test/k3"), undefined);
+  assert.equal(rewriteAnthropicMessageModelPayload("not-a-record", "kimi-test/k3"), undefined);
+  assert.equal(rewriteAnthropicMessageModelPayload(undefined, "kimi-test/k3"), undefined);
+});
+
+test("Anthropic JSON stream rewrite rewrites the buffered message body", async () => {
+  const body = JSON.stringify({
+    content: [{ text: "hi", type: "text" }],
+    id: "msg_2",
+    model: "k3",
+    role: "assistant",
+    type: "message",
+    usage: { input_tokens: 3, output_tokens: 2 }
+  });
+  const output = await streamText(rewriteAnthropicMessageModelJsonStream(
+    Readable.from([body.slice(0, 40), body.slice(40, 90), body.slice(90)]),
+    "kimi-test/k3"
+  ));
+
+  const parsed = JSON.parse(output);
+  assert.equal(parsed.model, "kimi-test/k3");
+  assert.equal(parsed.id, "msg_2");
+  assert.deepEqual(parsed.usage, { input_tokens: 3, output_tokens: 2 });
+});
+
+test("Anthropic JSON stream rewrite passes non-message JSON through unchanged", async () => {
+  const body = JSON.stringify({ input_tokens: 12, model: "k3" });
+  const output = await streamText(rewriteAnthropicMessageModelJsonStream(Readable.from([body]), "kimi-test/k3"));
+  assert.equal(output, body);
+});
+
+test("Anthropic JSON stream rewrite forwards oversized bodies byte-for-byte", async () => {
+  const prefix = Buffer.from('{"content":[{"text":"hi","type":"text"}],"id":"msg_3","model":"k3","role":"assistant","type":"message","usage":');
+  const first = Buffer.concat([prefix, Buffer.alloc(5 * 1024 * 1024)]);
+  const rest = Buffer.alloc(maxRewritableAnthropicJsonBodyBytes + 1024, 0x20);
+  const input = Buffer.concat([first, rest]);
+
+  const output = await streamText(rewriteAnthropicMessageModelJsonStream(Readable.from([first, rest]), "kimi-test/k3"));
+  assert.equal(output.length, input.length);
+  assert.equal(Buffer.compare(Buffer.from(output), input), 0);
+});
+
+test("gateway pipeline rewrites the model of non-streaming Anthropic message responses", async () => {
+  const result = await runAnthropicPipelineModelRewrite("kimi-test/k3", {}, { nonStreaming: true });
+
+  assert.equal(result.upstreamBody?.model, "k3");
+  assert.equal(result.response.statusCode, 200);
+  assert.equal(result.response.headers["content-type"], "application/json");
+  assert.equal(result.response.headers["content-length"], undefined);
+  const parsed = JSON.parse(result.output);
+  assert.equal(parsed.model, "kimi-test/k3");
+  assert.equal(parsed.id, "msg_2");
+  assert.deepEqual(parsed.usage, { input_tokens: 5, output_tokens: 6 });
+});
+
+test("router plugin response hook rewrites non-streaming Anthropic message models", async () => {
+  const config = createPipelineConfigForAnthropicModelRewrite();
+  const plugin = await createGatewayPlugin({ plugin: { config: { appConfig: config } } });
+  const hook = plugin.responseHooks.find((entry) => entry.key === ccrClientVisibleModelResponseHookKey);
+  assert.ok(hook, "client-visible-model response hook is registered");
+  const payload = { content: [{ text: "ok", type: "text" }], id: "msg_4", model: "k3", role: "assistant", type: "message" };
+  const requestHeaders = { "x-ccr-client-visible-model": "kimi-test/k3" };
+
+  assert.deepEqual(hook.transformResponse({ request: { headers: requestHeaders }, responsePayload: payload }), {
+    responsePayload: { ...payload, model: "kimi-test/k3" }
+  });
+  assert.equal(hook.transformResponse({ request: { headers: {} }, responsePayload: payload }), undefined);
+  assert.equal(hook.transformResponse({ request: { headers: requestHeaders }, responsePayload: { input_tokens: 4 } }), undefined);
+  assert.equal(
+    hook.transformResponse({ request: { headers: requestHeaders }, responsePayload: { ...payload, model: "kimi-test/k3" } }),
+    undefined
+  );
+});
+
 test("gateway pipeline preserves Claude Code hex model id in Anthropic SSE response", async () => {
   const encodedModel = `anthropic/claude-ccr-h${Buffer.from("kimi-test/k3", "utf8").toString("hex")}`;
   const result = await runAnthropicPipelineModelRewrite(encodedModel);
@@ -104,7 +222,7 @@ test("gateway pipeline strips client supplied CCR route headers", async () => {
   assert.equal(result.upstreamHeaders?.["x-ccr-routed-model"], "kimi-test/k3");
 });
 
-async function runAnthropicPipelineModelRewrite(requestModel, requestHeaders = {}) {
+async function runAnthropicPipelineModelRewrite(requestModel, requestHeaders = {}, options = {}) {
   const config = createPipelineConfigForAnthropicModelRewrite();
   const plugin = new ClaudeCodeRouterPlugin(config);
   const pipeline = new GatewayRequestPipeline({
@@ -130,6 +248,26 @@ async function runAnthropicPipelineModelRewrite(requestModel, requestHeaders = {
   globalThis.fetch = async (_input, init) => {
     upstreamBody = JSON.parse(String(init?.body));
     upstreamHeaders = Object.fromEntries(new Headers(init?.headers).entries());
+    if (options.nonStreaming) {
+      return new Response(
+        JSON.stringify({
+          content: [{ text: "ok", type: "text" }],
+          id: "msg_2",
+          model: "k3",
+          role: "assistant",
+          stop_reason: "end_turn",
+          type: "message",
+          usage: { input_tokens: 5, output_tokens: 6 }
+        }),
+        {
+          headers: {
+            "content-length": "220",
+            "content-type": "application/json"
+          },
+          status: 200
+        }
+      );
+    }
     return new Response(
       [
         "event: message_start\n",
@@ -153,7 +291,7 @@ async function runAnthropicPipelineModelRewrite(requestModel, requestHeaders = {
       max_tokens: 64,
       messages: [{ content: "hello", role: "user" }],
       model: requestModel,
-      stream: true
+      ...(options.nonStreaming ? {} : { stream: true })
     })]);
     request.headers = {
       "content-type": "application/json",

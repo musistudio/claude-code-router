@@ -2,6 +2,7 @@ import type { ApiKeyConfig, AppConfig, ProfileConfig } from "@ccr/core/contracts
 import { resolveClaudeAppGatewayRouteModel } from "@ccr/core/agents/claude-app/gateway-routes";
 import { profileApiKeyId } from "@ccr/core/profiles/api-key";
 import { modelRegistryForConfig, normalizeRouteSelector } from "@ccr/core/routing/model-registry";
+import { claudeDefaultTierRoutingModels, findClaudeDefaultModelTier, isClaudeDefaultModelListEnabled } from "@ccr/core/gateway/features/claude-default-models";
 
 export type ProfileModelAllowlistConfig = Pick<AppConfig, "Providers" | "profile" | "virtualModelProfiles">;
 export type ModelAllowlistResolutionConfig = Pick<AppConfig, "Providers" | "virtualModelProfiles"> & Partial<Pick<AppConfig, "profile">>;
@@ -26,6 +27,16 @@ export function profileAllowedModels(profile: ProfileConfig | undefined): string
   const explicit = uniqueModels((profile?.availableModels ?? []).map(normalizeAllowlistModel));
   if (!profile || explicit.length === 0) {
     return undefined;
+  }
+  if (isClaudeDefaultModelListEnabled(profile)) {
+    // Fixed model list mode: clients request the tier names and the gateway
+    // rewrites them to the profile slots, so those models must pass; the
+    // allowlist keeps enforcing every other model for this profile.
+    return uniqueModels([
+      normalizeAllowlistModel(profile.model),
+      ...explicit,
+      ...claudeDefaultTierRoutingModels(profile)
+    ]);
   }
   return uniqueModels([
     normalizeAllowlistModel(profile.model),
@@ -64,7 +75,9 @@ export function isModelAllowedForProfile(
   if (!allowed) {
     return true;
   }
-  const modelKeysToCheck = modelKeys(config, model);
+  // Authorize dated tier aliases consistently with the request routing path.
+  const tier = isClaudeDefaultModelListEnabled(profile) ? findClaudeDefaultModelTier(model) : undefined;
+  const modelKeysToCheck = modelKeys(config, tier?.model ?? model);
   return modelKeysToCheck.length === 0 || modelKeysToCheck.some((key) => allowed.has(key));
 }
 
