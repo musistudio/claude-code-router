@@ -49,6 +49,7 @@ import type {
   ProviderAccountConfig,
   ProviderAccountConnectorConfig,
   ProviderCredentialConfig,
+  ProviderEnhancedSearchConfig,
   ProviderModelCapabilities,
   ProviderModelMetadata,
   ProviderModelPricing,
@@ -1443,6 +1444,7 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
         capabilities: parseProviderCapabilities(item.capabilities)
           ?? parseProviderProtocolCapability(item),
         credentials: parseProviderCredentials(item.credentials ?? item.keys ?? item.apiKeys),
+        enhancedSearch: parseProviderEnhancedSearch(item.enhancedSearch),
         extraBody: item.extraBody,
         extraHeaders: item.extraHeaders ?? item.extra_headers ?? item.headers,
         icon: readString(item.icon),
@@ -1754,6 +1756,21 @@ function parseProviderAccount(value: unknown): ProviderAccountConfig | undefined
     connectors,
     enabled: typeof value.enabled === "boolean" ? value.enabled : undefined,
     refreshIntervalMs: refreshIntervalMs && refreshIntervalMs > 0 ? refreshIntervalMs : undefined
+  };
+}
+
+function parseProviderEnhancedSearch(value: unknown): ProviderEnhancedSearchConfig | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const apiKey = readString(value.apiKey)?.trim() || undefined;
+  const enabled = value.enabled === true ? true : undefined;
+  if (!apiKey && !enabled) {
+    return undefined;
+  }
+  return {
+    ...(apiKey ? { apiKey } : {}),
+    ...(enabled ? { enabled } : {})
   };
 }
 
