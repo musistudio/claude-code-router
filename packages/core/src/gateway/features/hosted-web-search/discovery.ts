@@ -98,7 +98,7 @@ export function openAiToolChoiceNamesWebSearch(value: unknown): boolean {
 
 function anthropicHostedWebSearchType(value: string | undefined): boolean {
   const normalized = normalizedToolProtocolName(value);
-  return normalized === "web_search" || normalized === "web_search_20250305";
+  return normalized === "web_search" || /^web_search_\d{8}$/.test(normalized);
 }
 
 function openAiHostedWebSearchType(value: string | undefined): boolean {
@@ -116,7 +116,7 @@ function readAnthropicWebSearchMaxUses(tools: unknown): number | undefined {
   if (!Array.isArray(tools)) {
     return undefined;
   }
-  const tool = tools.find((item) => isRecord(item) && stringValue(item.type)?.toLowerCase() === "web_search_20250305");
+  const tool = tools.find(isAnthropicHostedWebSearchTool);
   return isRecord(tool) ? numberValue(tool.max_uses ?? tool.maxUses) : undefined;
 }
 

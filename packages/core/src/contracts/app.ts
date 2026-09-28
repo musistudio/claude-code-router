@@ -157,6 +157,11 @@ export type GatewayMediaProtocol =
 
 export type GatewayProviderCapabilityProtocol = GatewayProviderProtocol | GatewayMediaProtocol;
 
+export type ProviderEnhancedSearchConfig = {
+  apiKey?: string;
+  enabled?: boolean;
+};
+
 export type GatewayProviderConfig = {
   account?: ProviderAccountConfig;
   api_base_url?: string;
@@ -167,6 +172,7 @@ export type GatewayProviderConfig = {
   baseurl?: string;
   billing?: unknown;
   capabilities?: GatewayProviderCapability[];
+  enhancedSearch?: ProviderEnhancedSearchConfig;
   credentials?: ProviderCredentialConfig[];
   extraBody?: unknown;
   extraHeaders?: unknown;

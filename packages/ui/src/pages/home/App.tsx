@@ -1850,6 +1850,12 @@ function App() {
       extraHeaders,
       credentials: credentials.length > 0 ? credentials : undefined,
       enabled: existingProvider?.enabled === false ? false : undefined,
+      enhancedSearch: providerDraft.enhancedSearchEnabled
+        ? {
+            enabled: true,
+            ...(providerDraft.enhancedSearchApiKey.trim() ? { apiKey: providerDraft.enhancedSearchApiKey.trim() } : {})
+          }
+        : undefined,
       icon: providerDraft.icon.trim() || undefined,
       id: providerId,
       modelDescriptions,

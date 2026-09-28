@@ -99,6 +99,8 @@ export type AddProviderDraft = {
   capabilities: GatewayProviderCapability[];
   catalogModelMetadata?: Record<string, ProviderModelMetadata>;
   credentialMode: "apiKey" | "pool";
+  enhancedSearchApiKey: string;
+  enhancedSearchEnabled: boolean;
   credentials: ProviderCredentialDraft[];
   extraBodyText: string;
   extraHeadersText: string;

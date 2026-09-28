@@ -682,6 +682,12 @@ function singleGatewayRuntimeBlockers(config: AppConfig, options: SingleGatewayR
   blockers.push(...unifiedServerFallbackFeatureBlockers(config));
   if (hasActiveRouterFallback(config)) blockers.push("router-fallback");
   if (config.mediaTools.enabled) blockers.push("media-tools");
+  // Search side queries must pass through CCR's authentication, routing,
+  // admission limits and request logging before they can return a response.
+  // A conditional core HTTP pre-route cannot safely fall through on 1.0.21.
+  if (config.Providers.some((provider) => provider.enabled !== false && provider.enhancedSearch?.enabled)) {
+    blockers.push("bailian-enhanced-search");
+  }
   if (browserAutomationMcpEnabled(config)) blockers.push("browser-automation-mcp");
   if ((options.hasGatewayRoutes ?? (() => pluginService.hasGatewayRoutes()))()) blockers.push("plugin-gateway-routes");
   if ((options.hasGatewayRequestTransforms ?? (() => pluginService.hasGatewayRequestTransforms({ includeBuiltIns: false })))()) {

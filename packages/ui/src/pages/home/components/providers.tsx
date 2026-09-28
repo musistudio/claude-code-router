@@ -2161,6 +2161,8 @@ export function AddProviderForm({
         presetId,
         presetEndpointVariables: {},
         presetUsesTemplateEndpoints: false,
+        enhancedSearchApiKey: "",
+        enhancedSearchEnabled: false,
         providerPlugins: [],
         selectedModels: [],
         selectedProtocols: []
@@ -2181,6 +2183,8 @@ export function AddProviderForm({
         presetId,
         presetEndpointVariables: {},
         presetUsesTemplateEndpoints: false,
+        enhancedSearchApiKey: "",
+        enhancedSearchEnabled: false,
         providerPlugins: [],
         selectedModels: [],
         selectedProtocols: []
@@ -2207,6 +2211,8 @@ export function AddProviderForm({
       presetId,
       presetEndpointVariables: presetDefaults?.presetEndpointVariables ?? {},
       presetUsesTemplateEndpoints: presetDefaults?.presetUsesTemplateEndpoints ?? false,
+      enhancedSearchApiKey: "",
+      enhancedSearchEnabled: false,
       providerPlugins: [],
       protocol: presetDefaults?.protocol ?? draft.protocol,
       selectedModels: [],
@@ -2290,6 +2296,12 @@ export function AddProviderForm({
                     draft={draft}
                     onChange={onChange}
                     preset={selectedPreset}
+                  />
+                ) : null}
+                {selectedPreset?.id === "bailian" ? (
+                  <ProviderBailianEnhancedSearchFields
+                    draft={draft}
+                    onChange={onChange}
                   />
                 ) : null}
               </>
@@ -2894,6 +2906,51 @@ function ProviderCredentialRow({
           </AnimatedDisclosure>
         ) : null}
       </AnimatePresence>
+    </div>
+  );
+}
+
+function ProviderBailianEnhancedSearchFields({
+  draft,
+  onChange
+}: {
+  draft: AddProviderDraft;
+  onChange: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
+}) {
+  const t = useAppText();
+  const description = t("Handle Claude Code dedicated WebSearch queries routed to this provider with Bailian enhanced search. Leave the API key empty to use an available provider API key.");
+  return (
+    <div className="sm:col-span-2 space-y-3 rounded-md border border-border bg-background/60 p-3">
+      <div className="flex min-w-0 items-center justify-between gap-3 text-[12px] font-semibold">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="min-w-0 truncate">{t("Enhanced web search")}</span>
+          <Tooltip
+            aria-label={description}
+            className="h-5 w-5 items-center justify-center rounded-full text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+            content={description}
+            contentClassName="w-[260px] max-w-[calc(100vw-64px)] whitespace-normal px-2.5 py-2 text-left font-medium leading-4"
+            side="right"
+            tabIndex={0}
+          >
+            <Info className="h-3.5 w-3.5" aria-hidden="true" />
+          </Tooltip>
+        </span>
+        <Switch
+          aria-label={t("Enhanced web search")}
+          checked={draft.enhancedSearchEnabled}
+          onCheckedChange={(enhancedSearchEnabled) => onChange({ enhancedSearchEnabled })}
+        />
+      </div>
+      {draft.enhancedSearchEnabled ? (
+        <Field label={t("Enhanced search API key")}>
+          <Input
+            placeholder={t("Leave empty to use the provider API key")}
+            type="password"
+            value={draft.enhancedSearchApiKey}
+            onChange={(event) => onChange({ enhancedSearchApiKey: event.target.value })}
+          />
+        </Field>
+      ) : null}
     </div>
   );
 }
