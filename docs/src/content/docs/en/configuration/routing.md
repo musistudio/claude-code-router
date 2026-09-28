@@ -31,6 +31,14 @@ The full flow is:
 
 Subagent / Workflow auto-routing therefore selects the model from the prompt tag. Headers such as `x-claude-code-agent-id` help with observation, but they do not drive model selection.
 
+##### Tag formats and troubleshooting
+
+The tag value accepts `provider/model` and the legacy `provider,model` form, so `<CCR-SUBAGENT-MODEL>DeepSeek,deepseek-chat</CCR-SUBAGENT-MODEL>` and `<CCR-SUBAGENT-MODEL>DeepSeek/deepseek-chat</CCR-SUBAGENT-MODEL>` are equivalent. A leftover `provider,` or `Provider/` prefix from the instruction template is also tolerated, so a hand-written `<CCR-SUBAGENT-MODEL>provider,DeepSeek/deepseek-chat</CCR-SUBAGENT-MODEL>` still routes to `DeepSeek/deepseek-chat`.
+
+You can also place the tag directly in a `.claude/agents/*.md` agent definition instead of relying on injection. CCR reads it from the spawned request the same way.
+
+If the tag names a model that is not configured in CCR, or still contains the literal `Provider/model` placeholder, CCR removes the tag, keeps the default Claude Code route, and records a `subagent-model-not-configured` route diagnostic. The response carries an `x-ccr-route-diagnostics` count header, and **Routing → route test** shows the diagnostic message, which is the fastest way to tell "the tag was ignored" apart from "the tag never arrived".
+
 ##### Pairing it with the Models page
 
 The **Description** field on the Models page is both the enablement switch and the selection guide for this mechanism. If no model has a Description, CCR does not inject Agent / Task / Workflow routing instructions, so it does not write an empty model list into tool descriptions.
