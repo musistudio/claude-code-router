@@ -2101,13 +2101,11 @@ function cmdEnvValue(value: string): string {
   return cmdValue(value);
 }
 
+// Only used inside double quotes, where cmd expands % but leaves ^ and &|<>() literal.
 function cmdValue(value: string): string {
   return value
     .replace(/\r?\n/g, " ")
-    .replace(/\^/g, "^^")
-    .replace(/%/g, "%%")
-    .replace(/"/g, '^"')
-    .replace(/[&|<>()]/g, "^$&");
+    .replace(/%/g, "%%");
 }
 
 function powershellString(value: string): string {
