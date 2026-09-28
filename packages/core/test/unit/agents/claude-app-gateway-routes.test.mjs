@@ -8,8 +8,14 @@ import { createClaudeCodeModelsResponseForTest } from "@ccr/core/gateway/service
 
 function configWithProviders(Providers) {
   return {
-    Providers,
-    profile: { profiles: [] },
+    Providers: Providers.map((provider) => ({
+      ...provider,
+      enabled: provider.enabled !== false
+    })),
+    profile: {
+      enabled: true,
+      profiles: []
+    },
     virtualModelProfiles: []
   };
 }
@@ -42,16 +48,25 @@ test("Claude App gateway marks Sakana fugu models as 1M context by provider endp
     }
   ]);
 
-  assert.equal(routeFor(config, "Sakana/fugu-ultra").oneMillionContext, true);
-  assert.equal(
-    routeFor(config, "provider-sakana-adbc620029::openai_chat_completions/fugu").oneMillionContext,
-    true
-  );
-  assert.equal(inferenceModelFor(config, "Sakana/fugu-ultra").supports1m, true);
-  assert.equal(
-    inferenceModelFor(config, "provider-sakana-adbc620029::openai_chat_completions/fugu").supports1m,
-    true
-  );
+  // Check routes first
+  const routes = buildClaudeAppGatewayModelRoutes(config);
+  const sakanaRoute = routes.find((r) => r.targetModel === "Sakana/fugu-ultra");
+  const providerRoute = routes.find((r) => r.targetModel === "provider-sakana-adbc620029::openai_chat_completions/fugu");
+  
+  assert.ok(sakanaRoute, "expected route for Sakana/fugu-ultra");
+  assert.equal(sakanaRoute.oneMillionContext, true);
+  assert.ok(providerRoute, "expected route for provider-sakana-adbc620029::openai_chat_completions/fugu");
+  assert.equal(providerRoute.oneMillionContext, true);
+  
+  // Check inference models
+  const models = buildClaudeAppGatewayInferenceModels(config);
+  const sakanaModel = models.find((m) => m.labelOverride === sakanaRoute.displayName);
+  const providerModel = models.find((m) => m.labelOverride === providerRoute.displayName);
+  
+  assert.ok(sakanaModel, `expected inference model with label ${sakanaRoute.displayName}`);
+  assert.equal(sakanaModel.supports1m, true);
+  assert.ok(providerModel, `expected inference model with label ${providerRoute.displayName}`);
+  assert.equal(providerModel.supports1m, true);
 });
 
 test("Claude App gateway does not mark fugu-like models as 1M outside Sakana", () => {
@@ -82,27 +97,40 @@ test("Claude App gateway keeps explicit [1m] suffix support", () => {
 });
 
 test("Sakana 1M metadata is limited to Claude-compatible model responses", () => {
-  const config = configWithProviders([
-    {
+  const config = {
+    Providers: [{
       baseUrl: "https://api.sakana.ai/v1",
       models: ["fugu-ultra"],
       name: "Sakana",
-      type: "openai_chat_completions"
-    }
-  ]);
+      type: "openai_chat_completions",
+      enabled: true
+    }],
+    profile: {
+      enabled: true,
+      profiles: []
+    },
+    virtualModelProfiles: []
+  };
 
   const claudeResponse = createClaudeCodeModelsResponseForTest(config);
-  const sakanaClaudeModel = claudeResponse.data.find((item) => item.display_name === "Sakana/fugu-ultra");
-  assert.ok(sakanaClaudeModel, "expected Claude-compatible response to include Sakana/fugu-ultra");
-  assert.equal(sakanaClaudeModel.max_input_tokens, 1_000_000);
-  assert.equal(sakanaClaudeModel.capabilities.context_management.max_input_tokens, 1_000_000);
-  assert.equal(sakanaClaudeModel.capabilities.context_window.max_input_tokens, 1_000_000);
-  assert.equal(sakanaClaudeModel.capabilities.context_window.supported, true);
-  assert.equal(sakanaClaudeModel.capabilities.context_window.supports_1m_context, true);
-  assert.equal(sakanaClaudeModel.capabilities.context_window.one_million_context_variant, true);
+  
+  // Find the Sakana model (IDs are prefixed with "claude-")
+  const sakanaClaudeModel = claudeResponse.data.find((item) => 
+    item.id.toLowerCase().includes("fugu-ultra") && !item.id.endsWith("[1m]")
+  );
+  
+  assert.ok(sakanaClaudeModel, "expected Claude-compatible response to include Sakana fugu-ultra model");
+  assert.equal(sakanaClaudeModel.max_input_tokens, 1_000_000, "max_input_tokens should be 1M");
+  assert.equal(sakanaClaudeModel.capabilities.context_management.max_input_tokens, 1_000_000, "context_management.max_input_tokens should be 1M");
+  assert.equal(sakanaClaudeModel.capabilities.context_window.max_input_tokens, 1_000_000, "context_window.max_input_tokens should be 1M");
+  assert.equal(sakanaClaudeModel.capabilities.context_window.supported, true, "context_window.supported should be true");
+  assert.equal(sakanaClaudeModel.capabilities.context_window.supports_1m_context, true, "context_window.supports_1m_context should be true");
+  assert.equal(sakanaClaudeModel.capabilities.context_window.one_million_context_variant, true, "context_window.one_million_context_variant should be true");
 
-  const sakanaClaudeModel1m = claudeResponse.data.find((item) => item.id.endsWith("[1m]"));
-  assert.ok(sakanaClaudeModel1m, "expected Claude-compatible response to include Sakana/fugu-ultra[1m]");
+  const sakanaClaudeModel1m = claudeResponse.data.find((item) =>
+    item.id.toLowerCase().includes("fugu-ultra") && item.id.endsWith("[1m]")
+  );
+  assert.ok(sakanaClaudeModel1m, "expected Claude-compatible response to include Sakana fugu-ultra [1m] variant");
   assert.equal(sakanaClaudeModel1m.max_input_tokens, 1_000_000);
   assert.equal(sakanaClaudeModel1m.capabilities.context_management.max_input_tokens, 1_000_000);
   assert.equal(sakanaClaudeModel1m.capabilities.context_window.max_input_tokens, 1_000_000);

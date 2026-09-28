@@ -479,8 +479,38 @@ function providerModelResolutionForSelector(config: AppConfig, selector: string)
 }
 
 
+const SAKANA_API_HOSTNAME = "api.sakana.ai";
+const SAKANA_ONE_MILLION_CONTEXT_MODELS = new Set(["fugu", "fugu-ultra"]);
+
 function gatewayModelSupportsOneMillionContext(config: AppConfig, selector: string): boolean {
   const discovery = providerModelDiscoveryForSelector(config, selector);
+  
+  // Check for Sakana fugu/fugu-ultra models
+  const resolved = providerModelResolutionForSelector(config, selector);
+  if (resolved) {
+    const modelName = resolved.model.trim().toLowerCase();
+    if (SAKANA_ONE_MILLION_CONTEXT_MODELS.has(modelName)) {
+      const provider = resolved.provider;
+      const providerTargetsSakana = [
+        provider.baseUrl,
+        provider.baseurl,
+        provider.api_base_url,
+        ...(provider.capabilities ?? []).map((cap) => cap.baseUrl)
+      ].some((url) => {
+        const normalized = url?.trim();
+        if (!normalized) return false;
+        try {
+          return new URL(normalized).hostname.toLowerCase() === SAKANA_API_HOSTNAME;
+        } catch {
+          return false;
+        }
+      });
+      if (providerTargetsSakana) {
+        return true;
+      }
+    }
+  }
+  
   const metadataContextWindow = effectiveProviderContextWindow(discovery.metadata);
   return metadataContextWindow !== undefined
     ? metadataContextWindow >= 1_000_000
