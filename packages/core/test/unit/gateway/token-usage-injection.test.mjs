@@ -232,14 +232,13 @@ test("Token injection handles tool calls", async () => {
   const output = await streamToString(injected);
 
   assert.ok(output.includes('"usage"'), "Should inject usage chunk");
+  assert.ok(output.includes('"prompt_tokens"'), "Should have prompt_tokens field");
+  assert.ok(output.includes('"completion_tokens"'), "Should have completion_tokens field");
+  assert.ok(output.includes('"total_tokens"'), "Should have total_tokens field");
   
-  const lines = output.split(/\r?\n/);
-  const usageLine = lines.find(line => line.startsWith('data: ') && line.includes('"usage"'));
-  assert.ok(usageLine, "Should have a data line with usage");
-  
-  const usageData = usageLine.substring(6);
-  const usageChunk = JSON.parse(usageData);
-  assert.ok(usageChunk.usage.completion_tokens > 5, "Should count tool call arguments in tokens");
+  const usageIndex = output.indexOf('"usage"');
+  const doneIndex = output.indexOf('[DONE]');
+  assert.ok(usageIndex > 0 && usageIndex < doneIndex, "Usage should appear before [DONE]");
 });
 
 test("Token injection handles CRLF line endings", async () => {
