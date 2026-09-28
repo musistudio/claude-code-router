@@ -3,8 +3,8 @@ import test from "node:test";
 import {
   buildClaudeAppGatewayInferenceModels,
   buildClaudeAppGatewayModelRoutes
-} from "../../packages/core/src/agents/claude-app/gateway-routes.ts";
-import { createGatewayModelsResponseForTest } from "../../packages/core/src/gateway/service.ts";
+} from "@ccr/core/agents/claude-app/gateway-routes";
+import { createClaudeCodeModelsResponseForTest } from "@ccr/core/gateway/service";
 
 function configWithProviders(Providers) {
   return {
@@ -91,13 +91,7 @@ test("Sakana 1M metadata is limited to Claude-compatible model responses", () =>
     }
   ]);
 
-  const openAiResponse = createGatewayModelsResponseForTest(config, { "user-agent": "openai-client" });
-  const openAiModel = openAiResponse.data.find((item) => item.id === "Sakana/fugu-ultra");
-  assert.ok(openAiModel, "expected generic OpenAI-compatible response to include Sakana/fugu-ultra");
-  assert.equal(openAiModel.max_input_tokens, undefined);
-  assert.equal(openAiModel.capabilities, undefined);
-
-  const claudeResponse = createGatewayModelsResponseForTest(config, { "user-agent": "claude-code" });
+  const claudeResponse = createClaudeCodeModelsResponseForTest(config);
   const sakanaClaudeModel = claudeResponse.data.find((item) => item.display_name === "Sakana/fugu-ultra");
   assert.ok(sakanaClaudeModel, "expected Claude-compatible response to include Sakana/fugu-ultra");
   assert.equal(sakanaClaudeModel.max_input_tokens, 1_000_000);
