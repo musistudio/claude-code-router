@@ -55,7 +55,7 @@ If you want the overview to show balance or remaining quota, turn on **Fetch usa
 
 If Claude Code, Codex, OpenCode, Grok CLI, Kimi CLI, or ZCode is already logged in on this machine, import it as a **Local Agent Provider** from **Providers** to reuse the existing authorization without applying for another key.
 
-For the full walkthrough and field reference, see [Add a provider](provider/).
+For the full walkthrough and field reference, see [Add a provider](provider/). For a model you serve yourself with vLLM, SGLang, Ollama, or LM Studio, see [Self-hosted OpenAI-compatible models](self-hosted-models/).
 
 ## Connect Agent Config
 

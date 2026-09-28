@@ -55,7 +55,7 @@ CCR 提供三种发行方式：桌面应用、Node.js 22+ 的 npm CLI，以及 D
 
 如果本机已经登录过 Claude Code、Codex、OpenCode、Grok CLI、Kimi CLI 或 ZCode，可以在 **供应商** 中导入为 **本机 Agent 供应商**，复用已有授权，不必额外申请 Key。
 
-完整步骤与字段说明见 [接入供应商](provider/)。
+完整步骤与字段说明见 [接入供应商](provider/)。用 vLLM、SGLang、Ollama、LM Studio 自行部署的模型见 [自部署 OpenAI 兼容模型](self-hosted-models/)。
 
 ## 接入 Agent 配置
 
