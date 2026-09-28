@@ -91,18 +91,22 @@ test("OpenAI chat completions protocol injects usage chunk before [DONE]", async
   const injected = createTokenUsageInjectionStream(input, requestBody, "openai_chat_completions");
   const output = await streamToString(injected);
 
-  const usageChunkMatch = output.match(/data: ({[^}]*"usage"[^}]*})/);
-  assert.ok(usageChunkMatch, "Should inject a usage chunk");
+  assert.ok(output.includes('"usage"'), "Should inject a usage chunk");
   
-  const usageChunk = JSON.parse(usageChunkMatch[1]);
+  const usageIndex = output.indexOf('"usage"');
+  const doneIndex = output.indexOf('[DONE]');
+  assert.ok(usageIndex > 0 && usageIndex < doneIndex, "Usage chunk should appear before [DONE]");
+  
+  const lines = output.split(/\r?\n/);
+  const usageLine = lines.find(line => line.startsWith('data: ') && line.includes('"usage"'));
+  assert.ok(usageLine, "Should have a data line with usage");
+  
+  const usageData = usageLine.substring(6);
+  const usageChunk = JSON.parse(usageData);
   assert.ok(usageChunk.usage, "Should have usage object");
   assert.ok(usageChunk.usage.prompt_tokens > 0, "Should have prompt_tokens");
   assert.ok(usageChunk.usage.completion_tokens > 0, "Should have completion_tokens");
   assert.ok(usageChunk.usage.total_tokens > 0, "Should have total_tokens");
-  
-  const usageIndex = output.indexOf('"usage"');
-  const doneIndex = output.indexOf('[DONE]');
-  assert.ok(usageIndex < doneIndex, "Usage chunk should appear before [DONE]");
 });
 
 test("OpenAI chat completions does not inject when usage already present", async () => {
@@ -191,10 +195,14 @@ test("Token injection handles reasoning/thinking content", async () => {
   const injected = createTokenUsageInjectionStream(input, requestBody, "openai_chat_completions");
   const output = await streamToString(injected);
 
-  const usageChunkMatch = output.match(/data: ({[^}]*"usage"[^}]*})/);
-  assert.ok(usageChunkMatch, "Should inject usage chunk");
+  assert.ok(output.includes('"usage"'), "Should inject usage chunk");
   
-  const usageChunk = JSON.parse(usageChunkMatch[1]);
+  const lines = output.split(/\r?\n/);
+  const usageLine = lines.find(line => line.startsWith('data: ') && line.includes('"usage"'));
+  assert.ok(usageLine, "Should have a data line with usage");
+  
+  const usageData = usageLine.substring(6);
+  const usageChunk = JSON.parse(usageData);
   assert.ok(usageChunk.usage.completion_tokens > 10, "Should count reasoning content in tokens");
 });
 
@@ -223,10 +231,14 @@ test("Token injection handles tool calls", async () => {
   const injected = createTokenUsageInjectionStream(input, requestBody, "openai_chat_completions");
   const output = await streamToString(injected);
 
-  const usageChunkMatch = output.match(/data: ({[^}]*"usage"[^}]*})/);
-  assert.ok(usageChunkMatch, "Should inject usage chunk");
+  assert.ok(output.includes('"usage"'), "Should inject usage chunk");
   
-  const usageChunk = JSON.parse(usageChunkMatch[1]);
+  const lines = output.split(/\r?\n/);
+  const usageLine = lines.find(line => line.startsWith('data: ') && line.includes('"usage"'));
+  assert.ok(usageLine, "Should have a data line with usage");
+  
+  const usageData = usageLine.substring(6);
+  const usageChunk = JSON.parse(usageData);
   assert.ok(usageChunk.usage.completion_tokens > 5, "Should count tool call arguments in tokens");
 });
 
