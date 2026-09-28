@@ -21,6 +21,8 @@ test("raw trace applies metadata-only body privacy while retaining original size
   config.observability.requestLogBodyCapture = "none";
 
   const policy = applyRawTraceRequestLogPolicy(config, {
+    requestedModel: "claude-sonnet-5",
+    resolvedModel: "qwen3.7-max",
     requestBodySizeBytes: 1_024,
     requestId: "privacy-request",
     responseBodySizeBytes: 2_048,
@@ -30,6 +32,8 @@ test("raw trace applies metadata-only body privacy while retaining original size
   assert.equal(policy.action, "enqueue");
   assert.equal(policy.bodyDisposition, "suppress");
   assert.equal(policy.update.requestBodyText, "");
+  assert.equal(policy.update.requestedModel, "claude-sonnet-5");
+  assert.equal(policy.update.resolvedModel, "qwen3.7-max");
   assert.equal(policy.update.requestBodySizeBytes, 1_024);
   assert.equal(policy.update.requestBodyTruncated, true);
   assert.equal(policy.update.responseBodyText, "");
@@ -183,6 +187,38 @@ test("raw trace bundle preserves manifest lifecycle metadata", async () => {
     assert.equal(bundle.update.completedAt, completedAt);
     assert.equal(bundle.update.durationMs, 1234);
     assert.equal(bundle.update.bundleCapturedAt, completedAt);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("raw trace keeps the client model when the upstream body is truncated", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-raw-trace-model-fallback-test-"));
+  const spoolDirectory = path.join(dir, "spool");
+  const bundleDirectory = path.join(spoolDirectory, "bundle");
+  mkdirSync(bundleDirectory, { recursive: true });
+  const metadataFile = path.join(bundleDirectory, "client_request_metadata.json");
+  const clientBodyFile = path.join(bundleDirectory, "client_request.json");
+  const bodyFile = path.join(bundleDirectory, "upstream_request.json");
+  writeFileSync(metadataFile, JSON.stringify({ headers: {
+    "x-ccr-client-visible-model": "untrusted-header-model",
+    "x-ccr-routed-model": "Bailian/qwen3.7-max"
+  } }));
+  writeFileSync(clientBodyFile, JSON.stringify({ model: "claude-sonnet-5[1m]" }));
+  writeFileSync(bodyFile, '{"model":');
+  try {
+    const bundle = await readRawTraceRequestLogBundle({
+      requestId: "truncated-model-request",
+      target: { model: "claude-sonnet-5" },
+      parts: [
+        { filePath: metadataFile, partType: "client_request_metadata" },
+        { filePath: clientBodyFile, partType: "client_request" },
+        { filePath: bodyFile, partType: "upstream_request", originalBytes: 10 * 1024 * 1024 }
+      ]
+    }, spoolDirectory);
+    assert.equal(bundle.update.requestedModel, "claude-sonnet-5[1m]");
+    assert.equal(bundle.update.resolvedModel, "Bailian/qwen3.7-max");
+    assert.equal(bundle.files.requestBody.truncated, true);
   } finally {
     rmSync(dir, { force: true, recursive: true });
   }

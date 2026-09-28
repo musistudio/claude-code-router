@@ -94,6 +94,7 @@ test("RequestLogRuntime creates a standalone record from single-service raw trac
     assert.equal(page.items.length, 1);
     assert.equal(page.items[0].requestId, "standalone-raw-trace");
     assert.equal(page.items[0].model, "standalone-model");
+    assert.equal(page.items[0].requestedModel, "unknown");
     assert.equal(page.items[0].provider, "standalone-provider");
     assert.equal(page.items[0].client, "Codex");
     assert.equal(page.items[0].createdAt, startedAt);

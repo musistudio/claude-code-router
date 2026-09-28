@@ -164,6 +164,8 @@ export type RequestLogRawTraceUpdateInput = {
   model?: string;
   path?: string;
   provider?: string;
+  requestedModel?: string;
+  resolvedModel?: string;
   requestBodyContentType?: string;
   requestBodyRef?: string;
   requestBodySizeBytes?: number;
@@ -883,7 +885,9 @@ export class RequestLogStore {
     const usagePath = path ?? existingUsageContext.path;
     const rawModelFromTrace = normalizeFilterValue(input.model);
     const modelFromTrace = requestLogStorageModel(rawModelFromTrace);
-    const resolvedModelFromTrace = requestLogStorageModelSelector(rawModelFromTrace);
+    const resolvedModelFromTrace = requestLogStorageModelSelector(
+      normalizeFilterValue(input.resolvedModel) ?? rawModelFromTrace
+    );
     const responseModelFromTrace = rawInput.responseBodyText === undefined
       ? undefined
       : requestLogResponseModel(rawInput.responseBodyText);
@@ -1680,6 +1684,8 @@ function standaloneRecordInputFromRawTrace(
     model: input.model,
     path: input.path ?? pathFromUrl(input.url) ?? "/",
     providerName: input.provider,
+    requestedModel: input.requestedModel ?? "unknown",
+    resolvedModel: input.resolvedModel,
     requestBody: requestBody.buffer,
     requestBodySizeBytes: requestBody.sizeBytes,
     requestBodyTruncated: requestBody.truncated,

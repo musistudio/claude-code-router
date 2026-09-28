@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import { getHeapStatistics } from "node:v8";
 import { createSseErrorDetector, RequestLogStore } from "@ccr/core/observability/request-log-store.ts";
 import { requestLogRequestedModel, requestLogResponseModel } from "@ccr/core/observability/request-log-model.ts";
+import { readRawTraceRequestLogBundle } from "@ccr/core/observability/raw-trace-sync.ts";
 import { resolveStreamRequestLogOutcome } from "@ccr/core/gateway/internal/shared.ts";
 import { RequestRouteTraceRecorder } from "@ccr/core/observability/route-trace.ts";
 import { createBetterSqliteDatabase } from "@ccr/core/storage/sqlite-native.ts";
@@ -35,6 +36,79 @@ test("request log model summaries support routed paths and streamed responses", 
     "gpt-response"
   );
 });
+
+for (const [clientModel, upstreamModel] of [
+  ["claude-fable-5", "glm-5.3"],
+  ["claude-opus-5", "k3"],
+  ["claude-sonnet-5", "qwen3.7-max"]
+]) {
+  for (const stream of [true, false]) {
+    test(`raw trace logs ${clientModel} -> ${upstreamModel} for ${stream ? "SSE" : "JSON"}`, async () => {
+      const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-model-route-test-"));
+      const spool = path.join(dir, "spool");
+      const bundleDir = path.join(spool, "bundle");
+      mkdirSync(bundleDir, { recursive: true });
+      const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+      // The engine captures SSE after the model rewrite, but JSON before it.
+      const responseModel = stream ? clientModel : upstreamModel;
+      const message = { type: "message", model: responseModel, usage: { input_tokens: 3, output_tokens: 1 } };
+      const responseText = stream
+        ? `event: message_start\ndata: ${JSON.stringify({ type: "message_start", message })}\n\n`
+        : JSON.stringify(message);
+      const parts = Object.entries({
+        client_request_metadata: JSON.stringify({ method: "POST", url: "/v1/messages", headers: {} }),
+        client_request: JSON.stringify({ model: clientModel, stream }),
+        upstream_request_metadata: JSON.stringify({ method: "POST", url: "https://provider.test/v1/messages", headers: {} }),
+        upstream_request: JSON.stringify({ model: upstreamModel, stream }),
+        upstream_response_metadata: JSON.stringify({ statusCode: 200 }),
+        [stream ? "response_stream" : "upstream_response"]: responseText
+      }).map(([partType, content]) => {
+        const filePath = path.join(bundleDir, partType);
+        writeFileSync(filePath, content);
+        return { filePath, partType, contentType: partType === "response_stream" ? "text/event-stream" : "application/json" };
+      });
+
+      try {
+        const bundle = await readRawTraceRequestLogBundle({
+          parts,
+          requestId: "routed-model-request",
+          target: { providerName: "test-provider", model: responseModel }
+        }, spool);
+        assert.ok(bundle);
+        await store.writeBatch([{
+          sequence: 1,
+          kind: "raw-trace-update",
+          input: { ...bundle.update, allowStandaloneRecord: true },
+          rawTraceFiles: bundle.files
+        }]);
+
+        const page = await store.list();
+        assert.equal(page.items.length, 1);
+        const entry = page.items[0];
+        assert.equal(entry.requestedModel, clientModel);
+        assert.equal(entry.resolvedModel, upstreamModel);
+        assert.equal(entry.responseModel, responseModel);
+        assert.equal(entry.isStream, stream);
+        const detail = await store.getDetail({ id: entry.id });
+        assert.equal(JSON.parse(detail.requestBody.text).model, upstreamModel);
+
+        // In the two-runtime topology the engine receives an already-routed
+        // request. A late trace must not replace the gateway's ingress model.
+        await store.updateFromRawTrace({
+          ...bundle.update,
+          requestedModel: upstreamModel,
+          responseBodyText: responseText
+        });
+        const updated = (await store.list()).items[0];
+        assert.equal(updated.requestedModel, clientModel);
+        assert.equal(updated.resolvedModel, upstreamModel);
+      } finally {
+        await store.close();
+        rmSync(dir, { force: true, recursive: true });
+      }
+    });
+  }
+}
 
 test("RequestLogStore backfills model summaries when upgrading an existing database", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-model-migration-test-"));
