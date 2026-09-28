@@ -31,12 +31,17 @@ import { reserveApiKeyLimits } from "@ccr/core/gateway/auth/api-key-authorizer";
 import { recordProviderCredentialOutcome } from "@ccr/core/providers/credential-pool";
 import { codexApplyPatchBridgeResponseStream, prepareCodexApplyPatchBridgeRequest } from "@ccr/core/gateway/features/codex-patch-bridge";
 import { codexMultiAgentBridgeResponseStream, prepareCodexMultiAgentBridgeRequest } from "@ccr/core/gateway/features/codex-multi-agent-bridge";
-import { rewriteAnthropicMessageStartModelStream, shouldRewriteAnthropicMessageStartModel } from "@ccr/core/gateway/features/anthropic-response-model";
+import {
+  rewriteAnthropicMessageModelJsonStream,
+  rewriteAnthropicMessageStartModelStream,
+  shouldRewriteAnthropicMessageModelJson,
+  shouldRewriteAnthropicMessageStartModel
+} from "@ccr/core/gateway/features/anthropic-response-model";
 import { prepareCursorOpenAICompatChatBody } from "@ccr/core/gateway/features/cursor-compat";
 import { filteredResponseHeaders, formatError, formatUpstreamErrorForLog, forwardHeaders, inferGatewayClient, readRequestBody, sendJson, shouldCaptureGatewayUsage, shouldSendBody, stripLocalGatewayAuthHeaders } from "@ccr/core/gateway/http/io";
 import { appendAggregateErrorAttemptSummary, shouldBufferAggregateErrorBody } from "@ccr/core/gateway/http/error-detail";
 import { parseJsonObjectSafe, serializeJsonBody, takeJsonObject } from "@ccr/core/gateway/http/body";
-import { createGatewayModelsResponse, prepareClaudeAppDiscoveredModelRequest, prepareClaudeCodeDiscoveredModelRequest, shouldServeGatewayModelsResponse } from "@ccr/core/gateway/features/model-discovery";
+import { createGatewayModelsResponse, prepareClaudeAppDiscoveredModelRequest, prepareClaudeCodeDiscoveredModelRequest, prepareClaudeDefaultTierModelRequest, shouldServeGatewayModelsResponse } from "@ccr/core/gateway/features/model-discovery";
 import { providerProtocolForClientProtocol, resolveProviderLogName, resolveResponseProviderProtocol, sanitizeHeaderValue } from "@ccr/core/providers/runtime-topology";
 import { createBodySampler, requestLogSampled, shouldRecordRequestLogs } from "@ccr/core/observability/raw-trace-sync";
 import { RequestRouteTraceRecorder } from "@ccr/core/observability/route-trace";
@@ -213,8 +218,31 @@ export class GatewayRequestPipeline {
         });
       };
       const authenticatedProfile = profileForApiKey(activeConfig, apiKey);
+      const defaultModelListRewriteStartedAt = Date.now();
+      const defaultModelListRewrite = prepareClaudeDefaultTierModelRequest(method, path, bodyToForward, {
+        profile: authenticatedProfile
+      });
+      if (defaultModelListRewrite) {
+        headers["x-ccr-default-model-list"] = sanitizeHeaderValue(defaultModelListRewrite.diagnostic);
+        bodyToForward = defaultModelListRewrite.body;
+        routedModel = defaultModelListRewrite.routedModel;
+        routeTrace?.capture({
+          changes: [
+            { after: routedModel, operation: "replace", path: "/body/model", scope: "body" },
+            { after: headers["x-ccr-default-model-list"], operation: "add", path: "/headers/x-ccr-default-model-list", scope: "headers" }
+          ],
+          durationMs: Date.now() - defaultModelListRewriteStartedAt,
+          kind: "mutation",
+          name: "model-discovery.default-model-list",
+          phase: "compatibility",
+          startedAtMs: defaultModelListRewriteStartedAt,
+          target: routedModel ? { model: routedModel } : undefined
+        });
+      }
       const claudeModelRewriteStartedAt = Date.now();
-      const claudeModelRewrite = prepareClaudeCodeDiscoveredModelRequest(this.config, request.headers, method, path, bodyToForward);
+      const claudeModelRewrite = prepareClaudeCodeDiscoveredModelRequest(this.config, request.headers, method, path, bodyToForward, {
+        profile: authenticatedProfile
+      });
       if (claudeModelRewrite) {
         headers["x-ccr-claude-model-discovery"] = sanitizeHeaderValue(claudeModelRewrite.diagnostic);
         bodyToForward = claudeModelRewrite.body;
@@ -897,7 +925,12 @@ export class GatewayRequestPipeline {
         model: clientVisibleResponseModel,
         protocol: responseProtocol
       });
-      if (codexApplyPatchBridgeActive || codexMultiAgentBridgeActive || appendContextArchiveFooter || transformCodexCompactResponse || rewriteAnthropicResponseModel) {
+      const rewriteAnthropicResponseModelJson = upstreamResponse.ok && shouldRewriteAnthropicMessageModelJson({
+        contentType: responseHeaders.get("content-type") ?? undefined,
+        model: clientVisibleResponseModel,
+        protocol: responseProtocol
+      });
+      if (codexApplyPatchBridgeActive || codexMultiAgentBridgeActive || appendContextArchiveFooter || transformCodexCompactResponse || rewriteAnthropicResponseModel || rewriteAnthropicResponseModelJson) {
         responseHeaders.delete("content-length");
       }
       recordProviderCredentialOutcome(this.config, method, upstreamResult.attempt, upstreamResponse.status, responseHeaders);
@@ -1025,7 +1058,9 @@ export class GatewayRequestPipeline {
           : hostedWebSearchResponseBody;
       const clientResponseBody = rewriteAnthropicResponseModel && clientVisibleResponseModel
         ? rewriteAnthropicMessageStartModelStream(responseBody, clientVisibleResponseModel)
-        : responseBody;
+        : rewriteAnthropicResponseModelJson && clientVisibleResponseModel
+          ? rewriteAnthropicMessageModelJsonStream(responseBody, clientVisibleResponseModel)
+          : responseBody;
       const sampler = createBodySampler();
       const sseErrorDetector = createSseErrorDetector(responseHeaders.get("content-type") ?? undefined);
       let streamDetectedError: string | undefined;
