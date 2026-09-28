@@ -1274,7 +1274,7 @@ function OverviewWidgetRenderer({
   } else if (widget.type === "model-distribution") {
     content = <ModelDistributionOverviewWidget dimensions={dimensions} rows={usageStats.models} variant={overviewTokenMixVariant(widget.variant)} />;
   } else if (widget.type === "client-analysis") {
-    content = <OverviewAnalysisWidget dimensions={dimensions} kind="client" rows={usageStats.clientModels} variant={widget.variant === "compact" ? "compact" : "table"} />;
+    content = <OverviewAnalysisWidget dimensions={dimensions} kind="client" rows={usageStats.clients ?? []} variant={widget.variant === "compact" ? "compact" : "table"} />;
   } else if (isShareOverviewWidgetType(widget.type)) {
     content = <ShareCardWidget providerAccounts={providerAccounts} type={widget.type} usageRange={usageRange} usageStats={usageStats} />;
   } else {
@@ -1939,9 +1939,7 @@ function OverviewAnalysisWidget({
   const emptyLabel = kind === "client" ? t("No client usage yet") : t("No provider usage yet");
   const columns: UsageAnalysisColumn[] = kind === "client"
     ? [
-      { key: "client", label: t("Client") },
-      { key: "model", label: t("Model") },
-      { key: "provider", label: t("Provider") }
+      { key: "client", label: t("Client API key") }
     ]
     : [
       { key: "provider", label: t("Provider") },
@@ -1949,22 +1947,28 @@ function OverviewAnalysisWidget({
       { key: "model", label: t("Model") }
     ];
 
-  const rowLimit = overviewAnalysisRowLimit(dimensions);
   const shouldUseCompact = variant === "compact" || dimensions.width <= 2 || dimensions.height <= 1;
 
   if (shouldUseCompact) {
     return (
       <Card className="overview-card flex h-full min-h-0 min-w-0 flex-col">
-        <OverviewCardHeading icon={UsersRound} title={title} tone="slate" trailing={<Badge variant="outline">{rows.length}</Badge>} />
-        <CardContent className="min-h-0 flex-1 overflow-hidden">
+        <OverviewCardHeading icon={UsersRound} title={title} tone="slate" trailing={<OverviewAnalysisGroupCount count={rows.length} />} />
+        <CardContent className="min-h-0 flex-1 overflow-y-auto">
           {rows.length === 0 ? (
             <OverviewEmptyState compact label={emptyLabel} />
           ) : (
             <div className="space-y-2">
-              {rows.slice(0, rowLimit).map((row) => (
+              {rows.map((row) => (
                 <div className="overview-nested-surface flex min-w-0 items-center justify-between gap-3 border px-3 py-2" key={row.key}>
-                  <span className="min-w-0 truncate text-[12px] font-medium">{row.label}</span>
-                  <span className="shrink-0 text-[12px] font-semibold">{formatCompactNumber(row.totalTokens)}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[12px] font-medium" title={kind === "client" ? overviewClientLabel(row, t) : row.label}>
+                      {kind === "client" ? overviewClientLabel(row, t) : row.label}
+                    </div>
+                    {row.caption ? <div className="truncate text-[11px] text-muted-foreground" title={row.caption}>{kind === "client" ? compactId(row.caption) : row.caption}</div> : null}
+                  </div>
+                  <span className="shrink-0 text-[12px] font-semibold" title={`${t("Total tokens")}: ${row.totalTokens.toLocaleString()}`}>
+                    {formatCompactNumber(row.totalTokens)} <span className="text-[10px] font-normal text-muted-foreground">{t("Token")}</span>
+                  </span>
                 </div>
               ))}
             </div>
@@ -1977,11 +1981,13 @@ function OverviewAnalysisWidget({
   return <UsageAnalysisCard columns={columns} dimensions={dimensions} emptyLabel={emptyLabel} rows={rows} title={title} />;
 }
 
-function overviewAnalysisRowLimit(dimensions: OverviewWidgetDimensions): number {
-  if (dimensions.height <= 1) return 2;
-  if (dimensions.height === 2) return 5;
-  if (dimensions.height === 3) return 8;
-  return 12;
+function OverviewAnalysisGroupCount({ count }: { count: number }) {
+  const t = useAppText();
+  return <Badge variant="outline">{count} {t(count === 1 ? "group" : "groups")}</Badge>;
+}
+
+function overviewClientLabel(row: UsageComparisonRow, translate: (value: string) => string): string {
+  return row.clientApiKeyId ? row.client || row.label || row.clientApiKeyId : translate("Unidentified API key");
 }
 
 function overviewWidgetTemplates(): OverviewWidgetConfig[] {
@@ -6286,19 +6292,18 @@ function UsageAnalysisCard({
 }) {
   const t = useAppText();
   const visibleColumns = dimensions.width >= 4 ? columns : columns.slice(0, 1);
-  const visibleRows = rows.slice(0, overviewAnalysisRowLimit(dimensions));
   const showCost = dimensions.width >= 4;
   const showTokenBreakdown = dimensions.width >= 4 && dimensions.height >= 3;
   const showCacheRate = dimensions.width >= 4 && dimensions.height >= 3;
 
   return (
     <Card className="overview-card flex h-full min-h-0 min-w-0 flex-col">
-      <OverviewCardHeading icon={UsersRound} title={title} tone="slate" trailing={<Badge variant="outline">{rows.length}</Badge>} />
+      <OverviewCardHeading icon={UsersRound} title={title} tone="slate" trailing={<OverviewAnalysisGroupCount count={rows.length} />} />
       <CardContent className="min-h-0 flex-1 overflow-hidden">
         {rows.length === 0 ? (
           <OverviewEmptyState compact label={emptyLabel} />
         ) : (
-          <div className={cn("h-full overflow-hidden", agentListSurfaceClassName)}>
+          <div className={cn("h-full overflow-auto", agentListSurfaceClassName)}>
             <table className={cn("table-fixed", agentListTableClassName)}>
               <thead className="border-b border-border/70 bg-muted/80 text-muted-foreground">
                 <tr>
@@ -6315,13 +6320,17 @@ function UsageAnalysisCard({
                 </tr>
               </thead>
               <tbody className={agentListBodyClassName}>
-                {visibleRows.map((row) => (
+                {rows.map((row) => (
                   <tr className={agentListRowClassName()} key={row.key}>
-                    {visibleColumns.map((column) => (
-                      <td className="max-w-[180px] px-3 py-2 font-medium" key={column.key}>
-                        <span className="block truncate" title={row[column.key] || "-"}>{row[column.key] || "-"}</span>
-                      </td>
-                    ))}
+                    {visibleColumns.map((column) => {
+                      const value = column.key === "client" ? overviewClientLabel(row, t) : row[column.key] || "-";
+                      return (
+                        <td className="max-w-[180px] px-3 py-2 font-medium" key={column.key}>
+                          <span className="block truncate" title={value}>{value}</span>
+                          {visibleColumns.length === 1 && row.caption ? <span className="block truncate text-[11px] font-normal text-muted-foreground" title={row.caption}>{column.key === "client" ? compactId(row.caption) : row.caption}</span> : null}
+                        </td>
+                      );
+                    })}
                     <td className="px-3 py-2 text-right font-semibold">{formatCompactNumber(row.totalTokens)}</td>
                     {showCost ? <td className="px-3 py-2 text-right font-semibold">{formatUsdCost(row.costUsd)}</td> : null}
                     <td className="px-3 py-2 text-right">{formatCompactNumber(row.requestCount)}</td>

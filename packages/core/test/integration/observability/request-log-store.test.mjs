@@ -72,6 +72,8 @@ test("RequestLogStore backfills model summaries when upgrading an existing datab
     assert.equal(page.items[0].requestedModel, "request-model");
     assert.equal(page.items[0].resolvedModel, "resolved-model");
     assert.equal(page.items[0].responseModel, "response-model");
+    assert.equal(page.items[0].clientApiKeyId, undefined);
+    assert.equal(page.items[0].clientApiKeyName, undefined);
   } finally {
     await store?.close();
     rmSync(dir, { force: true, recursive: true });
@@ -632,6 +634,8 @@ test("RequestLogStore redacts secrets and records CCR metadata", async () => {
     const startedAt = new Date().toISOString();
 
     await store.record({
+      clientApiKeyId: "client-key-a",
+      clientApiKeyName: "研发团队",
       completedAt: startedAt,
       durationMs: 75,
       method: "POST",
@@ -648,6 +652,8 @@ test("RequestLogStore redacts secrets and records CCR metadata", async () => {
         "ocp-apim-subscription-key": "bing-request-secret",
         "x-amz-security-token": "aws-request-secret",
         "x-auth-token": "custom-request-secret",
+        "x-auth-api-key-id": "client-key-a",
+        "x-auth-sub": "client-key-a",
         "x-ccr-provider-credential-chain": "cred-a, cred-b",
         "x-ccr-provider-credential-id": "cred-a",
         "x-goog-api-key": "google-request-secret"
@@ -673,12 +679,18 @@ test("RequestLogStore redacts secrets and records CCR metadata", async () => {
     const detail = await store.getDetail({ id: page.items[0].id });
 
     assert.ok(detail);
+    assert.equal(page.items[0].clientApiKeyId, "client-key-a");
+    assert.equal(page.items[0].clientApiKeyName, "研发团队");
+    assert.equal(detail.clientApiKeyId, "client-key-a");
+    assert.equal(detail.clientApiKeyName, "研发团队");
     assert.equal(detail.requestHeaders["api-key"], "[redacted]");
     assert.equal(detail.requestHeaders.authorization, "[redacted]");
     assert.equal(detail.requestHeaders.cookie, "[redacted]");
     assert.equal(detail.requestHeaders["ocp-apim-subscription-key"], "[redacted]");
     assert.equal(detail.requestHeaders["x-amz-security-token"], "[redacted]");
     assert.equal(detail.requestHeaders["x-auth-token"], "[redacted]");
+    assert.equal(detail.requestHeaders["x-auth-api-key-id"], "[redacted]");
+    assert.equal(detail.requestHeaders["x-auth-sub"], "[redacted]");
     assert.equal(detail.requestHeaders["x-goog-api-key"], "[redacted]");
     assert.equal(detail.responseHeaders["x-api-key"], "[redacted]");
     assert.equal(detail.responseHeaders["x-company-client-secret"], "[redacted]");
@@ -690,8 +702,68 @@ test("RequestLogStore redacts secrets and records CCR metadata", async () => {
     assert.equal(detail.cacheReadTokens, 10);
     assert.equal(detail.outputTokens, 20);
     assert.equal(detail.totalTokens, 130);
+
+    await store.updateFromRawTrace({
+      clientApiKeyId: "client-key-a",
+      clientApiKeyName: "Renamed after request",
+      requestHeaders: { "x-auth-api-key-id": "upstream-identity" },
+      requestId: "request-log-metadata-test"
+    });
+    const updated = await store.getDetail({ id: detail.id });
+    assert.equal(updated.clientApiKeyId, "client-key-a");
+    assert.equal(updated.clientApiKeyName, "研发团队");
   } finally {
     await store?.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore persists standalone client identity without using upstream credentials", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-client-identity-test-"));
+  const dbFile = path.join(dir, "request-logs.sqlite");
+  let store = new RequestLogStore(dbFile);
+  try {
+    for (const [sequence, identity] of [
+      [1, { clientApiKeyId: "manual-client", clientApiKeyName: "工作账号" }],
+      [2, {}]
+    ]) {
+      await store.writeBatch([{
+        sequence,
+        kind: "raw-trace-update",
+        input: {
+          ...identity,
+          allowStandaloneRecord: true,
+          bundleId: `identity-bundle-${sequence}`,
+          requestId: `identity-request-${sequence}`,
+          method: "POST",
+          path: "/v1/messages",
+          requestHeaders: {
+            authorization: "Bearer upstream-secret",
+            "x-auth-api-key-id": "untrusted-header-id",
+            "x-auth-api-key-name": "Untrusted header name",
+            "x-ccr-provider-credential-id": "provider-key"
+          },
+          startedAt: new Date().toISOString(),
+          statusCode: 200
+        }
+      }]);
+    }
+    await store.close();
+    store = new RequestLogStore(dbFile);
+    const page = await store.list();
+    const named = page.items.find((entry) => entry.requestId === "identity-request-1");
+    const anonymous = page.items.find((entry) => entry.requestId === "identity-request-2");
+    assert.equal(named.clientApiKeyId, "manual-client");
+    assert.equal(named.clientApiKeyName, "工作账号");
+    assert.equal(anonymous.clientApiKeyId, undefined);
+    assert.equal(anonymous.clientApiKeyName, undefined);
+    assert.equal(named.credentialId, "provider-key");
+    assert.equal(anonymous.credentialId, "provider-key");
+    const detail = await store.getDetail({ id: named.id });
+    assert.equal(detail.clientApiKeyName, "工作账号");
+    assert.doesNotMatch(JSON.stringify(page), /upstream-secret/);
+  } finally {
+    await store.close();
     rmSync(dir, { force: true, recursive: true });
   }
 });

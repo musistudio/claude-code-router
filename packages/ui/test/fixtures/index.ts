@@ -159,6 +159,10 @@ export function usageStats(range: UsageStatsRange = "30d", patch: Partial<UsageS
       usageRow("client:claude-code", "Claude Code", { client: "claude-code", model: "gpt-4.1", provider: "openai", totalTokens: 6800 }),
       usageRow("client:codex", "Codex", { client: "codex", model: "claude-sonnet", provider: "anthropic", totalTokens: 5200 })
     ],
+    clients: [
+      usageRow("api-key::claude", "claude-code", { caption: "claude", client: "claude-code", clientApiKeyId: "claude", totalTokens: 6800 }),
+      usageRow("api-key::codex", "codex", { caption: "codex", client: "codex", clientApiKeyId: "codex", totalTokens: 5200 })
+    ],
     generatedAt: "2026-06-30T00:00:00.000Z",
     models,
     providerModels: [

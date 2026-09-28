@@ -40,9 +40,12 @@ export const ccrRouteTokenCountHeader = "x-ccr-route-token-count";
 export const ccrCodexApplyPatchBridgeHeader = "x-ccr-codex-apply-patch-bridge";
 export const ccrCodexMultiAgentBridgeHeader = "x-ccr-codex-multi-agent-bridge";
 export const ccrOpenRouterDiscountRequestIdHeader = "x-ccr-openrouter-discount-request-id";
+export const ccrClientVisibleModelHeader = "x-ccr-client-visible-model";
+export const ccrClientIdentityHeader = "x-ccr-client-identity";
 export const ccrRouteHeaderNames = [
   ccrCodexApplyPatchBridgeHeader,
   ccrCodexMultiAgentBridgeHeader,
+  ccrClientVisibleModelHeader,
   ccrOpenRouterDiscountRequestIdHeader,
   ccrRouteDiagnosticsHeader,
   ccrRouteFallbackHeader,

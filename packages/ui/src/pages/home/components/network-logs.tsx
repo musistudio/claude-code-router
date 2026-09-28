@@ -26,7 +26,7 @@ const logJsonContainerPreviewLimit = 80;
 const logJsonAutoExpandTextLimit = 160 * 1024;
 const logBodyAutoLoadJsonBytes = 2 * 1024 * 1024;
 const logBodyWorkerFilterDebounceMs = 180;
-type LogTableColumnId = "time" | "status" | "stream" | "model" | "credential" | "tokens" | "duration";
+type LogTableColumnId = "time" | "user" | "status" | "stream" | "model" | "credential" | "tokens" | "duration";
 type LogTableColumn = {
   id: LogTableColumnId;
   minWidth: number;
@@ -38,14 +38,15 @@ type LogTableGridStyle = {
 };
 
 const baseLogTableColumns: LogTableColumn[] = [
-  { id: "time", minWidth: 150 },
-  { id: "status", minWidth: 116 },
-  { id: "stream", minWidth: 108 },
-  { id: "model", minWidth: 180 },
-  { id: "tokens", minWidth: 140 },
-  { id: "duration", minWidth: 92 }
+  { id: "time", minWidth: 196 },
+  { id: "user", minWidth: 88 },
+  { id: "status", minWidth: 120 },
+  { id: "stream", minWidth: 104 },
+  { id: "model", minWidth: 160 },
+  { id: "tokens", minWidth: 112 },
+  { id: "duration", minWidth: 76 }
 ];
-const credentialLogTableColumn: LogTableColumn = { id: "credential", minWidth: 128 };
+const credentialLogTableColumn: LogTableColumn = { id: "credential", minWidth: 96 };
 
 export function NetworkingView({
   clearCaptures,
@@ -386,8 +387,8 @@ export function LogsView({
     page.items.some(logHasCredentialInfo);
   const visibleLogColumns = useMemo(() => getLogTableColumns(hasAnyCredentialInfo), [hasAnyCredentialInfo]);
   const logTableGridClass = hasAnyCredentialInfo
-    ? "grid-cols-[minmax(0,0.8fr)_minmax(92px,0.38fr)_minmax(98px,0.4fr)_minmax(0,0.78fr)_minmax(120px,0.42fr)_minmax(0,0.68fr)_82px]"
-    : "grid-cols-[minmax(0,0.8fr)_minmax(92px,0.38fr)_minmax(98px,0.4fr)_minmax(0,0.9fr)_minmax(0,0.74fr)_82px]";
+    ? "min-w-[952px] grid-cols-[196px_minmax(88px,0.6fr)_120px_104px_minmax(160px,1.8fr)_minmax(96px,0.5fr)_minmax(112px,0.65fr)_76px]"
+    : "min-w-[856px] grid-cols-[196px_minmax(88px,0.6fr)_120px_104px_minmax(160px,1.8fr)_minmax(112px,0.65fr)_76px]";
   const logTableGridStyle = useMemo(
     () => createLogTableGridStyle(visibleLogColumns, logColumnWidths),
     [logColumnWidths, visibleLogColumns]
@@ -640,7 +641,7 @@ export function LogsView({
 
               {page.items.length > 0 ? (
                 <>
-                  <div className="grid gap-2 p-2 min-[721px]:hidden">
+                  <div className="grid grid-cols-1 gap-2 p-2 min-[721px]:hidden">
                     {page.items.map((item, index) => (
                       <LogMobileCard
                         detailError={detailErrorById[item.id]}
@@ -750,9 +751,9 @@ function getLogTableColumns(hasCredentialColumn: boolean): LogTableColumn[] {
     return baseLogTableColumns;
   }
   return [
-    ...baseLogTableColumns.slice(0, 4),
+    ...baseLogTableColumns.slice(0, 5),
     credentialLogTableColumn,
-    ...baseLogTableColumns.slice(4)
+    ...baseLogTableColumns.slice(5)
   ];
 }
 
@@ -775,6 +776,8 @@ function logTableColumnLabel(columnId: LogTableColumnId, t: (value: string) => s
   switch (columnId) {
     case "time":
       return t("时间");
+    case "user":
+      return t("User");
     case "status":
       return t("状态");
     case "stream":
@@ -844,6 +847,7 @@ function LogMobileCard({
             </div>
             <div className="mt-2 min-w-0 text-[11px] text-muted-foreground">
               <div className="truncate font-mono" title={createdAt}>{createdAt}</div>
+              <div className="mt-1 truncate" title={item.clientApiKeyName || "-"}>{t("User")}: {item.clientApiKeyName || "-"}</div>
               <div className="mt-1 flex min-w-0 items-center gap-1" title={`${logRequestModel(item)} -> ${logResolvedRouteModel(item)}`}>
                 <span className="min-w-0 truncate">{logRequestModel(item)}</span>
                 <MoveRight className="h-3 w-3 shrink-0" aria-hidden="true" />
@@ -907,7 +911,7 @@ const LogRow = memo(function LogRow({
       <button
         aria-expanded={expanded}
         className={cn(
-          "network-row grid h-10 w-full items-center border-0 px-0 text-left text-[12px] font-semibold outline-none transition-colors",
+          "network-row grid h-10 w-full items-center whitespace-nowrap border-0 px-0 text-left text-[12px] font-semibold outline-none transition-colors",
           logTableGridClass,
           index % 2 === 0 ? "network-row-even" : "network-row-odd",
           expanded && "network-row-selected"
@@ -919,7 +923,10 @@ const LogRow = memo(function LogRow({
         <div className="truncate px-3 font-mono text-[11px]" title={createdAt}>
           {createdAt}
         </div>
-        <div className="flex min-w-0 items-center gap-2 px-2">
+        <div className="network-row-secondary truncate px-2" title={item.clientApiKeyName || "-"}>
+          {item.clientApiKeyName || "-"}
+        </div>
+        <div className="flex min-w-0 items-center gap-1.5 px-2">
           <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 transition-transform", expanded && "rotate-180")} />
           <LogStatusDot entry={item} />
           <span className="network-row-secondary truncate">{item.statusCode || "-"}</span>
@@ -983,6 +990,7 @@ export function LogExpandedDetails({
         {entry.tailMs !== undefined ? <LogMetric label={t("Tail wait")} value={formatDuration(entry.tailMs)} /> : null}
         {entry.streamSpeedSampleStatus ? <LogMetric label={t("Speed sample")} value={t(streamSpeedSampleLabel(entry.streamSpeedSampleStatus))} /> : null}
         <LogMetric label={t("Request ID")} value={entry.requestId || "-"} />
+        <LogMetric label={t("User")} value={entry.clientApiKeyName || "-"} />
         <LogMetric label={t("Client")} value={entry.client || "-"} />
         <LogMetric label={t("Provider")} value={entry.provider || "-"} />
         <LogMetric label={t("Model")} value={entry.model || "-"} />

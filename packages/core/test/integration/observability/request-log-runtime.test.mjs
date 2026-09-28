@@ -19,7 +19,11 @@ test("RequestLogRuntime writes through a worker and reads through the query work
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-runtime-test-"));
   const runtime = createRuntime(dir);
   try {
-    const result = runtime.enqueueRecord(createRecord("worker-request"));
+    const result = runtime.enqueueRecord({
+      ...createRecord("worker-request"),
+      clientApiKeyId: "worker-client",
+      clientApiKeyName: "开发账号"
+    });
     assert.deepEqual(result, { accepted: true, degraded: false });
 
     const flush = await runtime.flush({ timeoutMs: 10_000 });
@@ -29,7 +33,10 @@ test("RequestLogRuntime writes through a worker and reads through the query work
     const page = await runtime.list({ pageSize: 25 });
     assert.equal(page.items.length, 1);
     assert.equal(page.items[0].requestId, "worker-request");
+    assert.equal(page.items[0].clientApiKeyName, "开发账号");
     const detail = await runtime.getDetail({ id: page.items[0].id });
+    assert.equal(detail?.clientApiKeyId, "worker-client");
+    assert.equal(detail?.clientApiKeyName, "开发账号");
     assert.equal(detail?.requestBody.text.includes("worker-model"), true);
     assert.equal(runtime.metrics().committed, 1);
   } finally {
