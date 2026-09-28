@@ -21,6 +21,7 @@ import {
   ccrLiveTokenRateConfigMessageType,
   ccrLiveTokenRateSnapshotMessageType,
   ccrLiveTokenRateStreamHookKey,
+  ccrTokenUsageInjectionStreamHookKey,
   ccrOpenRouterDiscountFinalizeResponseHookKey,
   ccrOpenRouterDiscountFinalizeStreamHookKey,
   ccrOpenRouterDiscountRequestIdHeader,
@@ -59,6 +60,7 @@ import {
   prepareCodexMultiAgentBridgeRequest,
   transformCodexMultiAgentBridgeResponseValue
 } from "@ccr/core/gateway/features/codex-multi-agent-bridge";
+import { createTokenUsageInjectionStream } from "@ccr/core/gateway/features/token-usage-injection";
 import { requestLogRequestedModel } from "@ccr/core/observability/request-log-model";
 import { createStreamExperienceMeter, LiveTokenRateTracker } from "@ccr/core/observability/stream-experience";
 import {
@@ -465,6 +467,10 @@ export async function createGatewayPlugin(input: GatewayPluginFactoryInput = {})
         return undefined;
       }
     }, {
+      key: ccrTokenUsageInjectionStreamHookKey,
+      transformResponse: (streamInput: GatewayStreamHookInput) =>
+        applyTokenUsageInjectionStreamTransform(streamInput)
+    }, {
       key: ccrLiveTokenRateStreamHookKey,
       transformResponse: (streamInput: GatewayStreamHookInput) =>
         applyLiveTokenRateStreamTransform(streamInput, liveTokenRatePublisher)
@@ -596,6 +602,65 @@ function applyLiveTokenRateStreamTransform(
     status: streamInput.upstreamResponse.status,
     statusText: streamInput.upstreamResponse.statusText
   });
+}
+
+function applyTokenUsageInjectionStreamTransform(
+  streamInput: GatewayStreamHookInput
+): Response | undefined {
+  if (!streamInput.upstreamResponse.body) {
+    return undefined;
+  }
+  
+  const contentType = streamInput.upstreamResponse.headers.get("content-type")?.toLowerCase();
+  if (!contentType?.includes("text/event-stream")) {
+    return undefined;
+  }
+
+  const protocol = determineInjectionProtocol(streamInput);
+  if (!protocol) {
+    return undefined;
+  }
+
+  const requestBodyBuffer = streamInput.upstreamRequest?.body 
+    ? (Buffer.isBuffer(streamInput.upstreamRequest.body) 
+        ? streamInput.upstreamRequest.body 
+        : Buffer.from(JSON.stringify(streamInput.upstreamRequest.body)))
+    : undefined;
+
+  const source = Readable.fromWeb(
+    streamInput.upstreamResponse.body as unknown as Parameters<typeof Readable.fromWeb>[0]
+  );
+  const injected = createTokenUsageInjectionStream(source, requestBodyBuffer, protocol);
+  
+  return new Response(Readable.toWeb(injected) as ReadableStream<Uint8Array>, {
+    headers: new Headers(streamInput.upstreamResponse.headers),
+    status: streamInput.upstreamResponse.status,
+    statusText: streamInput.upstreamResponse.statusText
+  });
+}
+
+function determineInjectionProtocol(
+  streamInput: GatewayStreamHookInput
+): "anthropic_messages" | "openai_responses" | "openai_chat_completions" | undefined {
+  const url = streamInput.request?.url?.toLowerCase() || streamInput.upstreamRequest?.url?.toLowerCase();
+  
+  if (url?.includes("/v1/messages") || url?.includes("/messages")) {
+    return "anthropic_messages";
+  }
+  
+  const protocol = normalizeProviderProtocol(streamInput.targetProviderConfig?.type) ??
+    normalizeProviderProtocol(streamInput.targetProviderConfig?.provider) ??
+    normalizeProviderProtocol(streamInput.targetProvider);
+  
+  if (protocol === "openai_responses") {
+    return "openai_responses";
+  }
+  
+  if (url?.includes("/v1/chat/completions") || url?.includes("/chat/completions")) {
+    return "openai_chat_completions";
+  }
+  
+  return undefined;
 }
 
 async function handleRuntimeConfigControlRoute(
