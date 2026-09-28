@@ -604,9 +604,15 @@ function buildClaudeCodeDiscoverableModels(config: AppConfig, profile?: ProfileC
   };
 
   for (const id of buildClaudeCodeDiscoverableModelIds(config, profile)) {
-    pushModel(id, hasClaudeCodeOneMillionContextSuffix(id));
     const baseId = stripClaudeCodeOneMillionContextSuffix(id);
-    if (!hasClaudeCodeOneMillionContextSuffix(id) && gatewayModelSupportsOneMillionContext(config, baseId)) {
+    const hasExplicit1MSuffix = hasClaudeCodeOneMillionContextSuffix(id);
+    const supports1M = gatewayModelSupportsOneMillionContext(config, baseId);
+    
+    // If model explicitly has [1m] suffix or naturally supports 1M context, mark it as 1M
+    pushModel(id, hasExplicit1MSuffix || supports1M);
+    
+    // If base model supports 1M but doesn't have the suffix, also add a [1m] variant
+    if (!hasExplicit1MSuffix && supports1M) {
       pushModel(claudeCodeOneMillionContextModelId(baseId), true);
     }
   }
