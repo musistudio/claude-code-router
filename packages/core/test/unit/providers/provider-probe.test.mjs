@@ -829,6 +829,72 @@ test("connectivity probe recovers Codex OAuth auth when saved plugin is missing"
   assert.equal(calls[1]?.body?.max_output_tokens, undefined);
 });
 
+test("connectivity probe prefers live Claude Code OAuth over saved plugin tokens", async (t) => {
+  const claudeConfigDir = useTemporaryClaudeCodeHome(t, "ccr-claude-code-probe-live-");
+  const previousFetch = globalThis.fetch;
+  const savedToken = "sk-ant-oat01-saved-stale-token";
+  const liveToken = "sk-ant-oat01-live-access-token";
+  const calls = [];
+
+  fs.mkdirSync(claudeConfigDir, { recursive: true });
+  fs.writeFileSync(path.join(claudeConfigDir, ".credentials.json"), JSON.stringify({
+    claudeAiOauth: {
+      accessToken: liveToken,
+      refreshToken: "refresh-live"
+    }
+  }));
+
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    const headers = new Headers(init?.headers);
+    calls.push({
+      anthropicBeta: headers.get("anthropic-beta"),
+      authorization: headers.get("authorization"),
+      method: init?.method,
+      pathname: url.pathname,
+      xApiKey: headers.get("x-api-key")
+    });
+
+    const ok =
+      headers.get("authorization") === `Bearer ${liveToken}` &&
+      headers.get("x-api-key") === null;
+    return new Response(JSON.stringify(ok ? { data: [{ id: "claude-sonnet-5" }] } : { error: { message: "Unauthorized" } }), {
+      headers: { "content-type": "application/json" },
+      status: ok ? 200 : 401
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+  });
+
+  const result = await probeGatewayProvider({
+    apiKey: "ccr-local-agent-login",
+    baseUrl: "http://127.0.0.1:49126",
+    forceRefresh: true,
+    mode: "models",
+    providerPlugins: [{
+      auth: {
+        headers: {
+          authorization: `Bearer ${savedToken}`
+        },
+        removeHeaders: ["x-api-key"]
+      },
+      key: "ccr-local-agent-claude-code-api-claude-code-oauth",
+      providerName: "Claude Code API"
+    }],
+    protocols: ["anthropic_messages"]
+  });
+
+  assert.deepEqual(calls.map((call) => call.pathname).filter((pathname, index, all) => all.indexOf(pathname) === index), [
+    "/v1/models",
+    "/v1/messages"
+  ]);
+  assert.equal(calls[0]?.authorization, `Bearer ${liveToken}`);
+  assert.equal(calls[0]?.xApiKey, null);
+  assert.equal(calls[0]?.anthropicBeta, "oauth-2025-04-20");
+  assert.deepEqual(result.models, ["claude-sonnet-5"]);
+});
+
 test("New API response headers enable key quota account connector", () => {
   assert.equal(detectedProviderFromHeaders({ "X-New-Api-Version": "0.8.0" }), "new-api");
   assert.equal(detectedProviderFromHeaders({ "x-oneapi-request-id": "req-1" }), "new-api");
@@ -1031,6 +1097,20 @@ function jwt(payload) {
 
 function base64url(value) {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
+}
+
+function useTemporaryClaudeCodeHome(t, prefix) {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  const previousHome = process.env.CLAUDE_CONFIG_DIR;
+  process.env.CLAUDE_CONFIG_DIR = path.join(home, ".claude");
+  t.after(() => {
+    if (previousHome === undefined) {
+      delete process.env.CLAUDE_CONFIG_DIR;
+    } else {
+      process.env.CLAUDE_CONFIG_DIR = previousHome;
+    }
+  });
+  return path.join(home, ".claude");
 }
 
 function useTemporaryCodexHome(t, prefix) {

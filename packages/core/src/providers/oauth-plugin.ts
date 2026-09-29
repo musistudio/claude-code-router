@@ -1,3 +1,4 @@
+import { claudeCodeOauthBetaHeader, claudeCodeOauthRequiredBeta } from "@ccr/core/gateway/internal/shared";
 import { isRecord, stringValue } from "@ccr/core/gateway/internal/value";
 
 export function isLocalClaudeCodeOauthProviderPlugin(value: unknown): value is Record<string, unknown> {
@@ -19,4 +20,14 @@ export function mergeAnthropicBetaValues(...values: Array<string | undefined>): 
     }
   }
   return merged.join(",");
+}
+
+export function claudeCodeOauthRequestHeaders(
+  accessToken: string,
+  ...anthropicBetaValues: Array<string | undefined>
+): Record<string, string> {
+  return {
+    authorization: `Bearer ${accessToken}`,
+    [claudeCodeOauthBetaHeader]: mergeAnthropicBetaValues(...anthropicBetaValues, claudeCodeOauthRequiredBeta)
+  };
 }

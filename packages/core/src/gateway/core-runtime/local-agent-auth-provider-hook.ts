@@ -3,9 +3,9 @@ import { applyOpenCodePublicFreeTierHeaders, isOpenCodePublicFreeTierPlugin, wit
 import { grokAccessTokenExpired, grokClientVersion } from "@ccr/core/agents/local-providers/grok";
 import { kimiAccessTokenExpired, kimiIdentityHeaders } from "@ccr/core/agents/local-providers/kimi";
 import { transformCodexApplyPatchBridgeRequestBody } from "@ccr/core/gateway/features/codex-patch-bridge";
-import { claudeCodeOauthBetaHeader, claudeCodeOauthRequiredBeta } from "@ccr/core/gateway/internal/shared";
+import { claudeCodeOauthBetaHeader } from "@ccr/core/gateway/internal/shared";
 import { isRecord, stringValue } from "@ccr/core/gateway/internal/value";
-import { mergeAnthropicBetaValues } from "@ccr/core/providers/oauth-plugin";
+import { claudeCodeOauthRequestHeaders } from "@ccr/core/providers/oauth-plugin";
 
 const configProviderPluginKeyPrefix = "config:";
 const localAgentProviderPluginKeyPrefix = "ccr-local-agent-";
@@ -155,17 +155,16 @@ async function authenticateClaudeCode(
   if (!token) {
     return { error: "Claude Code access token was not found.", ok: false };
   }
-  const headers = withBearerAuth(input.upstreamRequest.headers, token, originalRemoveHeaders(plugin));
-  headers[claudeCodeOauthBetaHeader] = mergeAnthropicBetaValues(
+  const authHeaders = claudeCodeOauthRequestHeaders(
+    token,
     requestHeader(input.request?.headers, claudeCodeOauthBetaHeader),
-    originalAnthropicBetaDefault(plugin),
-    claudeCodeOauthRequiredBeta
+    originalAnthropicBetaDefault(plugin)
   );
   return {
     ok: true,
     value: {
       ...input.upstreamRequest,
-      headers
+      headers: withAuthHeaders(input.upstreamRequest.headers, authHeaders, originalRemoveHeaders(plugin))
     }
   };
 }
@@ -322,11 +321,21 @@ function withBearerAuth(
   token: string,
   removeHeaders: string[]
 ): HeaderRecord {
+  return withAuthHeaders(headers, { authorization: `Bearer ${token}` }, removeHeaders);
+}
+
+function withAuthHeaders(
+  headers: HeaderRecord | undefined,
+  authHeaders: HeaderRecord,
+  removeHeaders: string[]
+): HeaderRecord {
   const next = { ...(headers ?? {}) };
   for (const name of removeHeaders) {
     deleteHeader(next, name);
   }
-  setHeader(next, "authorization", `Bearer ${token}`);
+  for (const [name, value] of Object.entries(authHeaders)) {
+    setHeader(next, name, value);
+  }
   return next;
 }
 

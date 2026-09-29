@@ -13,10 +13,13 @@ import type {
   GatewayProviderProtocol
 } from "@ccr/core/contracts/app";
 import { codexDefaultBaseUrl, readCodexAuth } from "@ccr/core/agents/local-providers/codex";
+import { readClaudeCodeOauth } from "@ccr/core/agents/local-providers/claude-code";
 import { opencodeCatalogProtocolModelMap } from "@ccr/core/agents/local-providers/opencode";
 import { localAgentProviderApiKey } from "@ccr/core/agents/local-providers/shared";
+import { claudeCodeOauthBetaHeader } from "@ccr/core/gateway/internal/shared";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue } from "@ccr/core/providers/presets/index";
 import { getProviderCatalogModels } from "@ccr/core/providers/model-catalog";
+import { claudeCodeOauthRequestHeaders, isLocalClaudeCodeOauthProviderPlugin } from "@ccr/core/providers/oauth-plugin";
 import { fetchWithSystemProxy } from "@ccr/core/proxy/system-proxy-fetch";
 import {
   compactProviderUrl,
@@ -939,6 +942,26 @@ async function providerProbeAuthRequest(
     request = providerProbeStaticAuthRequest(request.url, request.init, auth);
   }
 
+  const liveClaudeCodeAccessToken = providerProbeLiveClaudeCodeOauth(apiKey, providerPlugins);
+  if (liveClaudeCodeAccessToken) {
+    const headers = new Headers(request.init.headers);
+    headers.delete("x-api-key");
+    const authHeaders = claudeCodeOauthRequestHeaders(
+      liveClaudeCodeAccessToken,
+      headers.get(claudeCodeOauthBetaHeader) ?? undefined
+    );
+    for (const [name, value] of Object.entries(authHeaders)) {
+      headers.set(name, value);
+    }
+    request = {
+      ...request,
+      init: {
+        ...request.init,
+        headers
+      }
+    };
+  }
+
   if (codexOauth) {
     request = await providerProbeCodexOauthRequest(request.url, request.init, codexOauth);
   }
@@ -996,6 +1019,24 @@ function isCodexProbeEndpoint(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+// Saved Claude Code OAuth plugins carry the access token from import time, but
+// the CLI rotates it; a stale token gets 401 from /v1/models. The gateway
+// refreshes these plugins at config compile time, so the probe must do the
+// same to stay consistent with the traffic it previews.
+function providerProbeLiveClaudeCodeOauth(
+  apiKey: string | undefined,
+  providerPlugins: unknown[]
+): string | undefined {
+  if (apiKey !== localAgentProviderApiKey) {
+    return undefined;
+  }
+  if (!providerPlugins.some(isLocalClaudeCodeOauthProviderPlugin)) {
+    return undefined;
+  }
+
+  return readClaudeCodeOauth()?.accessToken;
 }
 
 function providerProbeStaticAuthRequest(
