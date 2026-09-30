@@ -442,8 +442,8 @@ function assertAppendableTurn(body: JsonObject, protocol: GatewayProviderProtoco
 
 function sanitizeCompactHandoffRequest(body: JsonObject, protocol: GatewayProviderProtocol): void {
   removeCompactSignals(body);
+  clampCompactOutputTokenLimit(body);
   removeKeys(body, [
-    ...compactOutputTokenLimitKeys,
     "response_format",
     "responseFormat",
     "stop",
@@ -473,6 +473,22 @@ function sanitizeCompactHandoffRequest(body: JsonObject, protocol: GatewayProvid
     "toolChoice",
     "tools"
   ]);
+}
+
+// Compact handoff summaries need headroom well above the client's compact
+// budget, but deleting the token-limit key outright breaks strict
+// Anthropic-Messages-compatible upstreams, where `max_tokens` is a required
+// field (400 "Field required"). Clamp present keys up to a floor instead.
+const compactHandoffTokenLimitFloor = 32768;
+
+function clampCompactOutputTokenLimit(body: JsonObject): void {
+  for (const key of compactOutputTokenLimitKeys) {
+    const value = body[key];
+    if (typeof value !== "number" || !Number.isFinite(value) || value >= compactHandoffTokenLimitFloor) {
+      continue;
+    }
+    body[key] = compactHandoffTokenLimitFloor;
+  }
 }
 
 function removeCompactSignals(body: JsonObject): void {
