@@ -24,6 +24,75 @@ import { ccrRemoteControlPathPrefix } from "@ccr/core/gateway/remote-control-ser
 import { gatewayRuntimeConfigControlPath, gatewayRuntimeConfigRevision } from "@ccr/core/gateway/runtime-config-control.ts";
 import { createGatewayPlugin } from "@ccr/core/gateway/core-runtime/router-plugin.ts";
 import { providerRuntimeId } from "@ccr/core/routing/model-registry.ts";
+import { sanitizeHeaderValue, toCoreGatewayProviders } from "@ccr/core/providers/runtime-topology.ts";
+
+test("CCR route resolver preserves the selected protocol for bare provider IDs", async (t) => {
+  const chat = { type: "openai_chat_completions", baseUrl: "https://example.test/v1" };
+  const responses = { type: "openai_responses", baseUrl: "https://example.test/v1" };
+  const anthropic = { type: "anthropic_messages", baseUrl: "https://example.test/anthropic" };
+  const credentials = [
+    { id: "first", apiKey: "test-first", priority: 1 },
+    { id: "second", apiKey: "test-second", priority: 2 }
+  ];
+  for (const scenario of [
+    { name: "Kimi prefers Anthropic despite OpenAI appearing first" },
+    { name: "GLM also prefers Anthropic", model: "glm-5.3" },
+    {
+      name: "OpenAI clients prefer OpenAI despite Anthropic appearing first",
+      capabilities: [anthropic, responses, chat], path: "/v1/chat/completions", target: "multi::openai_chat_completions"
+    },
+    {
+      name: "Responses clients prefer Responses over both other protocols",
+      capabilities: [anthropic, chat, responses], path: "/v1/responses", target: "multi::openai_responses"
+    },
+    {
+      name: "missing Anthropic capability still permits conversion",
+      capabilities: [chat], target: "multi::openai_chat_completions"
+    },
+    {
+      name: "bare IDs select a concrete credential",
+      credentials, target: "multi::anthropic_messages::cred:first"
+    },
+    {
+      name: "explicit credential selection is preserved",
+      credentials, selector: "multi::anthropic_messages::cred:second",
+      target: "multi::anthropic_messages::cred:second"
+    },
+    { name: "legacy providers keep their bare runtime ID", capabilities: [], target: "multi" },
+    {
+      name: "legacy providers with credentials select a concrete credential",
+      capabilities: [], credentials, target: "multi::anthropic_messages::cred:first"
+    }
+  ]) {
+    await t.test(scenario.name, async () => {
+      const config = createDefaultAppConfig();
+      const provider = {
+        id: "multi", name: "供应商 multi", type: "anthropic_messages",
+        api_base_url: anthropic.baseUrl, models: ["kimi-k3", "glm-5.3"],
+        capabilities: scenario.capabilities ?? [chat, responses, anthropic], credentials: scenario.credentials
+      };
+      config.Providers = [provider];
+      const plugin = await createGatewayPlugin({ plugin: { config: { appConfig: config } } });
+      const resolver = plugin.routeResolvers.find((item) => item.key === ccrRouterRouteResolverKey);
+      const model = scenario.model ?? "kimi-k3";
+      const target = scenario.target ?? "multi::anthropic_messages";
+      const requestBody = { model: `${target}/${model}`, messages: [{ role: "user", content: "hello" }] };
+      // The outer pipeline has qualified the body model, but its route header
+      // still contains the original selector after non-ASCII names are sanitized.
+      const resolved = resolver.resolve({
+        request: {
+          headers: { [ccrRoutedModelHeader]: sanitizeHeaderValue(`${scenario.selector ?? provider.name}/${model}`) },
+          method: "POST", url: scenario.path ?? "/v1/messages"
+        },
+        requestBody
+      });
+      assert.equal(resolved.targetProviderName, target);
+      assert.ok(toCoreGatewayProviders(provider).some((item) => item.name === resolved.targetProviderName));
+      assert.equal(resolved.model, model);
+      assert.deepEqual(resolved.requestBody, { ...requestBody, model });
+    });
+  }
+});
 
 test("CCR router core plugin exposes route endpoint and beforeRouting transform", async () => {
   const config = createDefaultAppConfig();

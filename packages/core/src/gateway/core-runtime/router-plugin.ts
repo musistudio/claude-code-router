@@ -1161,10 +1161,7 @@ function isCoreGatewayRuntimeProviderName(
   if (!normalized) {
     return false;
   }
-  const runtimeId = providerRuntimeId(provider).toLowerCase();
-  if (normalized === runtimeId) {
-    return true;
-  }
+  // Bare provider IDs are shared aliases; resolve their protocol and credential.
   const capabilityName = providerCapabilityInternalName(provider, protocol).toLowerCase();
   return normalized === capabilityName || normalized.startsWith(`${capabilityName}::cred:`);
 }
