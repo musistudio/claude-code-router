@@ -1081,6 +1081,7 @@ export type VirtualModelFusionWebSearchProvider =
   | "serper"
   | "serpapi"
   | "serply"
+  | "sofya"
   | "tavily"
   | "exa";
 
