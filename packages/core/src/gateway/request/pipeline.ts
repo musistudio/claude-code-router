@@ -32,6 +32,7 @@ import { recordProviderCredentialOutcome } from "@ccr/core/providers/credential-
 import { codexApplyPatchBridgeResponseStream, prepareCodexApplyPatchBridgeRequest } from "@ccr/core/gateway/features/codex-patch-bridge";
 import { codexMultiAgentBridgeResponseStream, prepareCodexMultiAgentBridgeRequest } from "@ccr/core/gateway/features/codex-multi-agent-bridge";
 import { rewriteAnthropicMessageStartModelStream, shouldRewriteAnthropicMessageStartModel } from "@ccr/core/gateway/features/anthropic-response-model";
+import { prepareAnthropicToolUseIdRequest, sanitizeAnthropicToolUseIdResponseStream, shouldSanitizeAnthropicToolUseIdResponse } from "@ccr/core/gateway/features/anthropic-tool-use-ids";
 import { prepareCursorOpenAICompatChatBody } from "@ccr/core/gateway/features/cursor-compat";
 import { filteredResponseHeaders, formatError, formatUpstreamErrorForLog, forwardHeaders, inferGatewayClient, readRequestBody, sendJson, shouldCaptureGatewayUsage, shouldSendBody, stripLocalGatewayAuthHeaders } from "@ccr/core/gateway/http/io";
 import { appendAggregateErrorAttemptSummary, shouldBufferAggregateErrorBody } from "@ccr/core/gateway/http/error-detail";
@@ -603,6 +604,26 @@ export class GatewayRequestPipeline {
 
       let upstreamPath = path;
       const requestProtocol = requestProtocolForPath(path) ?? (isCodexResponsesCompactPath(path) ? "openai_responses" : undefined);
+      const anthropicToolUseIdRequest = prepareAnthropicToolUseIdRequest({
+        body: bodyToForward,
+        method,
+        protocol: requestProtocol
+      });
+      if (anthropicToolUseIdRequest) {
+        bodyToForward = anthropicToolUseIdRequest.body;
+        headers["content-type"] = "application/json";
+        headers["x-ccr-tool-use-ids-sanitized"] = String(anthropicToolUseIdRequest.rewritten);
+        routeTrace?.capture({
+          changes: [
+            { operation: "replace", path: "/body", scope: "body" },
+            { after: headers["x-ccr-tool-use-ids-sanitized"], operation: "add", path: "/headers/x-ccr-tool-use-ids-sanitized", scope: "headers" },
+            { after: headers["content-type"], operation: "replace", path: "/headers/content-type", scope: "headers" }
+          ],
+          kind: "mutation",
+          name: "compatibility.anthropic-tool-use-ids",
+          phase: "compatibility"
+        });
+      }
       const contextArchiveToolContinuation = prepareContextArchiveToolContinuationRequest({
         apiKey,
         body: bodyToForward,
@@ -897,7 +918,11 @@ export class GatewayRequestPipeline {
         model: clientVisibleResponseModel,
         protocol: responseProtocol
       });
-      if (codexApplyPatchBridgeActive || codexMultiAgentBridgeActive || appendContextArchiveFooter || transformCodexCompactResponse || rewriteAnthropicResponseModel) {
+      const sanitizeAnthropicToolUseIds = upstreamResponse.ok && shouldSanitizeAnthropicToolUseIdResponse({
+        contentType: responseHeaders.get("content-type") ?? undefined,
+        protocol: responseProtocol
+      });
+      if (codexApplyPatchBridgeActive || codexMultiAgentBridgeActive || appendContextArchiveFooter || transformCodexCompactResponse || rewriteAnthropicResponseModel || sanitizeAnthropicToolUseIds) {
         responseHeaders.delete("content-length");
       }
       recordProviderCredentialOutcome(this.config, method, upstreamResult.attempt, upstreamResponse.status, responseHeaders);
@@ -1023,9 +1048,12 @@ export class GatewayRequestPipeline {
               codexCompactCompatResponseMode
             )
           : hostedWebSearchResponseBody;
-      const clientResponseBody = rewriteAnthropicResponseModel && clientVisibleResponseModel
-        ? rewriteAnthropicMessageStartModelStream(responseBody, clientVisibleResponseModel)
+      const toolUseIdResponseBody = sanitizeAnthropicToolUseIds
+        ? sanitizeAnthropicToolUseIdResponseStream(responseBody, responseHeaders.get("content-type") ?? undefined)
         : responseBody;
+      const clientResponseBody = rewriteAnthropicResponseModel && clientVisibleResponseModel
+        ? rewriteAnthropicMessageStartModelStream(toolUseIdResponseBody, clientVisibleResponseModel)
+        : toolUseIdResponseBody;
       const sampler = createBodySampler();
       const sseErrorDetector = createSseErrorDetector(responseHeaders.get("content-type") ?? undefined);
       let streamDetectedError: string | undefined;
@@ -1048,6 +1076,7 @@ export class GatewayRequestPipeline {
         multiAgentResponseBody,
         hostedWebSearchResponseBody,
         responseBody,
+        toolUseIdResponseBody,
         clientResponseBody,
         meteredClientResponseBody
       ]);
