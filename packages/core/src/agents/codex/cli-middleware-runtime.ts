@@ -5270,7 +5270,11 @@ function websocketBotGatewayIntegrationConfig(platform, value) {
 
 function botGatewayWebSocketTransport(platform) {
   if (!platform || platform === "none") return "";
-  return platform === "slack" ? "socket" : "websocket";
+  if (platform === "slack") return "socket";
+  // Telegram has no websocket transport in the gateway: getUpdates long polling
+  // is the only inbound path TelegramPollingManager implements.
+  if (platform === "telegram") return "long_polling";
+  return "websocket";
 }
 
 function sanitizeBotGatewayRecord(value) {
