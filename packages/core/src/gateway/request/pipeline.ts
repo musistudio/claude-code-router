@@ -1116,6 +1116,12 @@ export class GatewayRequestPipeline {
             0
           )
         }));
+        // .pipe() does not end the client response when a stage errors, so an
+        // upstream reset would leave the client waiting forever. Headers are
+        // already sent; closing the socket is how a truncated stream fails.
+        if (!response.destroyed) {
+          response.destroy();
+        }
       };
       for (const stream of responseStreams) {
         stream.on("error", onResponseStreamError);
