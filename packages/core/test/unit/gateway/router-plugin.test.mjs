@@ -866,14 +866,21 @@ for (const [model, target] of [
   ["claude-fable-5-1", "Primary/fable-target"],
   ["claude-fable-5-1[1m]", "Primary/fable-target"],
   ["claude-opus-5-5", "Primary/opus-target"],
-  ["claude-opus-5-5[1m]", "Primary/opus-target"]
+  ["claude-opus-5-5[1m]", "Primary/opus-target"],
+  ["claude-sonnet-5-5", "Primary/sonnet-target"],
+  ["claude-sonnet-5-5[1m]", "Primary/sonnet-target"],
+  ["claude-sonnet-5[1m]", "Primary/sonnet-target"]
 ]) {
   test(`CCR router core plugin maps ${model} through the profile tier`, async () => {
     const config = createDefaultAppConfig();
     config.Providers = [{
-      models: ["default-model", "qwen3.6-plus", "fable-target", "opus-target"],
+      models: ["default-model", "qwen3.6-plus", "fable-target", "opus-target", "sonnet-target"],
       name: "Primary",
       type: "openai_chat_completions"
+    }, {
+      models: ["claude-sonnet-5-5"],
+      name: "CCS",
+      type: "anthropic_messages"
     }];
     config.APIKEY = "client-key";
     config.APIKEYS = [{ createdAt: new Date(0).toISOString(), id: "profile:tiers", key: "client-key" }];
@@ -884,6 +891,7 @@ for (const [model, target] of [
       enabled: true,
       fableModel: "Primary/fable-target",
       opusModel: "Primary/opus-target",
+      sonnetModel: "Primary/sonnet-target",
       haikuModel: "Primary/qwen3.6-plus",
       id: "tiers",
       model: "Primary/default-model",

@@ -128,7 +128,7 @@ test("default model list tier routing covers every advertised protocol endpoint"
       body: JSON.stringify({
         max_tokens: 8,
         messages: [{ role: "user", content: "hello" }],
-        model: "claude-sonnet-5[1m]"
+        model: "claude-sonnet-5-5[1m]"
       }),
       headers: { ...profileHeaders, "user-agent": "claude-cli/1.0" },
       method: "POST"
@@ -137,12 +137,12 @@ test("default model list tier routing covers every advertised protocol endpoint"
     assert.equal(messages.status, 200, messagesText);
     // Non-streaming responses keep the client-visible tier name: the mock core
     // echoes the routed slot target ("sonnet-target") as the model.
-    assert.equal(JSON.parse(messagesText).model, "claude-sonnet-5[1m]");
+    assert.equal(JSON.parse(messagesText).model, "claude-sonnet-5-5[1m]");
 
     const chatCompletions = await fetch(`${endpoint}/v1/chat/completions`, {
       body: JSON.stringify({
         messages: [{ role: "user", content: "hello" }],
-        model: "claude-sonnet-5"
+        model: "claude-sonnet-5-5"
       }),
       headers: profileHeaders,
       method: "POST"
@@ -152,7 +152,7 @@ test("default model list tier routing covers every advertised protocol endpoint"
     const responses = await fetch(`${endpoint}/v1/responses`, {
       body: JSON.stringify({
         input: "hello",
-        model: "claude-sonnet-5[1m]"
+        model: "claude-sonnet-5-5[1m]"
       }),
       headers: profileHeaders,
       method: "POST"
@@ -194,7 +194,10 @@ test("default model list tier routing covers every advertised protocol endpoint"
       { model: "claude-fable-5-1[1m]", target: "fable-target" },
       { model: "claude-opus-5-5", target: "opus-target" },
       { model: "claude-opus-5-5[1m]", target: "opus-target" },
-      { model: "claude-haiku-4-5", target: "qwen3.6-plus" }
+      { model: "claude-haiku-4-5", target: "qwen3.6-plus" },
+      { model: "claude-sonnet-5-5", target: "sonnet-target" },
+      { model: "claude-sonnet-5-5[1m]", target: "sonnet-target" },
+      { model: "claude-sonnet-5[1m]", target: "sonnet-target" }
     ];
     for (const { model } of updatedTierCases) {
       for (const stream of [false, true]) {
@@ -225,14 +228,14 @@ test("default model list tier routing covers every advertised protocol endpoint"
     });
     assert.deepEqual(
       models.data.map((entry) => entry.id),
-      ["claude-fable-5-1[1m]", "claude-opus-5-5[1m]", "claude-sonnet-5[1m]", "claude-haiku-4-5-20251001"]
+      ["claude-fable-5-1[1m]", "claude-opus-5-5[1m]", "claude-sonnet-5-5[1m]", "claude-haiku-4-5-20251001"]
     );
     assert.equal(models.data.find((entry) => entry.id === "claude-haiku-4-5-20251001").description, "Haiku 4.5 · Fastest for quick answers");
 
     const countTokens = await fetchJson(`${endpoint}/v1/messages/count_tokens`, {
       body: JSON.stringify({
         messages: [{ role: "user", content: "hello" }],
-        model: "claude-sonnet-5[1m]"
+        model: "claude-sonnet-5-5[1m]"
       }),
       headers: { ...profileHeaders, "user-agent": "claude-cli/1.0" },
       method: "POST"
@@ -308,6 +311,13 @@ function createDefaultModelListTierRoutingTestConfig() {
       enabled: true,
       models: ["default-model", "fable-target", "opus-target", "sonnet-target", "qwen3.6-plus"],
       name: "Prov"
+    },
+    {
+      api_base_url: "http://127.0.0.1:9",
+      api_key: "placeholder",
+      models: ["claude-sonnet-5-5"],
+      name: "CCS",
+      type: "anthropic_messages"
     }
   ];
   config.profile = {

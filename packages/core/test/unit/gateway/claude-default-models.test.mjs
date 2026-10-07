@@ -25,11 +25,15 @@ test("claude default model tiers match request names with and without the [1m] s
   assert.equal(findClaudeDefaultModelTier("claude-opus-5-5")?.profileSlot, "opusModel");
   assert.equal(findClaudeDefaultModelTier("claude-opus-5-5[1m]")?.profileSlot, "opusModel");
   assert.equal(findClaudeDefaultModelTier("CLAUDE-SONNET-5[1M]")?.profileSlot, "sonnetModel");
+  assert.equal(findClaudeDefaultModelTier("claude-sonnet-5-5")?.profileSlot, "sonnetModel");
+  assert.equal(findClaudeDefaultModelTier("CLAUDE-SONNET-5-5[1M]")?.profileSlot, "sonnetModel");
   assert.equal(findClaudeDefaultModelTier("claude-haiku-4-5")?.profileSlot, "haikuModel");
   assert.equal(findClaudeDefaultModelTier("claude-fable-5.1"), undefined);
   assert.equal(findClaudeDefaultModelTier("claude-fable-5"), undefined);
   assert.equal(findClaudeDefaultModelTier("claude-opus-5[1m]"), undefined);
   assert.equal(findClaudeDefaultModelTier("claude-sonnet-5-free"), undefined);
+  assert.equal(findClaudeDefaultModelTier("claude-sonnet-5-5-free"), undefined);
+  assert.equal(findClaudeDefaultModelTier("CCS/claude-sonnet-5-5"), undefined);
   assert.equal(findClaudeDefaultModelTier("prov/glm-5.3"), undefined);
   assert.equal(findClaudeDefaultModelTier(undefined), undefined);
 });
@@ -41,7 +45,8 @@ test("dated snapshots resolve only to their matching advertised Claude tier", ()
     [" CLAUDE-HAIKU-4-5-20251001[1M] ", "haikuModel"],
     ["claude-fable-5-1-20260901[1m]", "fableModel"],
     ["claude-opus-5-5-20260901", "opusModel"],
-    ["claude-sonnet-5-20260901[1m]", "sonnetModel"]
+    ["claude-sonnet-5-20260901[1m]", "sonnetModel"],
+    ["claude-sonnet-5-5-20261007[1m]", "sonnetModel"]
   ]) {
     assert.equal(findClaudeDefaultModelTier(model)?.profileSlot, slot, model);
   }
@@ -73,6 +78,7 @@ test("tier targets resolve through profile slots with the default model fallback
     sonnetModel: "prov/sonnet-target"
   };
   assert.equal(resolveClaudeDefaultTierTarget(profile, "claude-sonnet-5[1m]"), "prov/sonnet-target");
+  assert.equal(resolveClaudeDefaultTierTarget(profile, "claude-sonnet-5-5[1m]"), "prov/sonnet-target");
   assert.equal(resolveClaudeDefaultTierTarget(profile, "claude-opus-5-5"), "prov/opus-target");
   assert.equal(resolveClaudeDefaultTierTarget(profile, "claude-fable-5-1"), "prov/default");
   assert.equal(resolveClaudeDefaultTierTarget(profile, "claude-haiku-4-5"), "prov/qwen3.6-plus");
@@ -108,7 +114,7 @@ test("default model list mode extends the allowlist with tier names and slot tar
     "only/this",
     "prov/default",
     "prov/sonnet-target",
-    "claude-sonnet-5[1m]",
+    "claude-sonnet-5-5[1m]",
     "claude-fable-5-1",
     "claude-haiku-4-5",
     "claude-haiku-4-5-20251001"
@@ -117,6 +123,8 @@ test("default model list mode extends the allowlist with tier names and slot tar
   }
   assert.equal(isModelAllowedForProfile({ Providers: [] }, profile, "claude-opus-5-5"), true);
   assert.equal(isModelAllowedForProfile({ Providers: [] }, profile, "prov/sonnet-target"), true);
+  assert.equal(isModelAllowedForProfile({ Providers: [] }, profile, "claude-sonnet-5[1m]"), true);
+  assert.equal(isModelAllowedForProfile({ Providers: [] }, profile, "claude-sonnet-5-5"), true);
   assert.equal(isModelAllowedForProfile({ Providers: [] }, profile, "other/model"), false);
 
   const disabled = { ...profile, claudeDefaultModelList: false };
@@ -229,9 +237,9 @@ test("bootstrap auto-compact windows follow the slot target context window", () 
   const apiKey = { id: "profile:p1" };
   const bootstrap = createClaudeCliBootstrapResponse(config, apiKey);
   const windows = bootstrap.auto_compact_windows ?? {};
-  assert.equal(windows["claude-sonnet-5"], 120_000);
-  assert.equal(windows["claude-sonnet-5[1m]"], 120_000);
-  assert.notEqual(windows["claude-sonnet-5"], 1_000_000);
+  assert.equal(windows["claude-sonnet-5-5"], 120_000);
+  assert.equal(windows["claude-sonnet-5-5[1m]"], 120_000);
+  assert.notEqual(windows["claude-sonnet-5-5"], 1_000_000);
 });
 
 
@@ -251,16 +259,16 @@ test("models response returns the fixed tier list when the switch is on", () => 
   const response = createGatewayModelsResponse(config, headers, apiKey);
   assert.deepEqual(
     response.data.map((entry) => entry.id),
-    ["claude-fable-5-1[1m]", "claude-opus-5-5[1m]", "claude-sonnet-5[1m]", "claude-haiku-4-5-20251001"]
+    ["claude-fable-5-1[1m]", "claude-opus-5-5[1m]", "claude-sonnet-5-5[1m]", "claude-haiku-4-5-20251001"]
   );
   assert.deepEqual(
     response.data.map((entry) => entry.display_name),
-    ["Fable 5.1", "Opus 5.5", "Sonnet 5", "Haiku 4.5"]
+    ["Fable 5.1", "Opus 5.5", "Sonnet 5.5", "Haiku 4.5"]
   );
   const descriptions = [
     "Fable 5.1 · Most capable for your hardest and longest-running tasks",
     "Opus 5.5 with 1M context · Best for everyday, complex tasks",
-    "Sonnet 5 for long sessions",
+    "Sonnet 5.5 for long sessions",
     "Haiku 4.5 · Fastest for quick answers"
   ];
   assert.ok(response.data.every((entry) => !Object.hasOwn(entry, "description")));
@@ -281,7 +289,7 @@ test("models response returns the fixed tier list when the switch is on", () => 
   const disabledConfig = { Providers: [], profile: { enabled: true, profiles: [disabledProfile] } };
   const disabledResponse = createGatewayModelsResponse(disabledConfig, headers, apiKey);
   assert.equal(
-    disabledResponse.data.some((entry) => entry.id === "claude-sonnet-5[1m]"),
+    disabledResponse.data.some((entry) => entry.id === "claude-sonnet-5-5[1m]"),
     false
   );
 

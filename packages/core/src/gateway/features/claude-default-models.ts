@@ -51,11 +51,11 @@ export const claudeDefaultModelTiers: readonly ClaudeDefaultModelTier[] = [
     profileSlot: "opusModel"
   },
   {
-    description: "Sonnet 5 for long sessions",
-    displayName: "Sonnet 5",
-    id: "claude-sonnet-5[1m]",
+    description: "Sonnet 5.5 for long sessions",
+    displayName: "Sonnet 5.5",
+    id: "claude-sonnet-5-5[1m]",
     maxInputTokens: 1_000_000,
-    model: "claude-sonnet-5",
+    model: "claude-sonnet-5-5",
     oneMillionContext: true,
     profileSlot: "sonnetModel"
   },
@@ -128,5 +128,9 @@ export function claudeDefaultTierRoutingModels(profile: ProfileConfig | undefine
 function normalizeClaudeDefaultModelKey(model: string | undefined): string | undefined {
   // A terminal YYYYMMDD snapshot suffix aliases the same advertised base tier.
   const stripped = stripOneMillionContextSuffix(model ?? "").toLowerCase().replace(/-\d{8}$/, "");
+  // Preserve the previous Sonnet tier name for clients with cached model lists.
+  if (stripped === "claude-sonnet-5") {
+    return "claude-sonnet-5-5";
+  }
   return stripped || undefined;
 }
