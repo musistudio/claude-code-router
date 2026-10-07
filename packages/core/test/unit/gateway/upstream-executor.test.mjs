@@ -465,6 +465,62 @@ test("target-provider routing preserves slash model ids for providers without ex
   assert.equal(attempt.headers["x-target-providers"], "groq::openai_chat_completions::cred:groq-main");
 });
 
+test("upstream preparation traces effort replacements without adding a route node", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const credentials of [undefined, [{ id: "main", apiKey: "test-key" }]]) {
+      for (const [effort, expected] of [["medium", "high"], ["xhigh", "max"], ["low", "low"]]) {
+        const config = {
+          Providers: [{
+            id: "bailian", name: "Bailian", type: "anthropic_messages", credentials,
+            models: ["glm-5.3"], modelMetadata: { "glm-5.3": {
+              supportedReasoningLevels: ["low", "high", "max"].map((effort) => ({ effort }))
+            } }
+          }],
+          Router: { fallback: { mode: "off", models: [], retryCount: 0 }, rules: [] },
+          virtualModelProfiles: []
+        };
+        const body = { model: "Bailian/glm-5.3", messages: [], output_config: { effort, format: { type: "json_schema" } } };
+        const recorder = new RequestRouteTraceRecorder(Date.now());
+        const observations = [];
+        let calls = 0;
+        globalThis.fetch = async (_url, init) => {
+          calls++;
+          assert.equal(JSON.parse(init.body).output_config.effort, expected);
+          const prepare = observations.find((hop) => hop.name === "upstream.attempt.prepare");
+          assert.ok(prepare, "preparation is recorded before sending");
+          assert.equal(prepare.changes.some((change) => change.path === "/body/output_config/effort"), effort !== expected);
+          return new Response("{}", { status: 200 });
+        };
+        await fetchUpstreamWithFallback({
+          body: Buffer.from(JSON.stringify(body)), config, coreAuthToken: "test-core",
+          fallback: config.Router.fallback, headers: {}, method: "POST", path: "/v1/messages",
+          routedModel: body.model, upstreamUrl: "http://127.0.0.1:3456/v1/messages",
+          trace: { capture: (hop) => { observations.push(hop); recorder.capture(hop); } }
+        });
+        assert.equal(calls, 1);
+        assert.equal(body.output_config.effort, effort);
+        const trace = recorder.finish();
+        assert.deepEqual(trace.hops.map((hop) => hop.name), [
+          "fallback.execution-plan", "provider.capability-routing", "upstream.attempt.prepare", "upstream.attempt.outcome"
+        ]);
+        const prepare = trace.hops.find((hop) => hop.name === "upstream.attempt.prepare");
+        const effortChanges = prepare.changes.filter((change) => change.path === "/body/output_config/effort");
+        assert.equal(effortChanges.length, effort === expected ? 0 : 1);
+        assert.equal(prepare.attempt, 1);
+        assert.equal(prepare.kind, "attempt");
+        if (effortChanges.length) {
+          assert.deepEqual(effortChanges, [{
+            scope: "body", path: "/body/output_config/effort", operation: "replace", before: effort, after: expected
+          }]);
+        }
+      }
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("model-chain fallback rebuilds every protocol attempt from the canonical request", async () => {
   const config = {
     Providers: [
@@ -472,6 +528,7 @@ test("model-chain fallback rebuilds every protocol attempt from the canonical re
         capabilities: [{ baseUrl: "https://anthropic-primary.example", type: "anthropic_messages" }],
         id: "anthropic-primary",
         models: ["claude-primary"],
+        modelMetadata: { "claude-primary": { supportedReasoningLevels: [{ effort: "max" }] } },
         name: "Anthropic Primary"
       },
       {
@@ -484,6 +541,7 @@ test("model-chain fallback rebuilds every protocol attempt from the canonical re
         capabilities: [{ baseUrl: "https://anthropic-recovery.example", type: "anthropic_messages" }],
         id: "anthropic-recovery",
         models: ["claude-recovery"],
+        modelMetadata: { "claude-recovery": { supportedReasoningLevels: [{ effort: "high" }] } },
         name: "Anthropic Recovery"
       }
     ],
@@ -543,6 +601,7 @@ test("model-chain fallback rebuilds every protocol attempt from the canonical re
       "claude-recovery"
     ]);
     assert.deepEqual(captured[0].body.thinking, { type: "adaptive" });
+    assert.equal(captured[0].body.output_config.effort, "max");
     assert.equal(captured[1].body.thinking, undefined);
     assert.deepEqual(captured[2].body.thinking, { type: "adaptive" });
     assert.deepEqual(captured[2].body.context_management, canonicalBody.context_management);
@@ -551,6 +610,13 @@ test("model-chain fallback rebuilds every protocol attempt from the canonical re
     assert.equal(captured[1].headers["x-target-provider"], "openai-fallback::openai_responses");
     assert.equal(captured[2].headers["x-target-provider"], "anthropic-recovery::anthropic_messages");
     const finishedTrace = trace.finish();
+    const effortHops = finishedTrace.hops.filter((hop) => hop.changes.some((change) => change.path === "/body/output_config/effort"));
+    assert.equal(effortHops.length, 1);
+    assert.equal(effortHops[0].attempt, 1);
+    assert.equal(effortHops[0].name, "upstream.attempt.prepare");
+    const effortChange = effortHops[0].changes.find((change) => change.path === "/body/output_config/effort");
+    assert.equal(effortChange.before, "high");
+    assert.equal(effortChange.after, "max");
     const capabilityRoutingHops = finishedTrace.hops
       .filter((hop) => hop.name === "provider.capability-routing");
     assert.deepEqual(

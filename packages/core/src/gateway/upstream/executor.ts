@@ -16,6 +16,7 @@ import { isLocalClaudeCodeOauthProviderPlugin, mergeAnthropicBetaValues } from "
 import { abortSignalMessage, formatError, omitLocalObservabilityHeaders, shouldSendBody, withCoreGatewayAuthHeader } from "@ccr/core/gateway/http/io";
 import { parseJsonObjectSafe, releaseJsonObject, serializeJsonBody, serializeJsonBodyWithModel } from "@ccr/core/gateway/http/body";
 import { resolveGatewayPublicModelId } from "@ccr/core/gateway/features/model-discovery";
+import { normalizeAnthropicReasoningEffort } from "@ccr/core/gateway/features/anthropic-reasoning-effort";
 import { activeProviderCredentials, findProviderByPublicOrInternalName, findProviderCredentialBySlug, normalizedProviderCapabilities, parseProviderCredentialInternalName, providerCapabilityForClientProtocol, providerCapabilityInternalName, providerCapabilityNameMatches, providerCredentialInternalName, providerCredentialPriority, providerCredentialRuntimeId, providerCredentialSlug, providerProtocolForClientProtocol, sanitizeHeaderValue } from "@ccr/core/providers/runtime-topology";
 import { delay } from "@ccr/core/gateway/internal/clock";
 import { retryDelayAfterNetworkError, retryDelayAfterStatus, shouldFallbackAfterStatus } from "@ccr/core/gateway/upstream/retry-policy";
@@ -405,6 +406,7 @@ export async function fetchUpstreamWithFallback(input: {
       target: cachedAttemptRouting.routedModel ? { model: cachedAttemptRouting.routedModel } : undefined
     });
     const attemptPreparationStartedAt = Date.now();
+    const attemptChanges: RequestRouteTraceChange[] = [];
     const attempt = prepareUpstreamCredentialAttempt({
       attempt: {
         ...plannedAttempt,
@@ -414,7 +416,8 @@ export async function fetchUpstreamWithFallback(input: {
       config: input.config,
       headers: attemptHeaders,
       method: input.method,
-      path: input.path
+      path: input.path,
+      changes: attemptChanges
     });
     const hasNextAttempt = index < attempts.length - 1;
     const attemptUrl = rewriteRouteModelInUrl(input.upstreamUrl, attempt.model);
@@ -448,7 +451,8 @@ export async function fetchUpstreamWithFallback(input: {
           : []),
         ...(attemptUrl !== input.upstreamUrl
           ? [{ after: attemptUrl, before: input.upstreamUrl, operation: "replace" as const, path: "/url", scope: "url" as const }]
-          : [])
+          : []),
+        ...attemptChanges
       ],
       durationMs: attemptStartedAt - attemptPreparationStartedAt,
       kind: "attempt",
@@ -598,16 +602,29 @@ function prepareUpstreamCredentialAttempt(input: {
   headers: Record<string, string>;
   method: string;
   path: string;
+  changes?: RequestRouteTraceChange[];
 }): UpstreamAttempt {
   const normalizedBody = normalizeConfiguredProviderModelBody(input.attempt.body, input.config);
   const target = resolvePlannedProviderCredentialRoutingTarget(input.attempt, input.path) ??
     resolveProviderCredentialRoutingTarget(input.config, input.headers, input.path, input.attempt.body);
-  const attemptBody = (body: Buffer | undefined) => usageAwareOpenAiChatAttemptBody({
-    body,
-    config: input.config,
-    path: input.path,
-    target
-  });
+  const attemptBody = (body: Buffer | undefined) => {
+    if (target?.model && target.protocol === "anthropic_messages" &&
+      input.method.toUpperCase() === "POST" && requestProtocolForPath(input.path) === "anthropic_messages") {
+      const parsed = parseJsonObjectSafe(body);
+      const normalized = parsed ? normalizeAnthropicReasoningEffort(parsed, target.provider, target.model) : undefined;
+      if (normalized) {
+        body = serializeJsonBody(normalized.body);
+        input.changes?.push({
+          scope: "body",
+          path: "/body/output_config/effort",
+          operation: "replace",
+          before: normalized.before,
+          after: normalized.after
+        });
+      }
+    }
+    return usageAwareOpenAiChatAttemptBody({ body, config: input.config, path: input.path, target });
+  };
   if (!target) {
     const body = normalizedBody?.body ?? input.attempt.body;
     return {

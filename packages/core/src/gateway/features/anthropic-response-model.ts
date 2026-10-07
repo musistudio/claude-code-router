@@ -13,6 +13,93 @@ export function shouldRewriteAnthropicMessageStartModel(input: {
     Boolean(input.contentType?.toLowerCase().includes("text/event-stream"));
 }
 
+export function shouldRewriteAnthropicMessageModelJson(input: {
+  contentType: string | undefined;
+  model: string | undefined;
+  protocol: GatewayProviderProtocol | undefined;
+}): boolean {
+  return input.protocol === "anthropic_messages" &&
+    Boolean(input.model?.trim()) &&
+    Boolean(input.contentType?.toLowerCase().includes("application/json"));
+}
+
+/**
+ * Rewrites the top-level model of a parsed non-streaming Anthropic message.
+ * Returns undefined when the payload is not an Anthropic message or already
+ * carries the replacement, so callers can treat "nothing to do" uniformly.
+ */
+export function rewriteAnthropicMessageModelPayload(
+  payload: unknown,
+  model: string
+): Record<string, unknown> | undefined {
+  const replacementModel = model.trim();
+  if (!isRecord(payload) ||
+    stringValue(payload.type) !== "message" ||
+    typeof payload.model !== "string" ||
+    !payload.model ||
+    payload.model === replacementModel) {
+    return undefined;
+  }
+  return { ...payload, model: replacementModel };
+}
+
+// A JSON response is consumed atomically by the client, so buffering it
+// (bounded) and rewriting at flush does not change observable timing. Bodies
+// beyond the cap pass through byte-for-byte rather than being rewritten.
+export const maxRewritableAnthropicJsonBodyBytes = 16 * 1024 * 1024;
+
+export function rewriteAnthropicMessageModelJsonStream(
+  input: Readable,
+  model: string
+): Readable {
+  const replacementModel = model.trim();
+  if (!replacementModel) {
+    return input;
+  }
+
+  const chunks: Buffer[] = [];
+  let bufferedBytes = 0;
+  let passthrough = false;
+  return input.pipe(new Transform({
+    transform(chunk, _encoding, callback) {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      if (passthrough) {
+        this.push(buffer);
+        callback();
+        return;
+      }
+      bufferedBytes += buffer.length;
+      if (bufferedBytes > maxRewritableAnthropicJsonBodyBytes) {
+        passthrough = true;
+        for (const collected of chunks) {
+          this.push(collected);
+        }
+        chunks.length = 0;
+        this.push(buffer);
+        callback();
+        return;
+      }
+      chunks.push(buffer);
+      callback();
+    },
+    flush(callback) {
+      if (!passthrough && chunks.length > 0) {
+        const body = Buffer.concat(chunks).toString("utf8");
+        chunks.length = 0;
+        let payload: unknown;
+        try {
+          payload = JSON.parse(body);
+        } catch {
+          payload = undefined;
+        }
+        const rewritten = rewriteAnthropicMessageModelPayload(payload, replacementModel);
+        this.push(rewritten ? JSON.stringify(rewritten) : body);
+      }
+      callback();
+    }
+  }));
+}
+
 export function rewriteAnthropicMessageStartModelStream(
   input: Readable,
   model: string
