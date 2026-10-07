@@ -590,6 +590,7 @@ test("model-chain fallback points x-ccr-routed-model at each hop's model (#1850)
         status: routedModels.length < 3 ? 429 : 200
       });
     };
+    const trace = new RequestRouteTraceRecorder(Date.now());
     const result = await fetchUpstreamWithFallback({
       body: Buffer.from(JSON.stringify({ messages: [{ content: "hello", role: "user" }], model: "Primary/ep-a" })),
       config,
@@ -600,17 +601,28 @@ test("model-chain fallback points x-ccr-routed-model at each hop's model (#1850)
       method: "POST",
       path: "/v1/messages",
       routedModel: "Primary/ep-a",
+      trace,
       upstreamUrl: "http://127.0.0.1:3456/v1/messages"
     });
     assert.equal(result.response.status, 200);
-    return routedModels;
+    const traceChanges = trace.finish().hops
+      .filter((hop) => hop.name === "upstream.attempt.prepare")
+      .map((hop) => hop.changes.find((change) => change.path === "/headers/x-ccr-routed-model"));
+    return { routedModels, traceChanges };
   };
+  const headerChange = (before, after) => ({ after, before, operation: "replace", path: "/headers/x-ccr-routed-model", scope: "headers" });
   const originalFetch = globalThis.fetch;
   try {
     const ingressHeaders = { "x-ccr-routed-model": "Primary/ep-a" };
-    assert.deepEqual(await send(ingressHeaders), ["Primary/ep-a", "Backup/ep-b", "ep-shared"]);
+    const pinned = await send(ingressHeaders);
+    assert.deepEqual(pinned.routedModels, ["Primary/ep-a", "Backup/ep-b", "ep-shared"]);
+    assert.deepEqual(pinned.traceChanges, [
+      undefined,
+      headerChange("Primary/ep-a", "Backup/ep-b"),
+      headerChange("Primary/ep-a", "ep-shared")
+    ]);
     assert.deepEqual(ingressHeaders, { "x-ccr-routed-model": "Primary/ep-a" });
-    assert.deepEqual(await send({}), [undefined, undefined, undefined]);
+    assert.deepEqual(await send({}), { routedModels: [undefined, undefined, undefined], traceChanges: [undefined, undefined, undefined] });
   } finally {
     globalThis.fetch = originalFetch;
   }

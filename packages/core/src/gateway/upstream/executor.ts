@@ -431,8 +431,9 @@ export async function fetchUpstreamWithFallback(input: {
     };
     // The core gateway routes by x-ccr-routed-model before the body model, and
     // ingress stamps it once for the first model. Point it at this hop's model.
+    const ingressRoutedModel = upstreamHeaders[ccrRoutedModelHeader];
     const hopRoutedModel = plannedAttempt.target?.canonicalSelector ?? plannedAttempt.model;
-    if (hopRoutedModel && upstreamHeaders[ccrRoutedModelHeader] && plannedAttempt.model !== primaryAttempt?.model) {
+    if (hopRoutedModel && ingressRoutedModel && plannedAttempt.model !== primaryAttempt?.model) {
       upstreamHeaders[ccrRoutedModelHeader] = sanitizeHeaderValue(hopRoutedModel);
     }
     const attemptProvider = attempt.logicalProvider ?? (
@@ -453,6 +454,7 @@ export async function fetchUpstreamWithFallback(input: {
               scope: "body" as const
             }]
           : []),
+        ...[routeTraceChange("headers", `/headers/${ccrRoutedModelHeader}`, ingressRoutedModel, upstreamHeaders[ccrRoutedModelHeader])].filter(isRouteTraceChange),
         ...(attemptUrl !== input.upstreamUrl
           ? [{ after: attemptUrl, before: input.upstreamUrl, operation: "replace" as const, path: "/url", scope: "url" as const }]
           : [])
