@@ -15,6 +15,7 @@ import { isRecord, stringValue } from "@ccr/core/gateway/internal/value";
 import { isLocalClaudeCodeOauthProviderPlugin, mergeAnthropicBetaValues } from "@ccr/core/providers/oauth-plugin";
 import { abortSignalMessage, formatError, omitLocalObservabilityHeaders, shouldSendBody, withCoreGatewayAuthHeader } from "@ccr/core/gateway/http/io";
 import { parseJsonObjectSafe, releaseJsonObject, serializeJsonBody, serializeJsonBodyWithModel } from "@ccr/core/gateway/http/body";
+import { ccrRoutedModelHeader } from "@ccr/core/gateway/core-runtime/router-plugin-contract";
 import { resolveGatewayPublicModelId } from "@ccr/core/gateway/features/model-discovery";
 import { activeProviderCredentials, findProviderByPublicOrInternalName, findProviderCredentialBySlug, normalizedProviderCapabilities, parseProviderCredentialInternalName, providerCapabilityForClientProtocol, providerCapabilityInternalName, providerCapabilityNameMatches, providerCredentialInternalName, providerCredentialPriority, providerCredentialRuntimeId, providerCredentialSlug, providerProtocolForClientProtocol, sanitizeHeaderValue } from "@ccr/core/providers/runtime-topology";
 import { delay } from "@ccr/core/gateway/internal/clock";
@@ -418,7 +419,7 @@ export async function fetchUpstreamWithFallback(input: {
     });
     const hasNextAttempt = index < attempts.length - 1;
     const attemptUrl = rewriteRouteModelInUrl(input.upstreamUrl, attempt.model);
-    const upstreamHeaders = {
+    const upstreamHeaders: Record<string, string> = {
       ...withCoreGatewayAuthHeader(
         omitLocalObservabilityHeaders(attempt.headers ?? input.headers),
         input.coreAuthToken
@@ -428,6 +429,12 @@ export async function fetchUpstreamWithFallback(input: {
       // the attempt so only the final response may refine the stored outcome.
       "x-ccr-route-attempt": String(attemptNumber)
     };
+    // The core gateway routes by x-ccr-routed-model before the body model, and
+    // ingress stamps it once for the first model. Point it at this hop's model.
+    const hopRoutedModel = plannedAttempt.target?.canonicalSelector ?? plannedAttempt.model;
+    if (hopRoutedModel && upstreamHeaders[ccrRoutedModelHeader] && plannedAttempt.model !== primaryAttempt?.model) {
+      upstreamHeaders[ccrRoutedModelHeader] = sanitizeHeaderValue(hopRoutedModel);
+    }
     const attemptProvider = attempt.logicalProvider ?? (
       attempt.target?.kind === "provider" ? attempt.target.provider.name : undefined
     );

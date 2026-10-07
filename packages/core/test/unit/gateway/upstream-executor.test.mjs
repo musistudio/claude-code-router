@@ -571,3 +571,47 @@ test("model-chain fallback rebuilds every protocol attempt from the canonical re
     globalThis.fetch = originalFetch;
   }
 });
+
+test("model-chain fallback points x-ccr-routed-model at each hop's model (#1850)", async () => {
+  const config = {
+    Providers: [
+      { baseurl: "https://primary.example", models: ["ep-a", "ep-shared"], name: "Primary", type: "anthropic_messages" },
+      { baseurl: "https://backup.example", models: ["ep-b", "ep-shared"], name: "Backup", type: "anthropic_messages" }
+    ],
+    Router: { fallback: { mode: "off", models: [], retryCount: 0 }, rules: [] },
+    virtualModelProfiles: []
+  };
+  const send = async (headers) => {
+    const routedModels = [];
+    globalThis.fetch = async (_url, init) => {
+      routedModels.push(init.headers["x-ccr-routed-model"]);
+      return new Response("{}", {
+        headers: { "content-type": "application/json", "retry-after": "0.001" },
+        status: routedModels.length < 3 ? 429 : 200
+      });
+    };
+    const result = await fetchUpstreamWithFallback({
+      body: Buffer.from(JSON.stringify({ messages: [{ content: "hello", role: "user" }], model: "Primary/ep-a" })),
+      config,
+      coreAuthToken: "core-token",
+      // "ep-shared" is configured under both providers, so it stays unresolved.
+      fallback: { mode: "model-chain", models: ["Backup/ep-b", "ep-shared"], retryCount: 0 },
+      headers,
+      method: "POST",
+      path: "/v1/messages",
+      routedModel: "Primary/ep-a",
+      upstreamUrl: "http://127.0.0.1:3456/v1/messages"
+    });
+    assert.equal(result.response.status, 200);
+    return routedModels;
+  };
+  const originalFetch = globalThis.fetch;
+  try {
+    const ingressHeaders = { "x-ccr-routed-model": "Primary/ep-a" };
+    assert.deepEqual(await send(ingressHeaders), ["Primary/ep-a", "Backup/ep-b", "ep-shared"]);
+    assert.deepEqual(ingressHeaders, { "x-ccr-routed-model": "Primary/ep-a" });
+    assert.deepEqual(await send({}), [undefined, undefined, undefined]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
