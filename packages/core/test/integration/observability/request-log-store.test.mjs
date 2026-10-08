@@ -930,6 +930,67 @@ test("RequestLogStore consumes fallback bundles by unique bundle id and only fin
   }
 });
 
+test("RequestLogStore preserves gateway x-ccr-fallback-attempts across raw-trace updates", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-preserve-fallback-attempts-test-"));
+  const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+  const startedAt = new Date().toISOString();
+  try {
+    // The gateway inserts the authoritative merged response headers, including
+    // x-ccr-fallback-attempts which powers the R{n} retry badge on the log page.
+    await store.record({
+      completedAt: startedAt,
+      durationMs: 25,
+      method: "POST",
+      path: "/v1/messages",
+      providerName: "gateway-provider",
+      requestBody: Buffer.from('{"model":"gateway-model"}'),
+      requestHeaders: { "content-type": "application/json" },
+      requestId: "preserve-fallback-attempts",
+      responseBodyText: "gateway-body",
+      responseHeaders: {
+        "content-type": "application/json",
+        "x-ccr-fallback-attempts": "2"
+      },
+      startedAt,
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/messages"
+    });
+
+    // A final-attempt raw-trace update carrying a non-empty upstream header set
+    // that lacks the gateway header must not clobber the stored headers.
+    const appliedNonEmpty = await store.updateFromRawTrace({
+      attempt: 2,
+      requestId: "preserve-fallback-attempts",
+      responseBodyText: "final-success-body",
+      responseHeaders: { "content-type": "application/json" },
+      statusCode: 200
+    });
+    // An empty upstream header set must also not wipe them to "{}".
+    const appliedEmpty = await store.updateFromRawTrace({
+      attempt: 2,
+      requestId: "preserve-fallback-attempts",
+      responseBodyText: "final-success-body-2",
+      responseHeaders: {},
+      statusCode: 200
+    });
+
+    assert.equal(appliedNonEmpty, true);
+    assert.equal(appliedEmpty, true);
+
+    const page = await store.list({ pageSize: 25 });
+    const detail = await store.getDetail({
+      id: page.items.find((item) => item.requestId === "preserve-fallback-attempts").id
+    });
+    // The gateway fallback marker survives both raw-trace updates.
+    assert.equal(detail.responseHeaders["x-ccr-fallback-attempts"], "2");
+    // The raw-trace updates still applied (body refined), so this is not a no-op.
+    assert.equal(detail.responseBody.text, "final-success-body-2");
+  } finally {
+    await store.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("RequestLogStore detects raw errors before applying errors-only body suppression", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-raw-error-policy-test-"));
   const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
