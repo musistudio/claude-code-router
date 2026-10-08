@@ -8,11 +8,9 @@
       </a>
       <br />
       <sub>
-        <a href="https://www.kimi.com/code?aff=ccr"><strong>Kimi Code Subscription</strong></a>
+        <strong>Kimi Code plan</strong> (<a href="https://www.kimi.com/code?aff=ccr">中文站</a> | <a href="https://www.kimi.ai/code?aff=ccr">Global</a>)
         &nbsp;·&nbsp;
-        <a href="https://platform.kimi.ai?aff=ccr"><strong>API Global</strong></a>
-        &nbsp;·&nbsp;
-        <a href="https://platform.kimi.com?aff=ccr">API China</a>
+        <strong>API</strong> (<a href="https://platform.kimi.com?aff=ccr">中文站</a> | <a href="https://platform.kimi.ai?aff=ccr">Global</a>)
       </sub>
     </td>
   </tr>
@@ -22,7 +20,7 @@
         <strong>Thanks to Kimi for sponsoring this project!</strong> Kimi K3 is Moonshot AI's most capable model and the world's first open 3T-class model. With 2.8 trillion parameters, native vision, and a 1-million-token context window, K3 delivers frontier performance across long-horizon coding, knowledge work, and reasoning. Inside CCR, Kimi ships as a built-in provider preset: import the pay-as-you-go API or Kimi Code subscription in one click and route your coding agent's requests to Kimi. The subscription endpoint passes through natively without protocol conversion, API endpoints are adapted automatically, and account balance and subscription usage are visible in the CCR dashboard.
       </p>
       <p align="center">
-        CCR already includes Kimi provider presets. Visit the Kimi Open Platform (<a href="https://platform.kimi.com?aff=ccr">中文站</a> | <a href="https://platform.kimi.ai?aff=ccr">Global</a>) to try the API, or explore the <a href="https://www.kimi.com/code?aff=ccr">Kimi Code subscription</a>.
+        CCR already includes Kimi provider presets. Visit the Kimi Open Platform (<a href="https://platform.kimi.com?aff=ccr">中文站</a> | <a href="https://platform.kimi.ai?aff=ccr">Global</a>) to try the <strong>API</strong>, or explore the <strong>Kimi Code plan</strong> (<a href="https://www.kimi.com/code?aff=ccr">中文站</a> | <a href="https://www.kimi.ai/code?aff=ccr">Global</a>).
       </p>
     </td>
   </tr>
@@ -169,28 +167,28 @@ CCR supports OpenAI Chat / Responses, Anthropic Messages, Gemini Generate Conten
    <table width="100%">
      <tr>
        <td align="center" width="330">
-         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.1.0/Claude-Code-Router_3.1.0.exe">
+         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.1.2/Claude-Code-Router_3.1.2.exe">
            <img src="/docs/public/platform-icons/windows.png" width="44" height="44" alt="Windows logo" />
            <br />
            <strong>Windows</strong>
          </a>
        </td>
        <td align="center" width="330">
-         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.1.0/Claude-Code-Router_3.1.0.AppImage">
+         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.1.2/Claude-Code-Router_3.1.2.AppImage">
            <img src="/docs/public/platform-icons/linux.png" width="44" height="44" alt="Linux logo" />
            <br />
            <strong>Linux</strong>
          </a>
        </td>
        <td align="center" width="330">
-         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.1.0/Claude-Code-Router_3.1.0-mac-Apple-Silicon-arm64.dmg">
+         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.1.2/Claude-Code-Router_3.1.2-mac-Apple-Silicon-arm64.dmg">
            <img src="/docs/public/platform-icons/macos.png" width="44" height="44" alt="macOS logo" />
            <br />
            <strong>macOS (Apple Silicon)</strong>
          </a>
        </td>
        <td align="center" width="330">
-         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.1.0/Claude-Code-Router_3.1.0-mac-Intel-x64.dmg">
+         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.1.2/Claude-Code-Router_3.1.2-mac-Intel-x64.dmg">
            <img src="/docs/public/platform-icons/macos.png" width="44" height="44" alt="macOS logo" />
            <br />
            <strong>macOS (Intel)</strong>

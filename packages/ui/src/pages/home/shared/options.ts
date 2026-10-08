@@ -309,7 +309,7 @@ export const fusionToolOptions: Array<{ description: string; label: string; valu
     value: BUILTIN_FUSION_VISION_TOOL_NAME
   },
   {
-    description: "Generic web search tool supporting hidden in-app browser search plus Brave, Bing, Google CSE, Serper, SerpAPI, Tavily, and Exa.",
+    description: "Generic web search tool supporting hidden in-app browser search plus Brave, Bing, Google CSE, Serper, SerpAPI, Serply, Tavily, and Exa.",
     label: `${BUILTIN_FUSION_TOOL_SERVER_NAME} / ${BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME}`,
     value: BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME
   },
@@ -337,6 +337,7 @@ export const fusionWebSearchProviderOptions: Array<{ label: string; value: Virtu
   { label: "Google CSE", value: "google_cse" },
   { label: "Serper", value: "serper" },
   { label: "SerpAPI", value: "serpapi" },
+  { label: "Serply", value: "serply" },
   { label: "Tavily", value: "tavily" },
   { label: "Exa", value: "exa" }
 ];
@@ -349,6 +350,7 @@ export const fusionWebSearchEnvKeysByProvider: Record<VirtualModelFusionWebSearc
   google_cse: ["GOOGLE_SEARCH_API_KEY", "GOOGLE_SEARCH_CX", "GOOGLE_SEARCH_ENDPOINT"],
   serper: ["SERPER_API_KEY", "SERPER_SEARCH_ENDPOINT"],
   serpapi: ["SERPAPI_API_KEY", "SERPAPI_SEARCH_ENDPOINT"],
+  serply: ["SERPLY_API_KEY", "SERPLY_SEARCH_ENDPOINT"],
   tavily: ["TAVILY_API_KEY", "TAVILY_SEARCH_ENDPOINT"]
 };
 

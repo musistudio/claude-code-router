@@ -771,6 +771,68 @@ test("gateway prefetches non-browser Fusion web search records without browser i
   }
 });
 
+test("gateway prefetches Serply Fusion web search records", async () => {
+  const requests = [];
+  const endpoint = "http://127.0.0.1/serply-search";
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    requests.push({ headers: new Headers(init.headers), url: new URL(String(input)) });
+    return new Response(JSON.stringify({
+      results: [
+        { description: "First body", link: "https://example.test/one", title: "First" },
+        { description: "Second body", link: "https://example.test/two", title: "Second" },
+        { description: "Third body", link: "https://example.test/three", title: "Third" }
+      ]
+    }), { headers: { "content-type": "application/json" }, status: 200 });
+  };
+  try {
+    const config = {
+      Providers: [],
+      Router: { fallback: { mode: "off", models: [], retryCount: 0 } },
+      gateway: {},
+      virtualModelProfiles: [
+        {
+          displayName: "Research",
+          enabled: true,
+          id: "research",
+          key: "research",
+          match: { exactAliases: ["Fusion/research"], prefixes: [], suffixes: [] },
+          metadata: {
+            fusionWebSearch: {
+              env: { SERPLY_API_KEY: "serply-key", SERPLY_SEARCH_ENDPOINT: endpoint },
+              provider: "serply",
+              resultCount: 2,
+              toolName: "research_web_search"
+            }
+          }
+        }
+      ]
+    };
+
+    const records = await selectHostedWebSearchProtocolRecords({
+      protocol: "anthropic_messages",
+      queryHint: "search query",
+      requestId: "req-1",
+      sinceMs: Date.now() - 1000,
+      toolName: "research_web_search"
+    }, undefined, config);
+
+    assert.equal(records.length, 1);
+    assert.equal(records[0].engine, "serply");
+    assert.equal(records[0].searchUrl, "https://serply.io");
+    assert.deepEqual(records[0].results, [
+      { snippet: "First body", title: "First", url: "https://example.test/one" },
+      { snippet: "Second body", title: "Second", url: "https://example.test/two" }
+    ]);
+    assert.equal(requests[0].url.origin + requests[0].url.pathname, endpoint);
+    assert.equal(requests[0].url.searchParams.get("q"), "search query");
+    assert.equal(requests[0].url.searchParams.get("num"), "2");
+    assert.equal(requests[0].headers.get("x-api-key"), "serply-key");
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test("gateway config does not create fallback tools for MCP-backed Fusion tools", () => {
   const profiles = [
     {

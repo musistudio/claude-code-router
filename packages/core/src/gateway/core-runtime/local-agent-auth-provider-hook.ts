@@ -1,4 +1,5 @@
 import { readClaudeCodeOauth, readGrokAuth, readKimiAuth, resolveGrokAuth, resolveKimiAuth } from "@ccr/core/agents/local-providers/service";
+import { applyOpenCodePublicFreeTierHeaders, isOpenCodePublicFreeTierPlugin, withOpenCodePublicFreeTierTools } from "@ccr/core/agents/local-providers/opencode-freetier";
 import { grokAccessTokenExpired, grokClientVersion } from "@ccr/core/agents/local-providers/grok";
 import { kimiAccessTokenExpired, kimiIdentityHeaders } from "@ccr/core/agents/local-providers/kimi";
 import { transformCodexApplyPatchBridgeRequestBody } from "@ccr/core/gateway/features/codex-patch-bridge";
@@ -7,6 +8,7 @@ import { isRecord, stringValue } from "@ccr/core/gateway/internal/value";
 import { mergeAnthropicBetaValues } from "@ccr/core/providers/oauth-plugin";
 
 const liveProviderPluginKeyPrefix = "module:ccr-live-auth:";
+const configProviderPluginKeyPrefix = "config:";
 const localAgentProviderPluginKeyPrefix = "ccr-local-agent-";
 
 type HeaderRecord = Record<string, string>;
@@ -69,9 +71,22 @@ function localAgentOauthProviderHook(plugin: unknown): ProviderHook | undefined 
   if (!isRecord(plugin)) {
     return undefined;
   }
-  const kind = localAgentOauthKind(plugin);
   const key = stringValue(plugin.key);
-  if (!kind || !key) {
+  if (!key) {
+    return undefined;
+  }
+
+  if (isOpenCodePublicFreeTierPlugin(plugin)) {
+    return {
+      key: `${configProviderPluginKeyPrefix}${key}`,
+      provider: stringValue(plugin.provider),
+      providerName: stringValue(plugin.providerName),
+      transformRequest: transformOpenCodePublicFreeTierRequest
+    };
+  }
+
+  const kind = localAgentOauthKind(plugin);
+  if (!kind) {
     return undefined;
   }
 
@@ -171,6 +186,17 @@ async function resolveLiveKimiAccessToken(plugin: Record<string, unknown>): Prom
     return auth.accessToken;
   }
   return originalBearerToken(plugin);
+}
+
+function transformOpenCodePublicFreeTierRequest(input: ProviderPluginInput): ProviderHookResult {
+  return {
+    ok: true,
+    value: {
+      ...input.upstreamRequest,
+      body: withOpenCodePublicFreeTierTools(input.upstreamRequest.body, input.upstreamRequest.url),
+      headers: applyOpenCodePublicFreeTierHeaders(input.upstreamRequest.headers)
+    }
+  };
 }
 
 function transformWithHeaders(input: ProviderPluginInput, headers: HeaderRecord): ProviderHookResult {

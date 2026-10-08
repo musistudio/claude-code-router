@@ -11,7 +11,7 @@ lead: 为不支持联网的模型添加实时检索能力：选择 CCR 内置 we
 
 ## 搜索服务
 
-支持 In-app Browser、Brave、Bing、Google CSE、Serper、SerpAPI、Tavily、Exa 等搜索服务。
+支持 In-app Browser、Brave、Bing、Google CSE、Serper、SerpAPI、Serply、Tavily、Exa 等搜索服务。
 
 ## In-app Browser
 
@@ -24,7 +24,7 @@ lead: 为不支持联网的模型添加实时检索能力：选择 CCR 内置 we
 - 地区：例如 `US`、`CN`。
 - 安全搜索：默认、中等、严格或关闭。
 
-> 注意：`In-app Browser` 依赖 CCR Desktop 的 Electron 内置浏览器能力，只在桌面端可用。CLI、服务器部署或纯 Web 环境没有内置浏览器集成，请改用 Brave、Bing、Google CSE、Serper、SerpAPI、Tavily 或 Exa 等搜索服务。
+> 注意：`In-app Browser` 依赖 CCR Desktop 的 Electron 内置浏览器能力，只在桌面端可用。CLI、服务器部署或纯 Web 环境没有内置浏览器集成，请改用 Brave、Bing、Google CSE、Serper、SerpAPI、Serply、Tavily 或 Exa 等搜索服务。
 
 ## 排查要点
 

@@ -1454,6 +1454,7 @@ test("profile service writes a multi-model Kimi CLI home that points inference t
     {
       api_base_url: "https://api.deepseek.com",
       api_key: "deepseek-key",
+      modelMetadata: { "deepseek-v4-flash": { capabilities: { imageInput: false } } },
       models: ["deepseek-v4-flash"],
       name: "DeepSeek"
     },

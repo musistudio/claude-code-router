@@ -1080,6 +1080,7 @@ export type VirtualModelFusionWebSearchProvider =
   | "google_cse"
   | "serper"
   | "serpapi"
+  | "serply"
   | "tavily"
   | "exa";
 

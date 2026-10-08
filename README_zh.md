@@ -8,11 +8,9 @@
       </a>
       <br />
       <sub>
-        <a href="https://www.kimi.com/code?aff=ccr"><strong>Kimi Code 订阅</strong></a>
+        <strong>Kimi Code 订阅</strong>（<a href="https://www.kimi.com/code?aff=ccr">中文站</a>｜<a href="https://www.kimi.ai/code?aff=ccr">Global</a>）
         &nbsp;·&nbsp;
-        <a href="https://platform.kimi.com?aff=ccr"><strong>API 中文站</strong></a>
-        &nbsp;·&nbsp;
-        <a href="https://platform.kimi.ai?aff=ccr">API Global</a>
+        <strong>API</strong>（<a href="https://platform.kimi.com?aff=ccr">中文站</a>｜<a href="https://platform.kimi.ai?aff=ccr">Global</a>）
       </sub>
     </td>
   </tr>
@@ -22,7 +20,7 @@
         <strong>感谢 Kimi 赞助本项目！</strong>Kimi K3 是 Moonshot AI 迄今能力最强的模型，也是全球首个开源 3T 级模型。K3 拥有 2.8T 参数、原生视觉能力与 100 万 Token 上下文，在长周期编码、知识工作和推理任务中展现前沿性能。在 CCR 中，Kimi 已作为内置供应商预设开箱即用：无论按量付费 API 还是 Kimi Code 订阅，一键导入即可将编程 Agent 的请求路由到 Kimi；订阅端点原生直通、无需协议转换，API 端点自动适配，账户余额与订阅用量也能直接在 CCR 面板中查看。
       </p>
       <p align="center">
-        CCR 已内置 Kimi 供应商预设。前往 Kimi 开放平台（<a href="https://platform.kimi.com?aff=ccr">中文站</a>｜<a href="https://platform.kimi.ai?aff=ccr">Global</a>）体验 API，或了解 <a href="https://www.kimi.com/code?aff=ccr">Kimi Code 订阅</a>。
+        CCR 已内置 Kimi 供应商预设。前往 Kimi 开放平台（<a href="https://platform.kimi.com?aff=ccr">中文站</a>｜<a href="https://platform.kimi.ai?aff=ccr">Global</a>）体验 <strong>API</strong>，或了解 <strong>Kimi Code 订阅</strong>（<a href="https://www.kimi.com/code?aff=ccr">中文站</a>｜<a href="https://www.kimi.ai/code?aff=ccr">Global</a>）。
       </p>
     </td>
   </tr>
@@ -169,28 +167,28 @@ CCR 支持 OpenAI Chat / Responses、Anthropic Messages、Gemini Generate Conten
    <table width="100%">
      <tr>
        <td align="center" width="330">
-         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.0.22/Claude-Code-Router_3.0.22.exe">
+         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.1.2/Claude-Code-Router_3.1.2.exe">
            <img src="/docs/public/platform-icons/windows.png" width="44" height="44" alt="Windows 图标" />
            <br />
            <strong>Windows</strong>
          </a>
        </td>
        <td align="center" width="330">
-         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.0.22/Claude-Code-Router_3.0.22.AppImage">
+         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.1.2/Claude-Code-Router_3.1.2.AppImage">
            <img src="/docs/public/platform-icons/linux.png" width="44" height="44" alt="Linux 图标" />
            <br />
            <strong>Linux</strong>
          </a>
        </td>
        <td align="center" width="330">
-         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.0.22/Claude-Code-Router_3.0.22-mac-Apple-Silicon-arm64.dmg">
+         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.1.2/Claude-Code-Router_3.1.2-mac-Apple-Silicon-arm64.dmg">
            <img src="/docs/public/platform-icons/macos.png" width="44" height="44" alt="macOS 图标" />
            <br />
            <strong>macOS (Apple Silicon)</strong>
          </a>
        </td>
        <td align="center" width="330">
-         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.0.22/Claude-Code-Router_3.0.22-mac-Intel-x64.dmg">
+         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.1.2/Claude-Code-Router_3.1.2-mac-Intel-x64.dmg">
            <img src="/docs/public/platform-icons/macos.png" width="44" height="44" alt="macOS 图标" />
            <br />
            <strong>macOS (Intel)</strong>

@@ -305,7 +305,7 @@ export function browserWebSearchUnavailableMessage(toolName: string): string {
   return [
     `Fusion MCP tool "${toolName}" is unavailable because In-app Browser web search requires CCR Desktop.`,
     "This runtime did not register the Electron browser web search integration, so the hidden browser search tool cannot run here.",
-    "Run the profile in CCR Desktop or switch the Fusion web search provider to Brave, Bing, Google CSE, Serper, SerpAPI, Tavily, or Exa."
+    "Run the profile in CCR Desktop or switch the Fusion web search provider to Brave, Bing, Google CSE, Serper, SerpAPI, Serply, Tavily, or Exa."
   ].join(" ");
 }
 
@@ -786,6 +786,7 @@ function parseFusionWebSearchProvider(value: unknown): VirtualModelFusionWebSear
     normalized === "google_cse" ||
     normalized === "serper" ||
     normalized === "serpapi" ||
+    normalized === "serply" ||
     normalized === "tavily" ||
     normalized === "exa" ||
     normalized === "browser"

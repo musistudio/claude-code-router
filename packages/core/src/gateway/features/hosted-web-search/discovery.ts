@@ -529,6 +529,8 @@ async function runConfiguredWebSearch(input: WebSearchProviderInput): Promise<We
       return searchSerper(input);
     case "serpapi":
       return searchSerpApi(input);
+    case "serply":
+      return searchSerply(input);
     case "tavily":
       return searchTavily(input);
     case "exa":
@@ -623,6 +625,26 @@ async function searchSerpApi(input: WebSearchProviderInput): Promise<WebSearchPr
   return items.map((item) => webSearchResult(item, "title", "link", "snippet")).filter(isWebSearchProviderResult);
 }
 
+async function searchSerply(input: WebSearchProviderInput): Promise<WebSearchProviderResult[]> {
+  const apiKey = searchEnv(input, "SERPLY_API_KEY");
+  if (!apiKey) {
+    console.warn("[gateway] Serply web search API key is not configured.");
+    return [];
+  }
+  const url = new URL(searchEnv(input, "SERPLY_SEARCH_ENDPOINT") || "https://api.serply.io/v1/search");
+  url.searchParams.set("q", input.query);
+  url.searchParams.set("num", String(Math.min(input.count, 10)));
+  const raw = await fetchJson(url.toString(), {
+    headers: {
+      "user-agent": "claude-code-router",
+      "x-api-key": apiKey
+    },
+    signal: AbortSignal.timeout(input.timeoutMs)
+  });
+  const items = isRecord(raw) && Array.isArray(raw.results) ? raw.results.slice(0, input.count) : [];
+  return items.map((item) => webSearchResult(item, "title", "link", "description")).filter(isWebSearchProviderResult);
+}
+
 async function searchTavily(input: WebSearchProviderInput): Promise<WebSearchProviderResult[]> {
   const apiKey = searchEnv(input, "TAVILY_API_KEY");
   if (!apiKey) {
@@ -712,6 +734,8 @@ function searchProviderUrl(provider: VirtualModelFusionWebSearchProvider, query:
       return "https://serper.dev";
     case "serpapi":
       return "https://serpapi.com";
+    case "serply":
+      return "https://serply.io";
     case "tavily":
       return "https://tavily.com";
     case "exa":

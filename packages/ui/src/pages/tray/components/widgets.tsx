@@ -216,19 +216,21 @@ function TokenActivityGrid({
   const t = useTrayText();
   const gridFrameRef = useRef<HTMLDivElement>(null);
   const gridFrameSize = useMeasuredElementSize(gridFrameRef);
-  const monthLabelsRef = useRef<HTMLDivElement>(null);
-  const monthLabelsSize = useMeasuredElementSize(monthLabelsRef);
+  const monthLabelRef = useRef<HTMLDivElement>(null);
+  const monthLabelSize = useMeasuredElementSize(monthLabelRef);
   const dayLabels = [t("M"), "", t("W"), "", t("F"), "", ""];
   const cellGap = 3;
   const labelColumnWidth = 14;
+  // Reserve the month label row's measured height plus its `mb-1` margin: a hard-coded
+  // height under-reserves, which pushes the last activity row past the frame and clips it.
+  const monthLabelBlockHeight = (monthLabelSize.height || 20) + MONTH_LABEL_BOTTOM_MARGIN;
   const cellSize = activityGridCellSize({
     availableHeight: gridFrameSize.height,
     availableWidth: gridFrameSize.width,
     cellGap,
     fallbackCellSize: 8,
     labelColumnWidth,
-    monthLabelGap: 4,
-    monthLabelHeight: monthLabelsSize.height || 20,
+    monthLabelBlockHeight,
     weekCount: activity.weekCount
   });
   const activityColumns = `repeat(${activity.weekCount}, ${cellSize}px)`;
@@ -241,7 +243,7 @@ function TokenActivityGrid({
         <div className="w-full max-w-full" style={{ width: `${gridWidth}px` }}>
           <div
             className="mb-1 grid text-[8px] font-medium leading-none text-slate-500"
-            ref={monthLabelsRef}
+            ref={monthLabelRef}
             style={{
               columnGap: `${cellGap}px`,
               gridTemplateColumns
@@ -313,10 +315,12 @@ type ActivityGridCellSizeInput = {
   cellGap: number;
   fallbackCellSize: number;
   labelColumnWidth: number;
-  monthLabelGap: number;
-  monthLabelHeight: number;
+  monthLabelBlockHeight: number;
   weekCount: number;
 };
+
+// Keeps the sizing math in sync with the month label row's `mb-1` class.
+const MONTH_LABEL_BOTTOM_MARGIN = 4;
 
 function activityGridCellSize({
   availableHeight,
@@ -324,8 +328,7 @@ function activityGridCellSize({
   cellGap,
   fallbackCellSize,
   labelColumnWidth,
-  monthLabelGap,
-  monthLabelHeight,
+  monthLabelBlockHeight,
   weekCount
 }: ActivityGridCellSizeInput): number {
   if (weekCount <= 0) {
@@ -336,7 +339,7 @@ function activityGridCellSize({
   }
 
   const widthForCells = availableWidth - labelColumnWidth - cellGap - Math.max(0, weekCount - 1) * cellGap;
-  const heightForCells = availableHeight - monthLabelHeight - monthLabelGap - 6 * cellGap;
+  const heightForCells = availableHeight - monthLabelBlockHeight - 6 * cellGap;
   const maxByWidth = widthForCells / weekCount;
   const maxByHeight = heightForCells / 7;
   return Math.max(1, Math.floor(Math.min(maxByWidth, maxByHeight)));

@@ -27,7 +27,7 @@ CCR_GATEWAY_SOURCE_DIR=/absolute/path/to/patched/gateway npm run build:assets
 
 The second audit used `/tmp/ccr-audit-gateway` as an isolated source snapshot. Temporary directories are not deliverables; the two patches and the committed regression suites are the reproducible artifacts.
 
-Do not assume a normal dependency install contains these fixes yet. The main dependency constraint remains `^1.0.21`. Release the gateway changes and update the dependency before distributing CCR without an explicit patched source directory.
+Do not assume a normal dependency install contains these fixes yet. The main dependency constraint remains `^1.0.21`. The desktop and Docker release workflows build the pinned source with both patches and verify its gateway regression tests. Desktop builds install that package on every platform; Docker builds consume it through `docker/local-ai-gateway`. Local CLI publishing must likewise build with an explicit patched `CCR_GATEWAY_SOURCE_DIR` until the gateway changes are released in the registry dependency.
 
 ## Verification
 

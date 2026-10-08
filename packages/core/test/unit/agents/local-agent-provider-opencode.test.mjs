@@ -10,6 +10,7 @@ import {
   removeOpenCodeProviderAccountConfig
 } from "@ccr/core/agents/local-providers/opencode.ts";
 import { localAgentProviderApiKey } from "@ccr/core/agents/local-providers/shared.ts";
+import { OPENCODE_PUBLIC_FREETIER_PLUGIN_SUFFIX } from "@ccr/core/agents/local-providers/opencode-freetier.ts";
 
 test("OpenCode local provider imports Zen models using each model's native protocol", async () => {
   await withOpenCodeHome(async (home) => {
@@ -381,13 +382,13 @@ test("OpenCode local provider imports public free models without a login", async
     assert.ok(available.every((candidate) => candidate.detail.includes("No login is required")));
 
     const chatResult = importOpenCodeProvider(candidateForProtocol(candidates, "openai_chat_completions"), []);
-    assert.deepEqual(chatResult.providerPlugins, []);
+    assertPublicFreeTierPlugins(chatResult.providerPlugins);
     assert.equal(chatResult.provider.apiKey, "public");
     assert.deepEqual(chatResult.provider.models, ["chat-free"]);
     assert.equal(chatResult.provider.account, undefined);
 
     const anthropicResult = importOpenCodeProvider(candidateForProtocol(candidates, "anthropic_messages"), []);
-    assert.deepEqual(anthropicResult.providerPlugins, []);
+    assertPublicFreeTierPlugins(anthropicResult.providerPlugins);
     assert.equal(anthropicResult.provider.apiKey, "public");
   });
 });
@@ -535,6 +536,25 @@ function candidateForId(candidates, id) {
   const candidate = candidates.find((item) => item.id === id);
   assert.ok(candidate, `Expected OpenCode candidate ${id}`);
   return candidate;
+}
+
+function assertPublicFreeTierPlugins(providerPlugins) {
+  assert.equal(providerPlugins.length, 2);
+  for (const plugin of providerPlugins) {
+    assert.ok(plugin.key.includes(OPENCODE_PUBLIC_FREETIER_PLUGIN_SUFFIX));
+    assert.equal(plugin.auth, undefined);
+  }
+  assert.deepEqual(
+    providerPlugins.map((plugin) => plugin.key),
+    [
+      "ccr-local-agent-__CCR_PROVIDER_NAME_SLUG__-opencode-public-freetier",
+      "ccr-local-agent-__CCR_PROVIDER_NAME_SLUG__-opencode-public-freetier-internal"
+    ]
+  );
+  assert.deepEqual(
+    providerPlugins.map((plugin) => plugin.providerName),
+    ["__CCR_PROVIDER_NAME__", "__CCR_PROVIDER_INTERNAL_NAME__"]
+  );
 }
 
 async function withOpenCodeHome(run) {
