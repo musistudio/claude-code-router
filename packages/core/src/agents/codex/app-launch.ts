@@ -1,10 +1,11 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AppConfig, ProfileConfig } from "@ccr/core/contracts/app";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import { buildCodexModelCatalog, type CodexModelCatalog, type CodexModelCatalogItem } from "@ccr/core/agents/codex/model-catalog";
+import { CODEX_APP_NET_RESPONDER_PORT, codexAppApiBaseUrl, ensureCodexAppNetResponder } from "@ccr/core/agents/codex/app-net-responder";
 import { prepareCodexAppCdpUserDataDir } from "@ccr/core/agents/codex/media-preview-bridge";
 import { buildProfileLaunchPlan, resolveCodexConfigFile } from "@ccr/core/profiles/launch-core";
 import { normalizeWindowsDesktopAppCandidate, windowsDesktopAppCandidates } from "@ccr/core/platform/windows-app-discovery";
@@ -230,7 +231,7 @@ const workbuddyAppSpec: CodexCompatibleAppSpec = {
   ]
 };
 
-export function launchCodexAppProfile(configDir: string, profile: ProfileConfig, config?: AppConfig): CodexAppLaunchResult {
+export function launchCodexAppProfile(configDir: string, profile: ProfileConfig, config?: AppConfig): Promise<CodexAppLaunchResult> {
   return launchCodexCompatibleAppProfile(configDir, profile, codexAppSpec, config);
 }
 
@@ -242,7 +243,7 @@ export function findInstalledZcodeAppExecutable(profileAppPath?: string): CodexA
   return findInstalledCodexCompatibleAppExecutable(zcodeAppSpec, profileAppPath);
 }
 
-export function launchZcodeAppProfile(configDir: string, profile: ProfileConfig, config?: AppConfig): CodexAppLaunchResult {
+export function launchZcodeAppProfile(configDir: string, profile: ProfileConfig, config?: AppConfig): Promise<CodexAppLaunchResult> {
   return launchCodexCompatibleAppProfile(configDir, profile, zcodeAppSpec, config);
 }
 
@@ -250,7 +251,7 @@ export function findInstalledWorkbuddyAppExecutable(profileAppPath?: string): Co
   return findInstalledCodexCompatibleAppExecutable(workbuddyAppSpec, profileAppPath);
 }
 
-export function launchWorkbuddyAppProfile(configDir: string, profile: ProfileConfig, config?: AppConfig): CodexAppLaunchResult {
+export function launchWorkbuddyAppProfile(configDir: string, profile: ProfileConfig, config?: AppConfig): Promise<CodexAppLaunchResult> {
   return launchCodexCompatibleAppProfile(configDir, profile, workbuddyAppSpec, config);
 }
 
@@ -562,12 +563,12 @@ export function removeLegacyCodexVirtualAuthMarker(codexHome: string): boolean {
   }
 }
 
-function launchCodexCompatibleAppProfile(
+async function launchCodexCompatibleAppProfile(
   configDir: string,
   profile: ProfileConfig,
   spec: CodexCompatibleAppSpec,
   config?: AppConfig
-): CodexAppLaunchResult {
+): Promise<CodexAppLaunchResult> {
   const lookup = findInstalledCodexCompatibleAppExecutable(spec, profile.appPath);
   if (!lookup.executable) {
     throw new Error([
@@ -585,6 +586,7 @@ function launchCodexCompatibleAppProfile(
   const codexHome = codexCompatibleHomeFromConfigFile(spec, configFile);
   const { modelCatalogFile, userDataDir, workbuddyVirtualAuth } = refreshCodexCompatibleAppProfileFiles(configDir, profile, config);
   if (spec.kind === "codex") prepareCodexAppCdpUserDataDir(userDataDir);
+  const netResponderPort = codexAppNetResponderPort(spec.kind);
 
   const appEnv: Record<string, string> = {
     ...plan.env,
@@ -594,6 +596,7 @@ function launchCodexCompatibleAppProfile(
     CCR_PROFILE_SURFACE: "app",
     ...codexAppAgentEnv(spec, plan.command, codexHome, userDataDir, modelCatalogFile, workbuddyVirtualAuth),
     ...codexCompatibleAppGatewayEnv(spec, config),
+    ...codexAppNetResponderEnv(spec.kind, netResponderPort),
     ELECTRON_ENABLE_LOGGING: "1"
   };
   const env: NodeJS.ProcessEnv = {
@@ -608,6 +611,7 @@ function launchCodexCompatibleAppProfile(
   sanitizeCodexCompatibleAppEnv(env, spec.kind);
 
   const launch = codexAppLaunchCommand(lookup.executable, userDataDir);
+  if (spec.kind === "codex") await prepareCodexAppNetResponder(configDir);
   const child = spawn(launch.command, launch.args, {
     detached: true,
     env,
@@ -980,6 +984,43 @@ function codexAppLaunchCommand(executable: string, userDataDir: string): { args:
     command: executable,
     args: codexElectronArgs(userDataDir)
   };
+}
+
+function codexAppNetResponderDisabled(): boolean {
+  const disabled = (value: string | undefined) => value !== undefined && value !== "" && value !== "0" && value !== "false";
+  return disabled(process.env.CCR_CODEX_APP_NET_RESPONDER_DISABLE) ||
+    disabled(process.env.CODEXL_CODEX_APP_NET_RESPONDER_DISABLE) ||
+    disabled(process.env.CCR_CODEX_APP_INSPECTOR_DISABLE) ||
+    disabled(process.env.CODEXL_CODEX_APP_INSPECTOR_DISABLE);
+}
+
+function codexAppNetResponderPort(kind: CodexCompatibleAppKind): number | undefined {
+  if (kind !== "codex" || codexAppNetResponderDisabled()) return undefined;
+  // The desktop app only attaches auth to `localhost:8000` literally, so the
+  // responder must use the fixed dev port; a busy port is logged and retried
+  // on the next launch.
+  return CODEX_APP_NET_RESPONDER_PORT;
+}
+
+export async function prepareCodexAppNetResponder(configDir: string): Promise<void> {
+  const port = codexAppNetResponderPort("codex");
+  if (!port) return;
+  const logPath = path.join(configDir, "codex-app-inspector.log");
+  try {
+    await ensureCodexAppNetResponder({ listenPort: port, logPath });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    try {
+      appendFileSync(logPath, JSON.stringify({ ts: Date.now(), event: "responder-start-error", error: message }) + "\n", "utf8");
+    } catch {
+    }
+    throw new Error(`ChatGPT local account API could not start at ${codexAppApiBaseUrl(port)}: ${message}`);
+  }
+}
+
+export function codexAppNetResponderEnv(kind: CodexCompatibleAppKind, port: number | undefined): Record<string, string> {
+  if (kind !== "codex" || !port) return {};
+  return { CODEX_API_BASE_URL: codexAppApiBaseUrl(port) };
 }
 
 function macAppBundleFromExecutable(executable: string): string | undefined {

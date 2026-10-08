@@ -184,12 +184,14 @@ test("Windows direct profile dispatch strips the profile command arguments", { s
   assert.deepEqual(JSON.parse(result.stdout), ["--version"]);
 });
 
-test("Codex app-server uses a local non-OpenAI identity without credentials", { skip: process.platform === "win32" }, () => {
+test("Codex app-server keeps a ChatGPT-shaped account for workspace routing without credentials", { skip: process.platform === "win32" }, () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-virtual-auth-"));
   const runtimeFile = writeRuntimeScript(dir);
   const fakeCodex = path.join(dir, "fake-codex");
   const codexHome = path.join(dir, "codex-home");
+  const isolatedHome = path.join(dir, "home");
   mkdirSync(codexHome, { recursive: true });
+  mkdirSync(isolatedHome, { recursive: true });
   writeFileSync(fakeCodex, [
     "#!/usr/bin/env node",
     "const fs = require('node:fs');",
@@ -220,7 +222,8 @@ test("Codex app-server uses a local non-OpenAI identity without credentials", { 
       CCR_REAL_CODEX_CLI_PATH: fakeCodex,
       CODEX_HOME: codexHome,
       CODEXL_CODEX_CHATGPT_AUTH_FILE: "",
-      CODEXL_CODEX_WORKSPACE_NAME: "CCR Workspace"
+      CODEXL_CODEX_WORKSPACE_NAME: "CCR Workspace",
+      HOME: isolatedHome
     },
     input: [
       JSON.stringify({ id: 0, method: "probe/auth-bootstrap", params: {} }),
@@ -234,19 +237,23 @@ test("Codex app-server uses a local non-OpenAI identity without credentials", { 
   assert.equal(result.status, 0, result.stderr);
   const responses = result.stdout.trim().split(/\r?\n/).map((line) => JSON.parse(line));
   assert.deepEqual(responses[0].result, { sawBootstrap: true });
-  assert.deepEqual(responses[1].result, {
-    authMethod: "amazonBedrock",
-    authToken: "ccr-local-profile",
-    requiresOpenaiAuth: false
+  const virtualClaims = (token) => JSON.parse(Buffer.from(String(token).split(".")[1], "base64url").toString("utf8"));
+  assert.equal(responses[1].result.authMethod, "chatgpt");
+  assert.equal(responses[1].result.requiresOpenaiAuth, true);
+  assert.deepEqual(virtualClaims(responses[1].result.authToken)["https://api.openai.com/auth"], {
+    chatgpt_account_id: "ccr-virtual-account",
+    chatgpt_user_id: "ccr-virtual-user",
+    user_id: "ccr-virtual-user",
+    chatgpt_plan_type: "plus"
   });
   assert.deepEqual(responses[2].result, {
-    authMethod: "amazonBedrock",
+    authMethod: "chatgpt",
     authToken: null,
-    requiresOpenaiAuth: false
+    requiresOpenaiAuth: true
   });
   assert.deepEqual(responses[3].result, {
-    account: { type: "amazonBedrock", credentialSource: "codexManaged" },
-    requiresOpenaiAuth: false
+    account: { type: "chatgpt", account_id: "ccr-virtual-account", id: "ccr-virtual-account", email: "CCR Workspace", planType: "plus" },
+    requiresOpenaiAuth: true
   });
   assert.equal(existsSync(path.join(codexHome, "auth.json")), false);
 });
@@ -367,6 +374,121 @@ test("Codex app-server bridges shared ChatGPT auth into an isolated profile with
   assert.deepEqual(JSON.parse(readFileSync(sharedAuthFile, "utf8")), sharedAuth);
 });
 
+test("Codex app-server bridges the default codex ChatGPT login read-only", { skip: process.platform === "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-default-auth-bridge-"));
+  const runtimeFile = writeRuntimeScript(dir);
+  const fakeCodex = path.join(dir, "fake-codex");
+  const codexHome = path.join(dir, "codex-home");
+  const isolatedHome = path.join(dir, "home");
+  const defaultCodexHome = path.join(isolatedHome, ".codex");
+  const token = "header.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL3Byb2ZpbGUiOnsiZW1haWwiOiJkZWZhdWx0QGV4YW1wbGUuY29tIn0sImh0dHBzOi8vYXBpLm9wZW5haS5jb20vYXV0aCI6eyJjaGF0Z3B0X3BsYW5fdHlwZSI6InBybyJ9fQ.signature";
+  mkdirSync(codexHome, { recursive: true });
+  mkdirSync(defaultCodexHome, { recursive: true });
+  writeFileSync(path.join(defaultCodexHome, "auth.json"), JSON.stringify({
+    auth_mode: "chatgpt",
+    tokens: { access_token: token, id_token: token, refresh_token: "default-refresh" }
+  }));
+  writeFileSync(fakeCodex, [
+    "#!/usr/bin/env node",
+    "const readline = require('node:readline');",
+    "const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });",
+    "input.on('line', (line) => {",
+    "  const request = JSON.parse(line);",
+    "  const result = request.method === 'account/read'",
+    "    ? { account: null, requiresOpenaiAuth: false }",
+    "    : { authMethod: null, authToken: null, requiresOpenaiAuth: false };",
+    "  process.stdout.write(JSON.stringify({ id: request.id, result }) + '\\n');",
+    "});",
+    ""
+  ].join("\n"));
+  chmodSync(fakeCodex, 0o700);
+
+  const result = spawnSync(process.execPath, [runtimeFile, "app-server"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      CCR_CODEX_REMOTE_FRONTEND_MODE: "app",
+      CCR_PROFILE_SCOPE: "ccr",
+      CCR_REAL_CODEX_CLI_PATH: fakeCodex,
+      CODEX_HOME: codexHome,
+      HOME: isolatedHome
+    },
+    input: [
+      JSON.stringify({ id: 1, method: "getAuthStatus", params: { includeToken: true, refreshToken: false } }),
+      JSON.stringify({ id: 2, method: "account/read", params: {} }),
+      ""
+    ].join("\n")
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const responses = result.stdout.trim().split(/\r?\n/).map((line) => JSON.parse(line));
+  assert.deepEqual(responses[0].result, {
+    authMethod: "chatgpt",
+    authToken: token,
+    requiresOpenaiAuth: true
+  });
+  assert.deepEqual(responses[1].result, {
+    account: { type: "chatgpt", email: "default@example.com", planType: "pro" },
+    requiresOpenaiAuth: true
+  });
+  assert.equal(existsSync(path.join(codexHome, "auth.json")), false);
+  assert.deepEqual(JSON.parse(readFileSync(path.join(defaultCodexHome, "auth.json"), "utf8")).tokens.refresh_token, "default-refresh");
+});
+
+test("Codex app-server preserves workspace routing surfaced by newer app-servers", { skip: process.platform === "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-workspace-routing-"));
+  const runtimeFile = writeRuntimeScript(dir);
+  const fakeCodex = path.join(dir, "fake-codex");
+  const codexHome = path.join(dir, "codex-home");
+  const isolatedHome = path.join(dir, "home");
+  const workspaceRouting = {
+    chatgptAccountId: "acct-123",
+    backendOrigin: "https://chatgpt.com",
+    accountRoutingOverride: "NO_CONSTRAINT"
+  };
+  mkdirSync(codexHome, { recursive: true });
+  mkdirSync(isolatedHome, { recursive: true });
+  writeFileSync(fakeCodex, [
+    "#!/usr/bin/env node",
+    "const readline = require('node:readline');",
+    "const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });",
+    "input.on('line', (line) => {",
+    "  const request = JSON.parse(line);",
+    "  const result = request.method === 'account/read'",
+    "    ? { account: { type: 'chatgpt', email: 'native@example.com', planType: 'pro' }, workspaceRouting: " + JSON.stringify(workspaceRouting) + ", requiresOpenaiAuth: true }",
+    "    : { authMethod: null, authToken: null, requiresOpenaiAuth: false };",
+    "  process.stdout.write(JSON.stringify({ id: request.id, result }) + '\\n');",
+    "});",
+    ""
+  ].join("\n"));
+  chmodSync(fakeCodex, 0o700);
+
+  const result = spawnSync(process.execPath, [runtimeFile, "app-server"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      CCR_CODEX_REMOTE_FRONTEND_MODE: "app",
+      CCR_PROFILE_SCOPE: "ccr",
+      CCR_REAL_CODEX_CLI_PATH: fakeCodex,
+      CODEX_HOME: codexHome,
+      CODEXL_CODEX_WORKSPACE_NAME: "CCR Workspace",
+      HOME: isolatedHome
+    },
+    input: [
+      JSON.stringify({ id: 1, method: "account/read", params: {} }),
+      ""
+    ].join("\n")
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const responses = result.stdout.trim().split(/\r?\n/).map((line) => JSON.parse(line));
+  assert.deepEqual(responses[0].result, {
+    account: { type: "chatgpt", account_id: "ccr-virtual-account", id: "ccr-virtual-account", email: "CCR Workspace", planType: "plus" },
+    workspaceRouting,
+    requiresOpenaiAuth: true
+  });
+});
+
 test("Codex app-server delegates public Git marketplaces and leaves account-private marketplaces empty", { skip: process.platform === "win32" }, () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-official-plugins-"));
   const runtimeFile = writeRuntimeScript(dir);
@@ -481,14 +603,10 @@ test("Codex app-server preserves the requested approval reviewer without widenin
   assert.deepEqual(responses.get(1).result.params.sandboxPolicy, readOnlySandbox);
   assert.equal(responses.get(2).result.params.approvalsReviewer, "guardian_subagent");
   assert.deepEqual(responses.get(2).result.params.sandboxPolicy, workspaceWriteSandbox);
-  assert.deepEqual(responses.get(3).result.requirements, {
-    application: {
-      network: { enabled: false, domains: {} }
-    }
-  });
+  assert.equal(responses.get(3).result.requirements, null);
 });
 
-test("#1795 null upstream requirements with Fast Mode still provide desktop network requirements", { skip: process.platform === "win32" }, () => {
+test("#1795 null upstream requirements with Fast Mode stay legacy-routing compatible", { skip: process.platform === "win32" }, () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-null-requirements-"));
   try {
     const runtimeFile = writeRuntimeScript(dir);
@@ -505,10 +623,11 @@ test("#1795 null upstream requirements with Fast Mode still provide desktop netw
     });
     assert.equal(result.status, 0, result.stderr);
     const requirements = JSON.parse(result.stdout.trim()).result.requirements;
-    // Current CCR supplies explicit local network defaults instead of keeping
-    // null. The original fatal condition was a non-null object WITHOUT these.
+    // Once requirements becomes non-null the application key must exist (null),
+    // but application.network must stay absent so the app's legacy workspace
+    // routing still applies; a synthesized network object blocks the composer.
     assert.equal(requirements.featureRequirements.fast_mode, true);
-    assert.deepEqual(requirements.application.network, { enabled: false, domains: {} });
+    assert.equal(requirements.application, null);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -566,7 +685,9 @@ test("Codex app-server merges CCR Fast Mode catalog metadata without spoofing au
   const runtimeFile = writeRuntimeScript(dir);
   const fakeCodex = path.join(dir, "fake-codex");
   const codexHome = path.join(dir, "codex-home");
+  const isolatedHome = path.join(dir, "home");
   mkdirSync(codexHome, { recursive: true });
+  mkdirSync(isolatedHome, { recursive: true });
   writeFileSync(fakeCodex, [
     "#!/usr/bin/env node",
     "const readline = require('node:readline');",
@@ -596,7 +717,8 @@ test("Codex app-server merges CCR Fast Mode catalog metadata without spoofing au
       CCR_CODEX_REMOTE_FRONTEND_MODE: "app",
       CCR_REAL_CODEX_CLI_PATH: fakeCodex,
       CODEX_HOME: codexHome,
-      CODEXL_CODEX_CHATGPT_AUTH_FILE: ""
+      CODEXL_CODEX_CHATGPT_AUTH_FILE: "",
+      HOME: isolatedHome
     },
     input: [
       JSON.stringify({ id: 1, method: "model/list", params: {} }),
@@ -617,19 +739,15 @@ test("Codex app-server merges CCR Fast Mode catalog metadata without spoofing au
   assert.deepEqual(nativeModel.serviceTiers, [{ id: "priority", name: "Fast", description: "1.5x speed, increased usage" }]);
   assert.deepEqual(plainModel.additionalSpeedTiers, []);
   assert.deepEqual(plainModel.serviceTiers, []);
-  assert.deepEqual(responses.get(2).result, {
-    authMethod: "amazonBedrock",
-    authToken: "ccr-local-profile",
-    requiresOpenaiAuth: false
-  });
+  assert.equal(responses.get(2).result.authMethod, "chatgpt");
+  assert.equal(responses.get(2).result.requiresOpenaiAuth, true);
+  assert.match(String(responses.get(2).result.authToken), /^[\w-]+\.[\w-]+\.ccr-virtual$/);
   assert.deepEqual(responses.get(3).result, {
-    account: { type: "amazonBedrock", credentialSource: "codexManaged" },
-    requiresOpenaiAuth: false
+    account: { type: "chatgpt", account_id: "ccr-virtual-account", id: "ccr-virtual-account", email: "codex", planType: "plus" },
+    requiresOpenaiAuth: true
   });
   assert.deepEqual(responses.get(4).result.requirements, {
-    application: {
-      network: { enabled: false, domains: {} }
-    },
+    application: null,
     featureRequirements: {
       fast_mode: true,
       other_feature: false

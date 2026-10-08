@@ -600,9 +600,9 @@ function rewriteCodexStdoutLine(line, requestMap, chatGptAuth) {
     return line;
   }
   if (request.method === "account/read") {
-    value.result = codexAppAccountRead(chatGptAuth);
+    value.result = codexAppAccountRead(chatGptAuth, value.result);
   } else if (request.method === "getAuthStatus") {
-    value.result = codexAppAuthStatus(chatGptAuth, request.includeToken);
+    value.result = codexAppAuthStatus(chatGptAuth, request.includeToken, value.result);
   } else if (request.method === "thread/list") {
     value = mergeForeignThreadList(value, request.params);
   } else if (request.method === "model/list") {
@@ -4707,24 +4707,57 @@ function loadChatGptAuth() {
     nonEmptyEnv("CODEXL_CODEX_WORKSPACE_NAME") ||
     nonEmptyEnv("CODEXL_CODEX_INSTANCE_NAME") ||
     agentEnv("codex", "PROFILE");
-  const fallback = {
-    authToken: "",
-    email: "",
-    planType: "",
-    workspaceName
-  };
   const seen = new Set();
   for (const authFile of [
     path.join(codexRuntimeHome(), "auth.json"),
     nonEmptyEnv("CCR_CODEX_CHATGPT_AUTH_FILE"),
-    nonEmptyEnv("CODEXL_CODEX_CHATGPT_AUTH_FILE")
+    nonEmptyEnv("CODEXL_CODEX_CHATGPT_AUTH_FILE"),
+    defaultCodexChatGptAuthFallback()
   ]) {
     if (!authFile || seen.has(authFile)) continue;
     seen.add(authFile);
     const auth = chatGptAuthFromFile(authFile, workspaceName);
     if (auth) return auth;
   }
-  return fallback;
+  return virtualChatGptAuth(workspaceName);
+}
+
+function defaultCodexChatGptAuthFallback() {
+  // The desktop app validates the app-server token against real chatgpt.com
+  // endpoints that cannot be redirected (statsig, webview session linking), so
+  // a synthetic token is rejected there. Bridge the user's real default codex
+  // login by default; credits enforcement stays virtual because the desktop
+  // API base points at the local net responder. Set CCR_CODEX_ISOLATED_IDENTITY
+  // to keep the fully synthetic token.
+  if (boolEnv("CCR_CODEX_ISOLATED_IDENTITY") || boolEnv("CODEXL_CODEX_ISOLATED_IDENTITY")) return "";
+  if (codexRuntimeAgent() === "zcode") return "";
+  const fallback = path.join(os.homedir(), ".codex", "auth.json");
+  return fallback === path.join(codexRuntimeHome(), "auth.json") ? "" : fallback;
+}
+
+function virtualChatGptAuth(workspaceName) {
+  // The desktop account-info reader requires chatgpt_user_id even though the
+  // principal reader accepts user_id. Keep both and the plan consistent with
+  // the local account inventory; otherwise Home cannot resolve account access.
+  const encode = (value) => Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
+  const claims = {
+    exp: Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60,
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "ccr-virtual-account",
+      chatgpt_user_id: "ccr-virtual-user",
+      user_id: "ccr-virtual-user",
+      chatgpt_plan_type: "plus"
+    },
+    "https://api.openai.com/profile": { email: workspaceName || "codex" }
+  };
+  return {
+    authToken: encode({ alg: "none", typ: "JWT" }) + "." + encode(claims) + ".ccr-virtual",
+    accountId: "ccr-virtual-account",
+    userId: "ccr-virtual-user",
+    email: "",
+    planType: "plus",
+    workspaceName
+  };
 }
 
 function chatGptAuthFromFile(authFile, workspaceName) {
@@ -4745,6 +4778,8 @@ function chatGptAuthFromFile(authFile, workspaceName) {
     : {};
   return {
     authToken,
+    accountId: stringValue(authClaims.chatgpt_account_id) || stringValue(authClaims.account_id) || "",
+    userId: stringValue(authClaims.user_id) || stringValue(authClaims.chatgpt_user_id) || "",
     email: stringValue(profileClaims.email) || stringValue(claims.email) || stringValue(value.email),
     planType: stringValue(authClaims.chatgpt_plan_type) || stringValue(claims.chatgpt_plan_type),
     workspaceName
@@ -4771,25 +4806,28 @@ function jwtPayloadClaims(token) {
   }
 }
 
-function codexAppAccountRead(auth) {
-  if (!auth.authToken) return mockAccountRead();
-  return {
-    account: {
-      type: "chatgpt",
-      email: auth.email || auth.workspaceName || "codex",
-      planType: auth.planType || "unknown"
-    },
-    requiresOpenaiAuth: true
+function codexAppAccountRead(auth, existingResult) {
+  // ChatGPT builds its workspace routing from account/read and only accepts
+  // account.type === "chatgpt"; every other shape leaves the composer blocked
+  // on "Couldn't load workspace settings". Keep unknown fields (workspaceRouting
+  // on newer app-servers) from the real result so upgrades stay compatible.
+  const result = isPlainObject(existingResult) ? { ...existingResult } : {};
+  result.account = {
+    type: "chatgpt",
+    ...(auth.accountId ? { account_id: auth.accountId, id: auth.accountId } : {}),
+    email: auth.email || auth.workspaceName || "codex",
+    planType: auth.planType || "unknown"
   };
+  result.requiresOpenaiAuth = true;
+  return result;
 }
 
-function codexAppAuthStatus(auth, includeToken) {
+function codexAppAuthStatus(auth, includeToken, existingResult) {
   if (!auth.authToken) return mockAuthStatus(includeToken);
-  const result = {
-    authMethod: "chatgpt",
-    requiresOpenaiAuth: true
-  };
-  if (includeToken) result.authToken = auth.authToken || null;
+  const result = isPlainObject(existingResult) ? { ...existingResult } : {};
+  result.authMethod = "chatgpt";
+  result.requiresOpenaiAuth = true;
+  result.authToken = includeToken ? auth.authToken : null;
   return result;
 }
 
@@ -4807,27 +4845,41 @@ function modelListItemHasFastMode(item) {
 
 function configRequirementsRead(existingResult) {
   const fastModeEnabled = codexAppFastModeShimEnabled();
-  const result = existingResult && typeof existingResult === "object" && !Array.isArray(existingResult)
-    ? { ...existingResult }
-    : {};
-  const requirements = result.requirements && typeof result.requirements === "object" && !Array.isArray(result.requirements)
-    ? { ...result.requirements }
-    : {};
+  const hasResult = existingResult && typeof existingResult === "object" && !Array.isArray(existingResult);
+  const requirements = hasResult && existingResult.requirements && typeof existingResult.requirements === "object" && !Array.isArray(existingResult.requirements)
+    ? { ...existingResult.requirements }
+    : null;
+  // Null requirements must pass through untouched: the ChatGPT app only
+  // accepts legacy workspace routing while requirements.application.network
+  // stays absent, and normalizing null into an application.network object
+  // leaves the composer blocked on "Couldn't load workspace settings".
+  if (!requirements && !fastModeEnabled) {
+    return existingResult;
+  }
 
-  const application = isPlainObject(requirements.application) ? { ...requirements.application } : {};
-  const applicationNetwork = isPlainObject(application.network) ? { ...application.network } : {};
-  if (typeof applicationNetwork.enabled !== "boolean") applicationNetwork.enabled = false;
-  if (!isPlainObject(applicationNetwork.domains)) applicationNetwork.domains = {};
-  application.network = applicationNetwork;
-  requirements.application = application;
+  const result = hasResult ? { ...existingResult } : {};
+  const next = requirements || {};
+  if (isPlainObject(next.application)) {
+    const application = { ...next.application };
+    const applicationNetwork = isPlainObject(application.network) ? { ...application.network } : {};
+    if (typeof applicationNetwork.enabled !== "boolean") applicationNetwork.enabled = false;
+    if (!isPlainObject(applicationNetwork.domains)) applicationNetwork.domains = {};
+    application.network = applicationNetwork;
+    next.application = application;
+  } else if (!Object.prototype.hasOwnProperty.call(next, "application")) {
+    // Keep the application key present (null) once requirements becomes
+    // non-null: app builds reject a non-null requirements object without it,
+    // while application: null still allows legacy workspace routing.
+    next.application = null;
+  }
   if (fastModeEnabled) {
-    const featureRequirements = requirements.featureRequirements && typeof requirements.featureRequirements === "object" && !Array.isArray(requirements.featureRequirements)
-      ? { ...requirements.featureRequirements }
+    const featureRequirements = next.featureRequirements && typeof next.featureRequirements === "object" && !Array.isArray(next.featureRequirements)
+      ? { ...next.featureRequirements }
       : {};
     featureRequirements.fast_mode = true;
-    requirements.featureRequirements = featureRequirements;
+    next.featureRequirements = featureRequirements;
   }
-  result.requirements = requirements;
+  result.requirements = next;
   return result;
 }
 
