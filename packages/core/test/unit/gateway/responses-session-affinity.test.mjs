@@ -175,3 +175,15 @@ test("gateway boundary plugin registers the session affinity hook", async () => 
   assert.equal(result.ok, true);
   assert.equal(result.value.body.prompt_cache_key, "session-1111-2222");
 });
+
+for (const url of ["https://opencode.ai/zen/go/v1/responses", "https://opencode.ai/zen/v1/responses"]) {
+  test(`opencode zen upstream ${url} skips prompt_cache_key but keeps metadata.user_id`, () => {
+    const input = responsesInput();
+    input.upstreamRequest.url = url;
+
+    const result = applyResponsesSessionAffinity(input);
+
+    assert.equal(result.body.prompt_cache_key, undefined);
+    assert.deepEqual(result.body.metadata, { user_id: "user_abc123_account__session_11112222" });
+  });
+}
