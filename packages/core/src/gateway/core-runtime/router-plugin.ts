@@ -1051,7 +1051,7 @@ function resolveCcrGatewayRoute(
 
   const publicModel = resolveGatewayPublicModelId(routedModel, config) ?? routedModel;
   const modelRegistry = modelRegistryForConfig(config);
-  const resolved = modelRegistry.resolve(publicModel) ??
+  const resolved = modelRegistry.resolve(publicModel, { protocol }) ??
     resolveProfileProviderModel(config, requestInput.request?.headers, publicModel, modelRegistry);
   if (!resolved) {
     return undefined;
