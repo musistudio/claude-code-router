@@ -73,7 +73,8 @@
     "test:renderer": "npm run test:ui",
     "benchmark:request-logs": "node build/benchmark-request-logs.mjs",
     "typecheck": "tsc --noEmit",
-    "rebuild:sqlite3": "electron-rebuild -f -w better-sqlite3"
+    "rebuild:sqlite3": "electron-rebuild -f -w better-sqlite3",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@the-next-ai/ai-gateway": "^1.0.21",
@@ -104,6 +105,7 @@
     "js-yaml": "^4.3.1",
     "lucide-react": "^1.17.0",
     "motion": "^12.40.0",
+    "patch-package": "^8.0.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "recharts": "^3.8.1",
