@@ -925,9 +925,13 @@ export class RequestLogStore {
     if (mergedRequestHeaders) {
       pushValue("request_headers", JSON.stringify(mergedRequestHeaders));
     }
-    if (responseHeaders) {
-      pushValue("response_headers", JSON.stringify(responseHeaders));
-    }
+    // The gateway already wrote the authoritative merged response headers
+    // (including x-ccr-fallback-attempts, which powers the R{n} retry badge)
+    // when it inserted this row. Raw-trace only refines rows that already exist
+    // (guarded above), so writing response_headers here would clobber those
+    // gateway headers — and an empty upstream header set would wipe them to "{}".
+    // Keep the incoming set for usage/billing extraction below, but do not
+    // persist it to the response_headers column.
     if (input.responseBodyText !== undefined || responseHeaders) {
       const bodyUsage = input.responseBodyText === undefined
         ? undefined
