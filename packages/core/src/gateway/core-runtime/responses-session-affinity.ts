@@ -25,6 +25,9 @@ export type ResponsesSessionAffinityInput = {
 
 const sessionIdHeaderNames = ["x-claude-code-session-id", "x-claude-session-id"];
 const codexUpstreamUrlMarkers = ["chatgpt.com/backend-api/codex", "/backend-api/codex"];
+const codexSessionHeaderName = "session_id";
+const codexSessionIdMaxLength = 256;
+const metadataUserIdSessionPattern = /_session_([^_\s]+)$/;
 
 /**
  * Copies the Claude Code session identity onto outbound OpenAI Responses
@@ -33,8 +36,8 @@ const codexUpstreamUrlMarkers = ["chatgpt.com/backend-api/codex", "/backend-api/
  * on body fields hash each turn onto a different channel and the next hop
  * rejects channel-bound `encrypted_content` continuations. A caller-supplied
  * non-empty `prompt_cache_key` always wins; other protocols and non-JSON
- * bodies pass through untouched. Codex upstreams reject unknown body fields
- * with `400 Unsupported parameter`, so affinity is skipped for them.
+ * bodies pass through untouched. Codex upstreams are handled separately by
+ * `applyCodexSessionAffinity`.
  */
 export function applyResponsesSessionAffinity(input: ResponsesSessionAffinityInput): UpstreamRequest {
   const upstreamRequest = input.upstreamRequest;
@@ -43,7 +46,7 @@ export function applyResponsesSessionAffinity(input: ResponsesSessionAffinityInp
     return upstreamRequest;
   }
   if (isCodexResponsesUpstream(upstreamRequest.url, input.targetProviderConfig)) {
-    return upstreamRequest;
+    return applyCodexSessionAffinity(input);
   }
   const body = upstreamRequest.body;
   if ((upstreamRequest.bodyEncoding ?? "json") !== "json" || !isRecord(body)) {
@@ -68,6 +71,84 @@ export function applyResponsesSessionAffinity(input: ResponsesSessionAffinityInp
     ...upstreamRequest,
     body: { ...body, ...changes }
   };
+}
+
+/**
+ * The Codex backend routes prompt caching by the `session_id` request header
+ * (as the Codex CLI sends it); a body `prompt_cache_key` alone does not hit
+ * the cache. It may reject `metadata`, so only the header and
+ * `prompt_cache_key` are added. An existing `session_id`/`session-id` header
+ * and a caller-supplied `prompt_cache_key` always win. The header is added
+ * even for non-JSON bodies.
+ */
+function applyCodexSessionAffinity(input: ResponsesSessionAffinityInput): UpstreamRequest {
+  const upstreamRequest = input.upstreamRequest;
+  const sessionId = resolveCodexSessionId(input.request?.headers, inboundMetadataUserId(input.request?.body));
+  if (!sessionId) {
+    return upstreamRequest;
+  }
+
+  let headers = upstreamRequest.headers;
+  if (!hasCodexSessionHeader(headers)) {
+    headers = { ...headers, [codexSessionHeaderName]: sessionId };
+  }
+  let body = upstreamRequest.body;
+  if ((upstreamRequest.bodyEncoding ?? "json") === "json" && isRecord(body) && !stringValue(body.prompt_cache_key)) {
+    body = { ...body, prompt_cache_key: sessionId };
+  }
+  if (headers === upstreamRequest.headers && body === upstreamRequest.body) {
+    return upstreamRequest;
+  }
+  return { ...upstreamRequest, body, headers };
+}
+
+/**
+ * Codex session id: the Claude Code session header, else the session id
+ * embedded in the inbound `metadata.user_id` (a JSON string with a
+ * `session_id` field, or the legacy `..._session_<id>` form). Values that are
+ * unsafe as an HTTP header value are dropped.
+ */
+function resolveCodexSessionId(
+  headers: Record<string, HeaderValue> | undefined,
+  inboundUserId: string | undefined
+): string | undefined {
+  const candidate = resolveResponsesSessionKey(headers, undefined) ?? metadataUserIdSessionId(inboundUserId);
+  return sanitizeCodexSessionId(candidate);
+}
+
+function metadataUserIdSessionId(userId: string | undefined): string | undefined {
+  if (!userId) {
+    return undefined;
+  }
+  if (userId.startsWith("{")) {
+    try {
+      const parsed: unknown = JSON.parse(userId);
+      return isRecord(parsed) ? stringValue(parsed.session_id) : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  return metadataUserIdSessionPattern.exec(userId)?.[1];
+}
+
+function sanitizeCodexSessionId(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed.length > codexSessionIdMaxLength) {
+    return undefined;
+  }
+  for (const character of trimmed) {
+    const code = character.charCodeAt(0);
+    if (code < 0x20 || code > 0x7e) {
+      return undefined;
+    }
+  }
+  return trimmed;
+}
+
+function hasCodexSessionHeader(headers: Record<string, string> | undefined): boolean {
+  return Object.keys(headers ?? {}).some((name) =>
+    name.trim().toLowerCase().replace(/-/g, "_") === codexSessionHeaderName
+  );
 }
 
 /**
