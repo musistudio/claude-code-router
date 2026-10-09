@@ -1,3 +1,4 @@
+import "../scripts/generate-models-json.mjs";
 import {
   buildBrowserRenderer,
   buildCoreServer,

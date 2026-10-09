@@ -26,7 +26,10 @@ jobs:
         with:
           node-version: 22
 
-      - name: Validate checked-in model catalog
+      - name: Generate model catalog
+        run: node scripts/generate-models-json.mjs
+
+      - name: Validate generated model catalog
         run: node -e "JSON.parse(require('node:fs').readFileSync('packages/core/models.json', 'utf8'))"
 
       - name: Upload model catalog

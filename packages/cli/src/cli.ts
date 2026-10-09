@@ -10,7 +10,7 @@ import { codexDesktopAppName, launchZcodeAppProfile } from "@ccr/core/agents/cod
 import { loadAppConfig } from "@ccr/core/config/config";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import { installSocketTypeOfServiceCompat } from "@ccr/core/platform/socket-compat";
-import { resolveModelCatalogPath } from "@ccr/core/models/catalog-file";
+import { refreshModelCatalog, resolveModelCatalogPath } from "@ccr/core/models/catalog-file";
 import { applyProfileConfig, applyProfileRuntimeConfig } from "@ccr/core/profiles/service";
 import { ensureProfileGateway, ProfileGatewayUnavailableError } from "@ccr/core/profiles/launch-service";
 import { buildProfileLaunchPlan, defaultProfileOpenSurface, findProfileForOpen, profileLaunchSpawnCommand, resolveProfileOpenSurface, shouldAutoStartProfileGateway } from "@ccr/core/profiles/launch-core";
@@ -73,6 +73,7 @@ const prepareProfileOnlyEnv = "CCR_CLI_PREPARE_PROFILE_ONLY";
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
+  if (!options.help && options.command !== "stop") await refreshModelCatalog();
   if (options.command === "start") {
     if (options.help) {
       printStartHelp(0);

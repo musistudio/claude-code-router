@@ -1,3 +1,4 @@
+import { refreshModelCatalog } from "@ccr/core/models/catalog-file";
 import { spawn } from "node:child_process";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
@@ -132,6 +133,7 @@ const webBridgeScriptTag = '    <script src="../../assets/web-client-bridge.js">
 
 
 export async function startWebManagementServer(options: WebManagementServerOptions = {}): Promise<WebManagementServerRuntime> {
+  await refreshModelCatalog();
   const host = options.host?.trim() || readEnvString("CCR_WEB_HOST") || defaultWebHost;
   const requestedPort = options.port ?? readEnvPort("CCR_WEB_PORT") ?? defaultWebPort;
   const authToken = options.authToken?.trim() || readEnvString("CCR_WEB_AUTH_TOKEN") || randomBytes(32).toString("base64url");

@@ -1,8 +1,9 @@
-import { loadModelCatalogPayload } from "@ccr/core/models/catalog-file";
+import { loadModelCatalogPayload, modelCatalogRevision, scheduleModelCatalogRefresh } from "@ccr/core/models/catalog-file";
 import type { GatewayProviderConfig } from "@ccr/core/contracts/app";
 import { getProviderCatalogModels } from "@ccr/core/providers/model-catalog";
 
 const claudeCodeDefaultContextTokens = 200_000;
+let catalogRevision = -1;
 let modelCatalogIndex: ModelCatalogIndex | undefined;
 
 export type ModelCatalogCapabilities = Record<string, unknown>;
@@ -213,6 +214,12 @@ export function modelCatalogReasoningEffortConfig(entry: ModelCatalogEntry | und
 }
 
 function loadModelCatalogIndex(): ModelCatalogIndex {
+  scheduleModelCatalogRefresh();
+  const currentRevision = modelCatalogRevision();
+  if (catalogRevision !== currentRevision) {
+    catalogRevision = currentRevision;
+    modelCatalogIndex = undefined;
+  }
   if (modelCatalogIndex) {
     return modelCatalogIndex;
   }
