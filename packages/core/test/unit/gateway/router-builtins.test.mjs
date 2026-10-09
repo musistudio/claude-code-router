@@ -2916,6 +2916,98 @@ test("built-in Claude Code subagent route ignores the Provider/model placeholder
   assert.equal(result.decision.reason, "builtin:claude-code");
 });
 
+test("built-in Claude Code subagent route reports the Provider/model placeholder", async () => {
+  const plugin = createRouterPlugin({ profileModel: "Provider/claude-sonnet" });
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "claude-default",
+      system: "Use <CCR-SUBAGENT-MODEL>Provider/model</CCR-SUBAGENT-MODEL> for this subagent."
+    },
+    headers: {
+      "user-agent": "Claude Code"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.deepEqual(result.decision.diagnostics, [
+    {
+      code: "subagent-model-not-configured",
+      message: 'Claude Code subagent model tag still contains the "provider/model" placeholder.',
+      model: "Provider/model",
+      source: "subagent"
+    }
+  ]);
+});
+
+test("built-in Claude Code subagent route reports an unconfigured tagged model", async () => {
+  const plugin = createRouterPlugin({ profileModel: "Provider/claude-sonnet" });
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "claude-default",
+      system: "Use <CCR-SUBAGENT-MODEL>Provider/claude-unknown</CCR-SUBAGENT-MODEL> for this subagent."
+    },
+    headers: {
+      "user-agent": "Claude Code"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "Provider/claude-sonnet");
+  assert.equal(result.decision.reason, "builtin:claude-code");
+  assert.deepEqual(result.decision.diagnostics, [
+    {
+      code: "subagent-model-not-configured",
+      message: 'Claude Code subagent model tag requested unconfigured model "Provider/claude-unknown".',
+      model: "Provider/claude-unknown",
+      source: "subagent"
+    }
+  ]);
+});
+
+test("built-in Claude Code subagent route accepts the provider,provider/model template prefix", async () => {
+  const plugin = createRouterPlugin({ profileModel: "Provider/claude-sonnet" });
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "claude-default",
+      system: "Use <CCR-SUBAGENT-MODEL>provider,Provider/claude-opus</CCR-SUBAGENT-MODEL> for this subagent."
+    },
+    headers: {
+      "user-agent": "Claude Code"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "Provider/claude-opus");
+  assert.equal(result.body.system, "Use  for this subagent.");
+  assert.equal(result.decision.reason, "builtin:claude-code-subagent");
+  assert.deepEqual(result.decision.diagnostics, []);
+});
+
+test("built-in Claude Code subagent route keeps using the comma provider,model tag form", async () => {
+  const plugin = createRouterPlugin({ profileModel: "Provider/claude-sonnet" });
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "claude-default",
+      system: "Use <CCR-SUBAGENT-MODEL>Provider,claude-opus</CCR-SUBAGENT-MODEL> for this subagent."
+    },
+    headers: {
+      "user-agent": "Claude Code"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "Provider/claude-opus");
+  assert.equal(result.decision.reason, "builtin:claude-code-subagent");
+});
+
 test("built-in Claude Code route removes the first billing system block before subagent tag extraction", async () => {
   const plugin = createRouterPlugin({ profileModel: "Provider/claude-sonnet" });
   const result = await plugin.routeRequest({

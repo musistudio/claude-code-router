@@ -99,6 +99,13 @@ export const docPages: DocPageDef[] = [
     source: { zh: "guides/provider.md", en: "guides/provider.md" },
   },
   {
+    key: "guides/self-hosted-models",
+    section: "guides",
+    label: { zh: "接入自部署模型", en: "Self-hosted models" },
+    path: { zh: "/guides/self-hosted-models/", en: "/en/guides/self-hosted-models/" },
+    source: { zh: "guides/self-hosted-models.md", en: "guides/self-hosted-models.md" },
+  },
+  {
     key: "guides/agent-profile",
     section: "guides",
     label: { zh: "接入 Agent 配置", en: "Connect Agent Config" },
@@ -439,6 +446,7 @@ export const docSections: DocSectionDef[] = [
           pageItem("guides/cli"),
           pageItem("guides/docker"),
           pageItem("guides/provider"),
+          pageItem("guides/self-hosted-models"),
           pageItem("guides/agent-profile"),
           pageItem("guides/observability"),
         ],

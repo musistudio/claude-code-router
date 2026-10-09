@@ -32,7 +32,8 @@ export type RouteDiagnosticCode =
   | "script-model-not-configured"
   | "script-runtime-error"
   | "script-source-invalid"
-  | "script-timeout";
+  | "script-timeout"
+  | "subagent-model-not-configured";
 
 export type RouteDiagnostic = {
   code: RouteDiagnosticCode;

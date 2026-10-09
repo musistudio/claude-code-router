@@ -31,6 +31,14 @@ Claude Code 的 Agent / Task / Workflow 可以派生新的模型请求。CCR 使
 
 因此，Subagent / Workflow 的自动路由由 prompt 标签决定模型。`x-claude-code-agent-id` 等 Header 用于观测，模型选择以标签为准。
 
+##### 标签写法与排查
+
+标签值同时支持 `供应商/模型` 和旧的 `供应商,模型` 写法，`<CCR-SUBAGENT-MODEL>DeepSeek,deepseek-chat</CCR-SUBAGENT-MODEL>` 与 `<CCR-SUBAGENT-MODEL>DeepSeek/deepseek-chat</CCR-SUBAGENT-MODEL>` 等价。模板里残留的 `provider,` 或 `Provider/` 前缀也会被忽略，所以手写的 `<CCR-SUBAGENT-MODEL>provider,DeepSeek/deepseek-chat</CCR-SUBAGENT-MODEL>` 仍会路由到 `DeepSeek/deepseek-chat`。
+
+除了依赖注入，也可以把标签直接写进 `.claude/agents/*.md` 的 Agent 定义里，CCR 会用同样的方式从派生请求中读取。
+
+如果标签里的模型没有在 CCR 中配置，或者仍然是 `Provider/model` 占位符，CCR 会删除标签、保留 Claude Code 默认路由，并记录一条 `subagent-model-not-configured` 路由诊断。响应会带上 `x-ccr-route-diagnostics` 数量 Header，**路由 → 路由测试** 也会展示诊断信息，这是区分“标签被忽略”和“标签没送达”最快的办法。
+
 ##### 与模型页配合
 
 模型页里的 **Description** 是这套机制的开关和选择依据。没有任何模型 Description 时，CCR 不会注入 Agent / Task / Workflow 路由提示词，避免把空模型列表写进工具说明。

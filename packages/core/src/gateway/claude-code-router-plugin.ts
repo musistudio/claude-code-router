@@ -370,7 +370,8 @@ async function resolveConfiguredRouteDecision(
         context,
         config,
         compiled.modelRegistry,
-        defaultFallback
+        defaultFallback,
+        runtime.runtimeDiagnostics
       ),
       id: "builtin-agent-claude-code-subagent"
     },
@@ -475,17 +476,33 @@ function resolveBuiltInClaudeCodeSubagentRouteDecision(
   request: MutableRequestLike,
   config: AppConfig,
   modelRegistry: ModelRegistry,
-  fallback: RouterFallbackConfig
+  fallback: RouterFallbackConfig,
+  runtimeDiagnostics: RouteDiagnostic[]
 ): ConfiguredRouteDecision | undefined {
   if (!builtInAgentRouteMatches(request, config, "claude-code")) {
     return undefined;
   }
   const target = normalizeRouteSelector(request.builtInSubagentModel);
-  const discoveredTarget = target
-    ? resolveClaudeAppGatewayRouteModel(target, config, claudeAppGatewayModelRouteOptions)
-    : undefined;
-  const configuredTarget = modelRegistry.resolve(discoveredTarget ?? target);
-  if (!target || isSubagentModelPlaceholder(target) || !configuredTarget) {
+  if (!target) {
+    return undefined;
+  }
+  if (isSubagentModelPlaceholder(target)) {
+    runtimeDiagnostics.push({
+      code: "subagent-model-not-configured",
+      message: `Claude Code subagent model tag still contains the "${ccrSubagentModelPlaceholder}" placeholder.`,
+      model: target,
+      source: "subagent"
+    });
+    return undefined;
+  }
+  const configuredTarget = resolveSubagentModelTagTarget(target, config, modelRegistry);
+  if (!configuredTarget) {
+    runtimeDiagnostics.push({
+      code: "subagent-model-not-configured",
+      message: `Claude Code subagent model tag requested unconfigured model "${target}".`,
+      model: target,
+      source: "subagent"
+    });
     return undefined;
   }
   return {
@@ -495,6 +512,32 @@ function resolveBuiltInClaudeCodeSubagentRouteDecision(
     rewrites: [],
     source: "subagent",
   };
+}
+
+function resolveSubagentModelTagTarget(
+  target: string,
+  config: AppConfig,
+  modelRegistry: ModelRegistry
+): RouteModelRef | undefined {
+  for (const candidate of subagentModelTagCandidates(target)) {
+    const discoveredCandidate = resolveClaudeAppGatewayRouteModel(
+      candidate,
+      config,
+      claudeAppGatewayModelRouteOptions
+    );
+    const resolved = modelRegistry.resolve(discoveredCandidate ?? candidate);
+    if (resolved) {
+      return resolved;
+    }
+  }
+  return undefined;
+}
+
+function subagentModelTagCandidates(target: string): string[] {
+  const templateStripped = target.replace(subagentModelTagTemplatePrefixPattern, "").trim();
+  return templateStripped && templateStripped !== target && templateStripped.includes("/")
+    ? [target, templateStripped]
+    : [target];
 }
 
 function resolveBuiltInClaudeCodeSubagentEnvRouteDecision(
@@ -757,6 +800,9 @@ const ccrSubagentModelOpenTag = "<CCR-SUBAGENT-MODEL>";
 const ccrSubagentModelCloseTag = "</CCR-SUBAGENT-MODEL>";
 const ccrSubagentModelTagExample = `${ccrSubagentModelOpenTag}Provider/model${ccrSubagentModelCloseTag}`;
 const ccrSubagentModelPlaceholder = "provider/model";
+// Agents often keep the literal "Provider/" or "provider," prefix from the instruction
+// template, e.g. "<CCR-SUBAGENT-MODEL>provider,anthropic/claude-sonnet-4</CCR-SUBAGENT-MODEL>".
+const subagentModelTagTemplatePrefixPattern = /^provider\//i;
 const claudeCodeBillingSystemHeaderPrefix = "x-anthropic-billing-header";
 const claudeCodeSubagentModelEnv = "CLAUDE_CODE_SUBAGENT_MODEL";
 const ccrSubagentToolModelInstruction =
