@@ -75,3 +75,37 @@ test("provider URL normalization chooses protocol-specific bases", () => {
     "https://api.example.com/v1"
   );
 });
+
+test("provider URL normalization keeps http for self-hosted private endpoints", () => {
+  assert.equal(providerUrlWithDefaultScheme("localhost:8000/v1"), "http://localhost:8000/v1");
+  assert.equal(providerUrlWithDefaultScheme("0.0.0.0:8000/v1"), "http://0.0.0.0:8000/v1");
+  assert.equal(providerUrlWithDefaultScheme("192.168.1.10:8000/v1"), "http://192.168.1.10:8000/v1");
+  assert.equal(providerUrlWithDefaultScheme("10.8.0.3:8000/v1"), "http://10.8.0.3:8000/v1");
+  assert.equal(providerUrlWithDefaultScheme("172.16.4.9:8000/v1"), "http://172.16.4.9:8000/v1");
+  assert.equal(providerUrlWithDefaultScheme("[::1]:8000/v1"), "http://[::1]:8000/v1");
+  assert.equal(providerUrlWithDefaultScheme("[fd12:3456::1]:8000/v1"), "http://[fd12:3456::1]:8000/v1");
+  assert.equal(providerUrlWithDefaultScheme("gpu-box.lan:8000/v1"), "http://gpu-box.lan:8000/v1");
+  assert.equal(providerUrlWithDefaultScheme("host.docker.internal:8000/v1"), "http://host.docker.internal:8000/v1");
+});
+
+test("provider URL normalization keeps https for public endpoints that look private", () => {
+  assert.equal(providerUrlWithDefaultScheme("localhost.example.com/v1"), "https://localhost.example.com/v1");
+  assert.equal(providerUrlWithDefaultScheme("172.32.4.9:8000/v1"), "https://172.32.4.9:8000/v1");
+  assert.equal(providerUrlWithDefaultScheme("11.0.0.1/v1"), "https://11.0.0.1/v1");
+  assert.equal(providerUrlWithDefaultScheme("999.1.1.1/v1"), "https://999.1.1.1/v1");
+  assert.equal(providerUrlWithDefaultScheme("api.example.com:8000/v1"), "https://api.example.com:8000/v1");
+  assert.equal(providerUrlWithDefaultScheme("fc00.example.com/v1"), "https://fc00.example.com/v1");
+  assert.equal(providerUrlWithDefaultScheme("[2001:db8::1]:8000/v1"), "https://[2001:db8::1]:8000/v1");
+});
+
+test("provider URL parsing accepts a self-hosted vLLM OpenAI-compatible base URL", () => {
+  const parsed = parseProviderBaseUrl("192.168.1.10:8000/v1/chat/completions");
+
+  assert.equal(parsed.normalizedInputBaseUrl, "http://192.168.1.10:8000/v1");
+  assert.equal(parsed.rootBaseUrl, "http://192.168.1.10:8000");
+  assert.equal(providerBaseUrlForProtocol(parsed, "openai_chat_completions"), "http://192.168.1.10:8000/v1");
+  assert.equal(
+    normalizeProviderBaseUrl("192.168.1.10:8000", "openai_chat_completions"),
+    "http://192.168.1.10:8000"
+  );
+});

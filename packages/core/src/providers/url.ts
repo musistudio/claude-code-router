@@ -79,11 +79,80 @@ export function providerUrlWithDefaultScheme(value: string): string {
     return value;
   }
 
-  if (/^(localhost|127\.|0\.0\.0\.0|\[::1\])/i.test(value)) {
-    return `http://${value}`;
+  const scheme = isPrivateProviderHost(providerHostnameWithoutScheme(value)) ? "http" : "https";
+  return `${scheme}://${value}`;
+}
+
+function providerHostnameWithoutScheme(value: string): string {
+  try {
+    return new URL(`http://${value.trim()}`).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+// Self-hosted upstreams (vLLM, SGLang, Ollama, LM Studio) are usually served over plain HTTP on a
+// loopback or private-network address, so a schemeless host there defaults to http instead of https.
+function isPrivateProviderHost(hostname: string): boolean {
+  if (!hostname) {
+    return false;
   }
 
-  return `https://${value}`;
+  const host = hostname.replace(/^\[/, "").replace(/\]$/, "");
+  if (host === "localhost" || host.endsWith(".localhost") || host === "host.docker.internal") {
+    return true;
+  }
+
+  if (/\.(local|localdomain|internal|lan|intranet|home\.arpa)$/.test(host)) {
+    return true;
+  }
+
+  return isPrivateIpv4Host(host) || isPrivateIpv6Host(host);
+}
+
+function isPrivateIpv4Host(host: string): boolean {
+  const octets = host.split(".");
+  if (octets.length !== 4 || !octets.every((octet) => /^[0-9]{1,3}$/.test(octet))) {
+    return false;
+  }
+
+  const numbers = octets.map((octet) => Number(octet));
+  if (numbers.some((octet) => octet > 255)) {
+    return false;
+  }
+
+  const [first, second] = numbers;
+
+  // Unspecified (0.0.0.0/8), private (10/8, 172.16/12, 192.168/16), loopback and link local.
+  if (first === 0 || first === 10 || first === 127) {
+    return true;
+  }
+
+  if (first === 172 && second >= 16 && second <= 31) {
+    return true;
+  }
+
+  return (first === 192 && second === 168) || (first === 169 && second === 254);
+}
+
+function isPrivateIpv6Host(host: string): boolean {
+  if (!host.includes(":")) {
+    return false;
+  }
+
+  if (host === "::1" || host === "::") {
+    return true;
+  }
+
+  const firstHextet = Number.parseInt(host.split(":")[0] ?? "", 16);
+  if (!Number.isFinite(firstHextet)) {
+    return false;
+  }
+
+  // Unique local (fc00::/7) and link local (fe80::/10).
+  return (
+    (firstHextet >= 0xfc00 && firstHextet <= 0xfdff) || (firstHextet >= 0xfe80 && firstHextet <= 0xfebf)
+  );
 }
 
 export function compactProviderUrl(url: URL): string {
