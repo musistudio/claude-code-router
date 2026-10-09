@@ -1,6 +1,6 @@
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { Readable } from "node:stream";
+import { pipeline, Readable } from "node:stream";
 import type { ApiKeyConfig, AppConfig, GatewayProviderConfig, GatewayProviderProtocol, ProfileConfig, RouterRule } from "@ccr/core/contracts/app";
 import {
   claudeCodeWifTokenPath,
@@ -598,7 +598,9 @@ function applyLiveTokenRateStreamTransform(
   const source = Readable.fromWeb(
     streamInput.upstreamResponse.body as unknown as Parameters<typeof Readable.fromWeb>[0]
   );
-  const metered = source.pipe(meter.stream);
+  // pipeline (not pipe) forwards an upstream reset to the response body;
+  // with pipe the source's 'error' is unhandled and kills the core process.
+  const metered = pipeline(source, meter.stream, () => {});
   return new Response(Readable.toWeb(metered) as ReadableStream<Uint8Array>, {
     headers: new Headers(streamInput.upstreamResponse.headers),
     status: streamInput.upstreamResponse.status,
