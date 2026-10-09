@@ -1461,6 +1461,11 @@ test("profile service writes a multi-model Kimi CLI home that points inference t
     {
       api_base_url: "https://open.bigmodel.cn/api/coding/paas/v4",
       api_key: "zhipu-key",
+      modelMetadata: { "glm-5.2": {
+        capabilities: { imageInput: true },
+        contextWindow: 1049000,
+        supportsReasoningSummaries: true
+      } },
       models: ["glm-5.2"],
       name: "Zhipu Coding"
     }

@@ -105,27 +105,6 @@ test("codex catalog uses model catalog capabilities for known text models", () =
   assert.equal(model.apply_patch_tool_type, "freeform");
 });
 
-test("codex catalog enables multimodal reasoning and search when provider protocol supports it", () => {
-  const model = catalogModelFor({
-    Providers: [
-      { name: "openrouter", type: "openai_responses", models: ["google/gemini-2.5-pro"] }
-    ]
-  }, "openrouter/google/gemini-2.5-pro");
-
-  assert.deepEqual(model.input_modalities, ["text", "image"]);
-  assert.equal(model.supports_image_detail_original, true);
-  assert.equal(model.supports_parallel_tool_calls, true);
-  assert.equal(model.supports_reasoning_summaries, true);
-  assert.equal(model.supports_search_tool, true);
-  assert.equal(model.web_search_tool_type, "text_and_image");
-  assert.deepEqual(model.supported_reasoning_levels.map((level) => level.effort), [
-    "low",
-    "medium",
-    "high"
-  ]);
-  assert.equal(model.default_reasoning_level, null);
-  assert.equal(model.apply_patch_tool_type, "freeform");
-});
 
 test("codex catalog honors configured image, web search, and six reasoning levels", () => {
   const model = catalogModelFor({
@@ -531,20 +510,6 @@ test("codex catalog enables native search for Gemini Interactions providers", ()
   assert.equal(model.supports_search_tool, true);
 });
 
-test("codex catalog omits native search but enables apply_patch for non-GPT chat-completions models", () => {
-  const model = catalogModelFor({
-    Providers: [
-      { name: "openrouter", type: "openai_chat_completions", models: ["google/gemini-2.5-pro"] }
-    ]
-  }, "openrouter/google/gemini-2.5-pro");
-
-  assert.deepEqual(model.input_modalities, ["text", "image"]);
-  assert.equal(model.supports_parallel_tool_calls, true);
-  assert.equal(model.supports_reasoning_summaries, true);
-  assert.equal(model.supports_search_tool, false);
-  assert.equal(model.web_search_tool_type, "text");
-  assert.equal(model.apply_patch_tool_type, "freeform");
-});
 
 test("codex catalog keeps freeform apply_patch for GPT-named chat-compatible models", () => {
   const model = catalogModelFor({

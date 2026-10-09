@@ -137,28 +137,28 @@ CCR 支持 OpenAI Chat / Responses、Anthropic Messages、Gemini Generate Conten
    <table width="100%">
      <tr>
        <td align="center" width="330">
-         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.1.2/Claude-Code-Router_3.1.2.exe">
+         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.1.3/Claude-Code-Router_3.1.3.exe">
            <img src="/docs/public/platform-icons/windows.png" width="44" height="44" alt="Windows 图标" />
            <br />
            <strong>Windows</strong>
          </a>
        </td>
        <td align="center" width="330">
-         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.1.2/Claude-Code-Router_3.1.2.AppImage">
+         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.1.3/Claude-Code-Router_3.1.3.AppImage">
            <img src="/docs/public/platform-icons/linux.png" width="44" height="44" alt="Linux 图标" />
            <br />
            <strong>Linux</strong>
          </a>
        </td>
        <td align="center" width="330">
-         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.1.2/Claude-Code-Router_3.1.2-mac-Apple-Silicon-arm64.dmg">
+         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.1.3/Claude-Code-Router_3.1.3-mac-Apple-Silicon-arm64.dmg">
            <img src="/docs/public/platform-icons/macos.png" width="44" height="44" alt="macOS 图标" />
            <br />
            <strong>macOS (Apple Silicon)</strong>
          </a>
        </td>
        <td align="center" width="330">
-         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.1.2/Claude-Code-Router_3.1.2-mac-Intel-x64.dmg">
+         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.1.3/Claude-Code-Router_3.1.3-mac-Intel-x64.dmg">
            <img src="/docs/public/platform-icons/macos.png" width="44" height="44" alt="macOS 图标" />
            <br />
            <strong>macOS (Intel)</strong>

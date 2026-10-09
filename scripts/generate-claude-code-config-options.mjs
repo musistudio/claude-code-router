@@ -40,6 +40,9 @@ async function main() {
       settings: mergeLocalizedSettings(settingsEn, settingsZh),
       env: mergeLocalizedEnv(envEn, envZh)
     };
+    if (!generated.settings.length || !generated.env.length) {
+      throw new Error("Official documentation produced an empty settings or environment catalog");
+    }
     writeJsonIfChanged(outputFile, generated);
     console.log(`[claude-config] Generated ${generated.settings.length} settings and ${generated.env.length} environment variables from official Claude Code docs.`);
   } catch (error) {
