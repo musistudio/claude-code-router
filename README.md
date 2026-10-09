@@ -1,35 +1,5 @@
 <div align="center">
 
-<table width="100%">
-  <tr>
-    <td align="center">
-      <a href="https://www.kimi.com/code?aff=ccr">
-        <img src="https://gcdn.moonshot.cn/growth-cdn/sponsor/kimi-en.png" width="960" alt="Kimi K2.7 Code sponsor banner" />
-      </a>
-      <br />
-      <sub>
-        <strong>Kimi Code plan</strong> (<a href="https://www.kimi.com/code?aff=ccr">中文站</a> | <a href="https://www.kimi.ai/code?aff=ccr">Global</a>)
-        &nbsp;·&nbsp;
-        <strong>API</strong> (<a href="https://platform.kimi.com?aff=ccr">中文站</a> | <a href="https://platform.kimi.ai?aff=ccr">Global</a>)
-      </sub>
-    </td>
-  </tr>
-  <tr>
-    <td align="left">
-      <p>
-        <strong>Thanks to Kimi for sponsoring this project!</strong> Kimi K3 is Moonshot AI's most capable model and the world's first open 3T-class model. With 2.8 trillion parameters, native vision, and a 1-million-token context window, K3 delivers frontier performance across long-horizon coding, knowledge work, and reasoning. Inside CCR, Kimi ships as a built-in provider preset: import the pay-as-you-go API or Kimi Code subscription in one click and route your coding agent's requests to Kimi. The subscription endpoint passes through natively without protocol conversion, API endpoints are adapted automatically, and account balance and subscription usage are visible in the CCR dashboard.
-      </p>
-      <p align="center">
-        CCR already includes Kimi provider presets. Visit the Kimi Open Platform (<a href="https://platform.kimi.com?aff=ccr">中文站</a> | <a href="https://platform.kimi.ai?aff=ccr">Global</a>) to try the <strong>API</strong>, or explore the <strong>Kimi Code plan</strong> (<a href="https://www.kimi.com/code?aff=ccr">中文站</a> | <a href="https://www.kimi.ai/code?aff=ccr">Global</a>).
-      </p>
-    </td>
-  </tr>
-</table>
-
-</div>
-
-<div align="center">
-
 # Claude Code Router
 
 ### Manage every agent and provider from one place.
