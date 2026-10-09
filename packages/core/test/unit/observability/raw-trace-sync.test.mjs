@@ -974,6 +974,74 @@ function directorySyncError(code) {
   return error;
 }
 
+test("#1867 source sweep and upload share one durable bundle adoption", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-raw-trace-adoption-race-"));
+  const spoolDirectory = path.join(dir, "spool");
+  const source = path.join(spoolDirectory, "source");
+  mkdirSync(source, { recursive: true });
+  const bodyFile = path.join(source, "upstream_request.json");
+  writeFileSync(bodyFile, '{"model":"same-bundle"}');
+  const manifest = { parts: [{ filePath: bodyFile, partType: "upstream_request" }], requestId: "shared-adoption", turnKey: "shared-request" };
+  writeFileSync(path.join(source, "manifest.json"), JSON.stringify(manifest));
+  let releaseSync;
+  const syncGate = new Promise(resolve => { releaseSync = resolve; });
+  let syncing = false;
+  const synchronizer = new RawTraceSynchronizer({
+    enqueueUpdate: async () => false,
+    getConfig: createConfig,
+    replayIntervalMs: 10000,
+    spoolDirectory,
+    syncPartFile: async () => { syncing = true; await syncGate; }
+  });
+  try {
+    await synchronizer.start();
+    await waitFor(() => syncing);
+    const upload = sendRawTrace(synchronizer, manifest);
+    // Let the upload reach the source already moved into staging by the sweep.
+    await new Promise(resolve => setTimeout(resolve, 20));
+    releaseSync();
+    const result = await upload;
+    assert.equal(result.statusCode, 202, JSON.stringify(result.body));
+    assert.equal(result.body.durable, true);
+    assert.equal(readdirSync(path.join(spoolDirectory, ".ccr-inbox")).length, 1);
+    assert.equal(readdirSync(path.join(spoolDirectory, ".ccr-staging")).length, 0);
+  } finally {
+    releaseSync?.();
+    await synchronizer.stop();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("#1867 broken source bundles expire even below inbox capacity", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-raw-trace-broken-source-"));
+  const spoolDirectory = path.join(dir, "spool");
+  const source = path.join(spoolDirectory, "broken");
+  mkdirSync(source, { recursive: true });
+  writeFileSync(path.join(source, "manifest.json"), JSON.stringify({
+    parts: [{ filePath: path.join(source, "missing.json"), partType: "upstream_request" }],
+    requestId: "broken-source", turnKey: "broken-request"
+  }));
+  const synchronizer = new RawTraceSynchronizer({
+    bundleMaxAgeMs: 20,
+    enqueueUpdate: async () => false,
+    getConfig: createConfig,
+    inboxMaxBundles: 100,
+    replayIntervalMs: 5,
+    sourceBundleGraceMs: 60,
+    sourceScanIntervalMs: 1,
+    spoolDirectory
+  });
+  try {
+    await synchronizer.start();
+    await waitFor(() => !existsSync(source), 250);
+    await waitFor(() => readdirSync(path.join(spoolDirectory, ".ccr-dead-letter")).length === 1, 250);
+    assert.equal(readdirSync(path.join(spoolDirectory, ".ccr-inbox")).length, 0);
+  } finally {
+    await synchronizer.stop();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 function createConfig() {
   const config = createDefaultAppConfig();
   config.observability.requestLogs = true;

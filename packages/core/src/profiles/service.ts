@@ -1901,12 +1901,16 @@ function writePiWrapper(
   mkdirSync(binDir, { mode: privateDirMode, recursive: true });
   const configResult = writePiGatewayConfig(CONFIGDIR, config, profile, token, defaultModel);
   const file = piWrapperPath(profile);
+  const runtimeFile = path.join(binDir, codexMiddlewareRuntimeFilename());
+  const runtimeResult = process.platform === "win32"
+    ? writeGeneratedFileIfChanged(runtimeFile, codexCliMiddlewareRuntimeScript(), { mode: publicExecutableMode })
+    : { changed: false };
   const content = process.platform === "win32"
-    ? piWrapperCmdScript(config, profile, configResult)
+    ? piWrapperCmdScript(config, profile, configResult, runtimeFile)
     : piWrapperShellScript(config, profile, configResult);
   const writeResult = writeGeneratedFileIfChanged(file, content, { mode: privateExecutableMode });
   return {
-    changed: configResult.changed || writeResult.changed,
+    changed: configResult.changed || writeResult.changed || runtimeResult.changed,
     configFile: configResult.file,
     file
   };
@@ -1944,7 +1948,8 @@ function piWrapperShellScript(
 function piWrapperCmdScript(
   config: AppConfig,
   profile: ProfileConfig,
-  piConfig: { model: string; profileHome: string; providerId: string; sessionDir: string }
+  piConfig: { model: string; profileHome: string; providerId: string; sessionDir: string },
+  runtimeFile: string
 ): string {
   const realPi = profile.env?.CCR_PI_BIN?.trim() || profile.env?.PI_BIN?.trim() || "pi";
   const envExports = Object.entries(profileEnv(profile))
@@ -1953,6 +1958,7 @@ function piWrapperCmdScript(
   const noProxyHosts = gatewayNoProxyHosts(config);
   return [
     "@echo off",
+    "setlocal",
     ...envExports,
     `set "NO_PROXY=%NO_PROXY%,${cmdValue(noProxyHosts)}"`,
     `set "no_proxy=%no_proxy%,${cmdValue(noProxyHosts)}"`,
@@ -1960,8 +1966,11 @@ function piWrapperCmdScript(
     cmdSetLine("PI_CODING_AGENT_SESSION_DIR", piConfig.sessionDir),
     cmdSetLine("PI_SKIP_VERSION_CHECK", profile.env?.PI_SKIP_VERSION_CHECK?.trim() || "1"),
     cmdSetLine("CCR_PROFILE_SURFACE", "cli"),
-    `${cmdQuote(realPi)} --provider ${cmdQuote(piConfig.providerId)} --model ${cmdQuote(piConfig.model)} %*`,
-    "exit /b %ERRORLEVEL%",
+    cmdSetLine("CCR_PI_WRAPPER", "1"),
+    cmdSetLine("CCR_REAL_PI_BIN", realPi),
+    cmdSetLine("CCR_PI_PROVIDER", piConfig.providerId),
+    cmdSetLine("CCR_PI_MODEL", piConfig.model),
+    ...nodeRuntimeCmdExecLines(runtimeFile),
     ""
   ].join("\r\n");
 }

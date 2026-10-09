@@ -1,13 +1,13 @@
 name: Prepare release gateway
-description: Build the pinned gateway with CCR's regression fixes for release artifacts.
+description: Build and verify upstream gateway source for release artifacts.
 runs:
   using: composite
   steps:
-    - name: Check out pinned gateway source
+    - name: Check out gateway source
       uses: actions/checkout@v4
       with:
         repository: The-NeXT-AI/ai-gateway
-        ref: f061ad4371b6cf99d5e248746eac1e4ffdda8980
+        ref: 0a2c0abd48d2144ed0ac2ce4d954a661c51ffcb1
         path: .tmp/release-gateway
 
     - name: Set up Node.js
@@ -15,20 +15,17 @@ runs:
       with:
         node-version: 22
 
-    - name: Apply gateway regression fixes
+    - name: Build and verify gateway
       shell: bash
       working-directory: .tmp/release-gateway
       run: |
-        git apply ../../patches/ai-gateway/0001-fix-tool-ids-and-fusion-traces.patch
-        git apply ../../patches/ai-gateway/0002-complete-native-replay-and-response-status.patch
-
-    - name: Build and verify patched gateway
-      shell: bash
-      working-directory: .tmp/release-gateway
-      run: |
+        # Push the upstream fixes before creating a CCR release tag.
+        test -f src/adapters/builtins/anthropic-tool-id.test.ts
+        test -f src/raw-trace.test.ts
         npm ci
         npm run typecheck
-        npx vitest run src/gateway/routes.test.ts src/adapters/builtins/anthropic-tool-id.test.ts
+        npm run typecheck:all
+        npx vitest run src/gateway/routes.test.ts src/adapters/builtins/anthropic-tool-id.test.ts src/raw-trace.test.ts
         npm run build
         mkdir -p ../../docker/local-ai-gateway
         npm pack --ignore-scripts --pack-destination ../../docker/local-ai-gateway

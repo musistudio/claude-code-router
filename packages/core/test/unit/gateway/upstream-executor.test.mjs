@@ -659,7 +659,7 @@ test("model-chain fallback refreshes the routed model before core gateway resolu
       {
         headerModel: "Primary/k3",
         model: "k3",
-        provider: "Primary"
+        provider: "primary"
       },
       {
         headerModel: "fallback/glm-5.3",

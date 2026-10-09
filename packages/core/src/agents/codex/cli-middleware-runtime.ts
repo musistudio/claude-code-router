@@ -95,6 +95,10 @@ function botBridge() {
 
 async function main() {
   const args = directProfileDispatchArgs(process.argv.slice(2));
+  if (process.env.CCR_PI_WRAPPER === "1") {
+    await runPiCliWrapper(args);
+    return;
+  }
   if (process.env.CCR_OPENCODE_BOT_WORKER === "1" || args[0] === "opencode-bot-worker") {
     await runOpenCodeBotWorker(args);
     return;
@@ -130,6 +134,22 @@ function directProfileDispatchArgs(args) {
     forwarded.shift();
   }
   return forwarded;
+}
+
+async function runPiCliWrapper(args) {
+  const realCli = expandHome(nonEmptyEnv("CCR_REAL_PI_BIN") || "pi");
+  const child = spawnAgentCli(realCli, [
+    "--provider", nonEmptyEnv("CCR_PI_PROVIDER") || "claude-code-router",
+    "--model", nonEmptyEnv("CCR_PI_MODEL"), ...args
+  ], {
+    env: withoutKeys(process.env, ["CCR_PI_WRAPPER", "CCR_REAL_PI_BIN", "CCR_PI_PROVIDER", "CCR_PI_MODEL", "CCR_CLI_DIRECT_PROFILE_DISPATCH"]),
+    stdio: "inherit"
+  });
+  child.on("error", (error) => {
+    process.stderr.write("Failed to start " + realCli + ": " + formatError(error) + "\n");
+  });
+  const exit = await waitForChildResult(child);
+  process.exitCode = exit.exitCode;
 }
 
 async function runClaudeCodeCliWrapper(args) {

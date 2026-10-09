@@ -400,6 +400,9 @@ export class GatewayRequestPipeline {
         routeFallback = routed.decision.fallback ?? routeFallback;
         routedSessionId = routed.decision.sessionId;
         routedTokenCount = routed.decision.tokenCount;
+        if (routedTokenCount === 0 && pluginService.hasGatewayRequestTransforms({ includeBuiltIns: false })) {
+          routedTokenCount = this.plugin.countTokens(routed.body).input_tokens;
+        }
         if (routed.decision.model) {
           headers[ccrRoutedModelHeader] = sanitizeHeaderValue(routed.decision.model);
           routedModel = routed.decision.model;

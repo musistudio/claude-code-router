@@ -54,7 +54,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "major_minor=${version%.*}" >> "$GITHUB_OUTPUT"
 
-      - name: Prepare patched gateway package
+      - name: Prepare gateway package
         uses: ./.github/actions/prepare-release-gateway
 
       - name: Set up QEMU

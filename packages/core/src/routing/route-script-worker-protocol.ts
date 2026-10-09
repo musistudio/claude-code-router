@@ -1,12 +1,10 @@
-import type { RouteScriptInput } from "@ccr/core/routing/route-script-context";
-
 export type ResolvedRouteScript = {
   source: string;
   timeoutMs: number;
 };
 
 export type RouteScriptWorkerRequest = {
-  input?: RouteScriptInput;
+  inputJson?: string;
   requestId: number;
   script: ResolvedRouteScript;
   type: "execute" | "validate";
@@ -17,6 +15,7 @@ export type RouteScriptWorkerResponse = {
   error?: string;
   requestId: number;
   result?: unknown;
+  tokenCount?: number;
   status: "error" | "ok" | "timeout";
   type: "response";
 };

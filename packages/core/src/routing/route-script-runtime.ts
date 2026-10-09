@@ -11,7 +11,7 @@ import {
   type RouterRule,
   type RouterRuleScript
 } from "@ccr/core/contracts/app";
-import type { RouteScriptInput } from "@ccr/core/routing/route-script-context";
+import { serializeRouteScriptInput, type RouteScriptInput } from "@ccr/core/routing/route-script-context";
 import type {
   ResolvedRouteScript,
   RouteScriptWorkerRequest,
@@ -27,6 +27,7 @@ const workerOldGenerationMb = 64;
 const workerYoungGenerationMb = 16;
 
 export type RouteScriptExecutionResult = {
+  tokenCount?: number;
   durationMs: number;
   error?: string;
   status: "circuit-open" | "error" | "ok" | "queue-full" | "timeout";
@@ -138,14 +139,15 @@ export class RouteScriptRuntime {
     }
     try {
       const response = await this.nextSlot().rpc({
-        input,
+        inputJson: serializeRouteScriptInput(input),
         requestId: ++this.nextRequestId,
         script: resolved,
         type: "execute"
       }, resolved.timeoutMs + 250);
       if (response.status === "ok") {
         if (circuitBreakerEnabled) this.recordSuccess(circuitKey);
-        return { durationMs: response.durationMs, status: "ok", value: response.result };
+        return { durationMs: response.durationMs, status: "ok", value: response.result,
+          ...(response.tokenCount !== undefined ? { tokenCount: response.tokenCount } : {}) };
       }
       if (circuitBreakerEnabled) this.recordFailure(circuitKey, Date.now());
       return {

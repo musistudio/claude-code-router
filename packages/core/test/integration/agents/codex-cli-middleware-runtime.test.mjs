@@ -15,6 +15,40 @@ test("generated Codex CLI middleware runtime is valid JavaScript", () => {
   execFileSync(process.execPath, ["--check", file], { stdio: "pipe" });
 });
 
+test("#1851 Pi dispatch consumes only the profile selector and preserves the prompt", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-pi-dispatch-"));
+  try {
+    const runtime = writeRuntimeScript(dir);
+    const output = path.join(dir, "args.json");
+    const capture = path.join(dir, "capture.js");
+    const fakePi = path.join(dir, process.platform === "win32" ? "pi.cmd" : "pi");
+    writeFileSync(capture, 'require("node:fs").writeFileSync(process.env.CCR_PI_TEST_OUTPUT, JSON.stringify({ args: process.argv.slice(2), marker: process.env.CCR_CLI_DIRECT_PROFILE_DISPATCH }));');
+    if (process.platform === "win32") writeFileSync(fakePi, `@echo off\r\n"${process.execPath}" "${capture}" %*\r\n`);
+    else {
+      writeFileSync(fakePi, `#!/bin/sh\nexec "${process.execPath}" "${capture}" "$@"\n`);
+      chmodSync(fakePi, 0o700);
+    }
+    for (const [args, direct, expected] of [
+      [["Pi"], true, []],
+      [["pi"], true, []],
+      [["Pi Work", "cli", "--", "hello world", "--continue"], true, ["hello world", "--continue"]],
+      [["Pi", "--", 'quote " and & % !', "--model", "custom"], true, ['quote " and & % !', "--model", "custom"]],
+      [["Pi"], false, ["Pi"]],
+    ]) {
+      const result = spawnSync(process.execPath, [runtime, ...args], {
+        encoding: "utf8", timeout: 10000,
+        env: { ...process.env, CCR_PI_WRAPPER: "1", CCR_REAL_PI_BIN: fakePi,
+          CCR_REAL_CODEX_CLI_PATH: fakePi, CCR_PI_PROVIDER: "ccr", CCR_PI_MODEL: "Provider/model",
+          CCR_PI_TEST_OUTPUT: output, CCR_CLI_DIRECT_PROFILE_DISPATCH: direct ? "1" : "", CCR_CODEX_DEFAULT_ARGS: "--version" },
+      });
+      assert.equal(result.status, 0, result.stderr);
+      const captured = JSON.parse(readFileSync(output, "utf8"));
+      assert.deepEqual(captured.args, ["--provider", "ccr", "--model", "Provider/model", ...expected]);
+      assert.equal(captured.marker, undefined);
+    }
+  } finally { rmSync(dir, { force: true, recursive: true }); }
+});
+
 test("generated Codex middleware fallback retains the catalog's tool commentary instructions", () => {
   const model = "uuroute/gpt-5.5";
   const fallback = evaluateRuntimeFunction("modelCatalogConfigItem")(model, 0);

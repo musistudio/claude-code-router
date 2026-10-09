@@ -38,19 +38,19 @@ jobs:
           retention-days: 1
 
   gateway:
-    name: Build patched gateway
+    name: Build gateway
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Prepare patched gateway package
+      - name: Prepare gateway package
         uses: ./.github/actions/prepare-release-gateway
 
-      - name: Upload patched gateway package
+      - name: Upload gateway package
         uses: actions/upload-artifact@v4
         with:
-          name: release-patched-gateway
+          name: release-gateway
           path: docker/local-ai-gateway/the-next-ai-ai-gateway-*.tgz
           if-no-files-found: error
           retention-days: 1
@@ -88,13 +88,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Download patched gateway package
+      - name: Download gateway package
         uses: actions/download-artifact@v4
         with:
-          name: release-patched-gateway
+          name: release-gateway
           path: .tmp/gateway-package
 
-      - name: Install patched gateway
+      - name: Install gateway
         shell: bash
         run: npm install --no-save --package-lock=false .tmp/gateway-package/*.tgz
 
@@ -214,13 +214,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Download patched gateway package
+      - name: Download gateway package
         uses: actions/download-artifact@v4
         with:
-          name: release-patched-gateway
+          name: release-gateway
           path: .tmp/gateway-package
 
-      - name: Install patched gateway
+      - name: Install gateway
         shell: bash
         run: npm install --no-save --package-lock=false .tmp/gateway-package/*.tgz
 
@@ -262,13 +262,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Download patched gateway package
+      - name: Download gateway package
         uses: actions/download-artifact@v4
         with:
-          name: release-patched-gateway
+          name: release-gateway
           path: .tmp/gateway-package
 
-      - name: Install patched gateway
+      - name: Install gateway
         shell: bash
         run: npm install --no-save --package-lock=false .tmp/gateway-package/*.tgz
 

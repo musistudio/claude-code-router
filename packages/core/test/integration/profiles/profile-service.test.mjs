@@ -1627,6 +1627,23 @@ test("profile service writes a Pi config and wrapper that points inference to CC
   assert.equal(existsSync(path.join(profilePiHome, "sessions")), true);
 });
 
+test("#1851 Windows Pi wrapper uses the argument-aware CLI runtime", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform");
+  const config = createDefaultAppConfig();
+  config.Providers = [{ name: "Provider", models: ["model"], type: "openai_chat_completions", api_base_url: "https://example.test/v1" }];
+  config.APIKEYS = [{ id: "profile:pi-dispatch", key: "test", name: "Pi" }];
+  config.profile.profiles = [{ agent: "pi", enabled: true, env: {}, id: "pi-dispatch", model: "Provider/model", name: "Pi", scope: "ccr", surface: "cli" }];
+  try {
+    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    const result = await applyProfileFixture(config);
+    assert.equal(result.clients[0].ok, true);
+    const content = readFileSync(path.join(CONFIGDIR, "bin", "ccr-pi-wrapper-pi-dispatch.cmd"), "utf8");
+    assert.match(content, /CCR_PI_WRAPPER=1/);
+    assert.match(content, /ccr-codex-cli-middleware\.js/);
+    assert.doesNotMatch(content, /"pi" --provider .*%\*/);
+  } finally { Object.defineProperty(process, "platform", originalPlatform); }
+});
+
 test("profile service writes an OpenCode CLI wrapper and shared CLI/App config", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
   const profileId = "opencode-gateway-test";
   const config = createDefaultAppConfig();
