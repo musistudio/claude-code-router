@@ -3,6 +3,7 @@ import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { newApiKeyUsageAccountConfig } from "@ccr/core/providers/new-api.ts";
+import { bailianProviderPreset } from "@ccr/core/providers/presets/bailian/index.ts";
 import { geminiProviderPreset } from "@ccr/core/providers/presets/gemini/index.ts";
 import { minimaxChinaProviderPreset } from "@ccr/core/providers/presets/minimax/index.ts";
 import { moonshotGlobalProviderPreset } from "@ccr/core/providers/presets/moonshot/index.ts";
@@ -622,6 +623,89 @@ test("AddProviderForm shows preset endpoint under the selected provider name", (
   assert.match(html, /Google Gemini/);
   assert.ok(endpoint);
   assert.equal((html.match(new RegExp(endpoint.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) ?? []).length, 2);
+});
+
+test("AddProviderForm asks for workspace domain details when Bailian is selected", () => {
+  setProviderPresets([bailianProviderPreset]);
+  const draft = {
+    ...createProviderDraft([]),
+    name: "Alibaba Bailian",
+    presetEndpointVariables: { Region: "cn-beijing" },
+    presetId: bailianProviderPreset.id,
+    presetUsesTemplateEndpoints: true
+  };
+  const html = renderToStaticMarkup(
+    React.createElement(AddProviderForm, {
+      activeStep: "provider",
+      draft,
+      error: "",
+      mode: "add",
+      onChange: () => undefined,
+      probeLoading: false,
+      providers: []
+    })
+  );
+
+  assert.match(html, /Domain type/);
+  assert.match(html, /Workspace domain/);
+  assert.match(html, /DashScope domain/);
+  assert.match(html, /Workspace ID/);
+  assert.match(html, /Service region/);
+  assert.match(html, /North China 2 \(Beijing\)/);
+  assert.match(html, /Singapore/);
+  assert.match(html, /Enter the workspace ID to build the dedicated endpoint domain\./);
+});
+
+test("AddProviderForm previews the built workspace domain endpoint", () => {
+  setProviderPresets([bailianProviderPreset]);
+  const draft = {
+    ...createProviderDraft([]),
+    baseUrl: "https://ws-unit.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+    name: "Alibaba Bailian",
+    presetEndpointVariables: { Region: "cn-beijing", WorkspaceId: "ws-unit" },
+    presetId: bailianProviderPreset.id,
+    presetUsesTemplateEndpoints: true
+  };
+  const html = renderToStaticMarkup(
+    React.createElement(AddProviderForm, {
+      activeStep: "provider",
+      draft,
+      error: "",
+      mode: "add",
+      onChange: () => undefined,
+      probeLoading: false,
+      providers: []
+    })
+  );
+
+  assert.match(html, /ws-unit\.cn-beijing\.maas\.aliyuncs\.com\/compatible-mode\/v1/);
+  assert.doesNotMatch(html, /Enter the workspace ID to build/);
+});
+
+test("AddProviderForm hides workspace fields when Bailian uses the DashScope domain", () => {
+  setProviderPresets([bailianProviderPreset]);
+  const draft = {
+    ...createProviderDraft([]),
+    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    name: "Alibaba Bailian",
+    presetId: bailianProviderPreset.id,
+    presetUsesTemplateEndpoints: false
+  };
+  const html = renderToStaticMarkup(
+    React.createElement(AddProviderForm, {
+      activeStep: "provider",
+      draft,
+      error: "",
+      mode: "add",
+      onChange: () => undefined,
+      probeLoading: false,
+      providers: []
+    })
+  );
+
+  assert.match(html, /Domain type/);
+  assert.doesNotMatch(html, /Workspace ID/);
+  assert.doesNotMatch(html, /Service region/);
 });
 
 test("AddProviderForm lets users choose credential pool in credentials step", () => {

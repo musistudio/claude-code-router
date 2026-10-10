@@ -1,8 +1,8 @@
 import {
   AddProfileDraft, AddProviderDraft, AppConfig, Button, Check, ChevronLeft,
-  ChevronRight, cn, findProviderPreset, GatewayProviderProbeResult, GatewayStatus, Gauge, getNextOnboardingStep,
+  ChevronRight, cn, GatewayProviderProbeResult, GatewayStatus, Gauge, getNextOnboardingStep,
   isOnboardingProfileReady, isOnboardingProviderReady, Layers3, LucideIcon, mergeProviderModelLists, motion, motionEase,
-  LoaderCircle, onboardingMascotSpriteUrl, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder, type ProfileAgentOption, providerDraftHasReadyCredentialPool, ProviderConnectivityCheckReport, reducedMotionTransition, splitLines, useAppText, useEffect, useReducedMotion,
+  LoaderCircle, onboardingMascotSpriteUrl, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder, type ProfileAgentOption, isProviderDraftIdentityReady, providerDraftHasReadyCredentialPool, ProviderConnectivityCheckReport, reducedMotionTransition, splitLines, useAppText, useEffect, useReducedMotion,
   useState,
   UserRound, X
 } from "../shared/index";
@@ -100,7 +100,7 @@ export function OnboardingView({
   const previousStep = onboardingStepOrder[activeIndex - 1];
   const nextStep = getNextOnboardingStep(activeStep, config, readiness);
   const localAgentProviderImport = providerDraft.providerPlugins.length > 0;
-  const providerIdentityReady = Boolean(findProviderPreset(providerDraft.presetId) || providerDraft.baseUrl.trim());
+  const providerIdentityReady = isProviderDraftIdentityReady(providerDraft);
   const providerCredentialReady = localAgentProviderImport || Boolean(
     providerDraft.credentialMode === "pool"
       ? providerDraftHasReadyCredentialPool(providerDraft)
