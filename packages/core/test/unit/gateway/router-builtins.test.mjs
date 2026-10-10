@@ -27,6 +27,7 @@ function createRouterPlugin(options = {}) {
     }
   ];
   const plugin = new ClaudeCodeRouterPlugin({
+    APIKEYS: options.apiKeys ?? [],
     CUSTOM_ROUTER_PATH: options.customRouterPath ?? "",
     Providers: options.providers ?? [
       {
@@ -131,6 +132,8 @@ test("Claude Code model discovery exposes compact only when context archive MCP 
   };
   assert.equal(claudeCodeCompactSupported(profileConfig, { id: "profile:plain-profile" }), false);
   assert.equal(claudeCodeCompactSupported(profileConfig, { id: "profile:managed-profile" }), true);
+  assert.equal(claudeCodeCompactSupported(profileConfig, { id: "manual-plain", profileId: "plain-profile" }), false);
+  assert.equal(claudeCodeCompactSupported(profileConfig, { id: "manual-managed", profileId: "managed-profile" }), true);
 });
 
 test("fallback retry delay backs off retryable HTTP statuses", () => {
@@ -495,6 +498,7 @@ test("borrowed route bodies remain isolated from router mutations", async () => 
 
 test("profile routing rules match only the authenticated profile API key", async () => {
   const plugin = createRouterPlugin({
+    apiKeys: [{ id: "manual-a", profileId: "profile-a", key: "manual-a-token" }],
     authenticatedProfileId: null,
     profiles: [
       {
@@ -554,6 +558,15 @@ test("profile routing rules match only the authenticated profile API key", async
   assert.equal(matched.decision.source, "profile");
   assert.equal(unmatched.body.model, "Provider/claude-haiku");
   assert.equal(unmatched.decision.reason, "builtin:claude-code");
+
+  const linked = await plugin.routeRequest({
+    body: { messages: [], model: "claude-default" },
+    headers: { "user-agent": "claude-code/1.0", "x-auth-api-key-id": "manual-a", "x-task": "heavy" },
+    method: "POST",
+    url: "/v1/messages"
+  });
+  assert.equal(linked.body.model, matched.body.model);
+  assert.equal(linked.decision.reason, matched.decision.reason);
 });
 
 test("profile routing keeps identical conditions isolated by independent profile API keys", async () => {
@@ -802,6 +815,7 @@ test("route scripts receive the configured profile id instead of the API key slu
   };
   let input;
   const plugin = createRouterPlugin({
+    apiKeys: [{ id: "manual-script-key", profileId: profile.id, key: "manual-script-token" }],
     authenticatedProfileId: null,
     profiles: [profile],
     routerRules: [{
@@ -835,6 +849,15 @@ test("route scripts receive the configured profile id instead of the API key slu
 
   assert.equal(input.apiKeyId, "profile:Claude-Work-Profile");
   assert.equal(input.profileId, "Claude Work/Profile");
+
+  await plugin.routeRequest({
+    body: { messages: [], model: "claude-default" },
+    headers: { "x-auth-api-key-id": "manual-script-key" },
+    method: "POST",
+    url: "/v1/messages"
+  });
+  assert.equal(input.apiKeyId, "manual-script-key");
+  assert.equal(input.profileId, profile.id);
 });
 
 test("built-in Codex route uses the authenticated profile instead of the first Codex profile", async () => {

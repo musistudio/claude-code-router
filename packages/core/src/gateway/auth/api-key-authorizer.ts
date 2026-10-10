@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from "node:http";
 import type { ApiKeyConfig, AppConfig } from "@ccr/core/contracts/app";
 import { loadPersistedApiKeys } from "@ccr/core/config/config-repository";
+import { profileForApiKey } from "@ccr/core/profiles/api-key";
 import { formatError, readAuthToken, readRemoteControlQueryAuthToken, readRequestBody, sendJson } from "@ccr/core/gateway/http/io";
 import { estimateLimitUsage, limitRules, readWindowCounter } from "@ccr/core/gateway/limits/window-limiter";
 import type { ApiKeyAuthorizationResult, ApiKeyLimitRule, ApiKeyLimitUsage } from "@ccr/core/gateway/internal/shared";
@@ -43,6 +44,10 @@ export async function authorize(
       sendJson(response, 401, { error: { message: "API key is expired." } });
       return { ok: false };
     }
+    if (isApiKeyProfileUnavailable(apiKey, config)) {
+      sendJson(response, 403, { error: { message: "API key's linked profile is disabled or missing." } });
+      return { ok: false };
+    }
     return { ok: true, apiKey };
   }
 
@@ -66,7 +71,7 @@ export async function resolveApiKeyFromHeaders(
     apiKeys = await configuredApiKeys(config, { ...options, refresh: true });
     apiKey = findApiKeyByToken(apiKeys, token);
   }
-  return apiKey && !isApiKeyExpired(apiKey) ? apiKey : undefined;
+  return apiKey && !isApiKeyExpired(apiKey) && !isApiKeyProfileUnavailable(apiKey, config) ? apiKey : undefined;
 }
 
 export async function handleClaudeCodeWifTokenRequest(
@@ -100,7 +105,7 @@ export async function exchangeClaudeCodeWifToken(
     apiKeys = await configuredApiKeys(config, { ...options, refresh: true });
     apiKey = findApiKeyByToken(apiKeys, assertion);
   }
-  if (!apiKey || isApiKeyExpired(apiKey)) {
+  if (!apiKey || isApiKeyExpired(apiKey) || isApiKeyProfileUnavailable(apiKey, config)) {
     return oauthTokenError(401, "invalid_grant", "Claude Code WIF assertion is invalid or expired.");
   }
 
@@ -252,6 +257,10 @@ function isApiKeyExpired(apiKey: ApiKeyConfig): boolean {
   if (!apiKey.expiresAt) return false;
   const expiresAt = Date.parse(apiKey.expiresAt);
   return Number.isFinite(expiresAt) && expiresAt <= Date.now();
+}
+
+function isApiKeyProfileUnavailable(apiKey: ApiKeyConfig, config: AppConfig): boolean {
+  return Boolean(apiKey.profileId?.trim()) && !profileForApiKey(config, apiKey);
 }
 
 function apiKeyLimitRules(apiKey: ApiKeyConfig, usage: ApiKeyLimitUsage): ApiKeyLimitRule[] {

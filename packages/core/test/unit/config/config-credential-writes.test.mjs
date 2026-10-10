@@ -16,6 +16,44 @@ before(async () => {
 const retained = { createdAt: "2026-01-01T00:00:00.000Z", id: "retained", key: "retained-token" };
 const revoked = { createdAt: "2026-01-01T00:00:00.000Z", id: "revoked", key: "revoked-token" };
 
+test("profile associations survive API key writes and settings saves", async () => {
+  const linked = { ...retained, profileId: "Work / Team", limits: { rpm: 3 }, expiresAt: "2099-01-01T00:00:00.000Z" };
+  const config = await configApi.loadAppConfig();
+  await configApi.saveAppConfig({
+    ...config,
+    profile: { ...config.profile, enabled: true, profiles: [
+      { id: linked.profileId, agent: "codex", name: "Team", enabled: true, model: "Provider/model", scope: "ccr" }
+    ] }
+  });
+  const saved = await configApi.saveApiKeysConfig([linked]);
+  assert.deepEqual(saved.APIKEYS, [linked]);
+  await configApi.saveAppConfig({ ...saved, autoStart: !saved.autoStart });
+  assert.deepEqual((await configApi.loadAppConfig()).APIKEYS, [linked]);
+});
+
+test("new profile bindings are validated against the latest saved profiles without changing keys on failure", async () => {
+  const config = await configApi.saveApiKeysConfig([retained]);
+  const profile = { id: "binding-target", agent: "codex", name: "Binding target", enabled: true, model: "Provider/model", scope: "ccr" };
+  const linked = { ...revoked, profileId: profile.id };
+  for (const state of [
+    { enabled: true, profiles: [] },
+    { enabled: true, profiles: [{ ...profile, enabled: false }] },
+    { enabled: false, profiles: [profile] }
+  ]) {
+    await configApi.saveAppConfig({ ...config, profile: { ...config.profile, ...state } });
+    await assert.rejects(configApi.saveApiKeysConfig([retained, linked]), /Selected Profile is disabled or no longer exists/);
+    assert.deepEqual((await configApi.loadAppConfig()).APIKEYS, [retained]);
+  }
+
+  await configApi.saveAppConfig({ ...config, profile: { ...config.profile, enabled: true, profiles: [profile] } });
+  await configApi.saveApiKeysConfig([retained, linked]);
+  await configApi.saveAppConfig({ ...config, profile: { ...config.profile, enabled: true, profiles: [] } });
+  const edited = { ...linked, limits: { rpm: 2 } };
+  const unrelated = { ...retained, id: "another", key: "another-token" };
+  assert.deepEqual((await configApi.saveApiKeysConfig([retained, edited, unrelated])).APIKEYS, [retained, edited, unrelated]);
+  assert.deepEqual((await configApi.saveApiKeysConfig([retained])).APIKEYS, [retained]);
+});
+
 test("saving an old settings snapshot cannot restore a revoked key", async () => {
   const stale = await configApi.saveApiKeysConfig([retained, revoked]);
   await configApi.saveApiKeysConfig([retained]);
