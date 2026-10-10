@@ -68,7 +68,7 @@ docker compose down
 
 ## 只允许本机访问
 
-仓库默认映射 `3458:8080` 会监听宿主机所有网卡。如果只从当前机器访问，修改为：
+仓库默认映射 `127.0.0.1:3458:8080` 仅允许当前机器访问：
 
 ```yaml
 services:
@@ -294,3 +294,7 @@ docker compose logs --tail=200 ccr
 - [CLI 安装与命令参考](../cli/)
 - [服务配置](../../configuration/server/)
 - [API 密钥](../../configuration/api-keys/)
+
+管理 RPC 会校验浏览器的 Origin / Referer，Nginx 转发原始来源头。远程部署时，请显式调整端口绑定，并将 `CCR_PUBLIC_BASE_URL` 设置为浏览器实际访问的地址；额外允许的来源通过 `CCR_WEB_ALLOWED_ORIGINS` 指定（逗号分隔）。不携带来源头的 CLI 调用仍需管理 Token。
+
+Web 配置 API 将供应商密钥和敏感认证头显示为以 `[CCR REDACTED]` 开头的引用。保持完整引用可保存其他配置而不改变密钥；输入新值会替换密钥，清空字段会删除它。客户端 API 密钥仍通过专门的 API 密钥页面管理。

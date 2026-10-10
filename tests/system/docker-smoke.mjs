@@ -35,13 +35,15 @@ try {
     "--name",
     containerName,
     "-p",
-    `${hostPort}:8080`,
+    `127.0.0.1:${hostPort}:8080`,
     "-e",
     `CCR_WEB_AUTH_TOKEN=${token}`,
     "-e",
     "CCR_PUBLIC_HOST=127.0.0.1",
     "-e",
     `CCR_PUBLIC_PORT=${hostPort}`,
+    "-e",
+    "CCR_WEB_ALLOWED_ORIGINS=https://trusted.example",
     "-v",
     `${volumeName}:/data`,
     imageName
@@ -87,6 +89,14 @@ try {
   const unauthorized = await rpc(baseUrl, "getAppInfo");
   assert.equal(unauthorized.status, 401);
   assert.equal((await unauthorized.json()).ok, false);
+
+  const hostileOrigin = await rpc(baseUrl, "getConfig", token, [], { origin: "https://evil.example" });
+  assert.equal(hostileOrigin.status, 403, "Nginx must forward the real browser origin");
+  const hostileReferer = await rpc(baseUrl, "getConfig", token, [], { referer: "https://evil.example/page" });
+  assert.equal(hostileReferer.status, 403, "Nginx must forward the real browser referer");
+  const trustedOrigin = await rpc(baseUrl, "getAppInfo", token, [], { origin: "https://trusted.example", referer: "https://trusted.example/page" });
+  assert.equal(trustedOrigin.status, 200);
+  assert.equal(trustedOrigin.headers.get("access-control-allow-origin"), "https://trusted.example");
 
   const appInfo = await rpc(baseUrl, "getAppInfo", token);
   assert.equal(appInfo.status, 200);
@@ -140,7 +150,16 @@ try {
   };
   const savedConfig = await rpc(baseUrl, "saveConfig", token, [openRouterConfig, { applyProfile: false }]);
   assert.equal(savedConfig.status, 200);
-  assert.equal((await savedConfig.json()).ok, true);
+  const savedPayload = await savedConfig.json();
+  assert.equal(savedPayload.ok, true);
+  assert.ok(!JSON.stringify(savedPayload.value).includes("test-openrouter-key"));
+  const redactedConfig = await (await rpc(baseUrl, "getConfig", token)).json();
+  assert.ok(!JSON.stringify(redactedConfig.value).includes("test-openrouter-key"));
+  const roundTrip = await rpc(baseUrl, "saveConfig", token, [redactedConfig.value, { applyProfile: false }]);
+  assert.equal(roundTrip.status, 200);
+  assert.equal((await roundTrip.json()).ok, true);
+  const storedKey = run("docker", ["exec", containerId, "node", "-e", "const Database=require('better-sqlite3');const db=new Database('/data/.claude-code-router/config.sqlite');const config=JSON.parse(db.prepare(\"select value_json from app_config where key = 'default'\").get().value_json);process.stdout.write(config.Providers[0].apiKey || config.Providers[0].api_key || '');db.close();"]);
+  assert.equal(storedKey, "test-openrouter-key", "a masked config round trip must preserve the upstream key");
 
   const startedGateway = await rpc(baseUrl, "startGateway", token);
   assert.equal(startedGateway.status, 200);
@@ -213,11 +232,12 @@ fs.writeFileSync(path.join(configDir, "config.json"), JSON.stringify(config, nul
   run("docker", ["run", "--rm", "-v", `${volume}:/data`, "--entrypoint", "node", imageName, "-e", script]);
 }
 
-async function rpc(baseUrl, method, authToken, args = []) {
+async function rpc(baseUrl, method, authToken, args = [], sourceHeaders = {}) {
   return fetch(`${baseUrl}/api/ccr/rpc`, {
     body: JSON.stringify({ args, method }),
     headers: {
       "content-type": "application/json",
+      ...sourceHeaders,
       ...(authToken ? { "x-ccr-web-auth": authToken } : {})
     },
     method: "POST"

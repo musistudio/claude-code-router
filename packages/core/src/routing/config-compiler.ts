@@ -170,7 +170,7 @@ function compileRouterRule(
   }
   diagnostics.push(...fallbackModelDiagnostics(rule.fallback, modelRegistry, diagnostic.source, rule));
   return {
-    active: (rule.type === "script" ? Boolean(rule.script) : rewrites.length > 0) && diagnostics.length === 0,
+    active: (rule.type === "script" ? Boolean(rule.script) : rule.type === "condition" ? Boolean(rule.condition) : rewrites.length > 0) && diagnostics.length === 0,
     diagnostics,
     model,
     rewrites,

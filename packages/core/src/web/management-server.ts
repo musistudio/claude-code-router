@@ -1,4 +1,5 @@
 import { refreshModelCatalog } from "@ccr/core/models/catalog-file";
+import { redactWebConfig, restoreWebConfigSecrets, restoreWebProbeSecrets } from "@ccr/core/web/provider-secrets";
 import { spawn } from "node:child_process";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
@@ -190,6 +191,10 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
     applyWebCorsHeaders(response, corsOrigin);
   }
   if (request.method === "OPTIONS") {
+    if (!isAllowedWebBrowserSource(request, security)) {
+      sendText(response, 403, "Forbidden origin");
+      return;
+    }
     response.writeHead(204);
     response.end();
     return;
@@ -228,6 +233,10 @@ async function handleRpcRequest(request: IncomingMessage, response: ServerRespon
     sendJson(response, 401, { error: { message: "CCR web authentication token is missing or invalid." }, ok: false });
     return;
   }
+  if (!isAllowedWebBrowserSource(request, security)) {
+    sendJson(response, 403, { error: { message: "CCR web request origin is not allowed." }, ok: false });
+    return;
+  }
 
   let payload: RpcRequest;
   try {
@@ -245,11 +254,23 @@ async function handleRpcRequest(request: IncomingMessage, response: ServerRespon
   }
 
   try {
-    const value = await handler(...(Array.isArray(payload.args) ? payload.args : []));
-    sendJson(response, 200, { ok: true, value });
+    const args = Array.isArray(payload.args) ? [...payload.args] : [];
+    if (["probeProvider", "probeProviderCandidates", "checkProviderConnectivity", "testProviderAccountConnector", "getOpenRouterProviderCatalog"].includes(method) && args[0]) {
+      args[0] = restoreWebProbeSecrets(args[0], await loadAppConfig());
+    }
+    const value = await handler(...args);
+    sendJson(response, 200, { ok: true, value: redactWebRpcConfig(value) });
   } catch (error) {
     sendJson(response, error instanceof Error && error.name === "AppConfigConflictError" ? 409 : 500, { error: { message: formatError(error) }, ok: false });
   }
+}
+
+function redactWebRpcConfig(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactWebRpcConfig);
+  if (typeof value !== "object" || value === null) return value;
+  const record = value as Record<string, unknown>;
+  if (Array.isArray(record.Providers)) return redactWebConfig(value as AppConfig);
+  return Object.fromEntries(Object.entries(record).map(([key, item]) => [key, redactWebRpcConfig(item)]));
 }
 
 const unsupportedUpdateStatus: AppUpdateStatus = {
@@ -426,7 +447,7 @@ const rpcHandlers: Record<string, RpcHandler> = {
   },
   saveConfig: async (config, options) => {
     const previousConfig = await loadAppConfig();
-    const nextInput = config as AppConfig;
+    const nextInput = restoreWebConfigSecrets(config as AppConfig, previousConfig);
     if (nextInput.proxy.enabled) {
       const certificateStatus = await proxyService.getCertificateStatus();
       if (!certificateStatus.trusted) {
@@ -668,24 +689,36 @@ const loopbackWebCorsHosts = new Set(["localhost", "127.0.0.1", "::1", "0:0:0:0:
  */
 function allowedWebCorsOrigin(request: IncomingMessage): string | undefined {
   const origin = readHeaderValue(request.headers.origin);
-  if (!origin) return undefined;
-  const normalizedOrigin = origin.replace(/\/$/, "");
-  const configured = readEnvString("CCR_WEB_ALLOWED_ORIGINS");
-  if (configured) {
-    const allow = new Set(
-      configured
-        .split(",")
-        .map((value) => value.trim().replace(/\/$/, ""))
-        .filter(Boolean)
-    );
-    if (allow.has(normalizedOrigin)) return origin;
-  }
+  return origin && isTrustedWebOrigin(origin) ? origin : undefined;
+}
+
+function parseWebOrigin(value: string): string | undefined {
   try {
-    if (loopbackWebCorsHosts.has(normalizeHostname(new URL(origin).hostname))) return origin;
-  } catch {
-    /* malformed origin — treat as not allowed */
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password ? url.origin : undefined;
+  } catch { return undefined; }
+}
+
+function isTrustedWebOrigin(value: string, security?: WebManagementSecurityContext): boolean {
+  const origin = parseWebOrigin(value);
+  if (!origin || value.replace(/\/$/, "") !== origin) return false;
+  const url = new URL(origin);
+  if (loopbackWebCorsHosts.has(normalizeHostname(url.hostname))) return true;
+  const configured = [readEnvString("CCR_PUBLIC_BASE_URL"), ...(readEnvString("CCR_WEB_ALLOWED_ORIGINS") ?? "").split(",")];
+  if (configured.some(item => item && parseWebOrigin(item.trim()) === origin)) return true;
+  return Boolean(security && url.protocol === "http:" &&
+    Number(url.port || 80) === security.port && isAllowedWebHostname(url.hostname, security));
+}
+
+function isAllowedWebBrowserSource(request: IncomingMessage, security: WebManagementSecurityContext): boolean {
+  const origin = readHeaderValue(request.headers.origin);
+  if (origin && !isTrustedWebOrigin(origin, security)) return false;
+  const referer = readHeaderValue(request.headers.referer);
+  if (referer) {
+    const refererOrigin = parseWebOrigin(referer);
+    if (!refererOrigin || !isTrustedWebOrigin(refererOrigin, security)) return false;
   }
-  return undefined;
+  return true;
 }
 
 function applyWebCorsHeaders(response: ServerResponse, origin: string): void {

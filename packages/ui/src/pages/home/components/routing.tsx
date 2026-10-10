@@ -528,7 +528,7 @@ export function AddRoutingRuleDialog({
                 value={draft.type}
               />
             </Field> : null}
-            {draft.type === "condition" ? <Field className="sm:col-span-2" label={t("Condition")}>
+            <Field className="sm:col-span-2" label={t(draft.type === "script" ? "Prefilter (optional)" : "Condition")}>
               <div className="rounded-md border border-border bg-muted/20 p-2">
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-[160px_minmax(0,1fr)_112px_minmax(0,1fr)]">
                   <SelectControl
@@ -555,7 +555,8 @@ export function AddRoutingRuleDialog({
                   />
                 </div>
               </div>
-            </Field> : (
+            </Field>
+            {draft.type === "script" ? (
               <>
                 <div className="sm:col-span-2 min-w-0 space-y-1">
                   <div className="flex min-w-0 items-center gap-2">
@@ -635,9 +636,10 @@ export function AddRoutingRuleDialog({
                   </pre>
                 ) : null}
               </>
-            )}
+            ) : null}
             {draft.type === "condition" ? <Field className="sm:col-span-2" label={t("Rewrite request parameters")}>
               <div className="space-y-2 rounded-md border border-border bg-muted/20 p-2">
+                {draft.rewrites.length === 0 ? <p className="text-xs text-muted-foreground">{t("Matching requests pass through unchanged and skip later rules.")}</p> : null}
                 {draft.rewrites.map((rewrite, index) => (
                   <div
                     className="grid grid-cols-1 gap-2 sm:grid-cols-[150px_minmax(0,1fr)_minmax(0,1fr)_32px]"
@@ -681,7 +683,6 @@ export function AddRoutingRuleDialog({
                     )}
                     <Button
                       aria-label={t("Remove")}
-                      disabled={draft.rewrites.length <= 1}
                       onClick={() => removeRewrite(index)}
                       size="iconSm"
                       title={t("Remove")}
