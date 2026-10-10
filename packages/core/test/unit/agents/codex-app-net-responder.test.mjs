@@ -166,6 +166,12 @@ test("usage and balance endpoints are proxied to the real backend with auth forw
     assert.equal(seen.method, "POST");
     assert.equal(seen.body, JSON.stringify({ threads: ["t1"] }));
 
+    const settings = await fetch(`${responder.baseUrl}/wham/settings/user`, {
+      headers: { authorization: "Bearer test-token", "chatgpt-account-id": "acct-9" }
+    });
+    assert.equal(settings.status, 200);
+    assert.equal(seen.url, "/wham/settings/user");
+
     const tasks = await fetch(`${responder.baseUrl}/wham/tasks`);
     assert.equal(tasks.status, 404);
   } finally {

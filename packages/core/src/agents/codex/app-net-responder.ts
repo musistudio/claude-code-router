@@ -11,7 +11,7 @@ import path from "node:path";
  * the account's actual balance instead of a silent 404.
  */
 const CODEX_USAGE_PROXY_BASE = "https://chatgpt.com/backend-api";
-const CODEX_USAGE_PROXY_PREFIXES = ["/wham/usage", "/wham/rate-limit-reset-credits", "/wham/profiles"];
+const CODEX_USAGE_PROXY_PREFIXES = ["/wham/usage", "/wham/settings", "/wham/rate-limit-reset-credits", "/wham/profiles"];
 const HOP_BY_HOP_HEADERS = new Set(["host", "connection", "keep-alive", "proxy-connection", "transfer-encoding", "upgrade"]);
 
 export function isCodexUsageProxyPath(pathname: string): boolean {
