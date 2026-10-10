@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -107,7 +108,7 @@ test("responder serves virtual routes over loopback HTTP and records misses", as
     assert.equal(settings.status, 200);
     assert.deepEqual((await settings.json()).beta_settings, []);
 
-    const missed = await fetch(`${responder.baseUrl}/wham/usage`);
+    const missed = await fetch(`${responder.baseUrl}/wham/tasks`);
     assert.equal(missed.status, 404);
 
     const devicecheck = await fetch(`${responder.baseUrl}/devicecheck`, { method: "POST", body: "{}" });
@@ -120,7 +121,60 @@ test("responder serves virtual routes over loopback HTTP and records misses", as
   const entries = readFileSync(logPath, "utf8").trim().split("\n").map((line) => JSON.parse(line));
   assert.ok(entries.some((entry) => entry.event === "responder-started"));
   assert.ok(entries.some((entry) => entry.event === "virtual-response" && entry.url === "/wham/accounts/check"));
-  assert.ok(entries.some((entry) => entry.event === "not-found" && entry.url === "/wham/usage"));
+  assert.ok(entries.some((entry) => entry.event === "not-found" && entry.url === "/wham/tasks"));
+});
+
+test("usage and balance endpoints are proxied to the real backend with auth forwarded", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-net-responder-proxy-"));
+  const logPath = path.join(dir, "responder.log");
+  let seen = null;
+  const upstream = createServer((req, res) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      seen = {
+        method: req.method,
+        url: req.url,
+        authorization: req.headers.authorization,
+        account: req.headers["chatgpt-account-id"],
+        body: Buffer.concat(chunks).toString("utf8")
+      };
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ rate_limits: { primary_used_percent: 12 } }));
+    });
+  });
+  await new Promise((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+  const upstreamPort = upstream.address().port;
+  const responder = await startCodexAppNetResponder({ listenPort: 0, logPath, proxyBase: `http://127.0.0.1:${upstreamPort}` });
+  try {
+    const usage = await fetch(`${responder.baseUrl}/wham/usage`, {
+      headers: { authorization: "Bearer test-token", "chatgpt-account-id": "acct-9" }
+    });
+    assert.equal(usage.status, 200);
+    assert.deepEqual(await usage.json(), { rate_limits: { primary_used_percent: 12 } });
+    assert.equal(seen.url, "/wham/usage");
+    assert.equal(seen.authorization, "Bearer test-token");
+    assert.equal(seen.account, "acct-9");
+
+    const subscriptions = await fetch(`${responder.baseUrl}/wham/usage/subscriptions`, {
+      method: "POST",
+      headers: { authorization: "Bearer test-token" },
+      body: JSON.stringify({ threads: ["t1"] })
+    });
+    assert.equal(subscriptions.status, 200);
+    assert.equal(seen.url, "/wham/usage/subscriptions");
+    assert.equal(seen.method, "POST");
+    assert.equal(seen.body, JSON.stringify({ threads: ["t1"] }));
+
+    const tasks = await fetch(`${responder.baseUrl}/wham/tasks`);
+    assert.equal(tasks.status, 404);
+  } finally {
+    responder.close();
+    upstream.close();
+  }
+  const entries = readFileSync(logPath, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+  assert.ok(entries.some((entry) => entry.event === "proxied" && entry.url === "/wham/usage"));
+  assert.ok(entries.some((entry) => entry.event === "not-found" && entry.url === "/wham/tasks"));
 });
 
 test("codex app env points the desktop API base at the loopback responder", () => {
