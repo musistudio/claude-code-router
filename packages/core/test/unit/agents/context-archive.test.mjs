@@ -268,8 +268,8 @@ test("compact stores an immutable full request and appends one handoff task", as
   assert.deepEqual(forwarded.messages.slice(0, body.messages.length), body.messages);
   assert.equal(forwarded.messages.length, body.messages.length + 1);
   assert.equal(forwarded.model, body.model);
-  assert.equal(forwarded.max_completion_tokens, undefined);
-  assert.equal(forwarded.max_tokens, undefined);
+  assert.equal(forwarded.max_completion_tokens, 32768);
+  assert.equal(forwarded.max_tokens, 32768);
   assert.equal(forwarded.context_management, undefined);
   assert.equal(forwarded.response_format, undefined);
   assert.equal(forwarded.tools, undefined);
@@ -998,9 +998,9 @@ test("only explicit or structural compact signals create archives", async () => 
   assert.match(auto.diagnostic, /^compact-handoff:claude-auto:/);
   const forwarded = JSON.parse(auto.body.toString("utf8"));
   assert.equal(forwarded.tools, undefined);
-  assert.equal(forwarded.maxCompletionTokens, undefined);
-  assert.equal(forwarded.max_tokens, undefined);
-  assert.equal(forwarded.maxTokens, undefined);
+  assert.equal(forwarded.maxCompletionTokens, 32768);
+  assert.equal(forwarded.max_tokens, 32768);
+  assert.equal(forwarded.maxTokens, 32768);
   assert.deepEqual(forwarded.context_management, { edits: [{ keep: "all", type: "clear_thinking_20251015" }] });
   assert.equal(forwarded.messages.length, 3);
   assert.deepEqual(forwarded.messages.slice(0, -1), [

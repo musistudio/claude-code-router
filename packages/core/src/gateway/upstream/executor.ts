@@ -1118,14 +1118,53 @@ function buildAttemptBody(
     return body;
   }
   const parsedBody = parseJsonObjectSafe(body);
-  if (!parsedBody || stringValue(parsedBody.model) === model) {
+  if (!parsedBody) {
     return body;
   }
-  if (shouldRemoveOpenRouterDiscountProvider(parsedBody, model, options)) {
-    const { provider: _provider, ...rest } = parsedBody;
+  const scrubbedBody = requestProtocolForPath(path) === "openai_responses"
+    ? dropUnencryptedReasoningItems(parsedBody)
+    : parsedBody;
+  const modelMatches = stringValue(scrubbedBody.model) === model;
+  const scrubbed = scrubbedBody !== parsedBody;
+  if (modelMatches && !scrubbed) {
+    return body;
+  }
+  if (shouldRemoveOpenRouterDiscountProvider(scrubbedBody, model, options)) {
+    const { provider: _provider, ...rest } = scrubbedBody;
     return serializeJsonBody({ ...rest, model });
   }
-  return serializeJsonBodyWithModel(parsedBody, model);
+  if (modelMatches) {
+    return serializeJsonBody(scrubbedBody);
+  }
+  return serializeJsonBodyWithModel(scrubbedBody, model);
+}
+
+// OpenAI-Responses upstreams that enforce store:false replay rules reject
+// reasoning items whose plain-text `content` array is non-empty ("Invalid
+// 'input[N].content': array too long. Expected an array with maximum length
+// 0"), which happens when a fallback upstream returned reasoning as plain
+// text instead of encrypted_content and the client echoes it back on the
+// next turn. Drop those items — they carry no replayable payload.
+function dropUnencryptedReasoningItems(
+  body: Record<string, unknown>
+): Record<string, unknown> {
+  if (!Array.isArray(body.input)) {
+    return body;
+  }
+  const input = (body.input as unknown[]).filter((item) => {
+    if (!isRecord(item) || item.type !== "reasoning") {
+      return true;
+    }
+    // Keep items that still carry a replayable encrypted payload.
+    if (typeof item.encrypted_content === "string" && item.encrypted_content.length > 0) {
+      return true;
+    }
+    return !Array.isArray(item.content) || item.content.length === 0;
+  });
+  if (input.length === (body.input as unknown[]).length) {
+    return body;
+  }
+  return { ...body, input };
 }
 
 function shouldRemoveOpenRouterDiscountProvider(
