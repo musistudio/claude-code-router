@@ -6,6 +6,8 @@ import { resolveUsageModelAttribution } from "@ccr/core/usage/model-attribution"
 
 export const CLAUDE_APP_ONE_MILLION_CONTEXT_SUFFIX = "[1m]";
 const CLAUDE_APP_ENCODED_ROUTE_PREFIX = "anthropic/claude-ccr-h";
+const SAKANA_API_HOSTNAME = "api.sakana.ai";
+const SAKANA_ONE_MILLION_CONTEXT_MODELS = new Set(["fugu", "fugu-ultra"]);
 
 export type ClaudeAppGatewayModelRoute = {
   displayName: string;
@@ -73,14 +75,30 @@ export function buildClaudeAppGatewayModelRoutes(
       rawTargetModel === targetModel ? "" : claudeAppGatewayGeneratedRouteId(targetModel),
       targetModel
     ]).filter((id) => id.toLowerCase() !== routeId.toLowerCase());
-    return [{
+
+    const baseRoute = {
       displayName: displayNames[index],
       id: routeId,
       legacyId: legacyIds[0],
       legacyIds,
       oneMillionContext,
       targetModel
-    }];
+    };
+
+    if (oneMillionContext && !hasClaudeAppGatewayOneMillionContextSuffix(routeId)) {
+      const oneMillionRouteId = `${routeId}${CLAUDE_APP_ONE_MILLION_CONTEXT_SUFFIX}`;
+      const oneMillionRoute = {
+        displayName: `${displayNames[index]} (1M)`,
+        id: oneMillionRouteId,
+        legacyId: `${legacyIds[0] || routeId}${CLAUDE_APP_ONE_MILLION_CONTEXT_SUFFIX}`,
+        legacyIds: legacyIds.map((id) => `${id}${CLAUDE_APP_ONE_MILLION_CONTEXT_SUFFIX}`),
+        oneMillionContext: true,
+        targetModel
+      };
+      return [baseRoute, oneMillionRoute];
+    }
+
+    return [baseRoute];
   });
 }
 
@@ -207,7 +225,13 @@ function claudeAppGatewayProviderSupportsOneMillionContext(
   if (!resolved) {
     return undefined;
   }
+
+  // Check if it's a Sakana fugu/fugu-ultra model connected to Sakana API
   const normalizedModel = resolved.model.trim().toLowerCase();
+  if (SAKANA_ONE_MILLION_CONTEXT_MODELS.has(normalizedModel) && claudeAppGatewayProviderTargetsSakana(resolved.provider)) {
+    return true;
+  }
+
   const metadata = resolved.provider.modelMetadata?.[resolved.model] ??
     Object.entries(resolved.provider.modelMetadata ?? {})
       .find(([candidate]) => candidate.trim().toLowerCase() === normalizedModel)?.[1];
@@ -217,6 +241,27 @@ function claudeAppGatewayProviderSupportsOneMillionContext(
   }
   const effectivePercent = effectiveContextWindowPercentFor(metadata) ?? 100;
   return Math.floor((contextWindow * effectivePercent) / 100) >= 1_000_000;
+}
+
+function claudeAppGatewayProviderTargetsSakana(provider: AppConfig["Providers"][number]): boolean {
+  return [
+    provider.baseUrl,
+    provider.baseurl,
+    provider.api_base_url,
+    ...(provider.capabilities ?? []).map((capability) => capability.baseUrl)
+  ].some(claudeAppGatewayUrlTargetsSakana);
+}
+
+function claudeAppGatewayUrlTargetsSakana(value: string | undefined): boolean {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return false;
+  }
+  try {
+    return new URL(normalized).hostname.toLowerCase() === SAKANA_API_HOSTNAME;
+  } catch {
+    return false;
+  }
 }
 
 function claudeAppGatewayPhysicalModelSelector(
