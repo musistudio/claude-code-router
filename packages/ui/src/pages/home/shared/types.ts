@@ -110,6 +110,8 @@ export type AddProviderDraft = {
   modelsText: string;
   name: string;
   presetId: string;
+  presetEndpointVariables: Record<string, string>;
+  presetUsesTemplateEndpoints: boolean;
   protocolDetectionMode: "auto" | "manual";
   providerPlugins: unknown[];
   protocol: GatewayProviderProtocol;

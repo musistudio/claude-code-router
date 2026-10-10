@@ -2,7 +2,8 @@ import {
   customProviderPresetId,
   type ProviderIdentitySafetyIssue,
   type ProviderPreset,
-  type ProviderPresetEndpoint
+  type ProviderPresetEndpoint,
+  type ProviderPresetEndpointVariable
 } from "@ccr/core/providers/presets/types";
 import { providerUrlWithDefaultScheme } from "@ccr/core/providers/url";
 
@@ -65,6 +66,137 @@ export function providerPresetMatchesBaseUrl(preset: ProviderPreset, baseUrl: st
   return preset.endpoints.some((endpoint) => providerEndpointMatchesBaseUrl(endpoint.baseUrl, baseUrl));
 }
 
+export function providerPresetHasTemplateEndpoints(preset: ProviderPreset): boolean {
+  return preset.endpoints.some((endpoint) => providerEndpointHasVariables(endpoint));
+}
+
+/**
+ * Replaces `{Name}` placeholders in a template endpoint's baseUrl with the
+ * supplied variable values. Returns undefined when the endpoint has no
+ * placeholders to fill or a value is missing or invalid, so callers can treat
+ * an incomplete draft as "not ready" instead of probing a literal `{...}` URL.
+ */
+export function substituteProviderPresetEndpointVariables(
+  endpoint: ProviderPresetEndpoint,
+  variables: Record<string, string>
+): string | undefined {
+  if (!providerEndpointHasVariables(endpoint)) {
+    return endpoint.baseUrl;
+  }
+  let baseUrl = endpoint.baseUrl;
+  for (const variable of endpoint.variables ?? []) {
+    const value = variables[variable.name]?.trim();
+    if (!value || !providerPresetEndpointVariableValueIsValid(variable, value)) {
+      return undefined;
+    }
+    baseUrl = baseUrl.replaceAll(`{${variable.name}}`, value);
+  }
+  return baseUrl.includes("{") || baseUrl.includes("}") ? undefined : baseUrl;
+}
+
+/**
+ * Extracts the placeholder values (e.g. WorkspaceId, Region) a baseUrl filled
+ * into a template endpoint, for restoring the form state of a saved provider.
+ */
+export function providerPresetTemplateEndpointVariablesForBaseUrlInList(
+  presets: ProviderPreset[],
+  baseUrl: string
+): Record<string, string> | undefined {
+  const candidate = parseProviderPresetUrl(baseUrl);
+  if (!candidate) {
+    return undefined;
+  }
+  for (const preset of presets) {
+    for (const endpoint of preset.endpoints) {
+      if (!providerEndpointHasVariables(endpoint)) {
+        continue;
+      }
+      const variables = providerPresetTemplateEndpointVariablesForBaseUrl(endpoint, candidate);
+      if (variables) {
+        return variables;
+      }
+    }
+  }
+  return undefined;
+}
+
+function providerPresetTemplateEndpointVariablesForBaseUrl(
+  endpoint: ProviderPresetEndpoint,
+  candidate: URL
+): Record<string, string> | undefined {
+  const endpointUrl = parseProviderPresetUrl(endpoint.baseUrl);
+  if (!endpointUrl) {
+    return undefined;
+  }
+  const hostMatch = matchProviderPresetPlaceholderHost(endpointUrl.hostname, candidate.hostname);
+  if (!hostMatch) {
+    return undefined;
+  }
+  const endpointPath = normalizeProviderPresetPath(endpointUrl.pathname);
+  const candidatePath = normalizeProviderPresetPath(candidate.pathname);
+  const pathMatch = endpointPath === "/" ||
+    candidatePath === "/" ||
+    candidatePath === endpointPath ||
+    candidatePath.startsWith(`${endpointPath}/`) ||
+    endpointPath.startsWith(`${candidatePath}/`);
+  if (!pathMatch) {
+    return undefined;
+  }
+  // Derive placeholder names from the raw baseUrl: URL parsing lowercases
+  // hostnames, which would corrupt the camelCase variable names.
+  const rawHost = endpoint.baseUrl.trim().replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, "").split("/")[0] ?? "";
+  const names = rawHost
+    .split(".")
+    .map((label) => providerPresetEndpointPlaceholderName(label))
+    .filter((name): name is string => Boolean(name));
+  const values = hostMatch.slice(1);
+  if (names.length !== values.length) {
+    return undefined;
+  }
+  const variables: Record<string, string> = {};
+  names.forEach((name, index) => {
+    variables[name] = values[index];
+  });
+  return variables;
+}
+
+function providerPresetEndpointVariableValueIsValid(
+  variable: ProviderPresetEndpointVariable,
+  value: string
+): boolean {
+  if (variable.kind === "select") {
+    return (variable.options ?? []).some((option) => option.value === value);
+  }
+  // Text variables land in the URL host, so only allow DNS-label-safe input.
+  return /^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(value);
+}
+
+function providerEndpointHasVariables(endpoint: ProviderPresetEndpoint): boolean {
+  return Boolean(endpoint.variables?.length);
+}
+
+function providerPresetEndpointPlaceholderName(hostLabel: string): string | undefined {
+  return /^\{[^{}]+\}$/.test(hostLabel) ? hostLabel.slice(1, -1) : undefined;
+}
+
+function matchProviderPresetPlaceholderHost(
+  endpointHost: string,
+  candidateHost: string
+): RegExpMatchArray | null {
+  if (!endpointHost.includes("{")) {
+    return null;
+  }
+  const pattern = endpointHost
+    .split(".")
+    .map((label) =>
+      providerPresetEndpointPlaceholderName(label)
+        ? "([^.]+)"
+        : label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    )
+    .join("\\.");
+  return candidateHost.match(new RegExp(`^${pattern}$`, "i"));
+}
+
 export function providerEndpointCanReceiveProviderApiKeyInList(
   _presets: ProviderPreset[],
   input: {
@@ -116,7 +248,16 @@ function providerEndpointMatchesBaseUrl(endpointBaseUrl: string, baseUrl: string
   if (!endpoint || !candidate) {
     return false;
   }
-  if (candidate.protocol !== endpoint.protocol || candidate.host !== endpoint.host) {
+  if (candidate.protocol !== endpoint.protocol) {
+    return false;
+  }
+  if (endpoint.hostname.includes("{")) {
+    // Template endpoints: each {Placeholder} host label matches any single
+    // label, so a filled workspace domain resolves back to its preset.
+    if (!matchProviderPresetPlaceholderHost(endpoint.hostname, candidate.hostname)) {
+      return false;
+    }
+  } else if (candidate.hostname !== endpoint.hostname) {
     return false;
   }
 

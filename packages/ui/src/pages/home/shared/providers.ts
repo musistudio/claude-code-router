@@ -38,10 +38,13 @@ import {
   defaultProviderAccountConfig,
   standardProviderAccountConfig,
   type ProviderIdentitySafetyIssue,
-  type ProviderPreset
+  type ProviderPreset,
+  type ProviderPresetEndpoint
 } from "@ccr/core/providers/presets/types";
 import {
-  primaryProviderPresetEndpoint as primaryProviderPresetEndpointFromPreset
+  primaryProviderPresetEndpoint as primaryProviderPresetEndpointFromPreset,
+  providerPresetHasTemplateEndpoints,
+  substituteProviderPresetEndpointVariables
 } from "@ccr/core/providers/presets/utils";
 import { newApiUserSelfConnectorConfig } from "@ccr/core/providers/new-api";
 import { normalizeProviderBaseUrl, providerUrlWithDefaultScheme } from "@ccr/core/providers/url";
@@ -55,7 +58,7 @@ import type { RouterConditionSource } from "./options";
 import { normalizeApiKeyLimits, positiveInteger } from "./api-keys";
 import { isPlainRecord, normalizeProviderModelSelector, stringValue, uniqueStrings } from "./common";
 import { formatEditableJson } from "./extensions";
-import { findProviderPreset, findProviderPresetByBaseUrl, findProviderPresetByIdentity, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey, providerIdentitySafetyIssue } from "./external";
+import { findProviderPreset, findProviderPresetByBaseUrl, findProviderPresetByIdentity, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey, providerIdentitySafetyIssue, providerPresetTemplateEndpointVariablesForBaseUrl } from "./external";
 import { fusionModelProviderName } from "./profiles";
 import { normalizeRouterFallbackConfig } from "./routing";
 import { keyValueRowsFromRecord, recordFromKeyValueRows, validateKeyValueRows, virtualModelMatchSummary } from "./virtual-models";
@@ -629,6 +632,7 @@ export function createProviderDraftFromDeepLinkPayload(
 ): AddProviderDraft {
   const baseUrl = payload.baseUrl.trim();
   const preset = resolveProviderDeepLinkPreset(payload);
+  const templateVariables = preset ? providerPresetTemplateEndpointVariablesForBaseUrl(baseUrl) : undefined;
   const endpoint = preset ? primaryProviderPresetEndpointFromPreset(preset) : undefined;
   const protocol = payload.protocol ?? endpoint?.protocols[0] ?? "openai_chat_completions";
   const accountDraft = createProviderAccountDraftFromConfig(payload.account ?? defaultProviderAccountConfigForBaseUrl(baseUrl));
@@ -658,6 +662,8 @@ export function createProviderDraftFromDeepLinkPayload(
     modelsText: models.join("\n"),
     name: uniqueProviderName(providers, baseName),
     presetId: preset?.id ?? customProviderPresetId,
+    presetEndpointVariables: templateVariables ?? {},
+    presetUsesTemplateEndpoints: Boolean(templateVariables),
     protocolDetectionMode: "auto",
     providerPlugins: [],
     protocol,
@@ -755,6 +761,8 @@ export function createProviderDraft(providers: GatewayProviderConfig[]): AddProv
     modelsText: "",
     name: uniqueProviderName(providers),
     presetId: "",
+    presetEndpointVariables: {},
+    presetUsesTemplateEndpoints: false,
     protocolDetectionMode: "auto",
     providerPlugins: [],
     protocol: "openai_chat_completions",
@@ -766,6 +774,7 @@ export function createProviderDraft(providers: GatewayProviderConfig[]): AddProv
 export function createProviderDraftFromProvider(provider: GatewayProviderConfig): AddProviderDraft {
   const baseUrl = providerBaseUrl(provider);
   const preset = findProviderPresetByBaseUrl(baseUrl);
+  const templateVariables = preset ? providerPresetTemplateEndpointVariablesForBaseUrl(baseUrl) : undefined;
   const accountDraft = createProviderAccountDraftFromConfig(provider.account);
   const protocol = toProviderProtocol(provider.type) ?? toProviderProtocol(provider.provider) ?? "openai_chat_completions";
   const credentials = (provider.credentials ?? []).map(providerCredentialDraftFromConfig);
@@ -792,6 +801,8 @@ export function createProviderDraftFromProvider(provider: GatewayProviderConfig)
     modelsText: provider.models.join("\n"),
     name: provider.name,
     presetId: preset?.id ?? customProviderPresetId,
+    presetEndpointVariables: templateVariables ?? {},
+    presetUsesTemplateEndpoints: Boolean(templateVariables),
     protocolDetectionMode: provider.protocolDetectionMode === "manual" ? "manual" : "auto",
     providerPlugins: [],
     protocol,
@@ -1790,8 +1801,9 @@ export function providerProbeCandidates(draft: AddProviderDraft): ProviderProbeC
     ...mediaProtocols
   ];
   if (preset) {
-    const probeAllProtocols = preset.endpoints.length === 1;
-    return preset.endpoints.map((endpoint) => ({
+    const endpoints = providerPresetEndpointsForDraft(preset, draft);
+    const probeAllProtocols = endpoints.length === 1;
+    return endpoints.map((endpoint) => ({
       ...endpoint,
       declaredProtocols: endpoint.protocols,
       protocols: probeAllProtocols ? chatProtocols : endpoint.protocols,
@@ -1873,13 +1885,99 @@ export function presetCapabilitiesFromDraft(draft: AddProviderDraft): GatewayPro
     return [];
   }
 
-  return preset.endpoints.flatMap((endpoint) =>
+  return providerPresetEndpointsForDraft(preset, draft).flatMap((endpoint) =>
     endpoint.protocols.map((type) => ({
       baseUrl: endpoint.baseUrl,
       source: "preset" as const,
       type
     }))
   );
+}
+
+/**
+ * Preset endpoints visible to a draft: static endpoints when the preset has no
+ * template endpoints (or the draft opted out of them), substituted template
+ * endpoints otherwise. Template endpoints whose variables are incomplete are
+ * dropped so probing and saving wait for a fillable URL.
+ */
+function providerPresetEndpointsForDraft(
+  preset: ProviderPreset,
+  draft: Pick<AddProviderDraft, "presetEndpointVariables" | "presetUsesTemplateEndpoints">
+): ProviderPresetEndpoint[] {
+  const templateEndpoints = preset.endpoints.filter((endpoint) => endpoint.variables?.length);
+  if (templateEndpoints.length === 0) {
+    return preset.endpoints;
+  }
+  if (!draft.presetUsesTemplateEndpoints) {
+    return preset.endpoints.filter((endpoint) => !endpoint.variables?.length);
+  }
+  return templateEndpoints.flatMap((endpoint) => {
+    const baseUrl = substituteProviderPresetEndpointVariables(endpoint, draft.presetEndpointVariables);
+    return baseUrl ? [{ ...endpoint, baseUrl }] : [];
+  });
+}
+
+/**
+ * Select variables start at their first option so a template endpoint needs
+ * only its text inputs filled; text variables start empty.
+ */
+export function defaultProviderPresetEndpointVariables(preset: ProviderPreset): Record<string, string> {
+  const variables: Record<string, string> = {};
+  for (const endpoint of preset.endpoints) {
+    for (const variable of endpoint.variables ?? []) {
+      if (variable.kind === "select" && variable.options?.length && variables[variable.name] === undefined) {
+        variables[variable.name] = variable.options[0].value;
+      }
+    }
+  }
+  return variables;
+}
+
+/** Substituted baseUrl of the preset's first template endpoint, or "" while incomplete. */
+export function providerPresetPrimaryTemplateEndpointBaseUrl(
+  preset: ProviderPreset,
+  variables: Record<string, string>
+): string {
+  const endpoint = preset.endpoints.find((item) => item.variables?.length);
+  return endpoint ? substituteProviderPresetEndpointVariables(endpoint, variables) ?? "" : "";
+}
+
+/** Draft defaults applied when a preset is selected in the provider form. */
+export function providerPresetDraftDefaults(preset: ProviderPreset): {
+  baseUrl: string;
+  presetEndpointVariables: Record<string, string>;
+  presetUsesTemplateEndpoints: boolean;
+  protocol: GatewayProviderProtocol;
+  selectedProtocols: GatewayProviderProtocol[];
+} {
+  const presetUsesTemplateEndpoints = providerPresetHasTemplateEndpoints(preset);
+  const modeEndpoints = presetUsesTemplateEndpoints
+    ? preset.endpoints.filter((endpoint) => endpoint.variables?.length)
+    : preset.endpoints.filter((endpoint) => !endpoint.variables?.length);
+  const presetEndpointVariables = defaultProviderPresetEndpointVariables(preset);
+  return {
+    baseUrl: presetUsesTemplateEndpoints
+      ? providerPresetPrimaryTemplateEndpointBaseUrl(preset, presetEndpointVariables)
+      : primaryProviderPresetEndpointFromPreset(preset)?.baseUrl ?? "",
+    presetEndpointVariables,
+    presetUsesTemplateEndpoints,
+    protocol: modeEndpoints[0]?.protocols[0] ?? "openai_chat_completions",
+    selectedProtocols: uniqueProviderProtocols(modeEndpoints.flatMap((endpoint) => endpoint.protocols))
+  };
+}
+
+/**
+ * The provider identity step is ready when the preset is chosen — unless the
+ * draft is on template endpoints, where identity only exists once the
+ * variables produce a real baseUrl.
+ */
+export function isProviderDraftIdentityReady(
+  draft: Pick<AddProviderDraft, "baseUrl" | "presetId" | "presetUsesTemplateEndpoints">
+): boolean {
+  if (draft.presetUsesTemplateEndpoints) {
+    return Boolean(draft.baseUrl.trim());
+  }
+  return Boolean(findProviderPreset(draft.presetId) || draft.baseUrl.trim());
 }
 
 export function providerSelectableProtocolsFromProbe(probe: GatewayProviderProbeResult | undefined): GatewayProviderProtocol[] {
