@@ -789,6 +789,95 @@ test("Codex app-server merges CCR Fast Mode catalog metadata without spoofing au
   });
 });
 
+test("Codex app-server preserves catalog image and reasoning capabilities over native defaults", { skip: process.platform === "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-capabilities-"));
+  const runtimeFile = writeRuntimeScript(dir);
+  const fakeCodex = path.join(dir, "fake-codex");
+  const codexHome = path.join(dir, "codex-home");
+  const isolatedHome = path.join(dir, "home");
+  mkdirSync(codexHome, { recursive: true });
+  mkdirSync(isolatedHome, { recursive: true });
+  writeFileSync(fakeCodex, [
+    "#!/usr/bin/env node",
+    "const readline = require('node:readline');",
+    "const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });",
+    "input.on('line', (line) => {",
+    "  const request = JSON.parse(line);",
+    "  const result = request.method === 'model/list'",
+    "    ? { data: ['aicodemirror/gpt-6.1-sol', 'undeclared-model', 'string-model'].map(id => ({ id, hidden: true, inputModalities: ['text'], supportedReasoningEfforts: [], defaultReasoningEffort: null })), nextCursor: null }",
+    "    : {};",
+    "  process.stdout.write(JSON.stringify({ id: request.id, result }) + '\\n');",
+    "});",
+    ""
+  ].join("\n"));
+  chmodSync(fakeCodex, 0o700);
+
+  const result = spawnSync(process.execPath, [runtimeFile, "app-server"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      CCR_CODEX_CHATGPT_AUTH_FILE: "",
+      CCR_CODEX_MODEL_CATALOG: JSON.stringify({
+        models: [{
+          slug: "aicodemirror/gpt-6.1-sol",
+          input_modalities: ["text", "image"],
+          supported_reasoning_efforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
+          default_reasoning_effort: "medium"
+        }, { slug: "undeclared-model" }, "string-model"]
+      }),
+      CCR_CODEX_REMOTE_FRONTEND_MODE: "app",
+      CCR_REAL_CODEX_CLI_PATH: fakeCodex,
+      CODEX_HOME: codexHome,
+      CODEXL_CODEX_CHATGPT_AUTH_FILE: "",
+      HOME: isolatedHome
+    },
+    input: JSON.stringify({ id: 1, method: "model/list", params: {} }) + "\n"
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const response = JSON.parse(result.stdout.trim());
+  const model = response.result.data.find((item) => item.id === "aicodemirror/gpt-6.1-sol");
+  assert.deepEqual(model.inputModalities, ["text", "image"]);
+  assert.deepEqual(model.input_modalities, ["text", "image"]);
+  assert.deepEqual(model.supportedReasoningEfforts, ["low", "medium", "high", "xhigh", "max", "ultra"]);
+  assert.deepEqual(model.supported_reasoning_efforts, ["low", "medium", "high", "xhigh", "max", "ultra"]);
+  assert.equal(model.defaultReasoningEffort, "medium");
+  assert.equal(model.default_reasoning_effort, "medium");
+  assert.equal(model.hidden, true);
+  for (const id of ["undeclared-model", "string-model"]) {
+    const undeclared = response.result.data.find((item) => item.id === id);
+    assert.deepEqual(undeclared.inputModalities, ["text"]);
+    assert.deepEqual(undeclared.supportedReasoningEfforts, []);
+    assert.equal(undeclared.defaultReasoningEffort, null);
+    assert.equal(undeclared.hidden, true);
+  }
+});
+
+test("catalog capability merge preserves undeclared native fields and honors explicit empty arrays", () => {
+  const merge = evaluateRuntimeFunction("mergeCatalogModelListItem", ["readArrayValue"]);
+  const native = {
+    id: "native",
+    hidden: true,
+    inputModalities: ["text", "image"],
+    supportedReasoningEfforts: [{ reasoningEffort: "high" }],
+    defaultReasoningEffort: "high"
+  };
+  assert.deepEqual(merge(native, { id: "native" }), native);
+  for (const catalog of [
+    { inputModalities: [], supportedReasoningEfforts: [], defaultReasoningEffort: null },
+    { input_modalities: [], supported_reasoning_efforts: [], default_reasoning_effort: null }
+  ]) {
+    const merged = merge(native, catalog);
+    assert.deepEqual(merged.inputModalities, []);
+    assert.deepEqual(merged.input_modalities, []);
+    assert.deepEqual(merged.supportedReasoningEfforts, []);
+    assert.deepEqual(merged.supported_reasoning_efforts, []);
+    assert.equal(merged.defaultReasoningEffort, null);
+    assert.equal(merged.hidden, true);
+    assert.equal(merged.id, "native");
+  }
+});
+
 test("Claude Code wrapper leaves the scoped profile model as an environment default", { skip: process.platform === "win32" }, () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-wrapper-"));
   const runtimeFile = writeRuntimeScript(dir);
@@ -1435,11 +1524,12 @@ function evaluateRuntimeFunction(name, dependencies = [], configDir = "") {
     extractRuntimeFunctionSource(runtime, name)
   ].join("\n");
   const fsRuntime = { existsSync, mkdirSync, readFileSync, writeFileSync };
-  return Function("path", "pathToFileURL", "fs", "CONFIG_DIR", `${source}; return ${name};`)(
+  return Function("path", "pathToFileURL", "fs", "CONFIG_DIR", "MODEL_CATALOG_CAPABILITIES", `${source}; return ${name};`)(
     path,
     pathToFileURL,
     fsRuntime,
-    configDir
+    configDir,
+    new WeakMap()
   );
 }
 
