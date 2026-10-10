@@ -82,6 +82,10 @@ Choose a provider below to get started. CCR shows what will be added before savi
     <span class="provider-import-icon-shell"><img src="../../../provider-icons/teamorouter.png" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">TeamoRouter</span><span class="provider-import-meta">Anthropic / Chat / Responses</span></span>
   </a>
+  <a class="provider-import-button provider-topxai" href="ccr://provider?name=TopxAI&amp;base_url=https%3A%2F%2Fai.topxea.com%2Fv1&amp;protocol=anthropic_messages&amp;source=https%3A%2F%2Fai.topxea.com%2F" aria-label="Import TopxAI provider">
+    <span class="provider-import-icon-shell"><img src="../../../provider-icons/topxai.png" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">TopxAI</span><span class="provider-import-meta">Anthropic / Chat / Responses</span></span>
+  </a>
   <a class="provider-import-button provider-unity2" href="ccr://provider?name=Unity2.Ai&amp;base_url=https%3A%2F%2Funity2.ai%2Fv1&amp;protocol=openai_chat_completions&amp;source=https%3A%2F%2Funity2.ai%2Fregister%3Fsource%3Dclaudecoderouter" aria-label="Import Unity2.Ai provider">
     <span class="provider-import-icon-shell"><img src="../../../provider-icons/unity2.jpg" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">Unity2.Ai</span><span class="provider-import-meta">OpenAI compatible gateway</span></span>
