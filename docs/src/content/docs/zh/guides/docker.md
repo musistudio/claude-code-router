@@ -31,7 +31,7 @@ Nginx 对外提供：
 
 | 路径 | 用途 |
 | --- | --- |
-| `/`、`/pages/home/index.html` | 管理 UI。根路径会跳转到带管理 Token 的页面。 |
+| `/`、`/pages/home/index.html` | 管理 UI。根路径会跳转到管理页，并保留请求中已有的 `ccr_web_token` 参数；Nginx 不会自行添加 Token。 |
 | `/api/ccr/rpc` | 需要管理 Token 的管理 RPC。 |
 | `/health` | 模型网关健康状态；容器或 UI 状态不在此接口反映。 |
 | `/v1/*`、`/v1beta/*`、`/messages`、`/chat/completions`、`/responses`、`/interactions`、`/mcp/*` | 模型和 MCP 网关接口。 |
@@ -45,7 +45,7 @@ npm run docker:compose:up
 docker compose logs -f ccr
 ```
 
-打开 <http://127.0.0.1:3458>。新数据卷上管理 UI 会立即可用；模型网关要在添加供应商和模型后才能正常启动。
+打开容器日志中打印的管理地址 `http://127.0.0.1:3458/?ccr_web_token=<token>`（仅在 Token 自动生成时打印；自行设置了 `CCR_WEB_AUTH_TOKEN` 时，请自行拼到地址后）。新数据卷上管理 UI 会立即可用；模型网关要在添加供应商和模型后才能正常启动。
 
 这个 npm Compose 脚本会在构建前准备本机的 `../../next-ai/gateway` checkout，让镜像使用支持插件的 ai-gateway runtime。如果直接运行 `docker compose up -d --build`，请先执行 `npm run docker:prepare-gateway`。`npm run docker:build` 也会自动完成这一步。
 
@@ -104,7 +104,7 @@ docker run -d \
 | CCR 客户端 API Key | 模型网关请求鉴权 | UI 的 **API 密钥** 页面 |
 | 上游供应商凭据 | CCR 调用模型供应商 | UI 的 **供应商** 页面 |
 
-不设置 `CCR_WEB_AUTH_TOKEN` 时，EntryPoint 每次启动容器都会生成新的随机 Token。打开根地址仍可工作，因为 Nginx 会跳转到包含当前 Token 的 URL；但持久部署和远程部署应固定一个足够长的强 Token。
+不设置 `CCR_WEB_AUTH_TOKEN` 时，EntryPoint 每次启动容器都会生成新的随机 Token，并把管理地址在容器日志中打印一次。Nginx 不会向客户端返回 Token：不带 Token 打开根地址只能加载页面，所有管理请求都会返回 `401`，需要在 URL 中带上 Token。页面会在当前浏览器标签页会话内保留它。持久部署和远程部署应固定一个足够长的强 Token。
 
 不要把 Token 直接写进 Shell 历史。可以创建不进入版本控制的环境文件：
 
@@ -258,7 +258,7 @@ docker compose config
 
 ### 根地址返回 `302`
 
-这是正常行为。Nginx 正在把根地址跳转到带 URL 编码管理 Token 的页面。
+这是正常行为。Nginx 把根地址跳转到管理页并保留查询参数，因此你提供的 `ccr_web_token` 不会丢失；Nginx 自身不会添加 Token。
 
 ### `/health` 返回 `502`
 
@@ -266,7 +266,7 @@ docker compose config
 
 ### 修改 Token 后 UI 返回 `401`
 
-重新打开不带参数的根地址，让 Nginx 生成包含新 Token 的 URL；关闭仍使用旧 `ccr_web_token` 的标签页和书签。
+用当前 Token 重新打开 `/?ccr_web_token=<token>`（自动生成的 Token 可在 `docker compose logs ccr` 中查看）；关闭仍使用旧 `ccr_web_token` 的标签页和书签。
 
 ### 客户端仍使用旧端口或域名
 

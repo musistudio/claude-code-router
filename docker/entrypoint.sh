@@ -12,8 +12,10 @@ CCR_PUBLIC_PORT="${CCR_PUBLIC_PORT:-3458}"
 CCR_PUBLIC_BASE_URL="${CCR_PUBLIC_BASE_URL:-http://${CCR_PUBLIC_HOST}:${CCR_PUBLIC_PORT}}"
 CCR_NO_GATEWAY="${CCR_NO_GATEWAY:-0}"
 
+CCR_WEB_AUTH_TOKEN_GENERATED=0
 if [ -z "${CCR_WEB_AUTH_TOKEN:-}" ]; then
   CCR_WEB_AUTH_TOKEN="$(node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('base64url'))")"
+  CCR_WEB_AUTH_TOKEN_GENERATED=1
 fi
 CCR_WEB_AUTH_TOKEN_QUERY="$(node -e "process.stdout.write(encodeURIComponent(process.argv[1] || ''))" "${CCR_WEB_AUTH_TOKEN}")"
 
@@ -141,14 +143,13 @@ server {
 
   client_max_body_size 8m;
 
+  # The management token is never put in a response. A token the user supplies
+  # in the query string is passed on to the page, which reads it from the URL.
   location = / {
-    return 302 /pages/home/index.html?ccr_web_token=${CCR_WEB_AUTH_TOKEN_QUERY};
+    return 302 /pages/home/index.html\$is_args\$args;
   }
 
   location = /pages/home/index.html {
-    if (\$arg_ccr_web_token = "") {
-      return 302 /pages/home/index.html?ccr_web_token=${CCR_WEB_AUTH_TOKEN_QUERY};
-    }
     try_files /pages/home/index.html =404;
   }
 
@@ -191,6 +192,11 @@ server {
   }
 }
 EOF
+
+# A generated token is only reachable through the container logs.
+if [ "${CCR_WEB_AUTH_TOKEN_GENERATED}" = "1" ]; then
+  echo "CCR management UI: ${CCR_PUBLIC_BASE_URL%/}/?ccr_web_token=${CCR_WEB_AUTH_TOKEN_QUERY}"
+fi
 
 if [ "$#" -gt 0 ]; then
   exec "$@"
