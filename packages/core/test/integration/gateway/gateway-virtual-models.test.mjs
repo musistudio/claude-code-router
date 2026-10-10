@@ -833,6 +833,68 @@ test("gateway prefetches Serply Fusion web search records", async () => {
   }
 });
 
+test("gateway prefetches Sofya Fusion web search records", async () => {
+  const requests = [];
+  const endpoint = "http://127.0.0.1/sofya-search";
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    requests.push({ body: JSON.parse(String(init.body)), headers: new Headers(init.headers), method: init.method, url: String(input) });
+    return new Response(JSON.stringify({
+      results: [
+        { content: "", description: "First body", title: "First", url: "https://example.test/one" },
+        { content: "", description: "Second body", title: "Second", url: "https://example.test/two" },
+        { content: "", description: "Third body", title: "Third", url: "https://example.test/three" }
+      ]
+    }), { headers: { "content-type": "application/json" }, status: 200 });
+  };
+  try {
+    const config = {
+      Providers: [],
+      Router: { fallback: { mode: "off", models: [], retryCount: 0 } },
+      gateway: {},
+      virtualModelProfiles: [
+        {
+          displayName: "Research",
+          enabled: true,
+          id: "research",
+          key: "research",
+          match: { exactAliases: ["Fusion/research"], prefixes: [], suffixes: [] },
+          metadata: {
+            fusionWebSearch: {
+              env: { SOFYA_API_KEY: "sofya-key", SOFYA_SEARCH_ENDPOINT: endpoint },
+              provider: "sofya",
+              resultCount: 2,
+              toolName: "research_web_search"
+            }
+          }
+        }
+      ]
+    };
+
+    const records = await selectHostedWebSearchProtocolRecords({
+      protocol: "anthropic_messages",
+      queryHint: "search query",
+      requestId: "req-1",
+      sinceMs: Date.now() - 1000,
+      toolName: "research_web_search"
+    }, undefined, config);
+
+    assert.equal(records.length, 1);
+    assert.equal(records[0].engine, "sofya");
+    assert.equal(records[0].searchUrl, "https://sofya.co");
+    assert.deepEqual(records[0].results, [
+      { snippet: "First body", title: "First", url: "https://example.test/one" },
+      { snippet: "Second body", title: "Second", url: "https://example.test/two" }
+    ]);
+    assert.equal(requests[0].url, endpoint);
+    assert.equal(requests[0].method, "POST");
+    assert.deepEqual(requests[0].body, { max_results: 2, query: "search query", search_depth: "snippets" });
+    assert.equal(requests[0].headers.get("authorization"), "Bearer sofya-key");
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test("gateway config does not create fallback tools for MCP-backed Fusion tools", () => {
   const profiles = [
     {
