@@ -48,6 +48,7 @@ const presetCatalogProviderIds: Record<string, string[]> = {
   nvidia: ["nvidia"],
   openai: ["openai"],
   openrouter: ["openrouter"],
+  requesty: ["requesty"],
   siliconflow: ["siliconflow-cn"],
   "zai-global-coding": ["zai-coding-plan"],
   "zai-global-general": ["zai"],
