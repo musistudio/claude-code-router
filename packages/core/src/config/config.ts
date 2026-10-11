@@ -3650,6 +3650,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
           ...(appPath ? { appPath } : {}),
           ...(botConfigId ? { botConfigId } : {}),
           ...(botGateway ? { botGateway } : {}),
+          ...((item.claudeDefaultModelList ?? item.claude_default_model_list) === true ? { claudeDefaultModelList: true } : {}),
           ...(claudeSettings ? { claudeSettings } : {}),
           enabled,
           env: claudeCodeProfileEnv(env),

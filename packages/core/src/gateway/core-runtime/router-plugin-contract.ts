@@ -2,6 +2,7 @@ import type { RouterFallbackConfig } from "@ccr/core/contracts/app";
 
 export const ccrRouterPluginKey = "ccr-router";
 export const ccrRouterRequestTransformKey = "ccr-router-request-transform";
+export const ccrAnthropicEffortRequestTransformKey = "ccr-anthropic-effort-request-transform";
 export const ccrCodexBridgeRequestTransformKey = "ccr-codex-bridge-request-transform";
 export const ccrCodexBridgeResponseHookKey = "ccr-codex-bridge-response-hook";
 export const ccrCodexBridgeStreamHookKey = "ccr-codex-bridge-stream-hook";
@@ -40,9 +41,13 @@ export const ccrRouteTokenCountHeader = "x-ccr-route-token-count";
 export const ccrCodexApplyPatchBridgeHeader = "x-ccr-codex-apply-patch-bridge";
 export const ccrCodexMultiAgentBridgeHeader = "x-ccr-codex-multi-agent-bridge";
 export const ccrOpenRouterDiscountRequestIdHeader = "x-ccr-openrouter-discount-request-id";
+export const ccrClientVisibleModelHeader = "x-ccr-client-visible-model";
+export const ccrClientVisibleModelStreamHookKey = "ccr-client-visible-model-stream";
+export const ccrClientVisibleModelResponseHookKey = "ccr-client-visible-model-response";
 export const ccrRouteHeaderNames = [
   ccrCodexApplyPatchBridgeHeader,
   ccrCodexMultiAgentBridgeHeader,
+  ccrClientVisibleModelHeader,
   ccrOpenRouterDiscountRequestIdHeader,
   ccrRouteDiagnosticsHeader,
   ccrRouteFallbackHeader,

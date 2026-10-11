@@ -7,6 +7,7 @@ import { BROWSER_AUTOMATION_MCP_PATH, browserAutomationMcpEnabled } from "@ccr/c
 import { pluginService } from "@ccr/core/plugins/service";
 import { ClaudeCodeRouterPlugin } from "@ccr/core/gateway/claude-code-router-plugin";
 import { createClaudeCliBootstrapResponse, shouldServeClaudeCliBootstrapResponse } from "@ccr/core/gateway/features/model-discovery";
+import { isClaudeDefaultModelListEnabled, resolveClaudeDefaultTierTarget } from "@ccr/core/gateway/features/claude-default-models";
 import {
   contextArchiveConfigForApiKey,
   handleContextArchiveMcpRequest,
@@ -280,7 +281,10 @@ export class GatewayHttpRequestHandler {
         if (!reserveApiKeyLimits(authorization.apiKey, request, response, requestBody)) {
           return;
         }
-        sendJson(response, 200, this.plugin.countTokens(body));
+        const countTokensTarget = isClaudeDefaultModelListEnabled(profile)
+          ? resolveClaudeDefaultTierTarget(profile, requestedModel)
+          : undefined;
+        sendJson(response, 200, this.plugin.countTokens(countTokensTarget ? { ...body, model: countTokensTarget } : body));
         return;
       }
 

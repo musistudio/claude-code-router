@@ -7,6 +7,7 @@ import type { ApiKeyConfig, AppConfig, ProfileConfig, ProviderModelMetadata, Vir
 import { buildClaudeAppGatewayModelRoutes, resolveClaudeAppGatewayRouteModel } from "@ccr/core/agents/claude-app/gateway-routes";
 import { modelRegistryForConfig, normalizeRouteSelector, parseProviderModelSelector } from "@ccr/core/routing/model-registry";
 import { findModelCatalogEntry, findProviderModelCatalogEntry, modelCatalogMaxInputTokens, modelCatalogMaxOutputTokens, readCatalogCapability, type ModelCatalogEntry } from "@ccr/core/gateway/model-catalog";
+import { shouldApplyGatewayRouting } from "@ccr/core/routing/protocol-endpoints";
 import { isRecord, stringValue } from "@ccr/core/gateway/internal/value";
 import { fusionModelSelector } from "@ccr/core/mcp/fusion-config";
 import { readHeader } from "@ccr/core/gateway/http/io";
@@ -18,6 +19,12 @@ import { contextArchiveConfigForApiKey, contextArchiveMcpEnabled } from "@ccr/co
 import { resolveUsageModelAttribution } from "@ccr/core/usage/model-attribution";
 import { filterModelIdsForProfile, isModelAllowedForProfile, profileForApiKey } from "@ccr/core/profiles/model-allowlist";
 import { getProviderCatalogModels } from "@ccr/core/providers/model-catalog";
+import {
+  claudeDefaultModelTiers,
+  findClaudeDefaultModelTier,
+  isClaudeDefaultModelListEnabled,
+  resolveClaudeDefaultTierTarget
+} from "@ccr/core/gateway/features/claude-default-models";
 
 
 export function shouldServeGatewayModelsResponse(method: string, path: string): boolean {
@@ -37,7 +44,8 @@ export function prepareClaudeCodeDiscoveredModelRequest(
   headers: IncomingHttpHeaders,
   method: string,
   path: string,
-  body: Buffer | undefined
+  body: Buffer | undefined,
+  options: { profile?: ProfileConfig } = {}
 ): { body: Buffer; diagnostic: string } | undefined {
   if (
     (method || "GET").toUpperCase() !== "POST" ||
@@ -49,6 +57,11 @@ export function prepareClaudeCodeDiscoveredModelRequest(
 
   const parsedBody = parseJsonObjectSafe(body);
   const model = stringValue(parsedBody?.model);
+  // Default model list: tier names are rewritten to the profile slots by the
+  // app-level tier rewrite; do not strip their claude- prefix here.
+  if (isClaudeDefaultModelListEnabled(options.profile) && findClaudeDefaultModelTier(model)) {
+    return undefined;
+  }
   const rewrittenModel = resolveClaudeCodeDiscoveredModelId(model, config);
   if (!parsedBody || !rewrittenModel || rewrittenModel === model) {
     return undefined;
@@ -101,10 +114,55 @@ export function prepareClaudeAppDiscoveredModelRequest(
 }
 
 
+/**
+ * Default model list: rewrite tier model names to the profile slot targets on
+ * every protocol endpoint (/v1/messages, /v1/chat/completions, /v1/responses).
+ * Runs in the compatibility pipeline; the core runtime router plugin applies
+ * the same mapping through its beforeRouting transform in single-runtime
+ * topology.
+ */
+export function prepareClaudeDefaultTierModelRequest(
+  method: string,
+  path: string,
+  body: Buffer | undefined,
+  options: { profile?: ProfileConfig } = {}
+): { body: Buffer; diagnostic: string; routedModel: string } | undefined {
+  if ((method || "GET").toUpperCase() !== "POST" || !shouldApplyGatewayRouting(method, path)) {
+    return undefined;
+  }
+  if (!isClaudeDefaultModelListEnabled(options.profile)) {
+    return undefined;
+  }
+  const parsedBody = parseJsonObjectSafe(body);
+  const model = stringValue(parsedBody?.model);
+  const normalizedModel = normalizeRouteSelector(model);
+  if (!parsedBody || !normalizedModel) {
+    return undefined;
+  }
+  const tierTarget = resolveClaudeDefaultTierTarget(options.profile, normalizedModel);
+  if (!tierTarget || tierTarget.toLowerCase() === normalizedModel.toLowerCase()) {
+    return undefined;
+  }
+  return {
+    body: serializeJsonBodyWithModel(parsedBody, tierTarget),
+    diagnostic: `${model}->${tierTarget} (default model list)`,
+    routedModel: tierTarget
+  };
+}
+
+
 export function createGatewayModelsResponse(config: AppConfig, headers: IncomingHttpHeaders, apiKey?: ApiKeyConfig): Record<string, unknown> {
   const contextArchiveConfig = contextArchiveConfigForApiKey(config, apiKey);
   const contextArchiveCompact = Boolean(contextArchiveConfig && contextArchiveMcpEnabled(contextArchiveConfig));
   const profile = profileForApiKey(config, apiKey);
+  if (isClaudeDefaultModelListEnabled(profile)) {
+    if (isClaudeAppApiKey(apiKey) || isClaudeCodeUserAgent(headers)) {
+      const claudeApp = isClaudeAppUserAgent(headers) ||
+        (isClaudeAppApiKey(apiKey) && !isClaudeCodeUserAgent(headers));
+      return createClaudeDefaultModelsResponse(config, { claudeApp, contextArchiveCompact, profile });
+    }
+    return createOpenAiCompatibleClaudeDefaultModelsResponse();
+  }
   if (isClaudeAppApiKey(apiKey)) {
     return createClaudeAppGatewayModelsResponse(config, { contextArchiveCompact, profile });
   }
@@ -121,6 +179,21 @@ export function createClaudeCliBootstrapResponse(config: AppConfig, apiKey?: Api
 
 
 function createClaudeCliBootstrapPayload(config: AppConfig, profile?: ProfileConfig): Record<string, unknown> {
+  if (isClaudeDefaultModelListEnabled(profile)) {
+    // Launcher mode still sends the raw slot values as the CLI model, so keep
+    // the route-based windows and layer the tier-name windows on top.
+    const windows = {
+      ...createClaudeCliAutoCompactWindows(config, profile),
+      ...createClaudeDefaultTierAutoCompactWindows(config, profile)
+    };
+    return {
+      additional_model_options: createClaudeDefaultCliAdditionalModelOptions(config, profile),
+      auto_compact_windows: windows,
+      client_data: {
+        rowan_thicket: { ...windows }
+      }
+    };
+  }
   const windows = createClaudeCliAutoCompactWindows(config, profile);
   return {
     additional_model_options: createClaudeCliAdditionalModelOptions(config, profile),
@@ -137,10 +210,15 @@ export function claudeClientDiscoveryPayloads(
   options: { contextArchiveCompact?: boolean; profile?: ProfileConfig } = {}
 ): Record<string, unknown> {
   const { contextArchiveCompact, profile } = options;
+  const claudeDefaultModelList = isClaudeDefaultModelListEnabled(profile);
   return {
     bootstrap: createClaudeCliBootstrapPayload(config, profile),
-    claudeApp: createClaudeAppGatewayModelsResponse(config, { contextArchiveCompact, profile }),
-    claudeCode: createClaudeAppGatewayModelsResponse(config, { claudeCode: true, contextArchiveCompact, profile })
+    claudeApp: claudeDefaultModelList
+      ? createClaudeDefaultModelsResponse(config, { claudeApp: true, contextArchiveCompact, profile })
+      : createClaudeAppGatewayModelsResponse(config, { contextArchiveCompact, profile }),
+    claudeCode: claudeDefaultModelList
+      ? createClaudeDefaultModelsResponse(config, { contextArchiveCompact, profile })
+      : createClaudeAppGatewayModelsResponse(config, { claudeCode: true, contextArchiveCompact, profile })
   };
 }
 
@@ -242,6 +320,139 @@ function createOpenAICompatibleGatewayModelsResponse(config: AppConfig, profile?
     object: "list",
     data
   };
+}
+
+
+const claudeDefaultModelFallbackMaxOutputTokens = 128_000;
+
+type ClaudeDefaultModelTierEntry = {
+  discovery: { catalogEntry?: ModelCatalogEntry; metadata?: ProviderModelMetadata };
+  maxInputTokens: number;
+  maxOutputTokens: number;
+};
+
+function claudeDefaultTierEntry(
+  config: AppConfig,
+  profile: ProfileConfig | undefined,
+  tier: (typeof claudeDefaultModelTiers)[number]
+): ClaudeDefaultModelTierEntry {
+  // Advertise the limits of the model the tier actually routes to; fall back
+  // to the anthropic catalog entry and finally the tier constants when the
+  // routing target cannot be resolved.
+  const target = resolveClaudeDefaultTierTarget(profile, tier.id);
+  const discovery = target
+    ? providerModelDiscoveryForSelector(config, target)
+    : { catalogEntry: findModelCatalogEntry(`anthropic/${tier.model}`) };
+  const maxInputTokens = claudeGatewayModelContextWindow(discovery.catalogEntry, tier.oneMillionContext, discovery.metadata);
+  return {
+    discovery,
+    maxInputTokens: maxInputTokens > 0 ? maxInputTokens : tier.maxInputTokens,
+    maxOutputTokens: positiveInteger(claudeGatewayModelMaxOutputTokens(discovery.catalogEntry, discovery.metadata)) ??
+      claudeDefaultModelFallbackMaxOutputTokens
+  };
+}
+
+function createClaudeDefaultModelsResponse(
+  config: AppConfig,
+  options: { claudeApp?: boolean; contextArchiveCompact?: boolean; profile?: ProfileConfig } = {}
+): Record<string, unknown> {
+  const data = claudeDefaultModelTiers.flatMap((tier) => {
+    if (!resolveClaudeDefaultTierTarget(options.profile, tier.id)) {
+      return [];
+    }
+    const entry = claudeDefaultTierEntry(config, options.profile, tier);
+    return [{
+      id: tier.id,
+      capabilities: createClaudeCodeModelCapabilities(entry.discovery.catalogEntry, {
+        contextArchiveCompact: options.contextArchiveCompact,
+        maxInputTokens: entry.maxInputTokens,
+        oneMillionContext: tier.oneMillionContext
+      }),
+      created_at: "1970-01-01T00:00:00Z",
+      // Desktop uses its shorter built-in tier descriptions when this is absent.
+      ...(options.claudeApp ? {} : { description: tier.description }),
+      display_name: tier.displayName,
+      max_input_tokens: entry.maxInputTokens,
+      // Desktop otherwise infers an extra [1m] entry from the target's input limit.
+      ...(tier.oneMillionContext ? {} : { supports_1m: false }),
+      max_tokens: entry.maxOutputTokens,
+      type: "model"
+    }];
+  });
+
+  return {
+    data,
+    first_id: data[0]?.id ?? null,
+    has_more: false,
+    last_id: data[data.length - 1]?.id ?? null
+  };
+}
+
+
+function createOpenAiCompatibleClaudeDefaultModelsResponse(): Record<string, unknown> {
+  const data = claudeDefaultModelTiers.map((tier) => ({
+    id: tier.id,
+    object: "model",
+    created: 0,
+    owned_by: "anthropic",
+    type: "model",
+    description: tier.description,
+    display_name: tier.displayName
+  }));
+
+  return {
+    object: "list",
+    data
+  };
+}
+
+
+function createClaudeDefaultCliAdditionalModelOptions(
+  config: AppConfig,
+  profile?: ProfileConfig
+): ClaudeCliAdditionalModelOption[] {
+  return claudeDefaultModelTiers.flatMap((tier) => {
+    if (!resolveClaudeDefaultTierTarget(profile, tier.id)) {
+      return [];
+    }
+    const entry = claudeDefaultTierEntry(config, profile, tier);
+    return [{
+      capabilities: createClaudeCodeModelCapabilities(entry.discovery.catalogEntry, {
+        maxInputTokens: entry.maxInputTokens,
+        oneMillionContext: tier.oneMillionContext
+      }),
+      created_at: "1970-01-01T00:00:00Z",
+      description: tier.description,
+      display_name: tier.displayName,
+      id: tier.id,
+      max_input_tokens: entry.maxInputTokens,
+      max_tokens: entry.maxOutputTokens,
+      model: tier.id,
+      name: tier.displayName,
+      type: "model"
+    }];
+  });
+}
+
+
+function createClaudeDefaultTierAutoCompactWindows(config: AppConfig, profile?: ProfileConfig): Record<string, number> {
+  const windows: Record<string, number> = {};
+  for (const tier of claudeDefaultModelTiers) {
+    if (!resolveClaudeDefaultTierTarget(profile, tier.id)) {
+      continue;
+    }
+    // Derive the window from the resolved slot target so bootstrap agrees
+    // with the advertised max_input_tokens instead of the tier constant.
+    const entry = claudeDefaultTierEntry(config, profile, tier);
+    const compactWindow = claudeCliAutoCompactWindow(entry.maxInputTokens);
+    if (!compactWindow) {
+      continue;
+    }
+    for (const id of uniqueStrings([tier.id, tier.model])) {
+      assignClaudeCliAutoCompactWindow(windows, id, compactWindow);
+    }
+  }
+  return windows;
 }
 
 
@@ -996,4 +1207,15 @@ function isClaudeCodeUserAgent(headers: IncomingHttpHeaders): boolean {
 function isClaudeAppApiKey(apiKey: ApiKeyConfig | undefined): boolean {
   const name = apiKey?.name?.trim().toLowerCase();
   return name === "claude app";
+}
+
+
+function isClaudeAppUserAgent(headers: IncomingHttpHeaders): boolean {
+  const userAgent = readHeader(headers["user-agent"])?.toLowerCase();
+  // Electron sends a Claude/<version> product token; embedded Code sessions
+  // can instead identify their Desktop entrypoint in a claude-cli user agent.
+  return Boolean(userAgent && (
+    /(?:^|\s)claude(?:[- ]desktop)?\//.test(userAgent) ||
+    userAgent.includes("claude-desktop")
+  ));
 }
