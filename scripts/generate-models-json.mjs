@@ -31,6 +31,24 @@ const sources = {
 const sourceOrder = ["models.dev", "litellm", "openrouter"];
 const support1MContextThreshold = 1_000_000;
 const schemaVersion = 2;
+const canonicalModelOverrides = new Map([
+  ["minimax/minimax-m3", {
+    capabilities: { adaptiveThinking: true, attachments: true, imageInput: true, noneReasoningEffort: true, pdfInput: false, reasoning: true, supports1MContext: true, videoInput: true },
+    contextTokens: 1_000_000,
+    displayName: "MiniMax-M3",
+    inputModalities: ["image", "text", "video"],
+    model: "MiniMax-M3",
+    pricing: { cacheRead: 0.12, input: 0.6, output: 2.4 }
+  }],
+  ["minimax/minimax-m2.7", {
+    capabilities: { adaptiveThinking: false, attachments: false, imageInput: false, noneReasoningEffort: false, pdfInput: false, reasoning: true, supports1MContext: false, videoInput: false },
+    contextTokens: 204_800,
+    displayName: "MiniMax-M2.7",
+    inputModalities: ["text"],
+    model: "MiniMax-M2.7",
+    pricing: { cacheRead: 0.06, cacheWrite: 0.375, input: 0.3, output: 1.2 }
+  }]
+]);
 const fetchAttempts = 3;
 const fetchRetryDelayMs = 500;
 const fetchTimeoutMs = 15_000;
@@ -123,7 +141,7 @@ async function main() {
   const providerModelRecords = Array.from(entries.values())
     .map(finalizeEntry)
     .sort((a, b) => a.id.localeCompare(b.id));
-  const models = dedupeModels(providerModelRecords);
+  const models = applyCanonicalModelOverrides(dedupeModels(providerModelRecords));
   assertUniqueModelCatalog(models);
 
   const payload = {
@@ -456,6 +474,46 @@ function dedupeModels(providerModelRecords) {
   return Array.from(groups.values())
     .map(({ identity, records }) => mergeDedupedModel(identity, records))
     .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function applyCanonicalModelOverrides(models) {
+  return models.map((model) => {
+    const override = canonicalModelOverrides.get(model.id);
+    if (!override) return model;
+
+    const officialOffers = [
+      ["minimax", "https://platform.minimax.io/docs/api-reference/api-overview"],
+      ["minimax-cn", "https://platform.minimaxi.com/docs/api-reference/api-overview"]
+    ].map(([provider, sourceUrl]) => ({
+      model: override.model,
+      per1MTokens: override.pricing,
+      provider,
+      source: "official",
+      sourceUnit: "usd_per_1m_tokens",
+      sourceUrl
+    }));
+    const retainedOffers = (model.pricing?.offers ?? []).filter((offer) =>
+      !["minimax", "minimax-cn"].includes(offer.provider));
+
+    return {
+      ...model,
+      capabilities: { ...model.capabilities, ...override.capabilities },
+      displayName: override.displayName,
+      limits: {
+        ...model.limits,
+        contextTokens: override.contextTokens,
+        inputTokens: override.contextTokens,
+        maxTokens: override.contextTokens,
+        supports1MContext: override.capabilities.supports1MContext
+      },
+      modalities: { ...model.modalities, input: override.inputModalities, output: ["text"] },
+      pricing: {
+        currency: "USD",
+        normalizedUnit: "per1MTokens values are USD per 1,000,000 tokens; non-token values keep the unit named by their object key.",
+        offers: [...officialOffers, ...retainedOffers]
+      }
+    };
+  });
 }
 
 function assertUniqueModelCatalog(models) {
