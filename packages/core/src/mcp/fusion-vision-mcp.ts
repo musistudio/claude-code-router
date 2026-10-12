@@ -34,7 +34,7 @@ type ToolCallResult = {
 };
 
 type FusionBuiltinToolKind = "vision" | "web_search";
-type SearchProvider = "auto" | "bing" | "brave" | "exa" | "google_cse" | "serpapi" | "serper" | "serply" | "tavily";
+type SearchProvider = "auto" | "bing" | "brave" | "exa" | "google_cse" | "serpapi" | "serper" | "serply" | "sofya" | "tavily";
 type SearchInput = {
   count: number;
   country?: string;
@@ -683,6 +683,7 @@ async function searchWithProvider(
   if (provider === "serper") return searchSerper(input);
   if (provider === "serpapi") return searchSerpApi(input);
   if (provider === "serply") return searchSerply(input);
+  if (provider === "sofya") return searchSofya(input);
   if (provider === "tavily") return searchTavily(input);
   return searchExa(input);
 }
@@ -785,6 +786,29 @@ async function searchSerply(input: SearchInput): Promise<SearchResult[]> {
   });
   const items = isRecord(raw) && Array.isArray(raw.results) ? raw.results.slice(0, input.count) : [];
   return items.map((item) => normalizeSearchResult(item, "title", "link", "description")).filter(isSearchResult);
+}
+
+async function searchSofya(input: SearchInput): Promise<SearchResult[]> {
+  const apiKey = requireEnv("SOFYA_API_KEY", "Sofya API key");
+  const freshness = input.freshness === "day" || input.freshness === "week" || input.freshness === "month" ? input.freshness : undefined;
+  const raw = await fetchJson(env("SOFYA_SEARCH_ENDPOINT") || "https://sofya.co/v1/search", {
+    body: JSON.stringify({
+      ...(input.excludeDomains.length ? { exclude_domains: input.excludeDomains.slice(0, 10) } : {}),
+      ...(freshness ? { freshness } : {}),
+      ...(input.includeDomains.length ? { include_domains: input.includeDomains.slice(0, 10) } : {}),
+      max_results: Math.min(input.count, 20),
+      query: input.prompt,
+      search_depth: "snippets"
+    }),
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      "content-type": "application/json"
+    },
+    method: "POST",
+    signal: AbortSignal.timeout(input.timeoutMs)
+  });
+  const items = isRecord(raw) && Array.isArray(raw.results) ? raw.results.slice(0, input.count) : [];
+  return items.map((item) => normalizeSearchResult(item, "title", "url", "description")).filter(isSearchResult);
 }
 
 async function searchTavily(input: SearchInput): Promise<SearchResult[]> {
@@ -1096,7 +1120,7 @@ function resolveSearchProvider(): Exclude<SearchProvider, "auto"> {
   if (configured !== "auto") {
     return configured;
   }
-  const candidates: Array<Exclude<SearchProvider, "auto">> = ["brave", "bing", "google_cse", "serper", "serpapi", "serply", "tavily", "exa"];
+  const candidates: Array<Exclude<SearchProvider, "auto">> = ["brave", "bing", "google_cse", "serper", "serpapi", "serply", "tavily", "exa", "sofya"];
   const provider = candidates.find(searchProviderIsConfigured);
   if (!provider) {
     throw new Error("No search provider configured. Set SEARCH_PROVIDER and its API key.");
@@ -1113,6 +1137,7 @@ function parseSearchProvider(value: string | undefined): SearchProvider | undefi
     value === "serper" ||
     value === "serpapi" ||
     value === "serply" ||
+    value === "sofya" ||
     value === "tavily" ||
     value === "exa"
   ) {
@@ -1128,6 +1153,7 @@ function searchProviderIsConfigured(provider: Exclude<SearchProvider, "auto">): 
   if (provider === "serper") return Boolean(env("SERPER_API_KEY"));
   if (provider === "serpapi") return Boolean(env("SERPAPI_API_KEY"));
   if (provider === "serply") return Boolean(env("SERPLY_API_KEY"));
+  if (provider === "sofya") return Boolean(env("SOFYA_API_KEY"));
   if (provider === "tavily") return Boolean(env("TAVILY_API_KEY"));
   return Boolean(env("EXA_API_KEY"));
 }

@@ -531,6 +531,8 @@ async function runConfiguredWebSearch(input: WebSearchProviderInput): Promise<We
       return searchSerpApi(input);
     case "serply":
       return searchSerply(input);
+    case "sofya":
+      return searchSofya(input);
     case "tavily":
       return searchTavily(input);
     case "exa":
@@ -645,6 +647,29 @@ async function searchSerply(input: WebSearchProviderInput): Promise<WebSearchPro
   return items.map((item) => webSearchResult(item, "title", "link", "description")).filter(isWebSearchProviderResult);
 }
 
+async function searchSofya(input: WebSearchProviderInput): Promise<WebSearchProviderResult[]> {
+  const apiKey = searchEnv(input, "SOFYA_API_KEY");
+  if (!apiKey) {
+    console.warn("[gateway] Sofya web search API key is not configured.");
+    return [];
+  }
+  const raw = await fetchJson(searchEnv(input, "SOFYA_SEARCH_ENDPOINT") || "https://sofya.co/v1/search", {
+    body: JSON.stringify({
+      max_results: Math.min(input.count, 20),
+      query: input.query,
+      search_depth: "snippets"
+    }),
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      "content-type": "application/json"
+    },
+    method: "POST",
+    signal: AbortSignal.timeout(input.timeoutMs)
+  });
+  const items = isRecord(raw) && Array.isArray(raw.results) ? raw.results.slice(0, input.count) : [];
+  return items.map((item) => webSearchResult(item, "title", "url", "description")).filter(isWebSearchProviderResult);
+}
+
 async function searchTavily(input: WebSearchProviderInput): Promise<WebSearchProviderResult[]> {
   const apiKey = searchEnv(input, "TAVILY_API_KEY");
   if (!apiKey) {
@@ -736,6 +761,8 @@ function searchProviderUrl(provider: VirtualModelFusionWebSearchProvider, query:
       return "https://serpapi.com";
     case "serply":
       return "https://serply.io";
+    case "sofya":
+      return "https://sofya.co";
     case "tavily":
       return "https://tavily.com";
     case "exa":
