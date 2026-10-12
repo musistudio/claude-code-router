@@ -78,6 +78,10 @@ Choose a provider below to get started. CCR shows what will be added before savi
     <span class="provider-import-icon-shell"><img src="../../../provider-icons/runapi.jpg" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">RunAPI</span><span class="provider-import-meta">Responses / Chat Completions</span></span>
   </a>
+  <a class="provider-import-button provider-daoxe" href="ccr://provider?name=DaoXE&amp;base_url=https%3A%2F%2Fdaoxe.com&amp;protocol=anthropic_messages&amp;source=https%3A%2F%2Fdaoxe.com%2F" aria-label="Import DaoXE provider">
+    <span class="provider-import-icon-shell"><img src="../../../provider-icons/daoxe.png" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">DaoXE</span><span class="provider-import-meta">Anthropic / Chat / Responses · multi-protocol</span></span>
+  </a>
   <a class="provider-import-button provider-teamorouter" href="ccr://provider?name=TeamoRouter&amp;base_url=https%3A%2F%2Fapi.teamorouter.com&amp;protocol=anthropic_messages&amp;source=https%3A%2F%2Fteamorouter.com%2F" aria-label="Import TeamoRouter provider">
     <span class="provider-import-icon-shell"><img src="../../../provider-icons/teamorouter.png" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">TeamoRouter</span><span class="provider-import-meta">Anthropic / Chat / Responses</span></span>
