@@ -14,6 +14,8 @@ import { filterModelIdsByAllowedModels } from "@ccr/core/profiles/model-allowlis
 import { codexBaseInstructions } from "@ccr/core/agents/codex/base-instructions";
 
 const fusionModelProviderName = "Fusion";
+const sakanaApiHostname = "api.sakana.ai";
+const sakanaOneMillionContextModels = new Set(["fugu", "fugu-ultra"]);
 const codexDefaultContextWindow = 128_000;
 const codexEffectiveContextWindowPercent = 95;
 const codexFastModeAdditionalSpeedTiers = ["fast"];
@@ -155,7 +157,7 @@ function codexModelCatalogItem(
   config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>
 ): CodexModelCatalogItem {
   const profile = codexModelCapabilityProfile(model, config);
-  const contextWindow = positiveInteger(profile.contextWindow) ?? positiveInteger(profile.maxContextWindow) ?? codexModelContextWindow(model, profile.catalogEntry);
+  const contextWindow = positiveInteger(profile.contextWindow) ?? positiveInteger(profile.maxContextWindow) ?? codexModelContextWindow(model, profile.catalogEntry, config);
   const maxContextWindow = Math.max(contextWindow, positiveInteger(profile.maxContextWindow) ?? contextWindow);
   const effectiveContextWindowPercent = effectiveContextWindowPercentFor({
     contextWindowPinned: profile.contextWindowPinned,
@@ -281,11 +283,15 @@ function codexModelCapabilityProfile(
       )
     );
 
+  const sakanaOneMillionContext = provider && codexProviderModelSupportsOneMillionContext(model, provider);
+  const contextWindow = sakanaOneMillionContext ? 1_000_000 : providerModelMetadata?.contextWindow;
+  const maxContextWindow = sakanaOneMillionContext ? 1_000_000 : providerModelMetadata?.maxContextWindow;
+
   return {
     additionalSpeedTiers: codexAdditionalSpeedTiers(providerModelMetadata),
     applyPatchToolType,
     catalogEntry,
-    contextWindow: providerModelMetadata?.contextWindow,
+    contextWindow,
     contextWindowPinned: providerModelMetadata?.contextWindowPinned,
     description: provider
       ? providerModelDescriptionFor(provider, providerModel)
@@ -301,13 +307,62 @@ function codexModelCapabilityProfile(
     effectiveContextWindowPercent: providerModelMetadata?.effectiveContextWindowPercent,
     inputModalities: supportsImageInput ? ["text", "image"] : ["text"],
     serviceTiers: codexServiceTiers(providerModelMetadata),
-    maxContextWindow: providerModelMetadata?.maxContextWindow,
+    maxContextWindow,
     supportedReasoningLevels: resolvedReasoningLevels,
     supportsImageInput,
     supportsParallelToolCalls,
     supportsReasoning,
     supportsSearchTool
   };
+}
+
+function codexModelContextWindow(
+  model: string,
+  entry = findModelCatalogEntry(model),
+  config?: Partial<Pick<AppConfig, "Providers">>
+): number {
+  if (config) {
+    const selector = parseModelSelector(model);
+    if (selector) {
+      const provider = findConfiguredProvider(config, selector.provider);
+      if (provider && codexProviderModelSupportsOneMillionContext(model, provider)) {
+        return 1_000_000;
+      }
+    }
+  }
+  return modelCatalogMaxInputTokens(entry) || codexDefaultContextWindow;
+}
+
+function codexProviderModelSupportsOneMillionContext(
+  model: string,
+  provider: GatewayProviderConfig
+): boolean {
+  const selector = parseModelSelector(model);
+  if (!selector || !sakanaOneMillionContextModels.has(selector.model.toLowerCase())) {
+    return false;
+  }
+  return codexProviderTargetsSakana(provider);
+}
+
+function codexProviderTargetsSakana(provider: GatewayProviderConfig): boolean {
+  return [
+    provider.baseUrl,
+    provider.baseurl,
+    provider.api_base_url,
+    ...(provider.capabilities ?? []).map((capability) => capability.baseUrl)
+  ].some(codexProviderUrlTargetsSakana);
+}
+
+function codexProviderUrlTargetsSakana(value: string | undefined): boolean {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return false;
+  }
+  try {
+    return new URL(normalized).hostname.toLowerCase() === sakanaApiHostname;
+  } catch {
+    return false;
+  }
 }
 
 function codexAdditionalSpeedTiers(metadata?: ProviderModelMetadata): unknown[] {
@@ -436,10 +491,6 @@ function effortDescription(effort: string): string {
     return "Maximum reasoning with automatic task delegation";
   }
   return `${effort.slice(0, 1).toUpperCase()}${effort.slice(1)} reasoning`;
-}
-
-function codexModelContextWindow(model: string, entry = findModelCatalogEntry(model)): number {
-  return modelCatalogMaxInputTokens(entry) || codexDefaultContextWindow;
 }
 
 function positiveInteger(value: number | undefined): number | undefined {
