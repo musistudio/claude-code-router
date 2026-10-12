@@ -11,7 +11,9 @@ lead: 为不支持联网的模型添加实时检索能力：选择 CCR 内置 we
 
 ## 搜索服务
 
-支持 In-app Browser、Brave、Bing、Google CSE、Serper、SerpAPI、Serply、Tavily、Exa 等搜索服务。
+支持 In-app Browser、Brave、Bing、Google CSE、Serper、SerpAPI、Serply、Tavily、Exa、Firecrawl 等搜索服务。
+
+使用 Firecrawl 时，网关联网搜索默认会抓取每个结果页面，每个页面都会消耗 Firecrawl 额度；设置 `FIRECRAWL_SCRAPE_RESULTS=false` 则只返回摘要。`web_search` 工具只有在设置 `includeRaw` 时才会获取页面内容。
 
 ## In-app Browser
 
@@ -24,7 +26,7 @@ lead: 为不支持联网的模型添加实时检索能力：选择 CCR 内置 we
 - 地区：例如 `US`、`CN`。
 - 安全搜索：默认、中等、严格或关闭。
 
-> 注意：`In-app Browser` 依赖 CCR Desktop 的 Electron 内置浏览器能力，只在桌面端可用。CLI、服务器部署或纯 Web 环境没有内置浏览器集成，请改用 Brave、Bing、Google CSE、Serper、SerpAPI、Serply、Tavily 或 Exa 等搜索服务。
+> 注意：`In-app Browser` 依赖 CCR Desktop 的 Electron 内置浏览器能力，只在桌面端可用。CLI、服务器部署或纯 Web 环境没有内置浏览器集成，请改用 Brave、Bing、Google CSE、Serper、SerpAPI、Serply、Tavily、Exa 或 Firecrawl 等搜索服务。
 
 ## 排查要点
 

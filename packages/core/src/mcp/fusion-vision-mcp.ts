@@ -34,7 +34,7 @@ type ToolCallResult = {
 };
 
 type FusionBuiltinToolKind = "vision" | "web_search";
-type SearchProvider = "auto" | "bing" | "brave" | "exa" | "google_cse" | "serpapi" | "serper" | "serply" | "tavily";
+type SearchProvider = "auto" | "bing" | "brave" | "exa" | "firecrawl" | "google_cse" | "serpapi" | "serper" | "serply" | "tavily";
 type SearchInput = {
   count: number;
   country?: string;
@@ -48,6 +48,7 @@ type SearchInput = {
   timeoutMs: number;
 };
 type SearchResult = {
+  content?: string;
   snippet?: string;
   title?: string;
   url?: string;
@@ -657,7 +658,8 @@ async function analyzeWebSearch(args: Record<string, unknown>): Promise<string> 
     ...results.slice(0, count).map((result, index) => [
       `${index + 1}. ${result.title || result.url || "Untitled"}`,
       result.url ? `URL: ${result.url}` : "",
-      result.snippet ? `Snippet: ${result.snippet}` : ""
+      result.snippet ? `Snippet: ${result.snippet}` : "",
+      result.content ? `Page content: ${result.content}` : ""
     ].filter(Boolean).join("\n"))
   ].join("\n\n");
 }
@@ -676,7 +678,7 @@ async function searchWithProvider(
     safeSearch?: string;
     timeoutMs: number;
   }
-): Promise<Array<{ snippet?: string; title?: string; url?: string }>> {
+): Promise<SearchResult[]> {
   if (provider === "brave") return searchBrave(input);
   if (provider === "bing") return searchBing(input);
   if (provider === "google_cse") return searchGoogleCse(input);
@@ -684,6 +686,7 @@ async function searchWithProvider(
   if (provider === "serpapi") return searchSerpApi(input);
   if (provider === "serply") return searchSerply(input);
   if (provider === "tavily") return searchTavily(input);
+  if (provider === "firecrawl") return searchFirecrawl(input);
   return searchExa(input);
 }
 
@@ -821,6 +824,48 @@ async function searchExa(input: SearchInput): Promise<SearchResult[]> {
   });
   const items = isRecord(raw) && Array.isArray(raw.results) ? raw.results : [];
   return items.map((item) => normalizeSearchResult(item, "title", "url", "text")).filter(isSearchResult);
+}
+
+const firecrawlSearchEndpoint = "https://api.firecrawl.dev/v2/search";
+const firecrawlSearchOrigin = "claude-code-router";
+const firecrawlContentMaxChars = 4_000;
+
+async function searchFirecrawl(input: SearchInput): Promise<SearchResult[]> {
+  const apiKey = requireEnv("FIRECRAWL_API_KEY", "Firecrawl API key");
+  const scrape = input.includeRaw && env("FIRECRAWL_SCRAPE_RESULTS")?.toLowerCase() !== "false";
+  // includeDomains and excludeDomains are mutually exclusive: https://docs.firecrawl.dev/api-reference/endpoint/search
+  const nativeDomains = !(input.includeDomains.length > 0 && input.excludeDomains.length > 0);
+  const raw = await fetchJson(env("FIRECRAWL_SEARCH_ENDPOINT") || firecrawlSearchEndpoint, {
+    body: JSON.stringify({
+      country: input.country,
+      excludeDomains: nativeDomains && input.excludeDomains.length > 0 ? input.excludeDomains : undefined,
+      includeDomains: nativeDomains && input.includeDomains.length > 0 ? input.includeDomains : undefined,
+      limit: input.count,
+      origin: firecrawlSearchOrigin,
+      query: nativeDomains ? input.prompt : scopedSearchQuery(input),
+      safe: input.safeSearch && input.safeSearch !== "off" ? true : undefined,
+      scrapeOptions: scrape ? { formats: [{ type: "markdown" }], onlyMainContent: true } : undefined,
+      tbs: freshnessToGoogleTbs(input.freshness)
+    }),
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      "content-type": "application/json"
+    },
+    method: "POST",
+    signal: AbortSignal.timeout(input.timeoutMs)
+  });
+  const items = isRecord(raw) && isRecord(raw.data) && Array.isArray(raw.data.web) ? raw.data.web : [];
+  return items.map((item) => {
+    const metadata = isRecord(item) && isRecord(item.metadata) ? item.metadata : {};
+    const result = normalizeSearchResult(item, "title", "url", "description");
+    const content = isRecord(item) ? readString(item.markdown)?.slice(0, firecrawlContentMaxChars) : undefined;
+    return {
+      ...(content ? { content } : {}),
+      snippet: result.snippet || readString(metadata.description),
+      title: result.title || readString(metadata.title),
+      url: result.url || readString(metadata.sourceURL) || readString(metadata.url)
+    };
+  }).filter(isSearchResult);
 }
 
 async function buildImageParts(args: Record<string, unknown>, detail: "auto" | "high" | "low"): Promise<JsonValue[]> {
@@ -1096,7 +1141,7 @@ function resolveSearchProvider(): Exclude<SearchProvider, "auto"> {
   if (configured !== "auto") {
     return configured;
   }
-  const candidates: Array<Exclude<SearchProvider, "auto">> = ["brave", "bing", "google_cse", "serper", "serpapi", "serply", "tavily", "exa"];
+  const candidates: Array<Exclude<SearchProvider, "auto">> = ["brave", "bing", "google_cse", "serper", "serpapi", "serply", "tavily", "exa", "firecrawl"];
   const provider = candidates.find(searchProviderIsConfigured);
   if (!provider) {
     throw new Error("No search provider configured. Set SEARCH_PROVIDER and its API key.");
@@ -1114,7 +1159,8 @@ function parseSearchProvider(value: string | undefined): SearchProvider | undefi
     value === "serpapi" ||
     value === "serply" ||
     value === "tavily" ||
-    value === "exa"
+    value === "exa" ||
+    value === "firecrawl"
   ) {
     return value;
   }
@@ -1129,6 +1175,7 @@ function searchProviderIsConfigured(provider: Exclude<SearchProvider, "auto">): 
   if (provider === "serpapi") return Boolean(env("SERPAPI_API_KEY"));
   if (provider === "serply") return Boolean(env("SERPLY_API_KEY"));
   if (provider === "tavily") return Boolean(env("TAVILY_API_KEY"));
+  if (provider === "firecrawl") return Boolean(env("FIRECRAWL_API_KEY"));
   return Boolean(env("EXA_API_KEY"));
 }
 

@@ -833,6 +833,81 @@ test("gateway prefetches Serply Fusion web search records", async () => {
   }
 });
 
+test("gateway prefetches Firecrawl Fusion web search records", async () => {
+  const requests = [];
+  const endpoint = "http://127.0.0.1/firecrawl-search";
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    requests.push({ body: JSON.parse(String(init.body)), headers: new Headers(init.headers), url: new URL(String(input)) });
+    return new Response(JSON.stringify({
+      success: true,
+      data: {
+        web: [
+          { description: "First body", markdown: "# First\n\nFirst page content", title: "First", url: "https://example.test/one" },
+          { metadata: { description: "Second body", sourceURL: "https://example.test/two", title: "Second" } },
+          { description: "Third body", markdown: "   ", title: "Third", url: "https://example.test/three" },
+          { description: "Fourth body", markdown: "x".repeat(5_000), title: "Fourth", url: "https://example.test/four" }
+        ]
+      }
+    }), { headers: { "content-type": "application/json" }, status: 200 });
+  };
+  const configFor = (env) => ({
+    Providers: [],
+    Router: { fallback: { mode: "off", models: [], retryCount: 0 } },
+    gateway: {},
+    virtualModelProfiles: [
+      {
+        displayName: "Research",
+        enabled: true,
+        id: "research",
+        key: "research",
+        match: { exactAliases: ["Fusion/research"], prefixes: [], suffixes: [] },
+        metadata: {
+          fusionWebSearch: {
+            env: { FIRECRAWL_API_KEY: "firecrawl-key", FIRECRAWL_SEARCH_ENDPOINT: endpoint, ...env },
+            provider: "firecrawl",
+            resultCount: 4,
+            toolName: "research_web_search"
+          }
+        }
+      }
+    ]
+  });
+  const context = {
+    protocol: "anthropic_messages",
+    queryHint: "search query",
+    requestId: "req-1",
+    sinceMs: Date.now() - 1000,
+    toolName: "research_web_search"
+  };
+  try {
+    const records = await selectHostedWebSearchProtocolRecords(context, undefined, configFor({}));
+
+    assert.equal(records.length, 1);
+    assert.equal(records[0].engine, "firecrawl");
+    assert.equal(records[0].searchUrl, "https://www.firecrawl.dev");
+    assert.deepEqual(records[0].results, [
+      { content: "# First\n\nFirst page content", snippet: "First body", title: "First", url: "https://example.test/one" },
+      { snippet: "Second body", title: "Second", url: "https://example.test/two" },
+      { snippet: "Third body", title: "Third", url: "https://example.test/three" },
+      { content: "x".repeat(4_000), snippet: "Fourth body", title: "Fourth", url: "https://example.test/four" }
+    ]);
+    assert.equal(requests[0].url.origin + requests[0].url.pathname, endpoint);
+    assert.equal(requests[0].headers.get("authorization"), "Bearer firecrawl-key");
+    assert.equal(requests[0].body.query, "search query");
+    assert.equal(requests[0].body.limit, 4);
+    assert.equal(requests[0].body.origin, "claude-code-router");
+    assert.deepEqual(requests[0].body.scrapeOptions, { formats: [{ type: "markdown" }], onlyMainContent: true });
+
+    await selectHostedWebSearchProtocolRecords(context, undefined, configFor({ FIRECRAWL_SCRAPE_RESULTS: "false" }));
+    assert.equal(requests.length, 2);
+    assert.equal(requests[1].body.origin, "claude-code-router");
+    assert.equal("scrapeOptions" in requests[1].body, false);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test("gateway config does not create fallback tools for MCP-backed Fusion tools", () => {
   const profiles = [
     {

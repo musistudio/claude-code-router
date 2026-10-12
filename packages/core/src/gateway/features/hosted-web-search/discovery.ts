@@ -535,6 +535,8 @@ async function runConfiguredWebSearch(input: WebSearchProviderInput): Promise<We
       return searchTavily(input);
     case "exa":
       return searchExa(input);
+    case "firecrawl":
+      return searchFirecrawl(input);
   }
 }
 
@@ -688,6 +690,55 @@ async function searchExa(input: WebSearchProviderInput): Promise<WebSearchProvid
   return items.map((item) => webSearchResult(item, "title", "url", "text")).filter(isWebSearchProviderResult);
 }
 
+const firecrawlSearchEndpoint = "https://api.firecrawl.dev/v2/search";
+const firecrawlSearchOrigin = "claude-code-router";
+const firecrawlContentMaxChars = 4_000;
+
+async function searchFirecrawl(input: WebSearchProviderInput): Promise<WebSearchProviderResult[]> {
+  const apiKey = searchEnv(input, "FIRECRAWL_API_KEY");
+  if (!apiKey) {
+    console.warn("[gateway] Firecrawl web search API key is not configured.");
+    return [];
+  }
+  const scrapeResults = searchEnv(input, "FIRECRAWL_SCRAPE_RESULTS")?.toLowerCase() !== "false";
+  const raw = await fetchJson(searchEnv(input, "FIRECRAWL_SEARCH_ENDPOINT") || firecrawlSearchEndpoint, {
+    body: JSON.stringify({
+      limit: input.count,
+      origin: firecrawlSearchOrigin,
+      query: input.query,
+      ...(scrapeResults ? { scrapeOptions: { formats: [{ type: "markdown" }], onlyMainContent: true } } : {})
+    }),
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      "content-type": "application/json"
+    },
+    method: "POST",
+    signal: AbortSignal.timeout(input.timeoutMs)
+  });
+  const items = isRecord(raw) && isRecord(raw.data) && Array.isArray(raw.data.web) ? raw.data.web : [];
+  return items.map(firecrawlSearchResult).filter(isWebSearchProviderResult);
+}
+
+function firecrawlSearchResult(item: unknown): WebSearchProviderResult | undefined {
+  if (!isRecord(item)) {
+    return undefined;
+  }
+  const metadata = isRecord(item.metadata) ? item.metadata : {};
+  const title = stringValue(item.title) || stringValue(metadata.title) || "";
+  const url = stringValue(item.url) || stringValue(metadata.sourceURL) || stringValue(metadata.url) || "";
+  if (!title && !url) {
+    return undefined;
+  }
+  const snippet = stringValue(item.description) || stringValue(metadata.description);
+  const content = stringValue(item.markdown)?.trim().slice(0, firecrawlContentMaxChars);
+  return {
+    ...(content ? { content } : {}),
+    ...(snippet ? { snippet } : {}),
+    title,
+    url
+  };
+}
+
 async function fetchJson(input: string, init: RequestInit): Promise<unknown> {
   const response = await fetchWithSystemProxy(input, init);
   if (!response.ok) {
@@ -740,6 +791,8 @@ function searchProviderUrl(provider: VirtualModelFusionWebSearchProvider, query:
       return "https://tavily.com";
     case "exa":
       return "https://exa.ai";
+    case "firecrawl":
+      return "https://www.firecrawl.dev";
     case "browser":
       return `https://www.google.com/search?q=${encoded}`;
   }

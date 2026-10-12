@@ -309,7 +309,7 @@ export const fusionToolOptions: Array<{ description: string; label: string; valu
     value: BUILTIN_FUSION_VISION_TOOL_NAME
   },
   {
-    description: "Generic web search tool supporting hidden in-app browser search plus Brave, Bing, Google CSE, Serper, SerpAPI, Serply, Tavily, and Exa.",
+    description: "Generic web search tool supporting hidden in-app browser search plus Brave, Bing, Google CSE, Serper, SerpAPI, Serply, Tavily, Exa, and Firecrawl.",
     label: `${BUILTIN_FUSION_TOOL_SERVER_NAME} / ${BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME}`,
     value: BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME
   },
@@ -339,7 +339,8 @@ export const fusionWebSearchProviderOptions: Array<{ label: string; value: Virtu
   { label: "SerpAPI", value: "serpapi" },
   { label: "Serply", value: "serply" },
   { label: "Tavily", value: "tavily" },
-  { label: "Exa", value: "exa" }
+  { label: "Exa", value: "exa" },
+  { label: "Firecrawl", value: "firecrawl" }
 ];
 
 export const fusionWebSearchEnvKeysByProvider: Record<VirtualModelFusionWebSearchProvider, string[]> = {
@@ -347,6 +348,7 @@ export const fusionWebSearchEnvKeysByProvider: Record<VirtualModelFusionWebSearc
   browser: ["BROWSER_SEARCH_ENGINE", "BROWSER_SEARCH_LANGUAGE", "BROWSER_SEARCH_COUNTRY", "BROWSER_SEARCH_SAFE_SEARCH"],
   brave: ["BRAVE_SEARCH_API_KEY", "BRAVE_SEARCH_ENDPOINT"],
   exa: ["EXA_API_KEY", "EXA_SEARCH_ENDPOINT"],
+  firecrawl: ["FIRECRAWL_API_KEY", "FIRECRAWL_SEARCH_ENDPOINT", "FIRECRAWL_SCRAPE_RESULTS"],
   google_cse: ["GOOGLE_SEARCH_API_KEY", "GOOGLE_SEARCH_CX", "GOOGLE_SEARCH_ENDPOINT"],
   serper: ["SERPER_API_KEY", "SERPER_SEARCH_ENDPOINT"],
   serpapi: ["SERPAPI_API_KEY", "SERPAPI_SEARCH_ENDPOINT"],

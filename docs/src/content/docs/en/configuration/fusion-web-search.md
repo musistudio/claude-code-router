@@ -11,7 +11,9 @@ Use `ccr-fusion-builtins / web_search`.
 
 ## Search Providers
 
-Supported providers include In-app Browser, Brave, Bing, Google CSE, Serper, SerpAPI, Serply, Tavily, and Exa.
+Supported providers include In-app Browser, Brave, Bing, Google CSE, Serper, SerpAPI, Serply, Tavily, Exa, and Firecrawl.
+
+With Firecrawl, gateway web search scrapes each result page by default, which uses Firecrawl credits per page; set `FIRECRAWL_SCRAPE_RESULTS=false` for snippets only. The `web_search` tool fetches page content only when `includeRaw` is set.
 
 ## In-app Browser
 
@@ -24,7 +26,7 @@ Configuration options include search engine, language, country or region, and sa
 - Country or region: for example `US` or `CN`.
 - Safe search: default, moderate, strict, or off.
 
-> Note: `In-app Browser` depends on CCR Desktop's Electron built-in browser capability and is only available in the desktop app. CLI, server deployments, and pure web environments do not have the built-in browser integration; use Brave, Bing, Google CSE, Serper, SerpAPI, Serply, Tavily, or Exa instead.
+> Note: `In-app Browser` depends on CCR Desktop's Electron built-in browser capability and is only available in the desktop app. CLI, server deployments, and pure web environments do not have the built-in browser integration; use Brave, Bing, Google CSE, Serper, SerpAPI, Serply, Tavily, Exa, or Firecrawl instead.
 
 ## Troubleshooting
 
