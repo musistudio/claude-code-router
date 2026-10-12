@@ -28,6 +28,29 @@ lead: "页面顶部的交互式面板可直接连到你正在运行的 CCR 添�
 
 自动探测结果不理想时，可在 **高级设置** 中关闭自动探测并手动选择协议，再用连通性检查确认。
 
+## OpenAI 兼容的自定义端点
+
+选择 **其他 / 自定义 API 地址** 时，如果上游同时提供 Chat Completions 和其他路由，下面两点很容易配错：
+
+1. **API 地址应填写 `/v1` 根路径**，不要写成 `/v1/chat/completions`。CCR 会按所选协议拼接具体路由，并通过 `GET /v1/models` 发现模型。
+2. **协议应选择 OpenAI Chat**，而不是 OpenAI Responses 或 Anthropic Messages。自动探测可能在主机存在 `POST /v1/responses` 时选中 **OpenAI Responses**——即使未认证请求返回的是 `401` 而不是 `404`。只支持 Chat Completions 的主机需要手动选择 **OpenAI Chat**。
+
+如果自动探测选错了协议，请在 **高级设置** 中关闭自动探测，选择 **OpenAI Chat**，再用 **检测连通性** 确认。
+
+### 示例
+
+以下步骤适用于可通过 `GET https://api.example.com/v1/models` 获取模型目录的 OpenAI 兼容主机：
+
+1. **供应商** → **添加供应商** → **其他 / 自定义 API 地址**
+2. **名称**：任意内部标识（例如 `my-gateway`）
+3. **API 地址**：`https://api.example.com/v1`
+4. **API 密钥**：你的 Bearer token
+5. **协议**：**OpenAI Chat**（若自动探测选了 Responses，请在 **高级设置** 中关闭自动探测）
+6. **模型**：自动获取，或手动添加目录中的模型 ID
+7. 对一个文本模型执行 **检测连通性**（会发送真实请求）
+
+不要在 API 地址末尾追加 `/chat/completions`。OpenAI 兼容线路不要选择 **Anthropic Messages**。
+
 ## 验证连通性
 
 填好凭据和模型后，点击 **检测连通性**：CCR 会用当前的 API 地址、密钥、协议和所选模型发送一次真实请求，确认整条链路可用。检测会限制输出长度，但仍可能产生少量 token 消耗或计入供应商侧请求次数，因此建议只勾选需要确认的模型。
