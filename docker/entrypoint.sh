@@ -202,8 +202,17 @@ if [ "$#" -gt 0 ]; then
   exec "$@"
 fi
 
+PM2_RUNTIME=/app/packages/core/node_modules/.bin/pm2-runtime
 if [ -x /app/node_modules/.bin/pm2-runtime ]; then
-  exec /app/node_modules/.bin/pm2-runtime docker/pm2.config.cjs
+  PM2_RUNTIME=/app/node_modules/.bin/pm2-runtime
 fi
 
-exec /app/packages/core/node_modules/.bin/pm2-runtime docker/pm2.config.cjs
+# Set up as root, then run the server and nginx as the unprivileged ccr user.
+# The data volume may hold files written as root by an older image, so it is
+# handed over on every start. A container started with --user is left as is.
+if [ "$(id -u)" = "0" ] && id ccr >/dev/null 2>&1; then
+  chown -R ccr:ccr "${CCR_DATA_DIR}" /run/nginx /var/lib/nginx /var/log/nginx
+  exec setpriv --reuid=ccr --regid=ccr --init-groups -- "${PM2_RUNTIME}" docker/pm2.config.cjs
+fi
+
+exec "${PM2_RUNTIME}" docker/pm2.config.cjs
