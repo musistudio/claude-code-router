@@ -28,6 +28,7 @@ test("provider boundary removes CCR-owned headers and preserves provider headers
     "x-auth-sub": "profile:claude",
     "x-auth-token": "provider-specific-token",
     "x-ccr-core-auth": "core-secret",
+    "x-ccr-client-identity": "internal-client-identity",
     "X-CCR-Route-Reason": "rule:claude",
     "x-client-request-id": "request-1"
   }), {
@@ -87,6 +88,7 @@ test("gateway sanitizer hook forwards client headers without overriding provider
         "x-auth-api-key-id": "profile:codex",
         "x-auth-provider-extension": "provider-extension",
         "x-ccr-core-auth": "core-secret",
+        "x-ccr-client-identity": "internal-client-identity",
         "x-codex-access-token": "codex-client-token",
         "x-custom-provider-header": "custom-value",
         "x-custom-list": ["one", "two"],

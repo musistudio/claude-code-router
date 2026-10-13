@@ -16,6 +16,21 @@ before(async () => {
 const retained = { createdAt: "2026-01-01T00:00:00.000Z", id: "retained", key: "retained-token" };
 const revoked = { createdAt: "2026-01-01T00:00:00.000Z", id: "revoked", key: "revoked-token" };
 
+test("profile bindings persist and invalid new bindings leave credentials unchanged", async () => {
+  const config = await configApi.loadAppConfig();
+  const profile = { id: "work", agent: "codex", name: "Work", enabled: true, model: "Provider/model", scope: "ccr" };
+  await configApi.saveAppConfig({ ...config, profile: { ...config.profile, enabled: true, profiles: [profile] } });
+  const linked = { ...retained, profileId: profile.id };
+  const saved = await configApi.saveApiKeysConfig([linked]);
+  await configApi.saveAppConfig({ ...saved, autoStart: !saved.autoStart });
+  assert.deepEqual((await configApi.loadAppConfig()).APIKEYS, [linked]);
+  await configApi.saveAppConfig({ ...await configApi.loadAppConfig(), profile: { ...config.profile, profiles: [] } });
+  await assert.rejects(configApi.saveApiKeysConfig([linked, { ...revoked, profileId: "missing" }]), /Selected Profile/);
+  assert.deepEqual((await configApi.loadAppConfig()).APIKEYS, [linked]);
+  const edited = { ...linked, limits: { rpm: 2 } };
+  assert.deepEqual((await configApi.saveApiKeysConfig([edited])).APIKEYS, [edited]);
+});
+
 test("saving an old settings snapshot cannot restore a revoked key", async () => {
   const stale = await configApi.saveApiKeysConfig([retained, revoked]);
   await configApi.saveApiKeysConfig([retained]);
@@ -27,6 +42,8 @@ test("saving an old settings snapshot cannot restore a revoked key", async () =>
 });
 
 test("interleaved settings saves preserve key rotations and updated limits", async () => {
+  const initial = await configApi.loadAppConfig();
+  await configApi.saveAppConfig({ ...initial, autoStart: true });
   const stale = await configApi.saveApiKeysConfig([retained, revoked]);
   const rotated = { ...retained, key: "rotated-token", limits: { rpm: 2 } };
   const results = await Promise.allSettled([

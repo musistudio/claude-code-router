@@ -73,6 +73,12 @@ Size constraints:
 | The account widget has a minimum size of `2:2` when showing All accounts with the Compact style. | Multi-account lists need readable space. |
 | Legacy aliases are still accepted: `small` -> `1:1`, `medium` / `large` -> `2:2`, `wide` -> `3:2`, `full` -> `4:1` or `4:2`. | Backward compatibility for older config. |
 
+## Analysis data
+
+Client Analysis aggregates usage by the ID of the API key used to access CCR and displays its name. Requests using the same key share one row across models, providers, and upstream credentials. Separate keys with the same name remain separate rows, with their IDs shown below the name.
+
+Historical usage recovers key information from matching request logs when available. Requests without a known key share an “Unidentified API key” row. Provider Analysis continues to break usage down by provider, upstream credential, and model.
+
 ## Metric data
 
 `metric` widgets use the `metric` field to choose the displayed value.

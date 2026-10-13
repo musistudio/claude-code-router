@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import type { ApiKeyConfig, ProfileConfig } from "@ccr/core/contracts/app";
+import type { ApiKeyConfig, AppConfig, ProfileConfig } from "@ccr/core/contracts/app";
 
 type ProfileApiKeySource = Pick<ProfileConfig, "agent" | "id" | "name">;
 
@@ -29,6 +29,37 @@ export function profileIdFromApiKeyId(value: string | undefined): string | undef
 
 export function sanitizeProfileKeySegment(value: string): string {
   return value.trim().replace(/[^a-zA-Z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+export function apiKeyMatchesProfile(
+  apiKey: Pick<ApiKeyConfig, "id" | "profileId">,
+  profile: ProfileApiKeySource
+): boolean {
+  const profileId = apiKey.profileId?.trim();
+  return profileId ? profile.id === profileId : profileApiKeyId(profile) === apiKey.id?.trim();
+}
+
+export function profileForApiKey(
+  config: Partial<Pick<AppConfig, "profile">>,
+  apiKey: Pick<ApiKeyConfig, "id" | "profileId"> | undefined
+): ProfileConfig | undefined {
+  if (!config.profile || config.profile.enabled === false || !apiKey) {
+    return undefined;
+  }
+  return config.profile.profiles.find((profile) =>
+    profile.enabled && apiKeyMatchesProfile(apiKey, profile)
+  );
+}
+
+export function profileForApiKeyId(
+  config: Pick<AppConfig, "APIKEYS" | "profile">,
+  apiKeyId: string | undefined
+): ProfileConfig | undefined {
+  const id = apiKeyId?.trim();
+  if (!id) {
+    return undefined;
+  }
+  return profileForApiKey(config, config.APIKEYS?.find((apiKey) => apiKey.id === id) ?? { id });
 }
 
 export function syncProfileApiKeys(

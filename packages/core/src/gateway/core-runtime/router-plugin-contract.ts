@@ -30,6 +30,7 @@ export type CcrLiveTokenRateSnapshotMessage = {
   type: typeof ccrLiveTokenRateSnapshotMessageType;
 };
 
+export const ccrClientIdentityHeader = "x-ccr-client-identity";
 export const ccrRouteStageHeader = "x-ccr-route-stage";
 export const ccrRouteReasonHeader = "x-ccr-route-reason";
 export const ccrRouteSourceHeader = "x-ccr-route-source";
@@ -41,9 +42,11 @@ export const ccrRouteTokenCountHeader = "x-ccr-route-token-count";
 export const ccrCodexApplyPatchBridgeHeader = "x-ccr-codex-apply-patch-bridge";
 export const ccrCodexMultiAgentBridgeHeader = "x-ccr-codex-multi-agent-bridge";
 export const ccrOpenRouterDiscountRequestIdHeader = "x-ccr-openrouter-discount-request-id";
+export const ccrClientVisibleModelHeader = "x-ccr-client-visible-model";
 export const ccrRouteHeaderNames = [
   ccrCodexApplyPatchBridgeHeader,
   ccrCodexMultiAgentBridgeHeader,
+  ccrClientVisibleModelHeader,
   ccrOpenRouterDiscountRequestIdHeader,
   ccrRouteDiagnosticsHeader,
   ccrRouteFallbackHeader,
