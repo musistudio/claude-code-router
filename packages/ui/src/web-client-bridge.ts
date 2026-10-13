@@ -4,18 +4,18 @@ const rpcEndpoint = "/api/ccr/rpc";
 const webAuthHeader = "x-ccr-web-auth";
 const webAuthQueryParam = "ccr_web_token";
 const webAuthStorageKey = "ccr.webAuthToken";
-const webAuthToken = readWebAuthToken();
+let webAuthToken = readWebAuthToken();
 
 type RpcResponse =
   | { ok: true; value: unknown }
   | { error: { message: string; stack?: string }; ok: false };
 
-async function rpc(method: string, args: unknown[] = []): Promise<unknown> {
+async function rpc(method: string, args: unknown[] = [], token = webAuthToken): Promise<unknown> {
   const response = await fetch(rpcEndpoint, {
     body: JSON.stringify({ args: trimTrailingUndefined(args), method }),
     headers: {
       "content-type": "application/json",
-      ...(webAuthToken ? { [webAuthHeader]: webAuthToken } : {})
+      ...(token ? { [webAuthHeader]: token } : {})
     },
     method: "POST"
   });
@@ -26,12 +26,15 @@ async function rpc(method: string, args: unknown[] = []): Promise<unknown> {
     payload = undefined;
   }
   if (!response.ok || !payload?.ok) {
+    if (response.status === 401 && token === webAuthToken) {
+      window.dispatchEvent(new Event("ccr:web-auth-required"));
+    }
     const message = payload && !payload.ok
       ? payload.error.message
       : response.status === 404
         ? "CCR management service is unavailable. Make sure the CCR app or ccr ui command is running, then retry."
         : `CCR web API failed with HTTP ${response.status}`;
-    throw new Error(message);
+    throw Object.assign(new Error(message), { status: response.status });
   }
   return payload.value;
 }
@@ -105,6 +108,12 @@ function normalizeExternalHttpUrl(value: string): string {
 }
 
 const webClientBridge: CcrApi = {
+  authenticateWeb: async (token = webAuthToken) => {
+    const candidate = token.trim();
+    await rpc("getAppInfo", [], candidate);
+    webAuthToken = candidate;
+    writeStoredWebAuthToken(candidate);
+  },
   applyClaudeAppGateway: (config) => rpc("applyClaudeAppGateway", [config]) as ReturnType<CcrApi["applyClaudeAppGateway"]>,
   applyProfile: () => rpc("applyProfile") as ReturnType<CcrApi["applyProfile"]>,
   cancelBotGatewayQrLogin: (request) => rpc("cancelBotGatewayQrLogin", [request]) as ReturnType<CcrApi["cancelBotGatewayQrLogin"]>,
