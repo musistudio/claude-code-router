@@ -71,3 +71,52 @@ test("#1791 leaves non-SSE responses untouched", () => {
   const response = new Response("{}", { headers: { "content-type": "application/json" } });
   assert.equal(normalizeDeepSeekCacheUsageStream(response), undefined);
 });
+
+test("an upstream error reaches the client body instead of crashing the process or hanging", async () => {
+  const encoder = new TextEncoder();
+  const uncaught = [];
+  const onUncaught = (error) => uncaught.push(error);
+  process.on("uncaughtException", onUncaught);
+  try {
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode("data: {\"choices\":[]}\n\n"));
+        setTimeout(() => controller.error(new Error("ECONNRESET upstream")), 20);
+      }
+    });
+    const response = normalizeDeepSeekCacheUsageStream(new Response(body, {
+      headers: { "content-type": "text/event-stream" }
+    }));
+    const reader = response.body.getReader();
+    await reader.read();
+    const outcome = await Promise.race([
+      reader.read().then(() => "ended", (error) => `rejected: ${error.message}`),
+      new Promise((resolve) => setTimeout(() => resolve("hung"), 1000))
+    ]);
+    assert.deepEqual(uncaught.map((error) => error.message), []);
+    assert.equal(outcome, "rejected: ECONNRESET upstream");
+  } finally {
+    process.off("uncaughtException", onUncaught);
+  }
+});
+
+test("a client that cancels the normalized body cancels the upstream response", async () => {
+  const encoder = new TextEncoder();
+  let upstreamCancelled = false;
+  const body = new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode("data: {\"choices\":[]}\n\n"));
+    },
+    cancel() {
+      upstreamCancelled = true;
+    }
+  });
+  const response = normalizeDeepSeekCacheUsageStream(new Response(body, {
+    headers: { "content-type": "text/event-stream" }
+  }));
+  const reader = response.body.getReader();
+  await reader.read();
+  await reader.cancel();
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(upstreamCancelled, true);
+});
