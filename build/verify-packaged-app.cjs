@@ -1,15 +1,10 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const betterSqliteNativeRelativePath = path.join(
-  "app.asar.unpacked",
-  "node_modules",
-  "better-sqlite3",
-  "build",
-  "Release",
-  "better_sqlite3.node"
-);
 const betterSqlitePackageRelativePath = path.join("app.asar.unpacked", "node_modules", "better-sqlite3");
+// better-sqlite3 13+ ships its prebuilds inside the package; a source build
+// (no prebuild for the target, or a forced one) still lands in build/Release.
+const betterSqliteBuildRelativePath = path.join("build", "Release", "better_sqlite3.node");
 const betterSqlitePrunablePaths = [
   "deps",
   "src",
@@ -36,24 +31,41 @@ module.exports = async function verifyPackagedApp(context) {
   assertFile(path.join(resourcesDir, "app.asar"), "Packaged app archive");
   cleanupBetterSqlitePackage(resourcesDir);
 
-  const nativeModule = path.join(resourcesDir, betterSqliteNativeRelativePath);
-  assertFile(nativeModule, "better-sqlite3 native module");
+  const packageDir = path.join(resourcesDir, betterSqlitePackageRelativePath);
+  for (const { file, arch: expectedArch } of findNativeModules(packageDir, platform, arch)) {
+    assertFile(file, "better-sqlite3 native module");
 
-  const nativeInfo = inspectNativeModule(nativeModule);
-  if (nativeInfo.platform !== platform) {
-    throw new Error(
-      `Packaged better-sqlite3 native module targets ${formatNativeInfo(nativeInfo)}, ` +
-        `but electron-builder is packaging ${platform}/${arch}. Rebuild native dependencies for the target platform before packaging.`
-    );
-  }
+    const nativeInfo = inspectNativeModule(file);
+    if (nativeInfo.platform !== platform) {
+      throw new Error(
+        `Packaged better-sqlite3 native module targets ${formatNativeInfo(nativeInfo)}, ` +
+          `but electron-builder is packaging ${platform}/${arch}. Rebuild native dependencies for the target platform before packaging.`
+      );
+    }
 
-  if (arch && !nativeArchMatches(nativeInfo, arch)) {
-    throw new Error(
-      `Packaged better-sqlite3 native module targets ${formatNativeInfo(nativeInfo)}, ` +
-        `but electron-builder is packaging ${platform}/${arch}. Run npm run rebuild:sqlite3 on the target platform before packaging.`
-    );
+    if (expectedArch && !nativeArchMatches(nativeInfo, expectedArch)) {
+      throw new Error(
+        `Packaged better-sqlite3 native module targets ${formatNativeInfo(nativeInfo)}, ` +
+          `but electron-builder is packaging ${platform}/${arch}. Run npm run rebuild:sqlite3 on the target platform before packaging.`
+      );
+    }
   }
 };
+
+// The binary the app will load. sqlite-native.ts passes build/Release as the
+// nativeBinding when it exists, so that copy wins; otherwise better-sqlite3
+// loads prebuilds/<platform>-<arch>.node, one per arch for a universal app.
+function findNativeModules(packageDir, platform, arch) {
+  const built = path.join(packageDir, betterSqliteBuildRelativePath);
+  if (fs.existsSync(built)) {
+    return [{ file: built, arch }];
+  }
+  const archs = !arch || arch === "universal" ? ["x64", "arm64"] : [arch];
+  return archs.map((target) => ({
+    file: path.join(packageDir, "prebuilds", `${platform}-${target}.node`),
+    arch: target
+  }));
+}
 
 function cleanupBetterSqlitePackage(resourcesDir) {
   const packageDir = path.join(resourcesDir, betterSqlitePackageRelativePath);
