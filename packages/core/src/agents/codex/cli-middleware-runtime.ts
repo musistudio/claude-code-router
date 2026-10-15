@@ -349,6 +349,7 @@ async function runCodexCliMiddleware(args) {
   const requestMap = new Map();
   const current = { cwd: "" };
   const chatGptAuth = loadChatGptAuth();
+  const appServer = { version: "" };
   const stdinRl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity, terminal: false });
   stdinRl.on("line", (line) => {
     const custom = customAppServerLineResponse(line);
@@ -367,7 +368,7 @@ async function runCodexCliMiddleware(args) {
   const stdoutRl = readline.createInterface({ input: child.stdout, crlfDelay: Infinity, terminal: false });
   stdoutRl.on("line", (line) => {
     cleanupAuthBootstrap();
-    const rewritten = rewriteCodexStdoutLine(line, requestMap, chatGptAuth);
+    const rewritten = rewriteCodexStdoutLine(line, requestMap, chatGptAuth, appServer);
     botBridge().handleJsonRpcLine(rewritten);
     if (!shouldSuppressBotBridgeLine(rewritten)) {
       process.stdout.write(rewritten + "\n");
@@ -602,7 +603,7 @@ function cliConfigString(key, value) {
   return key + "=\"" + tomlEscape(value) + "\"";
 }
 
-function rewriteCodexStdoutLine(line, requestMap, chatGptAuth) {
+function rewriteCodexStdoutLine(line, requestMap, chatGptAuth, appServer) {
   let value;
   try {
     value = JSON.parse(line);
@@ -619,10 +620,16 @@ function rewriteCodexStdoutLine(line, requestMap, chatGptAuth) {
     }
     return line;
   }
-  if (request.method === "account/read") {
-    value.result = codexAppAccountRead(chatGptAuth, value.result);
+  if (request.method === "initialize") {
+    appServer.version = appServerVersionFromUserAgent(value.result && value.result.userAgent);
+  } else if (request.method === "account/read") {
+    value.result = codexAppChatGptIdentityRoutable(appServer, value.result && value.result.workspaceRouting, undefined)
+      ? codexAppAccountRead(chatGptAuth, value.result)
+      : mockAccountRead();
   } else if (request.method === "getAuthStatus") {
-    value.result = codexAppAuthStatus(chatGptAuth, request.includeToken, value.result);
+    value.result = codexAppChatGptIdentityRoutable(appServer, undefined, value.result && value.result.authMethod)
+      ? codexAppAuthStatus(chatGptAuth, request.includeToken, value.result)
+      : mockAuthStatus(request.includeToken);
   } else if (request.method === "thread/list") {
     value = mergeForeignThreadList(value, request.params);
   } else if (request.method === "model/list") {
@@ -1010,7 +1017,7 @@ function trackRequestLine(line, requestMap, current) {
   if (!id || !method) return;
   const cwd = requestWorkspaceCwd(value, method);
   if (cwd) current.cwd = cwd;
-  if (!["account/read", "getAuthStatus", "thread/list", "config/read", "model/list", "plugin/list", "configRequirements/read"].includes(method)) return;
+  if (!["initialize", "account/read", "getAuthStatus", "thread/list", "config/read", "model/list", "plugin/list", "configRequirements/read"].includes(method)) return;
   const params = clone(value.params || {});
   if (method === "thread/list" && current.cwd && !params.codexlWorkspaceCwd) {
     params.codexlWorkspaceCwd = current.cwd;
@@ -4828,9 +4835,9 @@ function jwtPayloadClaims(token) {
 
 function codexAppAccountRead(auth, existingResult) {
   // ChatGPT builds its workspace routing from account/read and only accepts
-  // account.type === "chatgpt"; every other shape leaves the composer blocked
-  // on "Couldn't load workspace settings". Keep unknown fields (workspaceRouting
-  // on newer app-servers) from the real result so upgrades stay compatible.
+  // account.type === "chatgpt"; callers use this shape only when
+  // codexAppChatGptIdentityRoutable() says the app can route it. Keep unknown
+  // fields (workspaceRouting on newer app-servers) from the real result.
   const result = isPlainObject(existingResult) ? { ...existingResult } : {};
   result.account = {
     type: "chatgpt",
@@ -4849,6 +4856,55 @@ function codexAppAuthStatus(auth, includeToken, existingResult) {
   result.requiresOpenaiAuth = true;
   result.authToken = includeToken ? auth.authToken : null;
   return result;
+}
+
+function codexAppChatGptIdentityRoutable(appServer, workspaceRouting, authMethod) {
+  // The desktop app only routes a ChatGPT account when account/read carries a
+  // workspaceRouting object, or through legacy routing for app-servers in
+  // [0.141.0, 0.155.0-alpha.5) that omit the field. Newer app-servers running
+  // on the CCR api-key bootstrap report workspaceRouting: null, so a virtual or
+  // bridged ChatGPT identity throws "Workspace routing is unavailable for this
+  // account and app-server version" and blocks new threads on "Couldn't load
+  // workspace settings". Present the non-ChatGPT account there instead; the
+  // app hides its workspace-policy gate for non-ChatGPT auth.
+  if (boolEnv("CCR_CODEX_FORCE_CHATGPT_IDENTITY") || boolEnv("CODEXL_CODEX_FORCE_CHATGPT_IDENTITY")) return true;
+  if (isPlainObject(workspaceRouting) || authMethod === "chatgpt") return true;
+  if (!appServer || !appServer.version) return true;
+  return compareCodexVersions(appServer.version, "0.141.0") >= 0 &&
+    compareCodexVersions(appServer.version, "0.155.0-alpha.5") < 0;
+}
+
+function appServerVersionFromUserAgent(userAgent) {
+  const match = /\/(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/.exec(String(userAgent || ""));
+  return match ? match[1] : "";
+}
+
+function compareCodexVersions(left, right) {
+  const parse = (version) => {
+    const [core, prerelease] = String(version).split("-", 2);
+    return { core: core.split(".").map((part) => Number(part) || 0), prerelease: prerelease ? prerelease.split(".") : [] };
+  };
+  const a = parse(left);
+  const b = parse(right);
+  for (let index = 0; index < 3; index += 1) {
+    const diff = (a.core[index] || 0) - (b.core[index] || 0);
+    if (diff !== 0) return diff < 0 ? -1 : 1;
+  }
+  if (!a.prerelease.length || !b.prerelease.length) {
+    return a.prerelease.length === b.prerelease.length ? 0 : a.prerelease.length ? -1 : 1;
+  }
+  for (let index = 0; index < Math.max(a.prerelease.length, b.prerelease.length); index += 1) {
+    const x = a.prerelease[index];
+    const y = b.prerelease[index];
+    if (x === undefined || y === undefined) return x === undefined ? -1 : 1;
+    if (x === y) continue;
+    const xNumeric = /^\d+$/.test(x);
+    const yNumeric = /^\d+$/.test(y);
+    if (xNumeric && yNumeric) return Number(x) < Number(y) ? -1 : 1;
+    if (xNumeric !== yNumeric) return xNumeric ? -1 : 1;
+    return x < y ? -1 : 1;
+  }
+  return 0;
 }
 
 function codexAppFastModeShimEnabled() {
