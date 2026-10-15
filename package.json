@@ -79,7 +79,7 @@
   "dependencies": {
     "@the-next-ai/ai-gateway": "^1.0.21",
     "@the-next-ai/bot-gateway-sdk": "^0.1.0",
-    "better-sqlite3": "^12.11.1",
+    "better-sqlite3": "^13.0.3",
     "electron-updater": "^6.8.9",
     "node-forge": "^1.4.0",
     "openai": "^6.27.0",

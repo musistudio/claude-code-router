@@ -10,7 +10,7 @@
     "test:unit": "node ../../build/test.mjs electron --scope unit && node ../../build/run-tests.mjs electron"
   },
   "dependencies": {
-    "better-sqlite3": "^12.11.1"
+    "better-sqlite3": "^13.0.3"
   },
   "devDependencies": {
     "electron-updater": "^6.8.9"
