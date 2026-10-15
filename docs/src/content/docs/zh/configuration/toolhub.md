@@ -127,6 +127,42 @@ ToolHub 会合并 **ToolHub 页面配置的 MCP servers** 和兼容旧配置中�
 
 启用后，Agent 可以在执行任务时调用这些工具。搜索词、请求的 URL，以及提供的目标或上下文会发送给 Parallel。要移除此连接，请从 ToolHub 的 MCP Server 列表删除 `parallel-search`，保存设置并重新打开 Agent，使其加载更新后的配置。
 
+### 使用 Sem 导航本地代码
+
+[Sem](https://github.com/Ataraxy-Labs/sem) 提供代码实体搜索、调用关系、影响分析和差异查看。
+这是可选的本地后端，不替代基础文件工具。单独安装 Sem 后检查 `sem --version`
+（已测试 0.27.0），再导入以下配置：
+
+```json
+{
+  "mcpServers": [
+    {
+      "name": "sem",
+      "transport": "stdio",
+      "command": "/absolute/path/to/sem",
+      "args": ["mcp"],
+      "env": {
+        "SEM_REPO": "/absolute/path/to/your/repository",
+        "SEM_NO_NETWORK": "1",
+        "SEM_NO_TELEMETRY": "1"
+      },
+      "stdioMessageMode": "newline-json",
+      "startupTimeoutMs": 30000,
+      "requestTimeoutMs": 60000
+    }
+  ]
+}
+```
+
+将两个绝对路径替换为运行 CCR 的机器上的实际路径。Sem 使用逐行 JSON，不能保留
+`content-length` 默认值。保存并重新打开 Agent，要求它解析 Sem 的 `sem_find` 工具，
+再查询仓库中的一个已知函数；`mode: "context"` 可读取源码及相关实体。
+Resolver 和模型本身仍可能需要各自的凭据。
+
+只连接可信仓库：Sem 可能写入索引缓存，`sem_check` 能执行仓库验证命令。
+仓库路径和离线环境变量不是安全沙箱，执行命令仍应遵循正常审批。
+移除时删除 `sem` 后端、保存并重新打开 Agent；此示例不改变默认提供商。
+
 ## JSON 示例
 
 桌面 App 的 SQLite 配置是当前生效来源，建议优先通过 UI 修改。下面字段适用于备份、迁移或排查时理解 ToolHub 配置结构：
