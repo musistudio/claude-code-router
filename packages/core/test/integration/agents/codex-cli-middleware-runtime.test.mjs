@@ -523,6 +523,86 @@ test("Codex app-server preserves workspace routing surfaced by newer app-servers
   });
 });
 
+function runApiKeyAppServerIdentity(version, extraEnv = {}) {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-routing-version-"));
+  const runtimeFile = writeRuntimeScript(dir);
+  const fakeCodex = path.join(dir, "fake-codex");
+  const codexHome = path.join(dir, "codex-home");
+  const isolatedHome = path.join(dir, "home");
+  mkdirSync(codexHome, { recursive: true });
+  mkdirSync(isolatedHome, { recursive: true });
+  // Mirrors a real app-server on the CCR api-key bootstrap: newer builds
+  // report workspaceRouting: null for non-ChatGPT accounts.
+  writeFileSync(fakeCodex, [
+    "#!/usr/bin/env node",
+    "const readline = require('node:readline');",
+    "const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });",
+    "input.on('line', (line) => {",
+    "  const request = JSON.parse(line);",
+    "  const result = request.method === 'initialize'",
+    "    ? { userAgent: 'Codex Desktop/" + version + " (Mac OS 26.0.0; arm64) unknown (Codex Desktop; 26.1007.71326)', platformFamily: 'unix', platformOs: 'macos' }",
+    "    : request.method === 'account/read'",
+    "    ? { account: { type: 'apiKey' }, requiresOpenaiAuth: true, workspaceRouting: null }",
+    "    : { authMethod: 'apikey', authToken: 'ccr-local-profile', requiresOpenaiAuth: true };",
+    "  process.stdout.write(JSON.stringify({ id: request.id, result }) + '\\n');",
+    "});",
+    ""
+  ].join("\n"));
+  chmodSync(fakeCodex, 0o700);
+
+  const result = spawnSync(process.execPath, [runtimeFile, "app-server"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      CCR_CODEX_CHATGPT_AUTH_FILE: "",
+      CCR_CODEX_REMOTE_FRONTEND_MODE: "app",
+      CCR_PROFILE_SCOPE: "ccr",
+      CCR_REAL_CODEX_CLI_PATH: fakeCodex,
+      CODEX_HOME: codexHome,
+      CODEXL_CODEX_CHATGPT_AUTH_FILE: "",
+      CODEXL_CODEX_WORKSPACE_NAME: "CCR Workspace",
+      HOME: isolatedHome,
+      ...extraEnv
+    },
+    input: [
+      JSON.stringify({ id: "__codex_initialize__", method: "initialize", params: { clientInfo: { name: "Codex Desktop", version: "26.1007.71326" } } }),
+      JSON.stringify({ id: 1, method: "getAuthStatus", params: { includeToken: true, refreshToken: false } }),
+      JSON.stringify({ id: 2, method: "account/read", params: { refreshToken: false } }),
+      ""
+    ].join("\n")
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  return new Map(result.stdout.trim().split(/\r?\n/).map((line) => JSON.parse(line)).map((response) => [response.id, response.result]));
+}
+
+test("Codex app-server falls back to a non-ChatGPT account when the app cannot route the virtual identity", { skip: process.platform === "win32" }, () => {
+  for (const version of ["0.162.0-alpha.17.2", "0.155.0-alpha.5", "0.155.0"]) {
+    const responses = runApiKeyAppServerIdentity(version);
+    assert.deepEqual(responses.get(1), { authMethod: "amazonBedrock", authToken: "ccr-local-profile", requiresOpenaiAuth: false }, version);
+    assert.deepEqual(responses.get(2), {
+      account: { type: "amazonBedrock", credentialSource: "codexManaged" },
+      requiresOpenaiAuth: false
+    }, version);
+  }
+});
+
+test("Codex app-server keeps the virtual ChatGPT identity inside the legacy workspace routing window", { skip: process.platform === "win32" }, () => {
+  for (const version of ["0.141.0", "0.150.1", "0.155.0-alpha.4"]) {
+    const responses = runApiKeyAppServerIdentity(version);
+    assert.equal(responses.get(1).authMethod, "chatgpt", version);
+    assert.match(String(responses.get(1).authToken), /^[\w-]+\.[\w-]+\.ccr-virtual$/, version);
+    assert.equal(responses.get(2).account.type, "chatgpt", version);
+    assert.equal(responses.get(2).account.account_id, "ccr-virtual-account", version);
+  }
+});
+
+test("CCR_CODEX_FORCE_CHATGPT_IDENTITY keeps the virtual ChatGPT identity on newer app-servers", { skip: process.platform === "win32" }, () => {
+  const responses = runApiKeyAppServerIdentity("0.162.0-alpha.17.2", { CCR_CODEX_FORCE_CHATGPT_IDENTITY: "1" });
+  assert.equal(responses.get(1).authMethod, "chatgpt");
+  assert.equal(responses.get(2).account.type, "chatgpt");
+});
+
 test("Codex app-server delegates public Git marketplaces and leaves account-private marketplaces empty", { skip: process.platform === "win32" }, () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-official-plugins-"));
   const runtimeFile = writeRuntimeScript(dir);
