@@ -103,6 +103,30 @@ Remote MCP servers need a URL. Authentication can use:
 
 If a remote server starts slowly or has long-running calls, adjust that server's **Startup timeout** or **Request timeout**.
 
+### Parallel Search example
+
+[Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp) provides public web search (`web_search`) and page extraction (`web_fetch`) without a Parallel account or API key. Free access is rate limited.
+
+In **Settings → ToolHub**, use **Import JSON** to add this remote server:
+
+```json
+{
+  "mcpServers": [
+    {
+      "name": "parallel-search",
+      "transport": "streamable-http",
+      "url": "https://search.parallel.ai/mcp"
+    }
+  ]
+}
+```
+
+Leave **API key**, **API key env**, and **Headers** empty for anonymous access. Keep your existing resolver model configured, enable ToolHub, save settings, and reopen the agent from CCR. The resolver model still uses its own provider credentials; key-free access applies to Parallel's MCP server.
+
+Ask the agent to find a public page and read it. ToolHub discovers the server's tools, resolves the tools needed for the task, and invokes them through `tool_hub.invoke`. This uses ToolHub's remote MCP path and does not require CCR Desktop's built-in browser or change Fusion's built-in search provider.
+
+Once enabled, the agent can call these tools during its work. Queries, requested URLs, and any supplied objectives or context are sent to Parallel. To remove this connection, delete `parallel-search` from ToolHub's MCP servers, save settings, and reopen the agent so it loads the updated configuration.
+
 ## JSON example
 
 The desktop app's SQLite config is the effective source, so prefer editing through the UI. The fields below are useful for backups, migration, or troubleshooting:

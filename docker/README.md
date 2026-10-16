@@ -21,7 +21,7 @@ Nginx routes:
 
 | Public route | Purpose |
 | --- | --- |
-| `/` and `/pages/home/index.html` | Browser management UI. `/` redirects to a URL containing the management token. |
+| `/` and `/pages/home/index.html` | Browser management UI. `/` redirects to the page and keeps a `ccr_web_token` query parameter if the request has one. The token is never added by Nginx. |
 | `/api/ccr/rpc` | Authenticated management RPC. |
 | `/health` | Gateway health, not container/UI health. It can return `502` until a provider and model are configured and the gateway starts. |
 | `/v1/*`, `/v1beta/*`, `/messages`, `/chat/completions`, `/responses`, `/interactions`, `/mcp/*` | Supported model and MCP gateway requests. |
@@ -35,7 +35,7 @@ npm run docker:compose:up
 docker compose logs -f ccr
 ```
 
-Open <http://127.0.0.1:3458>. On a new volume, the management UI is immediately available. Add a provider and model, create a CCR client key under **API Keys**, and start the gateway from **Server**.
+Open the management URL that the entrypoint prints in the container log, `http://127.0.0.1:3458/?ccr_web_token=<token>`. It is only printed when the token was generated; if you set `CCR_WEB_AUTH_TOKEN` yourself, add it to the URL. On a new volume, the management UI is immediately available. Add a provider and model, create a CCR client key under **API Keys**, and start the gateway from **Server**.
 
 The npm Compose script prepares a local `../../next-ai/gateway` checkout before building so the image uses that plugin-capable ai-gateway runtime. If you run `docker compose up -d --build` directly, run `npm run docker:prepare-gateway` first. `npm run docker:build` performs the same preparation automatically.
 
@@ -82,10 +82,10 @@ npm run docker:run
 
 There are two independent authentication layers:
 
-1. `CCR_WEB_AUTH_TOKEN` protects management RPC. Nginx puts it into the management-page URL, and the browser sends it to RPC as `x-ccr-web-auth`.
+1. `CCR_WEB_AUTH_TOKEN` protects management RPC. You open the management page with it in the URL (`/?ccr_web_token=<token>`), and the browser sends it to RPC as `x-ccr-web-auth`. Nginx never sends it to a client.
 2. CCR client API keys created in the **API Keys** page protect model gateway requests. These are separate from upstream provider credentials.
 
-If `CCR_WEB_AUTH_TOKEN` is unset, the entrypoint generates a new random token on each container start. Opening `/` still works because Nginx redirects to a tokenized URL, but a stable token is recommended for persistent or remote deployments.
+If `CCR_WEB_AUTH_TOKEN` is unset, the entrypoint generates a new random token on each container start and prints the management URL once to the container log. Opening `/` without a token loads the page, but every management call fails with `401` until the token is supplied. The page keeps the token for the browser tab session. A stable token is recommended for persistent or remote deployments.
 
 Avoid putting the token directly in shell history. Create a protected environment file instead:
 
@@ -237,7 +237,7 @@ docker compose config
 
 ### `/` returns `302`
 
-This is expected. Nginx redirects the root URL to the management page and URL-encodes the management token.
+This is expected. Nginx redirects the root URL to the management page and keeps the query string, so a `ccr_web_token` you supply survives. It does not add a token.
 
 ### `/health` returns `502`
 
@@ -245,7 +245,7 @@ This is expected. Nginx redirects the root URL to the management page and URL-en
 
 ### The UI returns `401` after a token change
 
-Open the bare root URL again so Nginx creates a URL with the current token. Close stale tabs and avoid bookmarks that contain an old `ccr_web_token`.
+Open `/?ccr_web_token=<token>` again with the current token (for a generated token, read it from `docker compose logs ccr`). Close stale tabs and avoid bookmarks that contain an old `ccr_web_token`.
 
 ### Clients still use the old port or hostname
 
@@ -278,7 +278,7 @@ npm run docker:compose:up
 docker compose logs -f ccr
 ```
 
-打开 <http://127.0.0.1:3458>。首次启动时管理 UI 可以立即访问；添加供应商和模型、在 **API 密钥** 页面创建 CCR 客户端 Key，然后从 **服务** 页面启动网关。
+打开容器日志中打印的管理地址 `http://127.0.0.1:3458/?ccr_web_token=<token>`（仅在 Token 自动生成时打印；自行设置了 `CCR_WEB_AUTH_TOKEN` 时，请自行拼到地址后）。首次启动时管理 UI 可以立即访问；添加供应商和模型、在 **API 密钥** 页面创建 CCR 客户端 Key，然后从 **服务** 页面启动网关。
 
 这个 npm Compose 脚本会在构建前准备本机的 `../../next-ai/gateway` checkout，让镜像使用支持插件的 ai-gateway runtime。如果直接运行 `docker compose up -d --build`，请先执行 `npm run docker:prepare-gateway`。`npm run docker:build` 也会自动打包这份本地 ai-gateway。
 
@@ -295,7 +295,7 @@ ports:
 - **API 密钥** 页面创建的 CCR 客户端 Key 用于模型网关请求。
 - 上游供应商凭据是第三类凭据，不应拿来代替 CCR 客户端 Key。
 
-根路径会重定向到包含 `ccr_web_token` 的管理 URL。请把该 URL 当作密码。远程部署至少应使用固定强 Token、TLS、主机防火墙或私网，并让反向代理把全部路径转发到 Nginx。流式响应和 SSE 不应被代理缓冲。
+Nginx 不会向客户端返回 Token：根路径只会跳转到管理页，并保留请求中已有的 `ccr_web_token` 参数。自动生成的 Token 会在容器日志中打印一次，请把含 Token 的 URL 当作密码。远程部署至少应使用固定强 Token、TLS、主机防火墙或私网，并让反向代理把全部路径转发到 Nginx。流式响应和 SSE 不应被代理缓冲。
 
 外部端口、域名或协议变化时，必须同步设置公开地址：
 
@@ -331,9 +331,9 @@ docker compose logs --tail=200 ccr
 
 ### 常见排查
 
-- `/` 返回 `302`：正常，Nginx 正在跳转到带管理 Token 的页面。
+- `/` 返回 `302`：正常，Nginx 正在跳转到管理页，并保留请求里的查询参数。
 - `/health` 返回 `502`：它检查的是模型网关；首次启动尚未配置模型时属于预期行为。
-- 修改 Token 后 UI 返回 `401`：重新打开不带参数的根地址，关闭仍使用旧 Token 的标签页。
+- 修改 Token 后 UI 返回 `401`：用当前 Token 重新打开 `/?ccr_web_token=<token>`，关闭仍使用旧 Token 的标签页。
 - 重建后配置消失：检查是否仍挂载同一个 `/data` 卷；`docker compose down --volumes` 会删除数据卷。
 - 容器健康但模型请求失败：继续检查服务状态、供应商连通性、CCR 客户端 Key、路由和请求日志；容器健康只表示 Nginx / UI 可访问。
 

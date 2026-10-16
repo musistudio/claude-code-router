@@ -25,7 +25,8 @@ test("theme preference persistence changes only the theme field", async () => {
     HOST: "theme-preference-stale-save.test",
     theme: "system"
   };
-  const savedConfig = await saveAppConfig(staleConfig);
+  await assert.rejects(saveAppConfig(staleConfig), /Configuration changed/);
+  const savedConfig = await saveAppConfig({ ...await loadAppConfig(), HOST: staleConfig.HOST, theme: "system" });
   assert.equal(savedConfig.theme, "dark");
   assert.equal(savedConfig.HOST, staleConfig.HOST);
 });

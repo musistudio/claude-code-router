@@ -1,0 +1,882 @@
+{
+  "schemaVersion": 2,
+  "models": [
+    {
+      "id": "anthropic/claude-sonnet-4-20250514",
+      "model": "claude-sonnet-4-20250514",
+      "displayName": "Claude Sonnet 4",
+      "family": "claude-sonnet",
+      "limits": {
+        "contextTokens": 1000000,
+        "inputTokens": 1000000,
+        "maxTokens": 64000,
+        "outputTokens": 64000,
+        "supports1MContext": true
+      },
+      "modalities": {
+        "input": [
+          "image",
+          "pdf",
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "capabilities": {
+        "assistantPrefill": true,
+        "audioInput": false,
+        "audioOutput": false,
+        "computerUse": true,
+        "embedding": false,
+        "functionCalling": true,
+        "imageGeneration": false,
+        "imageInput": true,
+        "imageOutput": false,
+        "moderation": false,
+        "pdfInput": true,
+        "promptCaching": true,
+        "reasoning": true,
+        "rerank": false,
+        "responseSchema": true,
+        "speech": false,
+        "toolChoice": true,
+        "transcription": false,
+        "videoInput": false,
+        "vision": true,
+        "supports1MContext": true,
+        "attachments": true,
+        "openWeights": false,
+        "temperature": true,
+        "toolCalling": true,
+        "structuredOutput": true
+      },
+      "pricing": {
+        "currency": "USD",
+        "normalizedUnit": "per1MTokens values are USD per 1,000,000 tokens; non-token values keep the unit named by their object key.",
+        "offers": [
+          {
+            "source": "litellm",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-20250514",
+            "sourceUrl": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
+            "sourceUnit": "usd_per_token_for_token_fields",
+            "per1MTokens": {
+              "cacheRead": 0.3,
+              "cacheWrite": 3.75,
+              "cacheWrite1h": 6,
+              "cacheWrite5m": 3.75,
+              "input": 3,
+              "output": 15
+            },
+            "searchContextPerQuery": {
+              "search_context_size_high": 0.01,
+              "search_context_size_low": 0.01,
+              "search_context_size_medium": 0.01
+            },
+            "extra": {
+              "input_cost_per_token_above_200k_tokens": 6e-06,
+              "output_cost_per_token_above_200k_tokens": 2.25e-05,
+              "cache_creation_input_token_cost_above_200k_tokens": 7.5e-06,
+              "cache_read_input_token_cost_above_200k_tokens": 6e-07
+            }
+          }
+        ]
+      },
+      "metadata": {
+        "displayNames": [
+          "Claude Sonnet 4",
+          "claude-sonnet-4-20250514"
+        ],
+        "families": [
+          "claude-sonnet"
+        ],
+        "modes": [
+          "chat"
+        ],
+        "knowledgeCutoff": "2025-03-31",
+        "releaseDate": "2025-05-14",
+        "lastUpdated": "2025-05-14",
+        "deprecationDate": "2026-06-15",
+        "providerModelRecordCount": 4
+      },
+      "sourceRecords": [
+        {
+          "source": "litellm",
+          "sourceUrl": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-20250514",
+          "mode": "chat",
+          "metadata": {
+            "deprecationDate": "2026-06-15"
+          }
+        }
+      ]
+    },
+    {
+      "id": "moonshotai/kimi-for-coding",
+      "model": "kimi-for-coding",
+      "displayName": "kimi-for-coding",
+      "family": "kimi-k2",
+      "limits": {
+        "contextTokens": 1048576,
+        "outputTokens": 32768,
+        "supports1MContext": true
+      },
+      "modalities": {
+        "input": [
+          "image",
+          "text",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "capabilities": {
+        "attachments": true,
+        "audioInput": false,
+        "audioOutput": false,
+        "imageInput": true,
+        "imageOutput": false,
+        "openWeights": false,
+        "pdfInput": false,
+        "reasoning": true,
+        "lowReasoningEffort": true,
+        "highReasoningEffort": true,
+        "maxReasoningEffort": true,
+        "toolCalling": true,
+        "videoInput": true,
+        "supports1MContext": true
+      },
+      "pricing": {
+        "currency": "USD",
+        "normalizedUnit": "per1MTokens values are USD per 1,000,000 tokens; non-token values keep the unit named by their object key.",
+        "offers": [
+          {
+            "source": "models.dev",
+            "provider": "kimi-for-coding",
+            "model": "kimi-for-coding",
+            "sourceUrl": "https://models.dev/api.json",
+            "sourceUnit": "usd_per_1m_tokens",
+            "per1MTokens": {
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "cacheWrite5m": 0,
+              "input": 0,
+              "output": 0
+            }
+          }
+        ]
+      },
+      "metadata": {
+        "displayNames": [
+          "kimi-for-coding"
+        ],
+        "families": [
+          "kimi-k2"
+        ],
+        "releaseDate": "2026-09-11",
+        "lastUpdated": "2026-09-11",
+        "providerModelRecordCount": 1
+      },
+      "sourceRecords": [
+        {
+          "source": "models.dev",
+          "sourceUrl": "https://models.dev/api.json",
+          "provider": "kimi-for-coding",
+          "providerName": "Kimi For Coding",
+          "providerApi": "https://api.kimi.com/coding/v1",
+          "providerDoc": "https://www.kimi.com/code/docs/en/kimi-code/models.html",
+          "model": "kimi-for-coding",
+          "modelKey": "kimi-for-coding",
+          "displayName": "kimi-for-coding",
+          "family": "kimi-k2",
+          "metadata": {
+            "lastUpdated": "2026-09-11",
+            "openWeights": false,
+            "releaseDate": "2026-09-11",
+            "reasoningOptions": [
+              {
+                "type": "toggle"
+              },
+              {
+                "type": "effort",
+                "values": [
+                  "low",
+                  "high",
+                  "max"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "openai/gpt-5",
+      "model": "gpt-5",
+      "displayName": "GPT-5",
+      "family": "gpt",
+      "limits": {
+        "contextTokens": 409600,
+        "inputTokens": 409600,
+        "maxTokens": 128000,
+        "outputTokens": 128000,
+        "supports1MContext": false
+      },
+      "modalities": {
+        "input": [
+          "file",
+          "image",
+          "pdf",
+          "text"
+        ],
+        "output": [
+          "image",
+          "text"
+        ]
+      },
+      "capabilities": {
+        "attachments": true,
+        "audioInput": false,
+        "audioOutput": false,
+        "imageInput": true,
+        "imageOutput": true,
+        "openWeights": false,
+        "pdfInput": true,
+        "reasoning": true,
+        "lowReasoningEffort": true,
+        "mediumReasoningEffort": true,
+        "highReasoningEffort": true,
+        "minimalReasoningEffort": true,
+        "structuredOutput": true,
+        "temperature": true,
+        "toolCalling": true,
+        "videoInput": false,
+        "embedding": false,
+        "functionCalling": true,
+        "imageGeneration": false,
+        "moderation": false,
+        "nativeStreaming": true,
+        "noneReasoningEffort": false,
+        "parallelFunctionCalling": true,
+        "promptCaching": true,
+        "rerank": false,
+        "responseSchema": true,
+        "speech": false,
+        "systemMessages": true,
+        "toolChoice": true,
+        "transcription": false,
+        "vision": true,
+        "webSearch": true,
+        "xhighReasoningEffort": false,
+        "supports1MContext": false
+      },
+      "pricing": {
+        "currency": "USD",
+        "normalizedUnit": "per1MTokens values are USD per 1,000,000 tokens; non-token values keep the unit named by their object key.",
+        "offers": [
+          {
+            "source": "models.dev",
+            "provider": "openai",
+            "model": "gpt-5",
+            "sourceUrl": "https://models.dev/api.json",
+            "sourceUnit": "usd_per_1m_tokens",
+            "per1MTokens": {
+              "cacheRead": 0.125,
+              "input": 1.25,
+              "output": 10
+            }
+          },
+          {
+            "source": "litellm",
+            "provider": "openai",
+            "model": "gpt-5",
+            "sourceUrl": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
+            "sourceUnit": "usd_per_token_for_token_fields",
+            "per1MTokens": {
+              "cacheRead": 0.125,
+              "input": 1.25,
+              "output": 10
+            },
+            "searchContextPerQuery": {
+              "search_context_size_high": 0.01,
+              "search_context_size_low": 0.01,
+              "search_context_size_medium": 0.01
+            },
+            "extra": {
+              "cache_read_input_token_cost_flex": 6.25e-08,
+              "cache_read_input_token_cost_priority": 2.5e-07,
+              "input_cost_per_token_batches": 6.25e-07,
+              "input_cost_per_token_flex": 6.25e-07,
+              "input_cost_per_token_priority": 2.5e-06,
+              "output_cost_per_token_batches": 5e-06,
+              "output_cost_per_token_flex": 5e-06,
+              "output_cost_per_token_priority": 2e-05
+            }
+          }
+        ]
+      },
+      "metadata": {
+        "displayNames": [
+          "GPT 5",
+          "GPT-5",
+          "GPT-5 (Azure)",
+          "GPT-5 (OpenAI)",
+          "OpenAI GPT-5",
+          "OpenAI/GPT-5",
+          "OpenAI: GPT-5",
+          "gpt-5"
+        ],
+        "families": [
+          "gpt"
+        ],
+        "modes": [
+          "chat"
+        ],
+        "knowledgeCutoff": "2024-09-30",
+        "releaseDate": "2025-08-08",
+        "lastUpdated": "2025-08-08",
+        "deprecationDate": "2027-02-09",
+        "supportedParameters": [
+          "include_reasoning",
+          "max_completion_tokens",
+          "max_tokens",
+          "reasoning",
+          "reasoning_effort",
+          "response_format",
+          "seed",
+          "structured_outputs",
+          "tool_choice",
+          "tools"
+        ],
+        "supportedEndpoints": [
+          "/v1/batch",
+          "/v1/chat/completions",
+          "/v1/responses"
+        ],
+        "providerModelRecordCount": 33
+      },
+      "sourceRecords": [
+        {
+          "source": "models.dev",
+          "sourceUrl": "https://models.dev/api.json",
+          "provider": "openai",
+          "providerName": "OpenAI",
+          "providerDoc": "https://platform.openai.com/docs/models",
+          "model": "gpt-5",
+          "modelKey": "gpt-5",
+          "displayName": "GPT-5",
+          "family": "gpt",
+          "metadata": {
+            "knowledgeCutoff": "2024-09-30",
+            "lastUpdated": "2025-08-07",
+            "openWeights": false,
+            "releaseDate": "2025-08-07",
+            "reasoningOptions": [
+              {
+                "type": "effort",
+                "values": [
+                  "minimal",
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "source": "litellm",
+          "sourceUrl": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
+          "provider": "openai",
+          "model": "gpt-5",
+          "mode": "chat",
+          "metadata": {
+            "source": "https://developers.openai.com/api/docs/pricing",
+            "supportedEndpoints": [
+              "/v1/chat/completions",
+              "/v1/batch",
+              "/v1/responses"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "z-ai/glm-5.2",
+      "model": "glm-5.2",
+      "displayName": "GLM-5.2",
+      "family": "glm",
+      "limits": {
+        "contextTokens": 1049000,
+        "inputTokens": 1048576,
+        "maxTokens": 1048576,
+        "outputTokens": 1048576,
+        "supports1MContext": true
+      },
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "capabilities": {
+        "attachments": true,
+        "audioInput": false,
+        "audioOutput": false,
+        "imageInput": true,
+        "imageOutput": false,
+        "openWeights": true,
+        "pdfInput": false,
+        "reasoning": true,
+        "lowReasoningEffort": true,
+        "mediumReasoningEffort": true,
+        "highReasoningEffort": true,
+        "xhighReasoningEffort": true,
+        "structuredOutput": true,
+        "temperature": true,
+        "toolCalling": true,
+        "videoInput": false,
+        "embedding": false,
+        "functionCalling": true,
+        "imageGeneration": false,
+        "moderation": false,
+        "promptCaching": true,
+        "rerank": false,
+        "responseSchema": true,
+        "speech": false,
+        "toolChoice": true,
+        "transcription": false,
+        "vision": false,
+        "supports1MContext": true,
+        "parallelFunctionCalling": true,
+        "webSearch": false,
+        "noneReasoningEffort": true,
+        "maxReasoningEffort": true,
+        "minimalReasoningEffort": true,
+        "interleaved": true,
+        "nativeStructuredOutput": true,
+        "systemMessages": true
+      },
+      "pricing": {
+        "currency": "USD",
+        "normalizedUnit": "per1MTokens values are USD per 1,000,000 tokens; non-token values keep the unit named by their object key.",
+        "offers": [
+          {
+            "source": "models.dev",
+            "provider": "zhipuai-coding-plan",
+            "model": "glm-5.2",
+            "sourceUrl": "https://models.dev/api.json",
+            "sourceUnit": "usd_per_1m_tokens",
+            "per1MTokens": {
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "cacheWrite5m": 0,
+              "input": 0,
+              "output": 0
+            }
+          }
+        ]
+      },
+      "metadata": {
+        "displayNames": [
+          "GLM 5.2",
+          "GLM 5.2 TEE",
+          "GLM-5.2",
+          "GLM-5.2 (Baidu)",
+          "GLM-5.2 (ByteDance)",
+          "GLM-5.2 (CanopyWave)",
+          "GLM-5.2 (EmberCloud)",
+          "GLM-5.2 (NovitaAI)",
+          "GLM-5.2 (Runware)",
+          "GLM-5.2 (SCX.ai)",
+          "GLM-5.2 (Tencent Cloud)",
+          "GLM-5.2 (Z AI)",
+          "Glm 5.2",
+          "Z.ai: GLM 5.2"
+        ],
+        "families": [
+          "glm"
+        ],
+        "modes": [
+          "chat"
+        ],
+        "statuses": [
+          "beta"
+        ],
+        "releaseDate": "2026-06-13",
+        "lastUpdated": "2026-06-13",
+        "supportedParameters": [
+          "frequency_penalty",
+          "include_reasoning",
+          "logit_bias",
+          "logprobs",
+          "max_tokens",
+          "min_p",
+          "parallel_tool_calls",
+          "presence_penalty",
+          "reasoning",
+          "reasoning_effort",
+          "repetition_penalty",
+          "response_format",
+          "seed",
+          "stop",
+          "structured_outputs",
+          "temperature",
+          "tool_choice",
+          "tools",
+          "top_k",
+          "top_logprobs",
+          "top_p"
+        ],
+        "providerModelRecordCount": 91
+      },
+      "sourceRecords": [
+        {
+          "source": "models.dev",
+          "sourceUrl": "https://models.dev/api.json",
+          "provider": "zhipuai-coding-plan",
+          "providerName": "Zhipu AI Coding Plan",
+          "providerApi": "https://open.bigmodel.cn/api/coding/paas/v4",
+          "providerDoc": "https://docs.bigmodel.cn/cn/coding-plan/overview",
+          "model": "glm-5.2",
+          "modelKey": "glm-5.2",
+          "displayName": "GLM-5.2",
+          "family": "glm",
+          "metadata": {
+            "lastUpdated": "2026-06-13",
+            "openWeights": true,
+            "releaseDate": "2026-06-13",
+            "reasoningOptions": [
+              {
+                "type": "effort",
+                "values": [
+                  "high",
+                  "max"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "google/gemini-2.5-pro",
+      "model": "gemini-2.5-pro",
+      "displayName": "Gemini 2.5 Pro",
+      "family": "gemini-pro",
+      "limits": {
+        "contextTokens": 1065535,
+        "inputTokens": 1048576,
+        "maxTokens": 1000000,
+        "outputTokens": 1000000,
+        "supports1MContext": true
+      },
+      "modalities": {
+        "input": [
+          "audio",
+          "file",
+          "image",
+          "pdf",
+          "text",
+          "video"
+        ],
+        "output": [
+          "audio",
+          "text"
+        ]
+      },
+      "capabilities": {
+        "attachments": true,
+        "audioInput": true,
+        "audioOutput": true,
+        "imageInput": true,
+        "imageOutput": false,
+        "openWeights": false,
+        "pdfInput": true,
+        "reasoning": true,
+        "structuredOutput": true,
+        "temperature": true,
+        "toolCalling": true,
+        "videoInput": true,
+        "supports1MContext": true,
+        "embedding": false,
+        "functionCalling": true,
+        "imageGeneration": false,
+        "moderation": false,
+        "promptCaching": true,
+        "rerank": false,
+        "responseSchema": true,
+        "speech": false,
+        "systemMessages": true,
+        "toolChoice": true,
+        "transcription": false,
+        "vision": true,
+        "parallelFunctionCalling": true,
+        "webSearch": true,
+        "lowReasoningEffort": true,
+        "mediumReasoningEffort": true,
+        "highReasoningEffort": true,
+        "maxReasoningEffort": true,
+        "xhighReasoningEffort": true,
+        "minimalReasoningEffort": true,
+        "noneReasoningEffort": true
+      },
+      "pricing": {
+        "currency": "USD",
+        "normalizedUnit": "per1MTokens values are USD per 1,000,000 tokens; non-token values keep the unit named by their object key.",
+        "offers": [
+          {
+            "source": "models.dev",
+            "provider": "google",
+            "model": "gemini-2.5-pro",
+            "sourceUrl": "https://models.dev/api.json",
+            "sourceUnit": "usd_per_1m_tokens",
+            "per1MTokens": {
+              "cacheRead": 0.125,
+              "input": 1.25,
+              "output": 10
+            },
+            "tiered": {
+              "contextOver200K": {
+                "input": 2.5,
+                "output": 15,
+                "cache_read": 0.25
+              },
+              "tiers": [
+                {
+                  "input": 2.5,
+                  "output": 15,
+                  "cache_read": 0.25,
+                  "tier": {
+                    "size": 200000
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "source": "models.dev",
+            "provider": "openrouter",
+            "model": "google/gemini-2.5-pro",
+            "sourceUrl": "https://models.dev/api.json",
+            "sourceUnit": "usd_per_1m_tokens",
+            "per1MTokens": {
+              "cacheRead": 0.125,
+              "cacheWrite": 0.375,
+              "cacheWrite5m": 0.375,
+              "input": 1.25,
+              "output": 10,
+              "reasoningOutput": 10
+            },
+            "tiered": {
+              "contextOver200K": {
+                "input": 2.5,
+                "output": 15,
+                "cache_read": 0.25
+              },
+              "tiers": [
+                {
+                  "input": 2.5,
+                  "output": 15,
+                  "cache_read": 0.25,
+                  "tier": {
+                    "size": 200000
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "source": "litellm",
+            "provider": "openrouter",
+            "model": "openrouter/google/gemini-2.5-pro",
+            "sourceUrl": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
+            "sourceUnit": "usd_per_token_for_token_fields",
+            "per1MTokens": {
+              "cacheRead": 0.125,
+              "input": 1.25,
+              "inputAudio": 0.7,
+              "output": 10
+            }
+          },
+          {
+            "source": "openrouter",
+            "provider": "openrouter",
+            "model": "google/gemini-2.5-pro",
+            "sourceUrl": "https://openrouter.ai/api/v1/models",
+            "sourceUnit": "usd_per_token_for_token_fields",
+            "per1MTokens": {
+              "cacheRead": 0.125,
+              "cacheWrite": 0.375,
+              "cacheWrite5m": 0.375,
+              "input": 1.25,
+              "internalReasoning": 10,
+              "output": 10
+            },
+            "other": {
+              "audio": 1.25e-06,
+              "image": 1.25e-06,
+              "webSearch": 0.014
+            },
+            "extra": {
+              "input_audio_cache": 1.25e-07,
+              "overrides": [
+                {
+                  "min_prompt_tokens": 200000,
+                  "prompt": 2.5e-06,
+                  "completion": 1.5e-05,
+                  "audio": 2.5e-06,
+                  "input_audio_cache": 2.5e-07,
+                  "input_cache_read": 2.5e-07
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "metadata": {
+        "displayNames": [
+          "Gemini 2.5 Pro",
+          "Gemini 2.5 Pro (Google AI Studio)",
+          "Gemini 2.5 Pro (Google Vertex AI)",
+          "Gemini-2.5-Pro",
+          "Google Gemini 2.5 Pro",
+          "Google: Gemini 2.5 Pro",
+          "gemini-2.5-pro"
+        ],
+        "families": [
+          "gemini-pro"
+        ],
+        "modes": [
+          "chat"
+        ],
+        "knowledgeCutoff": "2025-01",
+        "releaseDate": "2025-06-17",
+        "lastUpdated": "2025-06-17",
+        "deprecationDate": "2026-10-20",
+        "supportedParameters": [
+          "include_reasoning",
+          "max_tokens",
+          "reasoning",
+          "response_format",
+          "seed",
+          "stop",
+          "structured_outputs",
+          "temperature",
+          "tool_choice",
+          "tools",
+          "top_p"
+        ],
+        "supportedEndpoints": [
+          "/v1/chat/completions",
+          "/v1/completions"
+        ],
+        "providerModelRecordCount": 36
+      },
+      "sourceRecords": [
+        {
+          "source": "models.dev",
+          "sourceUrl": "https://models.dev/api.json",
+          "provider": "google",
+          "providerName": "Google",
+          "providerDoc": "https://ai.google.dev/gemini-api/docs/models",
+          "model": "gemini-2.5-pro",
+          "modelKey": "gemini-2.5-pro",
+          "displayName": "Gemini 2.5 Pro",
+          "family": "gemini-pro",
+          "metadata": {
+            "knowledgeCutoff": "2025-01",
+            "lastUpdated": "2025-06-17",
+            "openWeights": false,
+            "releaseDate": "2025-06-17",
+            "reasoningOptions": [
+              {
+                "type": "budget_tokens",
+                "min": 128,
+                "max": 32768
+              }
+            ]
+          }
+        },
+        {
+          "source": "models.dev",
+          "sourceUrl": "https://models.dev/api.json",
+          "provider": "openrouter",
+          "providerName": "OpenRouter",
+          "providerApi": "https://openrouter.ai/api/v1",
+          "providerDoc": "https://openrouter.ai/models",
+          "model": "google/gemini-2.5-pro",
+          "modelKey": "google/gemini-2.5-pro",
+          "displayName": "Gemini 2.5 Pro",
+          "family": "gemini-pro",
+          "metadata": {
+            "knowledgeCutoff": "2025-01",
+            "lastUpdated": "2025-06-17",
+            "openWeights": false,
+            "releaseDate": "2025-06-17",
+            "reasoningOptions": [
+              {
+                "type": "budget_tokens",
+                "min": 128,
+                "max": 32768
+              }
+            ]
+          }
+        },
+        {
+          "source": "litellm",
+          "sourceUrl": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
+          "provider": "openrouter",
+          "model": "openrouter/google/gemini-2.5-pro",
+          "mode": "chat",
+          "metadata": {
+            "source": "https://openrouter.ai/google/gemini-2.5-pro"
+          }
+        },
+        {
+          "source": "openrouter",
+          "sourceUrl": "https://openrouter.ai/api/v1/models",
+          "provider": "openrouter",
+          "model": "google/gemini-2.5-pro",
+          "displayName": "Google: Gemini 2.5 Pro",
+          "metadata": {
+            "canonicalSlug": "google/gemini-2.5-pro",
+            "createdAt": "2025-06-17T14:12:24.000Z",
+            "knowledgeCutoff": "2025-01-31",
+            "links": {
+              "details": "/api/v1/models/google/gemini-2.5-pro/endpoints"
+            },
+            "reasoning": {
+              "mandatory": true
+            },
+            "supportedParameters": [
+              "include_reasoning",
+              "max_tokens",
+              "reasoning",
+              "response_format",
+              "seed",
+              "stop",
+              "structured_outputs",
+              "temperature",
+              "tool_choice",
+              "tools",
+              "top_p"
+            ],
+            "tokenizer": "Gemini",
+            "topProvider": {
+              "context_length": 1048576,
+              "max_completion_tokens": 65536,
+              "is_moderated": false
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

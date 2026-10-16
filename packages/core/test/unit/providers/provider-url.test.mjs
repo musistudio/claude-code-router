@@ -75,3 +75,24 @@ test("provider URL normalization chooses protocol-specific bases", () => {
     "https://api.example.com/v1"
   );
 });
+
+test("provider URL parsing keeps custom base paths that end in /models", () => {
+  assert.equal(
+    parseProviderBaseUrl("https://api.example.com/platform/models").normalizedInputBaseUrl,
+    "https://api.example.com/platform/models"
+  );
+  assert.equal(
+    normalizeProviderBaseUrl("https://api.example.com/platform/models", "openai_chat_completions"),
+    "https://api.example.com/platform/models"
+  );
+  assert.equal(
+    parseProviderBaseUrl("https://api.example.com/platform/models/chat/completions").normalizedInputBaseUrl,
+    "https://api.example.com/platform/models"
+  );
+  assert.equal(parseProviderBaseUrl("https://api.deepseek.com/models").normalizedInputBaseUrl, "https://api.deepseek.com");
+  assert.equal(
+    parseProviderBaseUrl("https://open.bigmodel.cn/api/paas/v4/models").normalizedInputBaseUrl,
+    "https://open.bigmodel.cn/api/paas/v4"
+  );
+  assert.equal(parseProviderBaseUrl("https://openrouter.ai/api/v1/models").normalizedInputBaseUrl, "https://openrouter.ai/api/v1");
+});

@@ -107,7 +107,9 @@ function stripProviderEndpointPath(pathname: string): string {
     [/\/interactions(?:\/[^/]+(?:\/cancel)?)?$/i, ""],
     [/\/v1beta\/models$/i, "/v1beta"],
     [/\/v1\/models$/i, "/v1"],
-    [/\/models$/i, ""]
+    // Only treat a trailing /models as the model-list endpoint when it sits at the root or
+    // directly under an API version segment; custom base paths like /platform/models are kept.
+    [/^((?:.*\/v[0-9][a-z0-9-]*)?)\/models$/i, "$1"]
   ];
 
   for (const [pattern, replacement] of rules) {

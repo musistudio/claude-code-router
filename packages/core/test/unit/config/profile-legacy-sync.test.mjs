@@ -28,6 +28,7 @@ test("saving profiles synchronizes legacy profile enabled flags", async () => {
   assert.equal(rawWithoutClaude.profile.codex.enabled, true);
 
   const topLevelDisabledConfig = createDefaultAppConfig();
+  topLevelDisabledConfig.configRevision = savedWithoutClaude.configRevision;
   topLevelDisabledConfig.profile.enabled = false;
   const savedTopLevelDisabled = await saveAppConfig(topLevelDisabledConfig);
   assert.equal(savedTopLevelDisabled.profile.enabled, false);
@@ -41,6 +42,7 @@ test("saving profiles synchronizes legacy profile enabled flags", async () => {
   assert.equal(rawTopLevelDisabled.profile.codex.enabled, false);
 
   savedWithoutClaude.profile.profiles = [];
+  savedWithoutClaude.configRevision = savedTopLevelDisabled.configRevision;
   const savedWithoutProfiles = await saveAppConfig(savedWithoutClaude);
   assert.equal(savedWithoutProfiles.profile.enabled, false);
   assert.equal(savedWithoutProfiles.profile.claudeCode.enabled, false);

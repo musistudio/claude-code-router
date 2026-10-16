@@ -15,6 +15,7 @@ import type { RouteTraceObserver } from "@ccr/core/observability/route-trace";
 import { applyCompiledRouteRewrite, isBodyModelCompiledRewrite, type CompiledRouteRewrite } from "@ccr/core/routing/rewrite";
 import { buildRouteScriptInput } from "@ccr/core/routing/route-script-context";
 import { normalizeRouteScriptResult } from "@ccr/core/routing/route-script-result";
+import { calculateTokenCount } from "@ccr/core/routing/token-estimator";
 import type { RouteScriptRuntime } from "@ccr/core/routing/route-script-runtime";
 import { profileApiKeyId } from "@ccr/core/profiles/api-key";
 import { isModelAllowedForProfile } from "@ccr/core/profiles/model-allowlist";
@@ -52,11 +53,16 @@ const requireFromHere = createRequire(__filename);
 export class ClaudeCodeRouterPlugin {
   private readonly compiled: CompiledRouterConfig;
   private readonly event = new EventEmitter();
+  private readonly requiresProviderTokenCount: boolean;
   private readonly scriptRuntime?: RouteScriptRuntime;
 
   constructor(private readonly config: AppConfig, options: ClaudeCodeRouterPluginOptions = {}) {
     this.compiled = compileRouterConfig(config, { scriptValidationErrors: options.scriptValidationErrors });
     this.scriptRuntime = options.scriptRuntime;
+    // Provider selection consumes a plain token value after routing, including
+    // Fusion base models. Keep that value when its routing setting is enabled.
+    this.requiresProviderTokenCount = config.Providers.some(provider =>
+      Object.values(provider.modelMetadata ?? {}).some(metadata => metadata.openRouterDiscountRouting?.enabled));
   }
 
   async routeRequest(input: {
@@ -87,9 +93,13 @@ export class ClaudeCodeRouterPlugin {
       matches: (candidate) => builtInAgentRouteMatches(candidate, this.config, "claude-code")
     }]);
     const sessionId = resolveSessionId(body, input.headers);
-    const tokenCount = calculateTokenCount(body.messages, body.system, body.tools);
+    let tokenCount: number | undefined;
     request.sessionId = sessionId;
-    request.tokenCount = tokenCount;
+    Object.defineProperty(request, "tokenCount", {
+      enumerable: true,
+      get: () => tokenCount ??= calculateTokenCount(body.messages, body.system, body.tools),
+      set: (value: number) => { tokenCount = value; }
+    });
 
     const customRouteStartedAt = Date.now();
     const requestedCustomModel = await this.resolveCustomRoute(request);
@@ -115,6 +125,7 @@ export class ClaudeCodeRouterPlugin {
     const routeDecisionStartedAt = Date.now();
     const runtimeDiagnostics: RouteDiagnostic[] = [];
     const configuredDecision = await resolveConfiguredRouteDecision(request, this.config, this.compiled, customModel, {
+      knownTokenCount: () => tokenCount,
       runtimeDiagnostics,
       scriptRuntime: this.scriptRuntime,
       trace: input.trace
@@ -183,7 +194,7 @@ export class ClaudeCodeRouterPlugin {
         reason: configuredDecision.reason,
         sessionId,
         source: configuredDecision.source,
-        tokenCount
+        tokenCount: this.requiresProviderTokenCount ? request.tokenCount ?? 0 : tokenCount ?? 0
       }
     };
   }
@@ -279,6 +290,7 @@ function isPathInside(file: string, root: string): boolean {
 }
 
 type RouteResolutionRuntime = {
+  knownTokenCount?: () => number | undefined;
   runtimeDiagnostics: RouteDiagnostic[];
   scriptRuntime?: RouteScriptRuntime;
   trace?: RouteTraceObserver;
@@ -1246,9 +1258,14 @@ async function resolveRouterRule(
       });
       return undefined;
     }
-    const context = buildRouteScriptInput(request, { profileId: options.auth.profileId });
+    const context = buildRouteScriptInput(request, {
+      deferTokenCount: true,
+      profileId: options.auth.profileId,
+      tokenCount: runtime.knownTokenCount?.()
+    });
     const startedAtMs = Date.now();
     const execution = await runtime.scriptRuntime.execute(rule.id, rule.script, context);
+    if (execution.tokenCount !== undefined) request.tokenCount = execution.tokenCount;
     if (execution.status !== "ok") {
       const timeout = execution.status === "timeout";
       const diagnostic: RouteDiagnostic = {
@@ -1628,59 +1645,6 @@ function routerRuleReason(
 
 function isSubagentModelPlaceholder(model: string): boolean {
   return model.trim().toLowerCase() === ccrSubagentModelPlaceholder;
-}
-
-function calculateTokenCount(messages: unknown, system: unknown, tools: unknown): number {
-  return countMessageTokens(messages) + countSystemTokens(system) + countToolTokens(tools);
-}
-
-function countMessageTokens(messages: unknown): number {
-  if (!Array.isArray(messages)) {
-    return 0;
-  }
-  return messages.reduce((total, message) => total + countUnknownTokens(message), 0);
-}
-
-function countSystemTokens(system: unknown): number {
-  return countUnknownTokens(system);
-}
-
-function countToolTokens(tools: unknown): number {
-  if (!Array.isArray(tools)) {
-    return 0;
-  }
-  return tools.reduce((total, tool) => total + countUnknownTokens(tool), 0);
-}
-
-function countUnknownTokens(value: unknown): number {
-  if (typeof value === "string") {
-    return estimateTextTokens(value);
-  }
-
-  if (typeof value === "number" || typeof value === "boolean") {
-    return 1;
-  }
-
-  if (Array.isArray(value)) {
-    return value.reduce((total, item) => total + countUnknownTokens(item), 0);
-  }
-
-  if (!isRecord(value)) {
-    return 0;
-  }
-
-  let total = 0;
-  for (const [key, item] of Object.entries(value)) {
-    total += estimateTextTokens(key);
-    total += countUnknownTokens(item);
-  }
-  return total;
-}
-
-function estimateTextTokens(text: string): number {
-  const asciiWords = text.match(/[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g)?.length ?? 0;
-  const cjkChars = text.match(/[\u3400-\u9fff]/g)?.length ?? 0;
-  return Math.max(1, Math.ceil((asciiWords + cjkChars) * 1.15));
 }
 
 function resolveSessionId(body: Record<string, unknown>, headers: Record<string, HeaderValue>): string | undefined {

@@ -25,6 +25,8 @@ import { maxUsageCaptureBytes, rawTraceSyncHeader, rawTraceSyncPath } from "@ccr
 import type { RawTracePartText } from "@ccr/core/gateway/internal/shared";
 import { resolveResponseProviderProtocol } from "@ccr/core/providers/runtime-topology";
 import { recordGatewayUsageCaptureIfMissing } from "@ccr/core/usage/store";
+import { modelRegistryForConfig } from "@ccr/core/routing/model-registry";
+import { providerModelPricingForUsage } from "@ccr/core/models/pricing-service";
 
 type RawTraceSynchronizerDependencies = {
   enqueueUpdate?: (
@@ -150,6 +152,8 @@ export class RawTraceSynchronizer {
   private storageReady = false;
   private sourceScanGeneration = 0;
   private readonly sourceObservations = new Map<string, RawTraceSourceObservation>();
+  // Uploads, source/staging recovery, and retention must not move the same
+  // directory while another operation is still making its durable publication.
   private storageMutation = Promise.resolve();
 
   constructor(private readonly dependencies: RawTraceSynchronizerDependencies) {}
@@ -206,12 +210,12 @@ export class RawTraceSynchronizer {
     }
     let stored: StoredRawTraceBundle;
     try {
-      stored = await persistRawTraceBundle(
+      stored = await this.withStorageMutation(() => persistRawTraceBundle(
         manifest,
         spoolDirectory,
         this.dependencies.syncPartFile,
         this.dependencies.measureDirectorySize
-      );
+      ));
     } catch (error) {
       console.warn(`[gateway] Failed to durably accept raw trace bundle: ${formatError(error)}`);
       sendJson(response, 503, { accepted: false, ok: false, reason: "spool_unavailable" });
@@ -374,6 +378,7 @@ export class RawTraceSynchronizer {
       return true;
     }
 
+    let deliveryAttemptStarted = false;
     try {
       const config = this.dependencies.getConfig();
       if (!config) {
@@ -406,6 +411,16 @@ export class RawTraceSynchronizer {
         ? { cleanupDirectory: bundle.files.cleanupDirectory, maxBodyBytes }
         : { ...bundle.files, maxBodyBytes };
       const enqueueUpdate = this.dependencies.enqueueUpdate ?? enqueueGatewayRequestLogFromRawTrace;
+      // Persist before handing ownership to the writer: a successful enqueue
+      // can be committed and its directory removed immediately. Writing after
+      // enqueue races that cleanup and loses retry budgets on worker crashes.
+      stored.delivery = {
+        ...stored.delivery,
+        attempts: stored.delivery.attempts + 1,
+        lastAttemptAt: now
+      };
+      deliveryAttemptStarted = true;
+      await writeDurableDeliveryState(stored.directory, stored.delivery);
       const enqueueResult = await enqueueUpdate(policy.update, files);
       const result: RequestLogEnqueueResult = typeof enqueueResult === "boolean"
         ? { accepted: enqueueResult, degraded: false, ...(enqueueResult ? {} : { reason: "queue_full" }) }
@@ -418,8 +433,6 @@ export class RawTraceSynchronizer {
         const pendingAttempts = retryState.pendingAttempts + 1;
         stored.delivery = {
           ...stored.delivery,
-          attempts: stored.delivery.attempts + 1,
-          lastAttemptAt: now,
           lastError: "record_pending"
         };
         this.retryStates.set(stored.bundleId, {
@@ -430,17 +443,13 @@ export class RawTraceSynchronizer {
           ),
           pendingAttempts
         });
-        // Persist the transition once so restart diagnostics retain the reason,
-        // but keep subsequent attempt counters in memory to avoid fsync on
-        // every admission poll.
+        // Attempt counts are already durable; persist the reason on transition.
         if (previousError !== "record_pending") {
           await writeDurableDeliveryState(stored.directory, stored.delivery);
         }
       } else if (!result.accepted) {
         stored.delivery = {
           ...stored.delivery,
-          attempts: stored.delivery.attempts + 1,
-          lastAttemptAt: now,
           lastError: result.reason ?? "enqueue_rejected"
         };
         this.retryStates.set(stored.bundleId, {
@@ -451,8 +460,6 @@ export class RawTraceSynchronizer {
       } else {
         stored.delivery = {
           ...stored.delivery,
-          attempts: stored.delivery.attempts + 1,
-          lastAttemptAt: now,
           lastError: undefined
         };
         this.retryStates.set(stored.bundleId, {
@@ -464,7 +471,7 @@ export class RawTraceSynchronizer {
     } catch (error) {
       stored.delivery = {
         ...stored.delivery,
-        attempts: stored.delivery.attempts + 1,
+        attempts: stored.delivery.attempts + (deliveryAttemptStarted ? 0 : 1),
         lastAttemptAt: now,
         lastError: formatError(error)
       };
@@ -566,12 +573,12 @@ export class RawTraceSynchronizer {
     for await (const directory of iterateRawTraceStagingDirectories(this.spoolDirectory())) {
       if (!await pathExists(join(directory, rawTraceReadyFileName))) continue;
       try {
-        await publishStagedRawTraceBundle(
+        await this.withStorageMutation(() => publishStagedRawTraceBundle(
           directory,
           this.spoolDirectory(),
           this.dependencies.syncPartFile,
           this.dependencies.measureDirectorySize
-        );
+        ));
       } catch (error) {
         console.warn(`[gateway] Failed to publish recovered raw trace staging ${directory}: ${formatError(error)}`);
       }
@@ -606,12 +613,12 @@ export class RawTraceSynchronizer {
           }
           continue;
         }
-        const stored = await persistRawTraceBundle(
+        const stored = await this.withStorageMutation(() => persistRawTraceBundle(
           manifest,
           this.spoolDirectory(),
           this.dependencies.syncPartFile,
           this.dependencies.measureDirectorySize
-        );
+        ));
         this.sourceObservations.delete(directory);
         await this.registerStoredBundle(stored);
       } catch (error) {
@@ -625,12 +632,12 @@ export class RawTraceSynchronizer {
     for await (const directory of iterateRawTraceStagingDirectories(this.spoolDirectory())) {
       try {
         if (await pathExists(join(directory, rawTraceReadyFileName))) {
-          const stored = await publishStagedRawTraceBundle(
+          const stored = await this.withStorageMutation(() => publishStagedRawTraceBundle(
             directory,
             this.spoolDirectory(),
             this.dependencies.syncPartFile,
             this.dependencies.measureDirectorySize
-          );
+          ));
           this.sourceObservations.delete(directory);
           await this.registerStoredBundle(stored);
           continue;
@@ -1018,6 +1025,14 @@ async function writeDurableManifest(
   directory: string,
   manifest: Record<string, unknown>
 ): Promise<void> {
+  // Retrying an unchanged manifest must not look like fresh producer activity
+  // to the abandoned-source sweep. fsync still precedes any durable ACK.
+  const existing = await readManifestFile(directory);
+  if (existing && JSON.stringify(existing) === JSON.stringify(manifest)) {
+    await syncFile(join(directory, "manifest.json"));
+    await syncDirectory(directory);
+    return;
+  }
   await writeDurableJsonFile(directory, "manifest.json", manifest);
 }
 
@@ -1484,6 +1499,8 @@ export function applyRawTraceRequestLogPolicy(
         : "defer";
   const policyInput: RequestLogRawTraceUpdateInput = {
     ...input,
+    provider: modelRegistryForConfig(config).findProvider(input.provider)?.name ?? input.provider,
+    pricing: providerModelPricingForUsage(config, input.provider, input.model),
     bodyCapturePolicy,
     // An upstream trace never owns the final request outcome. Even an HTTP 2xx
     // can be followed by a downstream disconnect or response write failure.

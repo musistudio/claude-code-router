@@ -1,6 +1,6 @@
 {
   "name": "claude-code-router-monorepo",
-  "version": "3.1.1",
+  "version": "3.1.3",
   "private": true,
   "license": "MIT",
   "description": "Local Claude Code Router gateway with CLI and web management UI.",
@@ -39,15 +39,14 @@
     "build:docker": "node build/docker-build.mjs",
     "build:app:mac": "npm run build:app:mac:local",
     "build:app:mac:local": "npm run build:assets && electron-builder --config build/electron-builder.local.cjs --mac --publish never",
-    "build:app:mac:release": "node build/macos-release-preflight.mjs && npm run models:update && npm run build:assets && electron-builder --mac --publish never",
+    "build:app:mac:release": "node build/macos-release-preflight.mjs && npm run build:assets && electron-builder --mac --publish never",
     "build:app:win": "npm run build:app:win:local",
     "build:app:win:local": "node build/windows-package-preflight.mjs && npm run build:assets && electron-builder --config build/electron-builder.local.cjs --win --publish never",
     "build:app:win:release": "node build/windows-package-preflight.mjs && npm run build:assets && electron-builder --win",
-    "models:update": "node scripts/generate-models-json.mjs",
-    "prepack": "npm run models:update && npm run build:assets",
+    "models:update": "node scripts/update-models-cdn.mjs",
+    "prepack": "npm run build:assets",
     "prepublishOnly": "npm run typecheck",
     "preview": "npm run build:assets && electron .",
-    "version": "npm run models:update",
     "bench:context-archive": "node benchmarks/run-context-archive-benchmark.mjs",
     "bench:context-archive-agent": "node benchmarks/run-context-archive-real-agent-benchmark.mjs",
     "bench:context-archive-real": "node benchmarks/run-context-archive-real-agent-benchmark.mjs",
@@ -74,7 +73,8 @@
     "benchmark:request-logs": "node build/benchmark-request-logs.mjs",
     "typecheck": "tsc --noEmit",
     "rebuild:sqlite3": "electron-rebuild -f -w better-sqlite3",
-    "postinstall": "patch-package"
+    "models:build": "node scripts/generate-models-json.mjs",
+    "version": "npm run models:build"
   },
   "dependencies": {
     "@the-next-ai/ai-gateway": "^1.0.21",

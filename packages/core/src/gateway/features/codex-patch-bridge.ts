@@ -2,7 +2,7 @@
  * Extracted from gateway/service.ts. Keep this module focused on its named gateway boundary.
  */
 import type { IncomingHttpHeaders } from "node:http";
-import { Readable, Transform } from "node:stream";
+import { pipeline, Readable, Transform } from "node:stream";
 import { StringDecoder } from "node:string_decoder";
 import type { AppConfig } from "@ccr/core/contracts/app";
 import { normalizeRouteSelector } from "@ccr/core/routing/model-registry";
@@ -290,10 +290,12 @@ function modelNameForPatchBridge(model: string | undefined): string {
 }
 
 
+// pipeline (not pipe) so an upstream error destroys the returned stream too;
+// the caller sees it there instead of as an unhandled 'error' on `input`.
 export function codexApplyPatchBridgeResponseStream(input: Readable, headers: Headers): Readable {
   const contentType = headers.get("content-type")?.toLowerCase() ?? "";
   if (contentType.includes("text/event-stream")) {
-    return input.pipe(new Transform({
+    return pipeline(input, new Transform({
       transform(chunk, _encoding, callback) {
         transformSseChunk(this, chunk);
         callback();
@@ -302,11 +304,11 @@ export function codexApplyPatchBridgeResponseStream(input: Readable, headers: He
         flushSseTransform(this);
         callback();
       }
-    }));
+    }), () => {});
   }
   if (contentType.includes("application/json")) {
     const chunks: Buffer[] = [];
-    return input.pipe(new Transform({
+    return pipeline(input, new Transform({
       transform(chunk, _encoding, callback) {
         chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
         callback();
@@ -322,7 +324,7 @@ export function codexApplyPatchBridgeResponseStream(input: Readable, headers: He
         }
         callback();
       }
-    }));
+    }), () => {});
   }
   return input;
 }

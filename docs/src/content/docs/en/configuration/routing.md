@@ -524,3 +524,11 @@ After saving, send a request and inspect Logs:
 - status code and error details.
 
 When Fallback runs, response headers include `x-ccr-fallback-attempts`, `x-ccr-fallback-failures`, `x-ccr-fallback-delays-ms` for delayed attempts, and the final `x-ccr-fallback-model`. Request log details also show the related retry attempt list.
+
+### Optional: semantic routing with Jev
+
+Load [`examples/routing/jev.js`](https://github.com/musistudio/claude-code-router/blob/main/examples/routing/jev.js) as a Node.js script rule. It uses the [TypeSafe HTTP API](https://docs.typesafe.ai/api) and [Choice](https://docs.typesafe.ai/primitives/choice) to select between two configured models.
+
+Set `CCR_JEV_ROUTING_ENABLED=1`, `CCR_JEV_FAST_MODEL=provider/fast-model`, `CCR_JEV_REASONING_MODEL=provider/reasoning-model`, and `TYPESAFE_API_KEY` in the environment that starts CCR. Select the script file in a rule, initially use a 1500 ms timeout, and put a static fallback rule for `auto` after it. Only requests whose model is `auto` are classified. Explicit models, images, missing configuration, uncertain answers, errors, and timeouts continue to later rules.
+
+`CCR_JEV_ENDPOINT` accepts a full endpoint URL for a compatible service; a local service need not require a key. `CCR_JEV_MODEL` selects the classifier model. Enabling the script sends up to 8192 characters of the latest user text, the input token count, and tool count to that service, and cloud calls incur its charges. Headers and system content are excluded. `CCR_JEV_MIN_CONFIDENCE` defaults to `0.75`; evaluate that example threshold on your tasks. Tests cover the contract and fallback behavior, without measuring live classification accuracy or latency.

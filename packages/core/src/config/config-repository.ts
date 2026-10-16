@@ -44,6 +44,21 @@ type ConfigRepositoryOptions = {
   removeFile?: (file: string) => void;
 };
 
+export class AppConfigConflictError extends Error {
+  readonly statusCode = 409;
+  constructor() {
+    super("Configuration changed since it was loaded. Reload the configuration and reapply your changes before saving.");
+    this.name = "AppConfigConflictError";
+  }
+}
+
+/** Theme and gateway credentials have independent, atomic save operations. */
+export function appConfigRevision(value: unknown): string {
+  const { theme: _theme, configRevision: _revision, APIKEY: _key, APIKEYS: _keys, ...settings } =
+    value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  return createHash("sha256").update(JSON.stringify(settings)).digest("hex");
+}
+
 export class ConfigRepository {
   private database?: SqlDatabase;
   private initPromise?: Promise<SqlDatabase>;
@@ -70,6 +85,15 @@ export class ConfigRepository {
   async replaceAppConfig(value: unknown): Promise<void> {
     const database = await this.getDatabase();
     replaceAppConfigRow(database, appConfigKey, value);
+    secureDatabaseFilePermissions(this.dbFile);
+  }
+
+  async updateAppConfig(update: (current: unknown | undefined) => unknown): Promise<void> {
+    const database = await this.getDatabase();
+    runTransaction(database, () => {
+      const row = database.prepare("SELECT value_json FROM app_config WHERE key = ?").get(appConfigKey) as { value_json: string } | undefined;
+      replaceAppConfigRow(database, appConfigKey, update(row ? JSON.parse(row.value_json) : undefined));
+    });
     secureDatabaseFilePermissions(this.dbFile);
   }
 
@@ -125,10 +149,14 @@ export class ConfigRepository {
     return result;
   }
 
-  async replaceConfigSnapshot(value: unknown, apiKeys: ApiKeyConfig[]): Promise<ApiKeyConfig[]> {
+  async replaceConfigSnapshot(value: unknown, apiKeys: ApiKeyConfig[], expectedRevision?: string): Promise<ApiKeyConfig[]> {
     const normalized = uniqueApiKeyConfigs(apiKeys);
     const database = await this.getDatabase();
     runTransaction(database, () => {
+      if (expectedRevision !== undefined) {
+        const row = database.prepare("SELECT value_json FROM app_config WHERE key = ?").get(appConfigKey) as { value_json: string } | undefined;
+        if (appConfigRevision(row ? JSON.parse(row.value_json) : undefined) !== expectedRevision) throw new AppConfigConflictError();
+      }
       replaceAppConfigRow(database, appConfigKey, value);
       replaceApiKeyRows(database, normalized);
     });
@@ -198,6 +226,10 @@ export async function replacePersistedAppConfig(value: unknown): Promise<void> {
   await configRepository.replaceAppConfig(value);
 }
 
+export async function updatePersistedAppConfig(update: (current: unknown | undefined) => unknown): Promise<void> {
+  await configRepository.updateAppConfig(update);
+}
+
 export async function replacePersistedAppSetting(key: string, value: unknown): Promise<void> {
   await configRepository.replaceSetting(key, value);
 }
@@ -226,8 +258,8 @@ export async function updatePersistedApiKeys(update: (current: ApiKeyConfig[]) =
   return configRepository.updateApiKeys(update);
 }
 
-export async function replacePersistedConfigSnapshot(value: unknown, apiKeys: ApiKeyConfig[]): Promise<ApiKeyConfig[]> {
-  return configRepository.replaceConfigSnapshot(value, apiKeys);
+export async function replacePersistedConfigSnapshot(value: unknown, apiKeys: ApiKeyConfig[], expectedRevision?: string): Promise<ApiKeyConfig[]> {
+  return configRepository.replaceConfigSnapshot(value, apiKeys, expectedRevision);
 }
 
 export async function archiveLegacyJsonConfigFiles(files: string[]): Promise<void> {

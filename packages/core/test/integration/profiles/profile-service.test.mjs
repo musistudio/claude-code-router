@@ -880,6 +880,60 @@ test("#1779 profile service defaults to apiKeyHelper even on Claude Code 2.1.235
   }
 });
 
+test("#1798 profile service removes boolean autoMode when apiKeyHelper manages authentication", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const profileId = "claude-auto-mode-api-key-helper";
+  const config = createDefaultAppConfig();
+  config.APIKEY = "ccr-auto-mode-api-key-helper-test";
+  config.APIKEYS = [{
+    createdAt: "2026-01-01T00:00:00.000Z",
+    id: `profile:${profileId}`,
+    key: "ccr-auto-mode-api-key-helper-test",
+    name: "Profile: Claude Auto Mode API Key Helper Test"
+  }];
+  config.Providers = [{
+    api_base_url: "https://example.test/v1",
+    api_key: "provider-key",
+    models: ["model"],
+    name: "Provider"
+  }];
+  config.profile.profiles = [{
+    agent: "claude-code",
+    claudeSettings: {
+      autoCompactEnabled: true,
+      autoMemoryEnabled: true,
+      autoMode: true
+    },
+    enabled: true,
+    env: {},
+    id: profileId,
+    model: "Provider/model",
+    name: "Claude Auto Mode API Key Helper",
+    scope: "ccr",
+    settingsFile: "~/.claude/settings.json",
+    smallFastModel: "",
+    surface: "auto"
+  }];
+
+  await applyProfileFixture(config);
+  const settingsFile = path.join(CONFIGDIR, "profiles", profileId, "claude", "settings.json");
+  const firstSettings = JSON.parse(readFileSync(settingsFile, "utf8"));
+  assert.equal(firstSettings.autoMode, undefined, "persisted boolean autoMode must not override helper auth");
+  assert.equal(firstSettings.autoMemoryEnabled, true);
+  assert.equal(firstSettings.autoCompactEnabled, true);
+  assert.match(firstSettings.apiKeyHelper, /ccr-claude-code-api-key-/);
+
+  writeFileSync(settingsFile, `${JSON.stringify({ ...firstSettings, autoMode: true }, null, 2)}\n`);
+  await applyProfileFixture(config);
+  const secondSettings = JSON.parse(readFileSync(settingsFile, "utf8"));
+  assert.equal(secondSettings.autoMode, undefined, "a session-written boolean autoMode must be removed on the next apply");
+  assert.match(secondSettings.apiKeyHelper, /ccr-claude-code-api-key-/);
+
+  config.profile.profiles[0].claudeSettings.autoMode = { classifyAllShell: true };
+  await applyProfileFixture(config);
+  const structuredSettings = JSON.parse(readFileSync(settingsFile, "utf8"));
+  assert.deepEqual(structuredSettings.autoMode, { classifyAllShell: true });
+});
+
 test("Codex profile launcher bypasses middleware for Browser and Computer Use helpers", { skip: process.platform === "win32" || !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "ccr-browser-helper-bypass-"));
   const profileId = "browser-helper-bypass-test";
@@ -1400,12 +1454,18 @@ test("profile service writes a multi-model Kimi CLI home that points inference t
     {
       api_base_url: "https://api.deepseek.com",
       api_key: "deepseek-key",
+      modelMetadata: { "deepseek-v4-flash": { capabilities: { imageInput: false } } },
       models: ["deepseek-v4-flash"],
       name: "DeepSeek"
     },
     {
       api_base_url: "https://open.bigmodel.cn/api/coding/paas/v4",
       api_key: "zhipu-key",
+      modelMetadata: { "glm-5.2": {
+        capabilities: { imageInput: true },
+        contextWindow: 1049000,
+        supportsReasoningSummaries: true
+      } },
       models: ["glm-5.2"],
       name: "Zhipu Coding"
     }
@@ -1570,6 +1630,23 @@ test("profile service writes a Pi config and wrapper that points inference to CC
   assert.ok(provider.models.some((model) => model.id === "Provider/model"));
   assert.ok(provider.models.some((model) => model.id === "Provider/fast"));
   assert.equal(existsSync(path.join(profilePiHome, "sessions")), true);
+});
+
+test("#1851 Windows Pi wrapper uses the argument-aware CLI runtime", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform");
+  const config = createDefaultAppConfig();
+  config.Providers = [{ name: "Provider", models: ["model"], type: "openai_chat_completions", api_base_url: "https://example.test/v1" }];
+  config.APIKEYS = [{ id: "profile:pi-dispatch", key: "test", name: "Pi" }];
+  config.profile.profiles = [{ agent: "pi", enabled: true, env: {}, id: "pi-dispatch", model: "Provider/model", name: "Pi", scope: "ccr", surface: "cli" }];
+  try {
+    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    const result = await applyProfileFixture(config);
+    assert.equal(result.clients[0].ok, true);
+    const content = readFileSync(path.join(CONFIGDIR, "bin", "ccr-pi-wrapper-pi-dispatch.cmd"), "utf8");
+    assert.match(content, /CCR_PI_WRAPPER=1/);
+    assert.match(content, /ccr-codex-cli-middleware\.js/);
+    assert.doesNotMatch(content, /"pi" --provider .*%\*/);
+  } finally { Object.defineProperty(process, "platform", originalPlatform); }
 });
 
 test("profile service writes an OpenCode CLI wrapper and shared CLI/App config", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {

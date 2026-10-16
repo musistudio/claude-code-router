@@ -3,6 +3,8 @@ import type { RouteRequest } from "@ccr/core/routing/contracts";
 const maxLastUserTextChars = 16 * 1024;
 const maxSystemTextChars = 8 * 1024;
 const maxToolNames = 128;
+type BodySnapshot = { json: string; body?: Record<string, unknown> };
+const bodySnapshots = new WeakMap<RouteScriptInput, BodySnapshot>();
 
 export type RouteScriptInput = {
   apiKeyId?: string;
@@ -20,12 +22,14 @@ export type RouteScriptInput = {
     systemText: string;
     toolNames: string[];
   };
-  tokenCount: number;
+  tokenCount?: number;
   url: string;
 };
 
 export type BuildRouteScriptInputOptions = {
+  deferTokenCount?: boolean;
   profileId?: string;
+  tokenCount?: number;
 };
 
 export function buildRouteScriptInput(
@@ -33,10 +37,11 @@ export function buildRouteScriptInput(
   options: BuildRouteScriptInputOptions = {}
 ): RouteScriptInput {
   const apiKeyId = readHeader(request.headers, "x-auth-api-key-id");
+  const snapshot: BodySnapshot = { json: JSON.stringify(request.body) };
   const input: RouteScriptInput = {
     ...(apiKeyId ? { apiKeyId } : {}),
     ...(request.builtInSubagentModel ? { builtInSubagentModel: request.builtInSubagentModel } : {}),
-    body: cloneJson(request.body) as Record<string, unknown>,
+    body: {},
     headers: requestHeaders(request.headers),
     method: request.method,
     ...(typeof request.body.model === "string" ? { model: request.body.model } : {}),
@@ -49,10 +54,30 @@ export function buildRouteScriptInput(
       systemText: truncateText(textFromUnknown(request.body.system), maxSystemTextChars),
       toolNames: toolNames(request.body.tools).slice(0, maxToolNames)
     },
-    tokenCount: request.tokenCount ?? 0,
+    tokenCount: options.deferTokenCount ? options.tokenCount : request.tokenCount ?? 0,
     url: request.url
   };
+  // Retain an immutable JSON snapshot for transport, without parsing and then
+  // cloning the entire conversation again on the host's main thread.
+  bodySnapshots.set(input, snapshot);
+  Object.defineProperty(input, "body", {
+    configurable: true,
+    enumerable: true,
+    get: () => snapshot.body ??= JSON.parse(snapshot.json) as Record<string, unknown>,
+    set: (body: Record<string, unknown>) => { snapshot.body = body; }
+  });
   return input;
+}
+
+export function serializeRouteScriptInput(input: RouteScriptInput): string {
+  const snapshot = bodySnapshots.get(input);
+  if (!snapshot) return JSON.stringify(input);
+  const metadata: Record<string, unknown> = {};
+  for (const key of Object.keys(input)) {
+    if (key !== "body") metadata[key] = input[key as keyof RouteScriptInput];
+  }
+  const bodyJson = snapshot.body ? JSON.stringify(snapshot.body) : snapshot.json;
+  return `${JSON.stringify(metadata).slice(0, -1)},"body":${bodyJson}}`;
 }
 
 function requestHeaders(headers: RouteRequest["headers"]): Record<string, string | string[]> {
@@ -107,10 +132,6 @@ function containsImage(value: unknown, depth = 0): boolean {
   const mediaType = typeof value.media_type === "string" ? value.media_type.toLowerCase() : "";
   if (mediaType.startsWith("image/")) return true;
   return Object.values(value).some((item) => containsImage(item, depth + 1));
-}
-
-function cloneJson(value: unknown): unknown {
-  return JSON.parse(JSON.stringify(value)) as unknown;
 }
 
 function truncateText(value: string, maxChars: number): string {

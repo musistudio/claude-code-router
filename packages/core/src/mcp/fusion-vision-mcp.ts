@@ -558,7 +558,8 @@ function readVisionUsage(response: Response | undefined, payload: unknown): Reco
       headerNumber("x-gateway-billing-cache-read-tokens") ??
       readNumber(usage.cache_read_tokens) ??
       readNumber(usage.cache_read_input_tokens) ??
-      readNumber(inputDetails.cached_tokens),
+      readNumber(inputDetails.cached_tokens) ??
+      readNumber(usage.prompt_cache_hit_tokens),
     cache_write_tokens:
       headerNumber("x-gateway-billing-cache-write-tokens") ??
       readNumber(usage.cache_write_tokens) ??

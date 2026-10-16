@@ -696,6 +696,51 @@ test("RequestLogStore redacts secrets and records CCR metadata", async () => {
   }
 });
 
+test("#1791 RequestLogStore records DeepSeek-native prompt cache hits", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-deepseek-cache-test-"));
+  let store;
+  try {
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const startedAt = new Date().toISOString();
+    await store.record({
+      completedAt: startedAt,
+      durationMs: 75,
+      method: "POST",
+      path: "/v1/messages",
+      providerName: "OpenCode Go",
+      providerProtocol: "openai_chat_completions",
+      requestBody: Buffer.from(JSON.stringify({ model: "deepseek-v4.1-flash" }), "utf8"),
+      requestHeaders: { "content-type": "application/json" },
+      requestId: "request-log-deepseek-cache",
+      responseBodyText: JSON.stringify({
+        model: "deepseek-v4.1-flash",
+        usage: {
+          completion_tokens: 10,
+          prompt_cache_hit_tokens: 800,
+          prompt_cache_miss_tokens: 200,
+          prompt_tokens: 1000,
+          prompt_tokens_details: {},
+          total_tokens: 1010
+        }
+      }),
+      responseHeaders: { "content-type": "application/json" },
+      startedAt,
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/messages"
+    });
+
+    const page = await store.list({ pageSize: 25 });
+    const detail = await store.getDetail({ id: page.items[0].id });
+    assert.equal(detail?.inputTokens, 200);
+    assert.equal(detail?.cacheReadTokens, 800);
+    assert.equal(detail?.outputTokens, 10);
+    assert.equal(detail?.totalTokens, 1010);
+  } finally {
+    await store?.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("RequestLogStore marks interrupted successful-status streams as errors", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-interrupted-stream-test-"));
   let store;
@@ -924,6 +969,67 @@ test("RequestLogStore consumes fallback bundles by unique bundle id and only fin
     } finally {
       database.close();
     }
+  } finally {
+    await store.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore preserves gateway x-ccr-fallback-attempts across raw-trace updates", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-preserve-fallback-attempts-test-"));
+  const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+  const startedAt = new Date().toISOString();
+  try {
+    // The gateway inserts the authoritative merged response headers, including
+    // x-ccr-fallback-attempts which powers the R{n} retry badge on the log page.
+    await store.record({
+      completedAt: startedAt,
+      durationMs: 25,
+      method: "POST",
+      path: "/v1/messages",
+      providerName: "gateway-provider",
+      requestBody: Buffer.from('{"model":"gateway-model"}'),
+      requestHeaders: { "content-type": "application/json" },
+      requestId: "preserve-fallback-attempts",
+      responseBodyText: "gateway-body",
+      responseHeaders: {
+        "content-type": "application/json",
+        "x-ccr-fallback-attempts": "2"
+      },
+      startedAt,
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/messages"
+    });
+
+    // A final-attempt raw-trace update carrying a non-empty upstream header set
+    // that lacks the gateway header must not clobber the stored headers.
+    const appliedNonEmpty = await store.updateFromRawTrace({
+      attempt: 2,
+      requestId: "preserve-fallback-attempts",
+      responseBodyText: "final-success-body",
+      responseHeaders: { "content-type": "application/json" },
+      statusCode: 200
+    });
+    // An empty upstream header set must also not wipe them to "{}".
+    const appliedEmpty = await store.updateFromRawTrace({
+      attempt: 2,
+      requestId: "preserve-fallback-attempts",
+      responseBodyText: "final-success-body-2",
+      responseHeaders: {},
+      statusCode: 200
+    });
+
+    assert.equal(appliedNonEmpty, true);
+    assert.equal(appliedEmpty, true);
+
+    const page = await store.list({ pageSize: 25 });
+    const detail = await store.getDetail({
+      id: page.items.find((item) => item.requestId === "preserve-fallback-attempts").id
+    });
+    // The gateway fallback marker survives both raw-trace updates.
+    assert.equal(detail.responseHeaders["x-ccr-fallback-attempts"], "2");
+    // The raw-trace updates still applied (body refined), so this is not a no-op.
+    assert.equal(detail.responseBody.text, "final-success-body-2");
   } finally {
     await store.close();
     rmSync(dir, { force: true, recursive: true });
@@ -2090,4 +2196,20 @@ test("RequestLogStore does not identify an unknown client as OpenCode from its m
     await store?.close();
     rmSync(dir, { force: true, recursive: true });
   }
+});
+
+test("#1801 unknown raw trace status is neutral while transport and HTTP errors remain failures", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-log-outcome-"));
+  const store = new RequestLogStore(path.join(dir, "logs.sqlite"));
+  try {
+    for (const [requestId, statusCode, error] of [["unknown", 0, undefined], ["success", 200, undefined], ["http-error", 500, undefined], ["transport-error", 0, "connection reset"]]) {
+      const now = new Date().toISOString();
+      await store.record({ completedAt: now, startedAt: now, durationMs: 1, error, method: "POST", path: "/v1/messages", requestId, statusCode, url: "/v1/messages", requestHeaders: {}, responseHeaders: {}, requestBody: Buffer.from("{}"), responseBodyText: "{}" });
+    }
+    const errors = await store.list({ status: "error" });
+    assert.deepEqual(errors.items.map(item => item.requestId).sort(), ["http-error", "transport-error"]);
+    const analysis = await store.analyze({ range: "30d" });
+    assert.equal(analysis.totals.errorCount, 2);
+    assert.equal(analysis.totals.successRate, 1 / 3);
+  } finally { await store.close(); rmSync(dir, { recursive: true, force: true }); }
 });

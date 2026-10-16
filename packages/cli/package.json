@@ -1,6 +1,6 @@
 {
   "name": "@musistudio/claude-code-router",
-  "version": "3.1.1",
+  "version": "3.1.3",
   "license": "MIT",
   "description": "Local Claude Code Router gateway with CLI and web management UI.",
   "repository": {
@@ -35,7 +35,7 @@
     "access": "public"
   },
   "scripts": {
-    "prepack": "npm --prefix ../.. run models:update && npm --prefix ../.. run build:assets",
+    "prepack": "npm --prefix ../.. run build:assets",
     "prepublishOnly": "npm --prefix ../.. run typecheck",
     "test": "node ../../build/test.mjs cli && node ../../build/run-tests.mjs cli",
     "test:integration": "node ../../build/test.mjs cli --scope integration && node ../../build/run-tests.mjs cli"

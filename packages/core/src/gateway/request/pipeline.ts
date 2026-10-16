@@ -400,6 +400,9 @@ export class GatewayRequestPipeline {
         routeFallback = routed.decision.fallback ?? routeFallback;
         routedSessionId = routed.decision.sessionId;
         routedTokenCount = routed.decision.tokenCount;
+        if (routedTokenCount === 0 && pluginService.hasGatewayRequestTransforms({ includeBuiltIns: false })) {
+          routedTokenCount = this.plugin.countTokens(routed.body).input_tokens;
+        }
         if (routed.decision.model) {
           headers[ccrRoutedModelHeader] = sanitizeHeaderValue(routed.decision.model);
           routedModel = routed.decision.model;
@@ -938,7 +941,7 @@ export class GatewayRequestPipeline {
           response.end();
           return;
         }
-        const outboundErrorText = appendAggregateErrorAttemptSummary(bufferedErrorText) ?? bufferedErrorText;
+        const outboundErrorText = appendAggregateErrorAttemptSummary(bufferedErrorText, upstreamResult.failedAttempts) ?? bufferedErrorText;
         if (outboundErrorText !== bufferedErrorText) {
           responseHeaders.delete("content-length");
         }
@@ -1116,6 +1119,12 @@ export class GatewayRequestPipeline {
             0
           )
         }));
+        // .pipe() does not end the client response when a stage errors, so an
+        // upstream reset would leave the client waiting forever. Headers are
+        // already sent; closing the socket is how a truncated stream fails.
+        if (!response.destroyed) {
+          response.destroy();
+        }
       };
       for (const stream of responseStreams) {
         stream.on("error", onResponseStreamError);

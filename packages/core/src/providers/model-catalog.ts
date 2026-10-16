@@ -5,7 +5,7 @@ import type {
   ProviderModelPricing
 } from "@ccr/core/contracts/app";
 import { providerUrlWithDefaultScheme } from "@ccr/core/providers/url";
-import { loadModelCatalogPayload } from "@ccr/core/models/catalog-file";
+import { loadModelCatalogPayload, modelCatalogRevision, scheduleModelCatalogRefresh } from "@ccr/core/models/catalog-file";
 import { findProviderPreset, findProviderPresetByBaseUrl } from "@ccr/core/providers/presets/index";
 
 type CatalogProviderEntry = {
@@ -70,6 +70,7 @@ const presetCatalogModelOverrides: Record<string, CatalogProviderModelOverride> 
   }
 };
 
+let catalogRevision = -1;
 let catalogIndex: CatalogIndex | undefined;
 const catalogResultCache = new Map<string, ProviderCatalogModelsResult>();
 const CATALOG_RESULT_CACHE_LIMIT = 512;
@@ -169,6 +170,13 @@ function catalogOverrideModelMetadata(
 }
 
 function loadCatalogIndex(): CatalogIndex {
+  scheduleModelCatalogRefresh();
+  const currentRevision = modelCatalogRevision();
+  if (catalogRevision !== currentRevision) {
+    catalogRevision = currentRevision;
+    catalogIndex = undefined;
+    catalogResultCache.clear();
+  }
   if (catalogIndex) {
     return catalogIndex;
   }

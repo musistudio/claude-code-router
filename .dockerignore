@@ -9,6 +9,7 @@ release
 release-local
 logs
 tmp
+.tmp
 test-results
 playwright-report
 blob-report

@@ -1041,6 +1041,33 @@ test("Claude Code auto compact handoff keeps the trailing tool_result paired wit
   assert.match(content[1].text, /CCR compact handoff task/);
 });
 
+test("#1823 compact preserves parallel tool results, error flags and multimodal result payloads", async () => {
+  const results = [
+    { type: "tool_result", tool_use_id: "read_1", content: [{ type: "text", text: "file contents" }, { type: "image", source: { type: "base64", media_type: "image/png", data: "aGVsbG8=" } }] },
+    { type: "tool_result", tool_use_id: "read_2", is_error: true, content: "file not found" }
+  ];
+  const auto = await prepareContextArchiveRequest({
+    body: Buffer.from(JSON.stringify({ model: "claude-test", messages: [
+      { role: "user", content: "Read both files." },
+      { role: "assistant", content: [{ type: "thinking", thinking: "Read files", signature: "opaque" }, ...results.map(result => ({ type: "tool_use", id: result.tool_use_id, name: "Read", input: {} }))] },
+      { role: "user", content: [results[0], { type: "text", text: claudeAutoCompactPrompt() }, results[1]] }
+    ] })),
+    config: testConfig(), headers: { "x-session-id": "parallel-compact" }, method: "POST", path: "/v1/messages", protocol: "anthropic_messages", requestId: "parallel-compact"
+  });
+  assert.ok(auto);
+  const messages = JSON.parse(auto.body.toString("utf8")).messages;
+  assert.deepEqual(messages.at(-1).content.filter(block => block.type === "tool_result"), results);
+  // Model Gemini's strict pending function-response rule independently of the
+  // rewrite implementation: no text may follow an unanswered function call.
+  const pending = new Set();
+  for (const message of messages) for (const block of Array.isArray(message.content) ? message.content : []) {
+    if (block.type === "tool_use") pending.add(block.id);
+    if (block.type === "tool_result") assert.equal(pending.delete(block.tool_use_id), true);
+    if (message.role === "user" && block.type === "text") assert.equal(pending.size, 0);
+  }
+  assert.equal(pending.size, 0);
+});
+
 test("compact refuses unresolved tool-call boundaries instead of trimming them", async () => {
   const config = testConfig();
   await assert.rejects(() => prepareContextArchiveRequest({

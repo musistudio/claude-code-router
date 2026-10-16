@@ -1,6 +1,6 @@
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { Readable } from "node:stream";
+import { pipeline, Readable } from "node:stream";
 import type { ApiKeyConfig, AppConfig, GatewayProviderConfig, GatewayProviderProtocol, ProfileConfig, RouterRule } from "@ccr/core/contracts/app";
 import {
   claudeCodeWifTokenPath,
@@ -13,6 +13,7 @@ import {
   type ClaudeCodeRouteDecision
 } from "@ccr/core/gateway/claude-code-router-plugin";
 import {
+  ccrAnthropicReasoningResponseHookKey,
   ccrCodexApplyPatchBridgeHeader,
   ccrCodexBridgeRequestTransformKey,
   ccrCodexBridgeResponseHookKey,
@@ -42,6 +43,7 @@ import {
   encodeCcrRouteFallbackHeader,
   type CcrRouterPluginRouteRequest
 } from "@ccr/core/gateway/core-runtime/router-plugin-contract";
+import { coalesceAnthropicReasoningResponse } from "@ccr/core/gateway/features/anthropic-reasoning-response";
 import { coreGatewayAuthHeader, rawTraceSyncHeader, rawTraceSyncPath, sdkCompatibleTokenHeaderNames } from "@ccr/core/gateway/internal/shared";
 import { gatewayRuntimeConfigControlPath, gatewayRuntimeConfigRevision } from "@ccr/core/gateway/runtime-config-control";
 import {
@@ -444,6 +446,12 @@ export async function createGatewayPlugin(input: GatewayPluginFactoryInput = {})
         applyCodexBridgeRequestTransform(config, requestInput)
     }],
     responseHooks: [{
+      key: ccrAnthropicReasoningResponseHookKey,
+      transformResponse: (responseInput: GatewayResponseHookInput) => {
+        const transformed = coalesceAnthropicReasoningResponse(responseInput.responsePayload);
+        return transformed.changed ? { responsePayload: transformed.value } : undefined;
+      }
+    }, {
       key: ccrCodexBridgeResponseHookKey,
       transformResponse: (responseInput: GatewayResponseHookInput) =>
         applyCodexBridgeResponseTransform(responseInput)
@@ -590,7 +598,9 @@ function applyLiveTokenRateStreamTransform(
   const source = Readable.fromWeb(
     streamInput.upstreamResponse.body as unknown as Parameters<typeof Readable.fromWeb>[0]
   );
-  const metered = source.pipe(meter.stream);
+  // pipeline (not pipe) forwards an upstream reset to the response body;
+  // with pipe the source's 'error' is unhandled and kills the core process.
+  const metered = pipeline(source, meter.stream, () => {});
   return new Response(Readable.toWeb(metered) as ReadableStream<Uint8Array>, {
     headers: new Headers(streamInput.upstreamResponse.headers),
     status: streamInput.upstreamResponse.status,
@@ -1051,7 +1061,7 @@ function resolveCcrGatewayRoute(
 
   const publicModel = resolveGatewayPublicModelId(routedModel, config) ?? routedModel;
   const modelRegistry = modelRegistryForConfig(config);
-  const resolved = modelRegistry.resolve(publicModel) ??
+  const resolved = modelRegistry.resolve(publicModel, { protocol }) ??
     resolveProfileProviderModel(config, requestInput.request?.headers, publicModel, modelRegistry);
   if (!resolved) {
     return undefined;
@@ -1161,10 +1171,7 @@ function isCoreGatewayRuntimeProviderName(
   if (!normalized) {
     return false;
   }
-  const runtimeId = providerRuntimeId(provider).toLowerCase();
-  if (normalized === runtimeId) {
-    return true;
-  }
+  // Bare provider IDs are shared aliases; resolve their protocol and credential.
   const capabilityName = providerCapabilityInternalName(provider, protocol).toLowerCase();
   return normalized === capabilityName || normalized.startsWith(`${capabilityName}::cred:`);
 }

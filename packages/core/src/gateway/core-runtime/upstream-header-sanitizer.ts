@@ -4,6 +4,10 @@ import { applyResponsesSessionAffinity, inboundMetadataUserId, resolveResponsesS
 import type { ResponsesSessionAffinityInput } from "@ccr/core/gateway/core-runtime/responses-session-affinity";
 import { applyResponsesToolStrictness } from "@ccr/core/gateway/core-runtime/responses-tool-strictness";
 import type { ResponsesToolStrictnessInput } from "@ccr/core/gateway/core-runtime/responses-tool-strictness";
+import {
+  normalizeDeepSeekCacheUsage,
+  normalizeDeepSeekCacheUsageStream
+} from "@ccr/core/gateway/features/opencode-cache-usage";
 import { sdkCompatibleTokenHeaderNames } from "@ccr/core/gateway/internal/shared";
 
 type UpstreamRequest = {
@@ -29,6 +33,22 @@ type ProviderPluginRequestInput = {
     type?: string;
   };
   upstreamRequest: UpstreamRequest;
+};
+
+type ProviderPluginResponseInput = {
+  targetProviderConfig?: {
+    baseurl?: string;
+  };
+  upstreamPayload: unknown;
+  upstreamRequest: UpstreamRequest;
+};
+
+type GatewayPluginStreamInput = {
+  targetProviderConfig?: {
+    baseurl?: string;
+  };
+  upstreamRequest?: UpstreamRequest;
+  upstreamResponse: Response;
 };
 
 const ccrAuthHeaderNames = new Set([
@@ -107,6 +127,40 @@ function requestHeaderValue(
     }
   }
   return undefined;
+}
+
+function isOfficialOpenCodeGoUrl(value: string | undefined): boolean {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" &&
+      url.hostname === "opencode.ai" &&
+      (url.port === "" || url.port === "443") &&
+      /^\/zen\/go\/v1(?:\/|$)/.test(url.pathname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isOfficialOpenCodeGoChatUrl(value: string | undefined): boolean {
+  if (!value || !isOfficialOpenCodeGoUrl(value)) return false;
+  const url = new URL(value);
+  return /^\/zen\/go\/v1\/chat\/completions\/?$/.test(url.pathname);
+}
+
+function isOfficialOpenCodeGoChatRequest(
+  upstreamUrl: string | undefined,
+  configuredBaseUrl: string | undefined
+): boolean {
+  if (isOfficialOpenCodeGoChatUrl(upstreamUrl)) return true;
+  if (!upstreamUrl || !isOfficialOpenCodeGoUrl(configuredBaseUrl)) return false;
+  try {
+    return /^\/zen\/go\/v1\/chat\/completions\/?$/.test(new URL(upstreamUrl).pathname);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -244,13 +298,7 @@ export function createGatewayPlugin() {
         const apiKey = input.targetProviderConfig?.apikey?.trim();
         if (!upstreamRequest.headers["x-opencode-session"]?.trim()) {
           try {
-            const url = new URL(upstreamRequest.url);
-            if (
-              url.protocol === "https:" &&
-              url.hostname === "opencode.ai" &&
-              (url.port === "" || url.port === "443") &&
-              /^\/zen\/go\/v1(?:\/|$)/.test(url.pathname)
-            ) {
+            if (isOfficialOpenCodeGoUrl(upstreamRequest.url)) {
               const explicitClientSession = sanitizeOpenCodeSessionHeaderValue(
                 requestHeaderValue(input.request?.headers, "x-opencode-session")
               );
@@ -283,6 +331,18 @@ export function createGatewayPlugin() {
           ok: true as const,
           value: applyMetaTokenFloor(upstreamRequest)
         };
+      },
+      transformResponse(input: ProviderPluginResponseInput) {
+        const transformed = isOfficialOpenCodeGoChatRequest(
+          input.upstreamRequest.url,
+          input.targetProviderConfig?.baseurl
+        )
+          ? normalizeDeepSeekCacheUsage(input.upstreamPayload)
+          : { changed: false, value: input.upstreamPayload };
+        return {
+          ok: true as const,
+          value: transformed.value
+        };
       }
     }, {
       key: "ccr-responses-session-affinity",
@@ -299,6 +359,16 @@ export function createGatewayPlugin() {
           ok: true as const,
           value: applyResponsesToolStrictness(input)
         };
+      }
+    }],
+    streamHooks: [{
+      key: "ccr-opencode-go-cache-usage-stream",
+      transformResponse(input: GatewayPluginStreamInput) {
+        if (!isOfficialOpenCodeGoChatRequest(
+          input.upstreamRequest?.url,
+          input.targetProviderConfig?.baseurl
+        )) return undefined;
+        return normalizeDeepSeekCacheUsageStream(input.upstreamResponse);
       }
     }]
   };

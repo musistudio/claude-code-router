@@ -1298,6 +1298,15 @@
     background: var(--network-error-bg);
   }
 
+  .network-dot-unknown {
+    background: var(--network-text-muted);
+  }
+
+  .network-state-pill-unknown {
+    background: var(--network-panel-muted);
+    color: var(--network-text-muted);
+  }
+
   .network-method-pill {
     background: var(--network-panel-muted);
     color: var(--network-text);

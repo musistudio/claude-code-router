@@ -1,3 +1,4 @@
+import { refreshModelCatalog } from "@ccr/core/models/catalog-file";
 import { app, BrowserWindow, dialog, shell } from "electron";
 import { setupApplicationMenu } from "./app-menu";
 import { loadAppConfig } from "@ccr/core/config/config";
@@ -47,6 +48,7 @@ function startPrimaryInstance(): void {
   });
 
   void app.whenReady().then(async () => {
+    await refreshModelCatalog();
     const config = await loadAppConfig();
     applyNativeThemePreference(config.theme);
     windowsManager.setOnboardingFinished(await loadOnboardingFinished());

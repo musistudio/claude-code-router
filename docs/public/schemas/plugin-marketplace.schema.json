@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CCR plugin marketplace canonical manifest",
+  "description": "Authoring schema for the canonical fields accepted by CCR 3.1.x. Runtime aliases are intentionally omitted.",
+  "type": "object",
+  "required": [
+    "plugins"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "plugins": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/plugin"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "dependency": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9._-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "module": {
+          "type": "string",
+          "minLength": 1,
+          "description": "HTTPS JavaScript URL or path relative to the HTTPS manifest; bundle dependencies into one file."
+        },
+        "integrity": {
+          "type": "string",
+          "pattern": "^(?:[a-fA-F0-9]{64}|sha256-[A-Za-z0-9+/]{43}=)$"
+        },
+        "permissions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "trusted-code",
+              "apps",
+              "gateway-routes",
+              "proxy-routes",
+              "http-backends",
+              "provider-account-connectors",
+              "gateway-request-transforms",
+              "core-gateway-config",
+              "core-gateway-plugins",
+              "core-provider-plugins",
+              "virtual-model-profiles",
+              "sqlite-store",
+              "system-launcher"
+            ]
+          }
+        },
+        "surfaces": {
+          "type": "object",
+          "properties": {
+            "apps": {
+              "type": "boolean"
+            },
+            "gateway": {
+              "type": "boolean"
+            },
+            "provider": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "plugin": {
+      "type": "object",
+      "required": [
+        "id",
+        "name"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "module"
+          ]
+        },
+        {
+          "required": [
+            "apps"
+          ]
+        }
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9._-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "module": {
+          "type": "string",
+          "minLength": 1,
+          "description": "HTTPS JavaScript URL or path relative to the HTTPS manifest; bundle dependencies into one file."
+        },
+        "integrity": {
+          "type": "string",
+          "pattern": "^(?:[a-fA-F0-9]{64}|sha256-[A-Za-z0-9+/]{43}=)$"
+        },
+        "permissions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "trusted-code",
+              "apps",
+              "gateway-routes",
+              "proxy-routes",
+              "http-backends",
+              "provider-account-connectors",
+              "gateway-request-transforms",
+              "core-gateway-config",
+              "core-gateway-plugins",
+              "core-provider-plugins",
+              "virtual-model-profiles",
+              "sqlite-store",
+              "system-launcher"
+            ]
+          }
+        },
+        "surfaces": {
+          "type": "object",
+          "properties": {
+            "apps": {
+              "type": "boolean"
+            },
+            "gateway": {
+              "type": "boolean"
+            },
+            "provider": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "description": {
+          "type": "string"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/dependency"
+              }
+            ]
+          }
+        },
+        "apps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "url"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "url": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": {
+                "type": "string"
+              },
+              "icon": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

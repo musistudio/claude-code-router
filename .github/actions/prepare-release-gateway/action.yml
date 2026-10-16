@@ -1,0 +1,31 @@
+name: Prepare release gateway
+description: Build and verify upstream gateway source for release artifacts.
+runs:
+  using: composite
+  steps:
+    - name: Check out gateway source
+      uses: actions/checkout@v4
+      with:
+        repository: The-NeXT-AI/ai-gateway
+        ref: 0a2c0abd48d2144ed0ac2ce4d954a661c51ffcb1
+        path: .tmp/release-gateway
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22
+
+    - name: Build and verify gateway
+      shell: bash
+      working-directory: .tmp/release-gateway
+      run: |
+        # Push the upstream fixes before creating a CCR release tag.
+        test -f src/adapters/builtins/anthropic-tool-id.test.ts
+        test -f src/raw-trace.test.ts
+        npm ci
+        npm run typecheck
+        npm run typecheck:all
+        npx vitest run src/gateway/routes.test.ts src/adapters/builtins/anthropic-tool-id.test.ts src/raw-trace.test.ts
+        npm run build
+        mkdir -p ../../docker/local-ai-gateway
+        npm pack --ignore-scripts --pack-destination ../../docker/local-ai-gateway

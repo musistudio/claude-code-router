@@ -176,7 +176,7 @@ export async function compileCoreGatewayConfig(
     rawTrace: buildRawTraceConfig(config, rawTraceSyncToken, {
       standaloneUsageCapture: options.publicGatewayMode === true
     }),
-    providerPlugins: providerPluginsWithCapabilityAliases,
+    providerPlugins: providerPluginsWithCapabilityAliases.map(withoutStaticLocalOauthAuth),
     providers,
     virtualModelProfiles
   };
@@ -224,9 +224,25 @@ function localAgentAuthProviderHookPluginConfig(providerPlugins: unknown[]): Rec
     return undefined;
   }
   return {
+    config: { providerPlugins: providerPlugins.filter(isLocalAgentOauthProviderPlugin) },
     enabled: true,
     key: localAgentAuthProviderHookPluginKey,
     modulePath: resolveLocalAgentAuthProviderHookEntry()
+  };
+}
+
+function withoutStaticLocalOauthAuth(plugin: unknown): unknown {
+  if (!isRecord(plugin) || !isLocalAgentOauthProviderPlugin(plugin)) return plugin;
+  // Static plugins run after module hooks. Only the live hook may set OAuth
+  // authentication; its private config retains the import-time fallback.
+  const { auth: _auth, ...rest } = plugin;
+  if (!isRecord(rest.request) || !isRecord(rest.request.headers)) return rest;
+  return {
+    ...rest,
+    request: {
+      ...rest.request,
+      headers: Object.fromEntries(Object.entries(rest.request.headers).filter(([key]) => key.toLowerCase() !== "authorization"))
+    }
   };
 }
 

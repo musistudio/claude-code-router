@@ -160,3 +160,28 @@ test("OpenCode Go session injection is scoped to the official Go endpoint", () =
   }).value;
   assert.equal(clientSession.headers["x-opencode-session"], "client-session");
 });
+
+test("#1791 DeepSeek-native cache usage normalization is scoped to official OpenCode Go Chat", () => {
+  const [hook] = createGatewayPlugin().providerHooks;
+  const payload = {
+    usage: {
+      prompt_cache_hit_tokens: 800,
+      prompt_tokens_details: {}
+    }
+  };
+
+  const official = hook.transformResponse({
+    targetProviderConfig: { baseurl: "https://opencode.ai/zen/go/v1" },
+    upstreamPayload: payload,
+    upstreamRequest: { body: {}, headers: {}, url: "http://127.0.0.1/zen/go/v1/chat/completions" }
+  }).value;
+  assert.equal(official.usage.prompt_tokens_details.cached_tokens, 800);
+
+  const unrelated = hook.transformResponse({
+    targetProviderConfig: { baseurl: "https://other.test/v1" },
+    upstreamPayload: payload,
+    upstreamRequest: { body: {}, headers: {}, url: "https://other.test/v1/chat/completions" }
+  }).value;
+  assert.equal(unrelated, payload);
+  assert.deepEqual(unrelated.usage.prompt_tokens_details, {});
+});

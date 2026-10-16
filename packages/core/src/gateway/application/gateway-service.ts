@@ -115,6 +115,10 @@ class GatewayService {
     getGlobalBillingConfig: () => pluginService.getCoreGatewayConfig().billing
   });
   private child?: ChildProcess;
+  private coreRestartAttempts = 0;
+  private coreRestartGeneration = 0;
+  private coreRestartTimer?: NodeJS.Timeout;
+  private coreRecovery?: Promise<GatewayStatus>;
   private config?: AppConfig;
   private coreAuthToken = "";
   private externalGatewayApiKey?: string;
@@ -146,6 +150,12 @@ class GatewayService {
   }
 
   async start(config: AppConfig): Promise<GatewayStatus> {
+    this.cancelCoreRestart();
+    await this.coreRecovery?.catch(() => undefined);
+    return this.startGateway(config);
+  }
+
+  private async startGateway(config: AppConfig, recoveryGeneration?: number): Promise<GatewayStatus> {
     const coreHostError = loopbackCoreHostError(config.gateway.coreHost);
     if (coreHostError) {
       this.status = {
@@ -155,7 +165,8 @@ class GatewayService {
       };
       return this.status;
     }
-    await this.stop({ nextConfig: config });
+    await this.stopGateway({ nextConfig: config });
+    if (recoveryGeneration !== undefined && recoveryGeneration !== this.coreRestartGeneration) return this.getStatus();
     this.config = config;
     const coreAuthToken = generateCoreGatewayAuthToken();
     const scriptValidationErrors = await this.routeScriptRuntime.prepare(config.Router.rules);
@@ -236,6 +247,7 @@ class GatewayService {
         if (await isCoreGatewayHealthy(this.status.coreEndpoint)) {
           throw new Error(`Core gateway endpoint is already in use: ${this.status.coreEndpoint}`);
         }
+        if (recoveryGeneration !== undefined && recoveryGeneration !== this.coreRestartGeneration) return this.getStatus();
         const runtimeId = randomUUID();
         const spawnedGateway = spawnGatewayProcess(
           withCoreRuntimeEndpoint(config, runtimeHost, runtimePort),
@@ -269,6 +281,7 @@ class GatewayService {
         assertManagedGatewayStartupContinues(managedChild, startupFailure);
       }
 
+      if (recoveryGeneration !== undefined && recoveryGeneration !== this.coreRestartGeneration) return this.getStatus();
       this.status = {
         ...this.status,
         coreManagedExternally: this.status.coreManagedExternally,
@@ -280,7 +293,8 @@ class GatewayService {
       this.runtimeConfigReloadError = undefined;
       return this.status;
     } catch (error) {
-      await this.stop();
+      if (recoveryGeneration !== undefined && recoveryGeneration !== this.coreRestartGeneration) return this.getStatus();
+      await this.stopGateway();
       this.status = {
         ...this.status,
         lastError: formatError(error),
@@ -347,6 +361,14 @@ class GatewayService {
   }
 
   async stop(options: GatewayStopOptions = {}): Promise<GatewayStatus> {
+    this.cancelCoreRestart();
+    // Recovery may have started resources before observing cancellation. Finish
+    // that attempt before cleanup so it cannot recreate resources after stop.
+    await this.coreRecovery?.catch(() => undefined);
+    return this.stopGateway(options);
+  }
+
+  private async stopGateway(options: GatewayStopOptions = {}): Promise<GatewayStatus> {
     const child = this.child;
     const childCoreEndpoint = child ? this.status.coreEndpoint : "";
     this.child = undefined;
@@ -533,10 +555,16 @@ class GatewayService {
     if (this.child !== child || this.status.state === "stopped") {
       return;
     }
+    const wasRunning = this.status.state === "running";
+    const generation = this.coreRestartGeneration;
+    if (this.status.lastStartedAt && Date.now() - Date.parse(this.status.lastStartedAt) >= 60_000) {
+      this.coreRestartAttempts = 0;
+    }
     this.child = undefined;
     setExternalLiveTokenRateSnapshot(coreGatewayLiveTokenRateSourceId);
     this.coreAuthToken = "";
     await removeManagedCoreGatewayMarkerBestEffort();
+    if (generation !== this.coreRestartGeneration) return;
     this.status = {
       ...this.status,
       coreManagedExternally: undefined,
@@ -544,6 +572,35 @@ class GatewayService {
       pid: undefined,
       state: "error"
     };
+    if (wasRunning && this.config) this.scheduleCoreRestart(generation);
+  }
+
+  private cancelCoreRestart(): void {
+    this.coreRestartGeneration += 1;
+    this.coreRestartAttempts = 0;
+    if (this.coreRestartTimer) clearTimeout(this.coreRestartTimer);
+    this.coreRestartTimer = undefined;
+  }
+
+  private scheduleCoreRestart(generation: number): void {
+    if (generation !== this.coreRestartGeneration || this.coreRestartTimer) return;
+    const delayMs = Math.min(30_000, 1_000 * 2 ** Math.min(this.coreRestartAttempts++, 5));
+    console.warn(`[gateway] Core gateway exited unexpectedly; restarting in ${delayMs}ms.`);
+    this.coreRestartTimer = setTimeout(async () => {
+      this.coreRestartTimer = undefined;
+      if (generation !== this.coreRestartGeneration || !this.config) return;
+      const recovery = this.startGateway(this.config, generation);
+      this.coreRecovery = recovery;
+      try {
+        const status = await recovery;
+        if (status.state === "error") this.scheduleCoreRestart(generation);
+      } catch (error) {
+        console.warn(`[gateway] Core gateway restart failed: ${formatError(error)}`);
+        this.scheduleCoreRestart(generation);
+      } finally {
+        if (this.coreRecovery === recovery) this.coreRecovery = undefined;
+      }
+    }, delayMs);
   }
 
   private handleCoreGatewayMessage(child: ChildProcess, message: unknown): void {

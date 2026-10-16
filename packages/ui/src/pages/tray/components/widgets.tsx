@@ -223,7 +223,7 @@ function TokenActivityGrid({
   const labelColumnWidth = 14;
   // Reserve the month label row's measured height plus its `mb-1` margin: a hard-coded
   // height under-reserves, which pushes the last activity row past the frame and clips it.
-  const monthLabelBlockHeight = monthLabelSize.height + MONTH_LABEL_BOTTOM_MARGIN;
+  const monthLabelBlockHeight = (monthLabelSize.height || 20) + MONTH_LABEL_BOTTOM_MARGIN;
   const cellSize = activityGridCellSize({
     availableHeight: gridFrameSize.height,
     availableWidth: gridFrameSize.width,

@@ -3,12 +3,14 @@ import {
   availableGatewayModelIds,
   isGatewayProviderEnabled,
   type AppConfig,
-  type GatewayProviderConfig
+  type GatewayProviderConfig,
+  type GatewayProviderProtocol
 } from "@ccr/core/contracts/app";
 import type { RouteModelRef } from "@ccr/core/routing/contracts";
 
 export type ResolveRouteModelOptions = {
   providerName?: string;
+  protocol?: GatewayProviderProtocol;
 };
 
 export class ModelRegistry {
@@ -53,17 +55,20 @@ export class ModelRegistry {
       };
     }
 
-    const exactMatches = this.providerModelMatches(normalized, false);
-    if (exactMatches.length === 1) {
-      return providerModelRef(exactMatches[0].provider, exactMatches[0].model, normalized);
-    }
-    if (exactMatches.length > 1) {
-      return undefined;
+    const exactMatch = this.disambiguateByProtocol(
+      this.providerModelMatches(normalized, false),
+      options.protocol
+    );
+    if (exactMatch) {
+      return providerModelRef(exactMatch.provider, exactMatch.model, normalized);
     }
 
-    const caseInsensitiveMatches = this.providerModelMatches(normalized, true);
-    return caseInsensitiveMatches.length === 1
-      ? providerModelRef(caseInsensitiveMatches[0].provider, caseInsensitiveMatches[0].model, normalized)
+    const caseInsensitiveMatch = this.disambiguateByProtocol(
+      this.providerModelMatches(normalized, true),
+      options.protocol
+    );
+    return caseInsensitiveMatch
+      ? providerModelRef(caseInsensitiveMatch.provider, caseInsensitiveMatch.model, normalized)
       : undefined;
   }
 
@@ -116,6 +121,30 @@ export class ModelRegistry {
       }
     }
     return matches;
+  }
+
+  /**
+   * Picks the single match among bare-id candidates, using the request protocol
+   * to break ties when the same id is registered under multiple providers with
+   * disjoint protocol capabilities. Returns undefined when the match is not
+   * unique (keeps the pre-existing behavior for genuinely ambiguous ids).
+   */
+  private disambiguateByProtocol(
+    matches: Array<{ model: string; provider: GatewayProviderConfig }>,
+    protocol: GatewayProviderProtocol | undefined
+  ): { model: string; provider: GatewayProviderConfig } | undefined {
+    if (matches.length === 1) {
+      return matches[0];
+    }
+    if (matches.length > 1 && protocol) {
+      const protocolMatches = matches.filter(({ provider }) =>
+        provider.capabilities?.some((capability) => capability.type === protocol)
+      );
+      if (protocolMatches.length === 1) {
+        return protocolMatches[0];
+      }
+    }
+    return undefined;
   }
 }
 

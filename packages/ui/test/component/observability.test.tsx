@@ -410,3 +410,15 @@ test("AgentAnalysisView surfaces bounded analysis and missing session states", (
   assert.match(html, /未找到该会话，或它不在当前时间范围内/);
   assert.doesNotMatch(html, /正在加载会话指标/);
 });
+
+test("#1801 LogsView shows missing HTTP status as neutral", () => {
+  const entry = { ...sampleRequestLogEntry, ok: false, statusCode: 0 };
+  const html = renderToStaticMarkup(
+    <AppI18nContext.Provider value={appCopy.en}>
+      <LogsView error="" filter={{ page: 1, pageSize: 25, status: "all" }} loading={false}
+        page={{ ...emptyLogPage, items: [entry], total: 1 }} refreshLogs={() => undefined} updateFilter={() => undefined} />
+    </AppI18nContext.Provider>
+  );
+  assert.match(html, /network-dot-unknown/);
+  assert.doesNotMatch(html, /network-dot-error|network-state-pill-error/);
+});

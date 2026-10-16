@@ -1581,7 +1581,7 @@ function OverviewActivityGrid({
   const labelColumnWidth = showDayLabels ? 20 : 0;
   // Reserve the month label row's measured height plus its `mb-1` margin: a hard-coded
   // height under-reserves, which pushes the last activity row past the frame and clips it.
-  const monthLabelBlockHeight = showMonthLabels ? monthLabelSize.height + MONTH_LABEL_BOTTOM_MARGIN : 0;
+  const monthLabelBlockHeight = showMonthLabels ? (monthLabelSize.height || 20) + MONTH_LABEL_BOTTOM_MARGIN : 0;
   const cellSize = activityGridCellSize({
     availableHeight: gridFrameSize.height,
     availableWidth: gridFrameSize.width,

@@ -328,7 +328,7 @@ test("UsageStore prices the routed upstream model when the response echoes a rul
       fallbackModel: `${providerRuntimeId(provider)}::anthropic_messages/Vendor/some-model`,
       method: "POST",
       path: "/v1/messages",
-      providerName: "ProviderA",
+      providerName: `${providerRuntimeId(provider)}::anthropic_messages`,
       requestId: "alias-pricing-request",
       responseHeaders: new Headers({ "content-type": "application/json" }),
       statusCode: 200
@@ -353,6 +353,43 @@ test("UsageStore prices the routed upstream model when the response echoes a rul
     } finally {
       database.close();
     }
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("#1791 UsageStore records DeepSeek-native prompt cache hits", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-deepseek-cache-test-"));
+  try {
+    const store = new UsageStore(path.join(dir, "usage.sqlite"));
+    await store.recordCapture({
+      bodyText: JSON.stringify({
+        model: "deepseek-v4.1-flash",
+        usage: {
+          completion_tokens: 10,
+          prompt_cache_hit_tokens: 800,
+          prompt_cache_miss_tokens: 200,
+          prompt_tokens: 1000,
+          prompt_tokens_details: {},
+          total_tokens: 1010
+        }
+      }),
+      durationMs: 40,
+      fallbackModel: "deepseek-v4.1-flash",
+      method: "POST",
+      path: "/v1/messages",
+      providerName: "OpenCode Go",
+      providerProtocol: "openai_chat_completions",
+      requestId: "deepseek-native-cache-usage",
+      responseHeaders: new Headers({ "content-type": "application/json" }),
+      statusCode: 200
+    });
+
+    const stats = await store.getStats("today", { includeProxy: true });
+    assert.equal(stats.totals.inputTokens, 200);
+    assert.equal(stats.totals.cacheTokens, 800);
+    assert.equal(stats.totals.outputTokens, 10);
+    assert.equal(stats.totals.totalTokens, 1010);
   } finally {
     rmSync(dir, { force: true, recursive: true });
   }
@@ -875,4 +912,19 @@ test("UsageStore reset clears overview stats and does not backfill old request l
   } finally {
     rmSync(dir, { force: true, recursive: true });
   }
+});
+
+test("#1801 unknown HTTP status is excluded from failure and success rate counts", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-outcome-"));
+  try {
+    const store = new UsageStore(path.join(dir, "usage.sqlite"));
+    for (const statusCode of [0, 200, 500]) {
+      await store.record({ createdAt: new Date().toISOString(), durationMs: 5, method: "POST", model: "local", path: "/v1/messages", provider: "local", requestId: `status-${statusCode}`, statusCode, usage: { inputTokens: 1, outputTokens: 1 } });
+    }
+    const stats = await store.getStats("today");
+    assert.equal(stats.totals.requestCount, 3);
+    assert.equal(stats.totals.errorCount, 1);
+    assert.equal(stats.totals.successRate, 0.5);
+    assert.equal(stats.models[0].successRate, 0.5);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

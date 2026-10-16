@@ -68,6 +68,139 @@ function scriptInput(script, body = {}) {
   });
 }
 
+function tokenProbeBody() {
+  return { model: "Provider/alpha", messages: [{ role: "user", content: "token-estimate-probe " + "x ".repeat(100_000) }] };
+}
+function tokenProbe(t) {
+  let scans = 0;
+  const original = String.prototype.match;
+  t.mock.method(String.prototype, "match", function (...args) {
+    if (this.includes("token-estimate-probe")) scans += 1;
+    return original.apply(this, args);
+  });
+  return () => scans;
+}
+function routingInput(body = tokenProbeBody()) {
+  return { body, bodyOwnership: "owned", headers: {}, method: "POST", url: "/v1/messages" };
+}
+
+test("#1869 routes without token consumers skip conversation estimation; count_tokens remains accurate", async (t) => {
+  const plugin = new ClaudeCodeRouterPlugin(routingConfig());
+  const scans = tokenProbe(t);
+  const result = await plugin.routeRequest(routingInput());
+  assert.equal(scans(), 0);
+  assert.equal(result.decision.tokenCount, 0);
+  assert.ok(plugin.countTokens(tokenProbeBody()).input_tokens > 100_000);
+  assert.equal(scans(), 2);
+});
+
+test("#1869 token condition aliases estimate once and keep selecting the same route", async (t) => {
+  for (const key of ["tokenCount", "token_count"]) {
+    const plugin = new ClaudeCodeRouterPlugin(routingConfig([{
+      id: key, name: key, type: "condition", enabled: true,
+      condition: { left: `request.${key}`, operator: ">", right: "100000" },
+      rewrites: [{ key: "request.body.model", operation: "set", value: "Provider/beta" }],
+    }]));
+    const expected = plugin.countTokens(tokenProbeBody()).input_tokens;
+    const scans = tokenProbe(t);
+    const result = await plugin.routeRequest(routingInput());
+    assert.equal(result.decision.model, "Provider/beta");
+    assert.equal(result.decision.tokenCount, expected);
+    assert.equal(scans(), 2);
+    t.mock.restoreAll();
+  }
+});
+
+test("#1869 scripts estimate tokens lazily in the worker only when read", async (t) => {
+  const runtime = new RouteScriptRuntime({ workerCount: 1, workerFile });
+  try {
+    for (const readTokens of [false, true]) {
+      const script = routeScript(readTokens ? 'return input.tokenCount > 100000 ? { model: "Provider/beta" } : null;' : 'return null;');
+      const plugin = new ClaudeCodeRouterPlugin(routingConfig([scriptRule("tokens", script)]), { scriptRuntime: runtime });
+      const expected = readTokens ? plugin.countTokens(tokenProbeBody()).input_tokens : 0;
+      const scans = tokenProbe(t);
+      const result = await plugin.routeRequest(routingInput());
+      assert.equal(scans(), 0, "host must not scan a conversation for script-only token consumers");
+      assert.equal(result.decision.tokenCount, expected);
+      assert.equal(result.decision.model, readTokens ? "Provider/beta" : "Provider/alpha");
+      t.mock.restoreAll();
+    }
+  } finally { await runtime.close(); }
+});
+
+test("#1869 provider routing settings retain the token estimate for downstream selection", async () => {
+  const config = routingConfig();
+  config.Providers[0].modelMetadata = { alpha: { openRouterDiscountRouting: { enabled: true } } };
+  const plugin = new ClaudeCodeRouterPlugin(config);
+  const expected = plugin.countTokens(tokenProbeBody()).input_tokens;
+  const result = await plugin.routeRequest(routingInput());
+  assert.equal(result.decision.tokenCount, expected);
+});
+
+test("#1869 custom routers retain the token getter without forcing unused estimates", async (t) => {
+  const file = path.join(routeScriptDirectory, "token-router.cjs");
+  for (const readTokens of [false, true]) {
+    writeFileSync(file, readTokens ? 'module.exports = request => request.tokenCount > 100000 && request.tokenCount > 100000 ? "Provider/beta" : undefined;' : 'module.exports = () => undefined;');
+    const plugin = new ClaudeCodeRouterPlugin({ ...routingConfig(), CUSTOM_ROUTER_PATH: file });
+    const scans = tokenProbe(t);
+    const result = await plugin.routeRequest(routingInput());
+    assert.equal(scans(), readTokens ? 2 : 0);
+    assert.equal(result.decision.model, readTokens ? "Provider/beta" : "Provider/alpha");
+    t.mock.restoreAll();
+  }
+});
+
+test("#1869 scripts preserve custom router token overrides and cached estimates", async (t) => {
+  const runtime = new RouteScriptRuntime({ workerCount: 1, workerFile });
+  const file = path.join(routeScriptDirectory, "token-override-router.cjs");
+  try {
+    for (const scenario of [
+      { router: 'module.exports = request => { request.tokenCount = 7; };', predicate: "input.tokenCount === 7", count: 7, scans: 0 },
+      { router: 'module.exports = request => { request.tokenCount = 0; };', predicate: "input.tokenCount === 0", count: 0, scans: 0 },
+      { router: 'module.exports = request => { void request.tokenCount; request.body.messages = []; };', predicate: "input.tokenCount > 100000", scans: 2 }
+    ]) {
+      writeFileSync(file, scenario.router);
+      const script = routeScript(`return ${scenario.predicate} ? { model: "Provider/beta" } : null;`);
+      const config = { ...routingConfig([scriptRule("override", script)]), CUSTOM_ROUTER_PATH: file };
+      const plugin = new ClaudeCodeRouterPlugin(config, { scriptRuntime: runtime });
+      const expected = scenario.count ?? plugin.countTokens(tokenProbeBody()).input_tokens;
+      const scans = tokenProbe(t);
+      const result = await plugin.routeRequest(routingInput());
+      assert.equal(result.decision.model, "Provider/beta");
+      assert.equal(result.decision.tokenCount, expected);
+      assert.equal(scans(), scenario.scans);
+      t.mock.restoreAll();
+    }
+  } finally { await runtime.close(); }
+});
+
+test("#1868 preparing a script input does not parse a copy of the full request on the host", (t) => {
+  const originalParse = JSON.parse;
+  let bodyCopies = 0;
+  t.mock.method(JSON, "parse", (text, ...args) => {
+    if (typeof text === "string" && text.includes("large-copy-probe")) bodyCopies += 1;
+    return originalParse(text, ...args);
+  });
+  const body = { model: "Provider/alpha", messages: [{ role: "user", content: "large-copy-probe " + "x".repeat(2_000_000) }] };
+  const input = scriptInput({}, body);
+  assert.equal(input.model, "Provider/alpha");
+  assert.equal(bodyCopies, 0);
+});
+
+test("#1868 worker receives an isolated snapshot even if the original body changes", async () => {
+  const runtime = new RouteScriptRuntime({ workerCount: 1, workerFile });
+  const script = routeScript('return { model: input.body.model, text: input.body.messages[0].content, frozen: Object.isFrozen(input.body.messages[0]) };');
+  const body = { model: "Provider/alpha", messages: [{ role: "user", content: "original" }] };
+  const input = scriptInput(script, body);
+  body.model = "Provider/beta";
+  body.messages[0].content = "mutated";
+  try {
+    const execution = await runtime.execute("snapshot", script, input);
+    assert.equal(execution.status, "ok", execution.error);
+    assert.deepEqual(execution.value, { model: "Provider/alpha", text: "original", frozen: true });
+  } finally { await runtime.close(); }
+});
+
 test("route script input exposes the complete request body and headers", () => {
   const script = routeScript("return null;");
   const input = scriptInput(script, {

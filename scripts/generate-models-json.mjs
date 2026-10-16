@@ -102,7 +102,7 @@ async function main() {
   );
   if (failures.length > 0) {
     const existingCatalog = await readExistingCatalog();
-    if (existingCatalog) {
+    if (existingCatalog && !process.argv.includes("--strict")) {
       console.warn(`[models] Refresh failed (${failures.join("; ")}).`);
       console.warn(
         `[models] Keeping the checked-in catalog with ${existingCatalog.models.length} model records.`
@@ -1204,7 +1204,7 @@ function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

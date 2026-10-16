@@ -7,6 +7,7 @@ import test from "node:test";
 import { claudeCodeCandidate, importClaudeCodeProvider } from "@ccr/core/agents/local-providers/claude-code.ts";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
 import { compileCoreGatewayConfig } from "@ccr/core/gateway/core-runtime/config-compiler.ts";
+import { createGatewayPlugin } from "@ccr/core/gateway/core-runtime/local-agent-auth-provider-hook.ts";
 
 test("Claude Code local provider prefers macOS Keychain credentials over stale file credentials", { skip: process.platform === "win32" }, async () => {
   await withClaudeCodeHome(async (home) => {
@@ -91,11 +92,16 @@ test("Core gateway config replaces imported Claude Code OAuth token with live ma
         const compiled = await compileCoreGatewayConfig(config, "raw-trace-token", "billing-usage-token", "core-auth-token");
         const plugin = compiled.providerPlugins.find((item) => item.key === "ccr-local-agent-claude-code-api-claude-code-oauth");
 
-        assert.equal(plugin.auth.headers.authorization, "Bearer keychain-runtime-token");
-        assert.deepEqual(plugin.auth.headers["anthropic-beta"], {
-          default: "oauth-2025-04-20",
-          from: "request.headers.anthropic-beta"
+        assert.equal(plugin.auth, undefined);
+        const livePlugin = compiled.plugins.find((item) => item.key === "ccr-local-agent-auth-provider-hooks");
+        const [hook] = createGatewayPlugin({ plugin: livePlugin }).providerHooks;
+        const result = await hook.authenticate({
+          upstreamRequest: { url: "https://api.anthropic.com/v1/messages", method: "POST", headers: { "x-api-key": "old" }, body: {} }
         });
+        assert.equal(result.ok, true);
+        assert.equal(result.value.headers.authorization, "Bearer keychain-runtime-token");
+        assert.equal(result.value.headers["x-api-key"], undefined);
+        assert.match(result.value.headers["anthropic-beta"], /oauth-2025-04-20/);
       });
     });
   });

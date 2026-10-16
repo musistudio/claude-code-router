@@ -1,3 +1,4 @@
+import { calculateTokenCount } from "@ccr/core/routing/token-estimator";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -37,14 +38,16 @@ async function evaluateRequest(request: RouteScriptWorkerRequest): Promise<Route
     });
     const route = compileScript(request.script.source, request.requestId, context);
     if (request.type === "validate") return successResponse(request.requestId, startedAt);
-    if (!request.input) return failureResponse(request.requestId, startedAt, "Script input is required.");
+    if (!request.inputJson) return failureResponse(request.requestId, startedAt, "Script input is required.");
 
     const deadline = Date.now() + request.script.timeoutMs;
+    let tokenCount: number | undefined;
     Object.assign(context, {
-      __routeBridge: createRouteScriptBridge(deadline),
+      __routeBridge: createRouteScriptBridge(deadline, (body: Record<string, unknown>) =>
+        tokenCount ??= calculateTokenCount(body.messages, body.system, body.tools)),
       __routeEnvironmentJson: JSON.stringify(routeScriptEnvironment()),
       __routeFunction: route,
-      __routeInputJson: JSON.stringify(request.input)
+      __routeInputJson: request.inputJson
     });
 
     const invocation = new vm.Script(routeInvocationSource, {
@@ -53,7 +56,8 @@ async function evaluateRequest(request: RouteScriptWorkerRequest): Promise<Route
     const synchronousBudget = Math.max(1, request.script.timeoutMs);
     const pendingResult = invocation.runInContext(context, { timeout: synchronousBudget });
     const result = await withDeadline(Promise.resolve(pendingResult), deadline);
-    return successResponse(request.requestId, startedAt, serializeResult(result));
+    return { ...successResponse(request.requestId, startedAt, serializeResult(result)),
+      ...(tokenCount !== undefined ? { tokenCount } : {}) };
   } catch (error) {
     return failureResponse(
       request.requestId,
@@ -89,7 +93,9 @@ const routeInvocationSource = `(() => {
   const deepFreeze = (value) => {
     if ((typeof value === "object" || typeof value === "function") && value !== null && !Object.isFrozen(value)) {
       Object.freeze(value);
-      for (const nested of Object.values(value)) deepFreeze(nested);
+      for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(value))) {
+        if ("value" in descriptor) deepFreeze(descriptor.value);
+      }
     }
     return value;
   };
@@ -129,11 +135,19 @@ const routeInvocationSource = `(() => {
     },
     hash
   });
-  const input = deepFreeze(JSON.parse(inputJson));
+  const input = JSON.parse(inputJson);
+  if (input.tokenCount === undefined) {
+    let tokenCount;
+    Object.defineProperty(input, "tokenCount", {
+      enumerable: true,
+      get: () => tokenCount ??= bridge.estimateTokens(input.body)
+    });
+  }
+  deepFreeze(input);
   return route(input, api);
 })()`;
 
-function createRouteScriptBridge(deadline: number): Readonly<Record<string, unknown>> {
+function createRouteScriptBridge(deadline: number, estimateTokens: (body: Record<string, unknown>) => number): Readonly<Record<string, unknown>> {
   const methods: Record<string, (...args: unknown[]) => unknown> = {
     "fetch": (url, options) => controlledFetch(String(url), options, deadline),
     "fs.exists": async (file) => {
@@ -174,6 +188,7 @@ function createRouteScriptBridge(deadline: number): Readonly<Record<string, unkn
     "fs.writeText": async (file, value) => writeTextFile(String(file), String(value))
   };
   return Object.freeze({
+    estimateTokens,
     invoke: async (method: unknown, encodedArguments: unknown) => {
       if (typeof method !== "string" || typeof encodedArguments !== "string" || !Object.hasOwn(methods, method)) {
         throw new Error("Unsupported route script capability call.");
