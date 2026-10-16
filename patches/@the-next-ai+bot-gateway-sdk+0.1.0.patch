@@ -1,0 +1,24 @@
+diff --git a/node_modules/@the-next-ai/bot-gateway-sdk/bin/bot-gateway-stdio.mjs b/node_modules/@the-next-ai/bot-gateway-sdk/bin/bot-gateway-stdio.mjs
+index edcb88f..a647628 100755
+--- a/node_modules/@the-next-ai/bot-gateway-sdk/bin/bot-gateway-stdio.mjs
++++ b/node_modules/@the-next-ai/bot-gateway-sdk/bin/bot-gateway-stdio.mjs
+@@ -144875,7 +144875,8 @@ async function renderTelegramOutbound(intent, ctx) {
+         body: {
+           chat_id: chatId,
+           message_id: Number.isFinite(parsedMessageId) ? parsedMessageId : ctx.stream.platformMessageId,
+-          text
++          text,
++          ...ctx.capabilities.message.sendMarkdown ? { parse_mode: "Markdown" } : {}
+         },
+         raw: {
+           streamId: intent.streamId,
+@@ -144889,7 +144890,8 @@ async function renderTelegramOutbound(intent, ctx) {
+       endpoint: "sendMessage",
+       body: {
+         chat_id: chatId,
+-        text
++        text,
++        ...ctx.capabilities.message.sendMarkdown ? { parse_mode: "Markdown" } : {}
+       },
+       raw: {
+         streamId: intent.streamId,
