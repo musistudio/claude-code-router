@@ -37,7 +37,10 @@ import {
   providerApiKeySafetyIssueInList,
   providerEndpointCanReceiveProviderApiKeyInList,
   providerIdentitySafetyIssueInList,
-  providerPresetMatchesBaseUrl
+  providerPresetHasTemplateEndpoints,
+  providerPresetMatchesBaseUrl,
+  providerPresetTemplateEndpointVariablesForBaseUrlInList,
+  substituteProviderPresetEndpointVariables
 } from "@ccr/core/providers/presets/utils";
 import type { ProviderIdentitySafetyIssue, ProviderPreset } from "@ccr/core/providers/presets/types";
 
@@ -88,7 +91,16 @@ export function findProviderPresetByBaseUrl(baseUrl: string): ProviderPreset | u
   return findProviderPresetByBaseUrlInList(providerPresets, baseUrl);
 }
 
-export { primaryProviderPresetEndpoint, providerPresetMatchesBaseUrl };
+export function providerPresetTemplateEndpointVariablesForBaseUrl(baseUrl: string): Record<string, string> | undefined {
+  return providerPresetTemplateEndpointVariablesForBaseUrlInList(providerPresets, baseUrl);
+}
+
+export {
+  primaryProviderPresetEndpoint,
+  providerPresetHasTemplateEndpoints,
+  providerPresetMatchesBaseUrl,
+  substituteProviderPresetEndpointVariables
+};
 
 export function providerIdentitySafetyIssue(input: {
   baseUrl: string;

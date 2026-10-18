@@ -38,6 +38,8 @@ Nginx exposes:
 
 ## Quick start with Compose
 
+For Bailian providers using the Anthropic protocol, `POST /v1/messages/count_tokens` uses the model route and provider credentials to call Bailian's token-counting endpoint. The gateway returns the upstream count or error; other providers retain local estimation. This applies to both the single runtime and compatibility gateway modes.
+
 From the repository root:
 
 ```sh

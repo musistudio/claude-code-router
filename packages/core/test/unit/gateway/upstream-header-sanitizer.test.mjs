@@ -170,6 +170,41 @@ test("Anthropic provider URL rewrite preserves target base path variants", () =>
   );
 });
 
+test("native Bailian requests normalize adaptive thinking at the final provider boundary", () => {
+  const hook = createGatewayPlugin().providerHooks[0];
+  const body = {
+    model: "glm-5.3-prime", max_tokens: 8192,
+    thinking: { type: "adaptive", display: "updates", budget_tokens: 2048 },
+    output_config: { effort: "high" }
+  };
+  for (const host of ["dashscope.aliyuncs.com", "dashscope-intl.aliyuncs.com", "ws-test.cn-beijing.maas.aliyuncs.com"]) {
+    const baseurl = `https://${host}/apps/anthropic`;
+    const result = hook.transformRequest({
+      config: { anthropicBaseUrl: "https://api.anthropic.com" },
+      targetProviderConfig: { type: "anthropic_messages", baseurl },
+      upstreamRequest: { body, headers: { "content-length": "999" }, url: "https://api.anthropic.com/v1/messages?beta=true" }
+    });
+    assert.equal(result.value.url, `${baseurl}/v1/messages?beta=true`);
+    assert.deepEqual(result.value.body, { ...body, thinking: { ...body.thinking, type: "enabled" } });
+    assert.equal(result.value.headers["content-length"], undefined);
+  }
+  assert.equal(body.thinking.type, "adaptive");
+
+  for (const [url, thinking] of [
+    ["https://api.anthropic.com/v1/messages", body.thinking],
+    ["https://api.kimi.com/coding/v1/messages", body.thinking],
+    ["https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", body.thinking],
+    ["https://dashscope.aliyuncs.com.evil.example/apps/anthropic/v1/messages", body.thinking],
+    ["https://ws-test.cn-beijing.maas.aliyuncs.com/apps/anthropic/v1/messages", { type: "disabled" }],
+    ["https://ws-test.cn-beijing.maas.aliyuncs.com/apps/anthropic/v1/messages", { type: "enabled" }],
+    ["https://ws-test.cn-beijing.maas.aliyuncs.com/apps/anthropic/v1/messages", undefined]
+  ]) {
+    const original = { ...body, thinking };
+    const result = hook.transformRequest({ upstreamRequest: { body: original, headers: {}, url } });
+    assert.equal(result.value.body, original, url);
+  }
+});
+
 test("provider URL rewrite ignores unrelated providers and upstream hosts", () => {
   assert.equal(
     rewriteUpstreamProviderUrl(
