@@ -76,7 +76,7 @@ test("leaves OpenAI-style string content untouched", () => {
   assert.equal(output.messages[1].content, "hello");
 });
 
-test("strips non-empty content from reasoning items in the Responses input array", () => {
+test("folds reasoning content into summary in the Responses input array", () => {
   const body = {
     model: "gpt-5.6-luna",
     input: [
@@ -95,11 +95,15 @@ test("strips non-empty content from reasoning items in the Responses input array
   const reasoning = output.input[0];
   assert.equal(reasoning.type, "reasoning");
   assert.equal("content" in reasoning, false, "reasoning content array must be removed");
-  assert.deepEqual(reasoning.summary, [], "empty summary must be preserved");
+  assert.deepEqual(
+    reasoning.summary,
+    [{ type: "summary_text", text: "internal chain of thought" }],
+    "reasoning text must survive as summary_text"
+  );
   assert.deepEqual(output.input[1], { type: "message", role: "user", content: [{ type: "input_text", text: "continue" }] });
 });
 
-test("drops a reasoning input item entirely when only its rejected content remains", () => {
+test("keeps a reasoning input item whose content folds into a new summary", () => {
   const body = {
     model: "gpt-5.6-luna",
     input: [
@@ -109,8 +113,11 @@ test("drops a reasoning input item entirely when only its rejected content remai
   };
 
   const output = parseOutput(stripUnsupportedOpenAiRequestParameters(toJsonBuffer(body), { dropThinkingParameters: true }));
-  assert.equal(output.input.length, 1);
-  assert.equal(output.input[0].type, "message");
+  assert.equal(output.input.length, 2);
+  assert.equal(output.input[0].type, "reasoning");
+  assert.equal("content" in output.input[0], false);
+  assert.deepEqual(output.input[0].summary, [{ type: "summary_text", text: "no summary" }]);
+  assert.equal(output.input[1].type, "message");
 });
 
 test("keeps a reasoning input item that has accepted summary or encrypted_content", () => {
@@ -127,9 +134,27 @@ test("keeps a reasoning input item that has accepted summary or encrypted_conten
   assert.equal(output.input[0].type, "reasoning");
   assert.equal("content" in output.input[0], false);
   assert.equal(output.input[0].encrypted_content, "enc");
+  assert.deepEqual(output.input[0].summary, [{ type: "summary_text", text: "t" }]);
   assert.equal(output.input[1].type, "reasoning");
   assert.equal("content" in output.input[1], false);
-  assert.deepEqual(output.input[1].summary, [{ type: "summary_text", text: "s" }]);
+  assert.deepEqual(output.input[1].summary, [
+    { type: "summary_text", text: "s" },
+    { type: "summary_text", text: "t" }
+  ]);
+});
+
+test("keeps an empty summary and drops content when no reasoning text is present", () => {
+  const body = {
+    model: "gpt-5.6-luna",
+    input: [
+      { type: "reasoning", id: "rs_1", summary: [], content: [{ type: "unrecognized_block" }] }
+    ]
+  };
+
+  const output = parseOutput(stripUnsupportedOpenAiRequestParameters(toJsonBuffer(body), { dropThinkingParameters: true }));
+  assert.equal(output.input.length, 1);
+  assert.deepEqual(output.input[0].summary, [], "empty summary must be preserved");
+  assert.equal("content" in output.input[0], false);
 });
 
 test("returns the original buffer unchanged when a Responses body has no offending reasoning items", () => {

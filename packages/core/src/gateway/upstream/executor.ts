@@ -11,7 +11,7 @@ import { requestProtocolForPath } from "@ccr/core/routing/protocol-endpoints";
 import { resolveConfiguredProviderModelSelector, resolveUniqueConfiguredProviderModelSelector } from "@ccr/core/routing/model-resolution";
 import { estimateLimitUsage } from "@ccr/core/gateway/limits/window-limiter";
 import { providerCredentialLimitState, readProviderCredentialCooldown, recordProviderCredentialOutcome } from "@ccr/core/providers/credential-pool";
-import { isRecord, stringValue } from "@ccr/core/gateway/internal/value";
+import { isRecord, rawStringValue, stringValue } from "@ccr/core/gateway/internal/value";
 import { isLocalClaudeCodeOauthProviderPlugin, mergeAnthropicBetaValues } from "@ccr/core/providers/oauth-plugin";
 import { abortSignalMessage, formatError, omitLocalObservabilityHeaders, shouldSendBody, withCoreGatewayAuthHeader } from "@ccr/core/gateway/http/io";
 import { parseJsonObjectSafe, releaseJsonObject, serializeJsonBody, serializeJsonBodyWithModel } from "@ccr/core/gateway/http/body";
@@ -888,11 +888,11 @@ export function stripUnsupportedOpenAiRequestParameters(
 
 /**
  * OpenAI Responses upstreams reject a `reasoning` input item whose `content` array is
- * non-empty (HTTP 400 array_above_max_length, e.g. Codex API). Remove `content` from each
- * `type === "reasoning"` item in the Responses `input` array, drop empty `summary: []`, and
- * drop the item entirely if nothing accepted by the endpoint remains. Returns true when any
- * item was modified or removed. Non-array input (string input, chat-style bodies) is left
- * untouched.
+ * non-empty (HTTP 400 array_above_max_length, e.g. Codex API), but they accept `summary`.
+ * Fold each `reasoning_text` block into `summary` as `summary_text` so the text is kept
+ * rather than dropped, then remove `content`. `encrypted_content` is left as-is; the item is
+ * dropped only when nothing accepted by the endpoint remains. Returns true when any item was
+ * modified or removed. Non-array input (string input, chat-style bodies) is left untouched.
  */
 function stripResponsesReasoningContent(input: unknown): boolean {
   if (!Array.isArray(input)) {
@@ -905,18 +905,16 @@ function stripResponsesReasoningContent(input: unknown): boolean {
       kept.push(item);
       continue;
     }
-    let itemChanged = false;
-    // Drop `content` (the offending non-empty array). Preserve `summary` as-is:
-    // OpenAI Responses reasoning items still require `summary`, and an empty
-    // array is a valid summary.
+    let itemChanged = foldReasoningTextIntoSummary(item);
     if ("content" in item) {
+      // The rejected array goes either way; the fold above already rescued its text.
       delete item.content;
       itemChanged = true;
     }
-    const hasSummary = "summary" in item;
     const encrypted = item.encrypted_content;
     const hasValidEncrypted = typeof encrypted === "string" && encrypted.length > 0;
-    if (hasSummary || hasValidEncrypted) {
+    // An empty `summary: []` is valid and required, so its presence keeps the item.
+    if ("summary" in item || hasValidEncrypted) {
       kept.push(item);
     } else {
       itemChanged = true; // nothing accepted remains; drop the item
@@ -929,6 +927,35 @@ function stripResponsesReasoningContent(input: unknown): boolean {
     changed = true;
   }
   return changed;
+}
+
+/**
+ * Move `reasoning_text` blocks out of a reasoning item's rejected `content` array and into
+ * its `summary` array as `summary_text`, appending to any summary already present. Returns
+ * true when at least one block was folded.
+ */
+function foldReasoningTextIntoSummary(item: Record<string, unknown>): boolean {
+  const content = item.content;
+  if (!Array.isArray(content)) {
+    return false;
+  }
+  const folded: unknown[] = [];
+  for (const block of content) {
+    if (!isRecord(block) || stringValue(block.type) !== "reasoning_text") {
+      continue;
+    }
+    const text = rawStringValue(block.text);
+    if (text === undefined || text.length === 0) {
+      continue;
+    }
+    folded.push({ type: "summary_text", text });
+  }
+  if (folded.length === 0) {
+    return false;
+  }
+  const existing = Array.isArray(item.summary) ? item.summary : [];
+  item.summary = [...existing, ...folded];
+  return true;
 }
 
 /**
