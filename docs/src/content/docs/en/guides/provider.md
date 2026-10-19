@@ -28,6 +28,23 @@ The protocol decides which request format CCR uses to talk to the upstream. It i
 
 If auto-detection misses the mark, turn it off in **Advanced settings**, choose a protocol manually, and confirm with a connectivity check.
 
+## Local model servers
+
+A model server running on your own machine is added as a custom endpoint. For example, [Rapid-MLX](https://github.com/raullenchai/Rapid-MLX) serves MLX models on Apple Silicon and exposes OpenAI Chat, OpenAI Responses, and Anthropic Messages on the same port:
+
+```bash
+brew install rapid-mlx          # or: pip install rapid-mlx
+rapid-mlx serve qwen3.5-4b-4bit --port 8000
+```
+
+Then add a provider with **Other / custom API endpoint**:
+
+- **API endpoint**: `http://127.0.0.1:8000/v1`
+- **API key**: any non-empty value such as `not-needed`, or the key you passed to `rapid-mlx serve --api-key`
+- **Models**: `qwen3.5-4b-4bit` (discovered from `/v1/models`)
+
+Keep the server running while CCR routes requests to it.
+
 ## Verify connectivity
 
 Once credentials and models are in place, click **Check Connection**: CCR sends a real request with the current API endpoint, key, protocol, and selected models to confirm the full path works. Output is length-limited, but it may still consume a few tokens or count toward provider-side request limits, so select only the models you need to confirm.

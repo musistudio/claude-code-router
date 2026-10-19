@@ -28,6 +28,23 @@ lead: "页面顶部的交互式面板可直接连到你正在运行的 CCR 添�
 
 自动探测结果不理想时，可在 **高级设置** 中关闭自动探测并手动选择协议，再用连通性检查确认。
 
+## 本地模型服务
+
+在本机运行的模型服务以自定义端点的方式添加。例如 [Rapid-MLX](https://github.com/raullenchai/Rapid-MLX) 在 Apple Silicon 上运行 MLX 模型，并在同一端口提供 OpenAI Chat、OpenAI Responses 和 Anthropic Messages 接口：
+
+```bash
+brew install rapid-mlx          # 或：pip install rapid-mlx
+rapid-mlx serve qwen3.5-4b-4bit --port 8000
+```
+
+然后通过 **其他 / 自定义 API 地址** 添加供应商：
+
+- **API 地址**：`http://127.0.0.1:8000/v1`
+- **API 密钥**：任意非空值，例如 `not-needed`；如果启动时传了 `rapid-mlx serve --api-key`，则填写该密钥
+- **模型**：`qwen3.5-4b-4bit`（可从 `/v1/models` 自动发现）
+
+CCR 转发请求期间请保持该服务运行。
+
 ## 验证连通性
 
 填好凭据和模型后，点击 **检测连通性**：CCR 会用当前的 API 地址、密钥、协议和所选模型发送一次真实请求，确认整条链路可用。检测会限制输出长度，但仍可能产生少量 token 消耗或计入供应商侧请求次数，因此建议只勾选需要确认的模型。
