@@ -1,21 +1,34 @@
 // CCR Node.js route script body. Configure the environment before enabling.
-// API contract: https://docs.typesafe.ai/api
+// API contract (System One, the same on every host): https://docs.typesafe.ai/api
+// Hosts: TypeSafe (default) https://api.typesafe.ai/v1/systemone · Venice https://api.venice.ai/api/v1/systemone
 if (api.env("CCR_JEV_ROUTING_ENABLED") !== "1" || input.model !== "auto") return null;
 if (input.summary.hasImage || !input.summary.lastUserText.trim()) return null;
 const fast = api.env("CCR_JEV_FAST_MODEL");
 const reasoning = api.env("CCR_JEV_REASONING_MODEL");
-const key = api.env("TYPESAFE_API_KEY");
+const host = (api.env("CCR_JEV_HOST") || "typesafe").toLowerCase();
+const hosts = {
+  typesafe: { endpoint: "https://api.typesafe.ai/v1/systemone", keyEnv: "TYPESAFE_API_KEY" },
+  venice: { endpoint: "https://api.venice.ai/api/v1/systemone", keyEnv: "VENICE_API_KEY" }
+};
+if (!Object.hasOwn(hosts, host)) return null;
+const key = api.env(hosts[host].keyEnv);
 const configuredEndpoint = api.env("CCR_JEV_ENDPOINT");
+// Hosts spell the same model differently; send the spelling this host lists.
+const spellings = { "jev-latest": ["jev-latest", "jev-latest"], "jev-1.13.0": ["jev-1.13.0", "jev-1-13-0"] };
+const aliases = { "jev-1-13-0": "jev-1.13.0", "typesafe-jev": "jev-latest" };
+const requested = (api.env("CCR_JEV_MODEL") || "jev-latest").trim();
+const known = spellings[aliases[requested] || requested];
+const model = configuredEndpoint || !known ? requested : known[host === "venice" ? 1 : 0];
 if (!fast || !reasoning || (!key && !configuredEndpoint)) return null;
 const targets = { fast, reasoning };
 const threshold = Number(api.env("CCR_JEV_MIN_CONFIDENCE") || "0.75");
 if (!Number.isFinite(threshold) || threshold < 0 || threshold > 1) return null;
 try {
-  const response = await api.fetch(configuredEndpoint || "https://api.typesafe.ai/v1/systemone", {
+  const response = await api.fetch(configuredEndpoint || hosts[host].endpoint, {
     method: "POST",
     headers: { "content-type": "application/json", ...(key ? { authorization: `Bearer ${key}` } : {}) },
     body: JSON.stringify({
-      model: api.env("CCR_JEV_MODEL") || "jev-latest",
+      model,
       state: { task: input.summary.lastUserText.slice(0, 8192), inputTokens: input.tokenCount, toolCount: input.summary.toolNames.length },
       questions: {
         route: {

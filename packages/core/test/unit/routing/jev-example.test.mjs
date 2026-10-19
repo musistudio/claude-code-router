@@ -31,3 +31,20 @@ test("#1822 Jev example skips disabled and explicit-model requests and fails ope
   assert.equal(await route(input, api(null, { fetch: async () => ({ ok: false }) })), null);
   assert.equal(await route(input, api(null, { fetch: async () => ({ ok: true, body: "invalid json" }) })), null);
 });
+
+test("Jev example reaches the same System One API on Venice: its endpoint, its key and its model spelling", async () => {
+  const seen = [];
+  const venice = { CCR_JEV_ROUTING_ENABLED: "1", CCR_JEV_FAST_MODEL: "local/small", CCR_JEV_REASONING_MODEL: "local/large", CCR_JEV_HOST: "venice", VENICE_API_KEY: "venice-test-only", CCR_JEV_MODEL: "jev-1.13.0" };
+  const fetch = async (url, request) => { seen.push({ url, auth: request.headers.authorization, model: JSON.parse(request.body).model }); return { ok: true, body: JSON.stringify({ answers: { route: { type: "choice", choice: "fast", confidence: 0.9 } } }) }; };
+  assert.deepEqual(await route(input, { env: name => venice[name], fetch }), { model: "local/small" });
+  assert.deepEqual(seen[0], { url: "https://api.venice.ai/api/v1/systemone", auth: "Bearer venice-test-only", model: "jev-1-13-0" });
+  // TypeSafe stays the default and receives its own spelling; an unknown host or a missing key for the host stays off
+  const ts = { ...venice, CCR_JEV_HOST: undefined, TYPESAFE_API_KEY: "ts-test-only", CCR_JEV_MODEL: "jev-1-13-0" };
+  await route(input, { env: name => ts[name], fetch });
+  assert.deepEqual(seen[1], { url: "https://api.typesafe.ai/v1/systemone", auth: "Bearer ts-test-only", model: "jev-1.13.0" });
+  let calls = 0;
+  const counting = async (...args) => { calls += 1; return fetch(...args); };
+  assert.equal(await route(input, { env: name => ({ ...venice, CCR_JEV_HOST: "elsewhere" })[name], fetch: counting }), null);
+  assert.equal(await route(input, { env: name => ({ ...venice, VENICE_API_KEY: undefined })[name], fetch: counting }), null);
+  assert.equal(calls, 0);
+});
