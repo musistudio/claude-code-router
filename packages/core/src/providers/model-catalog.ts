@@ -42,6 +42,8 @@ const presetCatalogProviderIds: Record<string, string[]> = {
   deepseek: ["deepseek"],
   gemini: ["google"],
   "kimi-coding": ["kimi-for-coding"],
+  "minimax-cn": ["minimax-cn"],
+  "minimax-global": ["minimax"],
   mistral: ["mistral"],
   moonshot: ["moonshotai-cn"],
   "moonshot-global": ["moonshotai"],
@@ -60,6 +62,16 @@ type CatalogProviderModelOverride = ProviderCatalogModelsResult & {
 };
 
 const presetCatalogModelOverrides: Record<string, CatalogProviderModelOverride> = {
+  "minimax-global": {
+    models: ["MiniMax-M3.1-Flash", "MiniMax-M3"],
+    provider: "minimax",
+    providerName: "MiniMax (Global)"
+  },
+  "minimax-cn": {
+    models: ["MiniMax-M3.1-Flash", "MiniMax-M3"],
+    provider: "minimax-cn",
+    providerName: "MiniMax (China)"
+  },
   "kimi-coding": {
     modelDisplayNames: {
       "kimi-for-coding": "K2.7 Code"
@@ -69,6 +81,35 @@ const presetCatalogModelOverrides: Record<string, CatalogProviderModelOverride> 
     providerName: "Kimi Code"
   }
 };
+
+/** Filter discovered choices without rewriting explicitly configured model IDs. */
+export function isProviderCatalogModelVisible(provider: string, model: string, baseUrl?: string): boolean {
+  let knownProvider = provider.toLowerCase();
+  if (baseUrl) {
+    try {
+      const url = new URL(baseUrl);
+      if (["api.minimax.io", "api.minimaxi.com"].includes(url.hostname)) {
+        knownProvider = "minimax";
+      } else if (url.hostname === "openrouter.ai") {
+        knownProvider = "openrouter";
+      } else if (url.hostname === "opencode.ai" && /^\/zen(?:\/|$)/.test(url.pathname)) {
+        knownProvider = "opencode";
+      }
+    } catch {
+      // Unknown/custom endpoints keep their existing catalog behavior.
+    }
+  }
+  const direct = ["minimax", "minimax-cn", "minimax-global"].includes(knownProvider);
+  const gateway = ["openrouter", "opencode", "opencode-go"].includes(knownProvider);
+  if (!direct && !gateway) return true;
+  const minimaxNamespace = /^minimax\//i.test(model);
+  const modelId = gateway ? model.replace(/^minimax\//i, "") : model;
+  const miniMaxText = /^(?:minimax-(?:m\d|text|vl)|abab)/i.test(modelId)
+    || ((direct || minimaxNamespace) && /^m\d(?:[.-]|$)/i.test(modelId));
+  if (!miniMaxText) return true;
+  if (direct) return modelId === "MiniMax-M3.1-Flash" || modelId === "MiniMax-M3";
+  return /^(?:minimax-m3\.1-flash|minimax-m3)(?::free|-free)?$/i.test(modelId);
+}
 
 let catalogRevision = -1;
 let catalogIndex: CatalogIndex | undefined;
@@ -219,7 +260,7 @@ function buildCatalogIndex(payload: unknown, loadedFrom: string): CatalogIndex {
       }
       const provider = stringValue(sourceRecord.provider);
       const model = providerModelName(sourceRecord, item);
-      if (!provider || !model) {
+      if (!provider || !model || !isProviderCatalogModelVisible(provider, model)) {
         continue;
       }
 

@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 2,
+  "models": [
+    {
+      "id": "minimax/minimax-m2.7",
+      "model": "MiniMax-M2.7",
+      "sourceRecords": [
+        { "provider": "openrouter", "model": "minimax/minimax-m2.7" },
+        { "provider": "opencode", "model": "minimax-m2.7" },
+        { "provider": "custom-router", "model": "minimax/minimax-m2.7" }
+      ]
+    },
+    {
+      "id": "minimax/minimax-m3",
+      "model": "MiniMax-M3",
+      "sourceRecords": [
+        { "provider": "openrouter", "model": "minimax/minimax-m3" },
+        { "provider": "opencode", "model": "minimax-m3" }
+      ]
+    },
+    {
+      "id": "minimax/minimax-m3.1-flash",
+      "model": "MiniMax-M3.1-Flash",
+      "sourceRecords": [
+        { "provider": "openrouter", "model": "minimax/minimax-m3.1-flash:free" }
+      ]
+    },
+    {
+      "id": "anthropic/claude-sonnet-4",
+      "model": "claude-sonnet-4",
+      "sourceRecords": [
+        { "provider": "openrouter", "model": "anthropic/claude-sonnet-4" }
+      ]
+    },
+    {
+      "id": "minimax/speech-02-hd",
+      "model": "speech-02-hd",
+      "mode": "audio_speech",
+      "sourceRecords": [
+        { "provider": "openrouter", "model": "minimax/speech-02-hd" }
+      ]
+    }
+  ]
+}

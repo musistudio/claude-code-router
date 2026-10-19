@@ -18,7 +18,7 @@ import { localAgentProviderApiKey } from "@ccr/core/agents/local-providers/share
 import { readClaudeCodeOauth } from "@ccr/core/agents/local-providers/service";
 import { isLocalClaudeCodeOauthProviderPlugin, mergeAnthropicBetaValues } from "@ccr/core/providers/oauth-plugin";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue } from "@ccr/core/providers/presets/index";
-import { getProviderCatalogModels } from "@ccr/core/providers/model-catalog";
+import { getProviderCatalogModels, isProviderCatalogModelVisible } from "@ccr/core/providers/model-catalog";
 import { fetchWithSystemProxy } from "@ccr/core/proxy/system-proxy-fetch";
 import {
   compactProviderUrl,
@@ -350,9 +350,19 @@ async function resolveGatewayProviderProbe(request: GatewayProviderProbeRequest)
   const parsed = parseProviderUrl(request.baseUrl);
   const protocols = providerProbeProtocolsForBaseUrl(request.baseUrl, request.protocols ?? []);
   const typedModels = uniqueStrings(request.models ?? []);
-  const modelProbe = mode !== "models" || request.skipModelDiscovery
+  const discoveredModelProbe = mode !== "models" || request.skipModelDiscovery
     ? { models: [] }
     : await probeModels(parsed, request.apiKey, protocols, request.providerPlugins ?? []);
+  const visibleModels = discoveredModelProbe.models.filter((model) =>
+    isProviderCatalogModelVisible("", model, request.baseUrl)
+  );
+  const modelProbe = {
+    ...discoveredModelProbe,
+    models: visibleModels,
+    modelDisplayNames: discoveredModelProbe.modelDisplayNames
+      ? Object.fromEntries(Object.entries(discoveredModelProbe.modelDisplayNames).filter(([model]) => visibleModels.includes(model)))
+      : undefined
+  };
   const openCodeProtocolModelMap = modelProbe.models.length > 0
     ? opencodeCatalogProtocolModelMap(request.baseUrl, protocols)
     : undefined;

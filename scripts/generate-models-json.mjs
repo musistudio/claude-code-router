@@ -31,6 +31,25 @@ const sources = {
 const sourceOrder = ["models.dev", "litellm", "openrouter"];
 const support1MContextThreshold = 1_000_000;
 const schemaVersion = 2;
+const canonicalModelOverrides = new Map([
+  ["minimax/minimax-m3", {
+    capabilities: { adaptiveThinking: true, attachments: true, imageInput: true, noneReasoningEffort: true, minimalReasoningEffort: false, lowReasoningEffort: false, mediumReasoningEffort: false, highReasoningEffort: false, xhighReasoningEffort: false, maxReasoningEffort: false, ultraReasoningEffort: false, pdfInput: false, reasoning: true, supports1MContext: true, videoInput: true },
+    contextTokens: 1_000_000,
+    displayName: "MiniMax-M3",
+    inputModalities: ["image", "text", "video"],
+    model: "MiniMax-M3",
+    // The catalog stores the Standard <=512k baseline, not request-tier billing.
+    pricing: { cacheRead: 0.06, input: 0.3, output: 1.2 }
+  }],
+  ["minimax/minimax-m3.1-flash", {
+    capabilities: { adaptiveThinking: true, attachments: true, imageInput: true, noneReasoningEffort: false, minimalReasoningEffort: false, lowReasoningEffort: true, mediumReasoningEffort: true, highReasoningEffort: true, xhighReasoningEffort: true, maxReasoningEffort: true, ultraReasoningEffort: false, pdfInput: false, reasoning: true, supports1MContext: true, videoInput: true },
+    contextTokens: 1_000_000,
+    displayName: "MiniMax-M3.1-Flash",
+    inputModalities: ["image", "text", "video"],
+    model: "MiniMax-M3.1-Flash",
+    pricing: { cacheRead: 0.015, input: 0.15, output: 0.6 }
+  }]
+]);
 const fetchAttempts = 3;
 const fetchRetryDelayMs = 500;
 const fetchTimeoutMs = 15_000;
@@ -123,7 +142,7 @@ async function main() {
   const providerModelRecords = Array.from(entries.values())
     .map(finalizeEntry)
     .sort((a, b) => a.id.localeCompare(b.id));
-  const models = dedupeModels(providerModelRecords);
+  const models = applyCanonicalModelOverrides(dedupeModels(providerModelRecords));
   assertUniqueModelCatalog(models);
 
   const payload = {
@@ -456,6 +475,60 @@ function dedupeModels(providerModelRecords) {
   return Array.from(groups.values())
     .map(({ identity, records }) => mergeDedupedModel(identity, records))
     .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+export function applyCanonicalModelOverrides(models) {
+  const currentModels = new Map(models.map((model) => [model.id, model]));
+  for (const [id, override] of canonicalModelOverrides) {
+    if (!currentModels.has(id)) {
+      currentModels.set(id, { id, provider: "minimax", model: override.model, mode: "chat" });
+    }
+  }
+  return Array.from(currentModels.values()).map((model) => {
+    const override = canonicalModelOverrides.get(model.id);
+    if (!override) return model;
+
+    const officialOffers = [
+      ["minimax", "https://platform.minimax.io/docs/pricing/overview.md"],
+      ["minimax-cn", "https://platform.minimaxi.com/docs/pricing/overview.md"]
+    ].map(([provider, sourceUrl]) => ({
+      model: override.model,
+      per1MTokens: override.pricing,
+      provider,
+      source: "official",
+      sourceUnit: "usd_per_1m_tokens",
+      sourceUrl
+    }));
+    const retainedOffers = (model.pricing?.offers ?? []).filter((offer) =>
+      !["minimax", "minimax-cn"].includes(offer.provider));
+
+    return {
+      ...model,
+      capabilities: { ...model.capabilities, ...override.capabilities },
+      displayName: override.displayName,
+      providers: uniqueStrings([...(model.providers ?? []), "minimax", "minimax-cn"]),
+      sourceRecords: [
+        ...officialOffers.map(({ provider, sourceUrl }) => ({
+          provider, source: provider, sourceUrl, model: override.model, mode: "chat"
+        })),
+        ...(model.sourceRecords ?? []).filter((record) => !["minimax", "minimax-cn"].includes(record.provider))
+      ],
+      limits: {
+        ...model.limits,
+        contextTokens: override.contextTokens,
+        inputTokens: override.contextTokens,
+        outputTokens: 524_288,
+        maxTokens: 524_288,
+        supports1MContext: override.capabilities.supports1MContext
+      },
+      modalities: { ...model.modalities, input: override.inputModalities, output: ["text"] },
+      pricing: {
+        currency: "USD",
+        normalizedUnit: "per1MTokens values are USD per 1,000,000 tokens; non-token values keep the unit named by their object key.",
+        offers: [...officialOffers, ...retainedOffers]
+      }
+    };
+  });
 }
 
 function assertUniqueModelCatalog(models) {
@@ -1204,7 +1277,9 @@ function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-await main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
