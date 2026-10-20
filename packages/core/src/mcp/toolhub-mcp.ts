@@ -1277,7 +1277,8 @@ class StdioMcpClient implements McpClient {
         ...process.env,
         ...(this.server.env ?? {})
       },
-      stdio: ["pipe", "pipe", "pipe"]
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true
     }) as ChildProcessWithoutNullStreams;
     child.stdout.on("data", (chunk: Buffer) => this.readStdout(chunk));
     child.stderr.on("data", (chunk: Buffer) => {

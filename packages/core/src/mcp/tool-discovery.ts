@@ -54,7 +54,8 @@ async function listStdioMcpServerTools(server: GatewayMcpStdioServerConfig): Pro
         ...process.env,
         ...server.env
       },
-      stdio: ["pipe", "pipe", "pipe"]
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true
     }) as ChildProcessWithoutNullStreams;
     const pending = new Map<string, PendingRequest>();
     const timeout = setTimeout(() => finish(new Error(`MCP tools discovery timed out after ${mcpTimeoutMs(server)} ms.`)), mcpTimeoutMs(server));
