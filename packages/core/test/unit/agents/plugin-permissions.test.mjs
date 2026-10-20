@@ -100,7 +100,7 @@ test("plugin permissions gate configured browser apps", { skip: !process.env.CCR
   }
 });
 
-test("known bundled plugins without persisted permissions receive scoped defaults", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+test("known bundled plugins without persisted permissions receive scoped defaults", { skip: !process.env.CCR_INTERNAL_HOME_DIR || !process.versions.electron }, async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-plugin-known-defaults-"));
   try {
     const pluginFile = path.join(dir, "claude-design-plugin.cjs");
