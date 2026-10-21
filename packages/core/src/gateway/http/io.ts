@@ -109,13 +109,22 @@ export function omitLocalObservabilityHeaders(headers: Record<string, string>): 
 }
 
 
-export function withCoreGatewayAuthHeader(headers: Record<string, string>, token: string): Record<string, string> {
+export function withCoreGatewayAuthHeader(
+  headers: Record<string, string>,
+  token: string,
+  headerName: string = coreGatewayAuthHeader
+): Record<string, string> {
   if (!token) {
     throw new Error("Core gateway auth token is not initialized.");
   }
+  // The core gateway reads a bare token, while a public gateway endpoint
+  // expects the standard bearer form.
+  const value = headerName.toLowerCase() === "authorization" && !/^bearer\s/i.test(token)
+    ? `Bearer ${token}`
+    : token;
   return {
     ...headers,
-    [coreGatewayAuthHeader]: token
+    [headerName]: value
   };
 }
 

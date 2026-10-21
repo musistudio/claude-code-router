@@ -291,6 +291,7 @@ function routedModelHeaderForAttempt(attempt: UpstreamAttempt): string | undefin
 export async function fetchUpstreamWithFallback(input: {
   body?: Buffer;
   config: AppConfig;
+  coreAuthHeader?: string;
   coreAuthToken: string;
   fallback: RouterFallbackConfig;
   headers: Record<string, string>;
@@ -440,7 +441,8 @@ export async function fetchUpstreamWithFallback(input: {
     const upstreamHeaders = {
       ...withCoreGatewayAuthHeader(
         omitLocalObservabilityHeaders(attempt.headers ?? input.headers),
-        input.coreAuthToken
+        input.coreAuthToken,
+        input.coreAuthHeader
       ),
       // Core raw traces use a unique request id for every fallback attempt,
       // while turnKey identifies the outer gateway request. Keep both and mark
