@@ -49,6 +49,28 @@ export type SpawnedGatewayProcess = {
   configAccepted: Promise<void>;
 };
 
+// The managed gateway fetches upstreams with globalThis.fetch (undici), whose
+// default headersTimeout is 300000ms. Without this preload, any API_TIMEOUT_MS
+// above 300s is silently ignored for time-to-first-header (issue #1610).
+// Note: with a positive timeout this writes the preload file to CONFIGDIR as a
+// side effect, before the spawn that consumes it happens.
+export function gatewayChildPreloadEnvAndArgs(config: Pick<AppConfig, "API_TIMEOUT_MS">): {
+  env: Record<string, string>;
+  extraArgs: string[];
+} {
+  const timeoutMs = Math.trunc(Number(config.API_TIMEOUT_MS) || 0);
+  if (timeoutMs <= 0) {
+    return { env: {}, extraArgs: [] };
+  }
+  return {
+    env: {
+      CCR_UPSTREAM_TIMEOUT_MS: String(timeoutMs),
+      CCR_UNDICI_MODULE: resolveUndiciProxyAgentModule()
+    },
+    extraArgs: ["--require", writeGatewayFetchPreloadFile()]
+  };
+}
+
 export function spawnGatewayProcess(
   config: AppConfig,
   gatewayConfig: Record<string, unknown>,
@@ -58,9 +80,13 @@ export function spawnGatewayProcess(
 ): SpawnedGatewayProcess {
   const gatewayEntry = resolveGatewayEntry();
   const nodeRuntime = resolveGatewayNodeRuntime();
-  const env = createGatewayProcessEnv(config, upstreamProxyUrl, runtimeId, coreAuthToken, nodeRuntime.electronRunAsNode);
+  const preload = gatewayChildPreloadEnvAndArgs(config);
+  const env = {
+    ...createGatewayProcessEnv(config, upstreamProxyUrl, runtimeId, coreAuthToken, nodeRuntime.electronRunAsNode),
+    ...preload.env
+  };
   const gatewayBootstrapEntry = resolveGatewayBootstrapEntry();
-  const args = [gatewayBootstrapEntry];
+  const args = [...preload.extraArgs, gatewayBootstrapEntry];
   const child = spawn(nodeRuntime.command, args, {
     cwd: CONFIGDIR,
     env,
