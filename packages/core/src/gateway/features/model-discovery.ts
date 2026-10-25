@@ -326,6 +326,10 @@ function createClaudeAppGatewayModelsResponse(
         ...gatewayModelCapabilityOverrides(config, route.targetModel, modelMetadata)
       }),
       created_at: "1970-01-01T00:00:00Z",
+      // The window the gateway already knows, on fields clients that skip the capabilities object can read.
+      ...(maxInputTokens > 0
+        ? { context_window: maxInputTokens, max_context_window: maxInputTokens }
+        : {}),
       display_name: exposeOneMillionContextVariant
         ? `${route.displayName} (1M context)`
         : route.displayName,
@@ -367,6 +371,7 @@ function createClaudeCodeModelsResponse(
         ...gatewayModelCapabilityOverrides(config, catalogId, modelMetadata)
       }),
       created_at: "1970-01-01T00:00:00Z",
+      ...(maxInputTokens > 0 ? { context_window: maxInputTokens, max_context_window: maxInputTokens } : {}),
       display_name: formatClaudeCodeModelDisplayName(claudeId, catalogEntry, model.oneMillionContext),
       max_input_tokens: maxInputTokens,
       max_tokens: maxOutputTokens,
