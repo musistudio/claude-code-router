@@ -4691,19 +4691,19 @@ function ensurePendingRawTraceUpdateSchema(database: SqlDatabase): void {
   prunePendingRawTraceUpdates(database, Date.now());
 }
 
+// Every non-streaming request body contains `"stream":false`, so the candidate
+// rows for this repair include every request logged since the last retention
+// prune, bodies and all. Reading them as one result set can exceed the worker
+// heap before that prune gets a chance to run, which is why the two workers
+// respawn forever (issue #1898). Collect the row ids first and read one row at
+// a time instead: better-sqlite3 rejects writes while a statement is still
+// iterating this connection, so the ids loop must close before the updates.
 function backfillRequestLogStreamFlags(database: SqlDatabase): void {
-  const rows = queryRows(
+  const ids: number[] = [];
+  for (const row of iterateRows(
     database,
       `
-        SELECT
-          rowid AS id,
-          path,
-          url,
-          request_headers,
-          response_headers,
-          request_body_text,
-          request_body_encoding,
-          response_body_content_type
+        SELECT rowid AS id
         FROM request_logs
         WHERE source_usage_id IS NULL
           AND is_stream = 0
@@ -4715,13 +4715,32 @@ function backfillRequestLogStreamFlags(database: SqlDatabase): void {
             response_body_content_type LIKE '%event-stream%'
           )
       `
-  );
-  if (rows.length === 0) {
+  )) {
+    ids.push(normalizeCount(row.id));
+  }
+  if (ids.length === 0) {
     return;
   }
 
+  const readRow = database.prepare(`
+    SELECT
+      rowid AS id,
+      path,
+      url,
+      request_headers,
+      response_headers,
+      request_body_text,
+      request_body_encoding,
+      response_body_content_type
+    FROM request_logs
+    WHERE rowid = ?
+  `);
   const statement = database.prepare("UPDATE request_logs SET is_stream = 1 WHERE rowid = ?");
-  for (const row of rows) {
+  for (const id of ids) {
+    const row = readRow.get(id) as Record<string, SqlValue> | undefined;
+    if (!row) {
+      continue;
+    }
     const requestBodyText = String(row.request_body_encoding ?? "utf8") === "utf8"
       ? String(row.request_body_text ?? "")
       : undefined;
@@ -4734,7 +4753,7 @@ function backfillRequestLogStreamFlags(database: SqlDatabase): void {
       url: String(row.url ?? "")
     });
     if (isStream) {
-      statement.run(normalizeCount(row.id));
+      statement.run(id);
     }
   }
 }
