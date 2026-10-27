@@ -928,3 +928,43 @@ test("#1801 unknown HTTP status is excluded from failure and success rate counts
     assert.equal(stats.models[0].successRate, 0.5);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test("#1875 success rate counts the latest attempt for each client request", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-request-outcome-"));
+  try {
+    const store = new UsageStore(path.join(dir, "usage.sqlite"));
+    const createdAt = new Date().toISOString();
+    const attempts = [
+      { requestId: "rescued-request", statusCode: 429 },
+      { requestId: "rescued-request", statusCode: 200 },
+      { requestId: "failed-request", statusCode: 503 },
+      { requestId: "", statusCode: 500 }
+    ];
+
+    for (const attempt of attempts) {
+      await store.record({
+        createdAt,
+        durationMs: 5,
+        method: "POST",
+        model: "local",
+        path: "/v1/messages",
+        provider: "local",
+        requestId: attempt.requestId,
+        statusCode: attempt.statusCode,
+        usage: { inputTokens: 1, outputTokens: 1 }
+      });
+    }
+
+    const stats = await store.getStats("today");
+    assert.equal(stats.totals.requestCount, 4, "all upstream attempts remain in usage totals");
+    assert.equal(stats.totals.errorCount, 2, "only the final identified attempt and blank-ID row fail");
+    assert.equal(stats.totals.successRate, 1 / 3);
+
+    const currentBucket = stats.series.find((point) => point.requestCount > 0);
+    assert.equal(currentBucket?.requestCount, 4);
+    assert.equal(currentBucket?.errorCount, 2);
+    assert.equal(currentBucket?.successRate, 1 / 3);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
