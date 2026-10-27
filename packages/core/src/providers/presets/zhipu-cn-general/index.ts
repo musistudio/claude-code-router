@@ -1,6 +1,11 @@
 import type { ProviderAccountConfig, ProviderAccountMappingConfig } from "@ccr/core/contracts/app";
 import type { ProviderPreset } from "@ccr/core/providers/presets/types";
 
+// Same endpoint and same payload shape as the China coding plan preset:
+// `percentage` is the CONSUMED share (so `remaining` is `100 - percentage`)
+// and the windows are discriminated by `unit` (3 = rolling 5 h window,
+// 6 = weekly window) rather than by the limit `type`, whose spelling differs
+// between the China and global endpoints.
 const zhipuQuotaMapping: ProviderAccountMappingConfig = {
   meters: [
     {
@@ -8,10 +13,10 @@ const zhipuQuotaMapping: ProviderAccountMappingConfig = {
       kind: "quota",
       label: "5h quota",
       limit: 100,
-      remaining: "100 - $.data.limits[?(@.type==\"TOKENS_LIMIT\" && @.unit==3)].percentage",
-      resetAt: "$.data.limits[?(@.type==\"TOKENS_LIMIT\" && @.unit==3)].nextResetTime",
+      remaining: "100 - $.data.limits[?(@.unit==3)].percentage",
+      resetAt: "$.data.limits[?(@.unit==3)].nextResetTime",
       unit: "%",
-      used: "$.data.limits[?(@.type==\"TOKENS_LIMIT\" && @.unit==3)].percentage",
+      used: "$.data.limits[?(@.unit==3)].percentage",
       window: "5h"
     },
     {
@@ -19,10 +24,10 @@ const zhipuQuotaMapping: ProviderAccountMappingConfig = {
       kind: "quota",
       label: "Weekly quota",
       limit: 100,
-      remaining: "100 - $.data.limits[?(@.type==\"TOKENS_LIMIT\" && @.unit==6)].percentage",
-      resetAt: "$.data.limits[?(@.type==\"TOKENS_LIMIT\" && @.unit==6)].nextResetTime",
+      remaining: "100 - $.data.limits[?(@.unit==6)].percentage",
+      resetAt: "$.data.limits[?(@.unit==6)].nextResetTime",
       unit: "%",
-      used: "$.data.limits[?(@.type==\"TOKENS_LIMIT\" && @.unit==6)].percentage",
+      used: "$.data.limits[?(@.unit==6)].percentage",
       window: "weekly"
     }
   ]

@@ -1,6 +1,17 @@
 import type { ProviderAccountConfig, ProviderAccountMappingConfig } from "@ccr/core/contracts/app";
 import type { ProviderPreset } from "@ccr/core/providers/presets/types";
 
+// The China endpoint mirrors the global one: `percentage` is the CONSUMED
+// share of the window (so `remaining` is `100 - percentage`) and the windows
+// are discriminated by `unit` (3 = rolling 5 h window, 6 = weekly window).
+//
+// The mapping filters on `unit` alone instead of on the limit `type`: the type
+// name differs between the China and global endpoints (`TOKENS_LIMIT` vs
+// `CREDIT_LIMIT`) and has already been renamed once, so depending on it made
+// the meters empty whenever the endpoint changed spelling.
+//
+// The key is sent raw (`Authorization: <key>`), which is what the Zhipu AI
+// API expects.
 const zhipuQuotaMapping: ProviderAccountMappingConfig = {
   meters: [
     {
@@ -8,10 +19,10 @@ const zhipuQuotaMapping: ProviderAccountMappingConfig = {
       kind: "quota",
       label: "5h quota",
       limit: 100,
-      remaining: "100 - $.data.limits[?(@.type==\"TOKENS_LIMIT\" && @.unit==3)].percentage",
-      resetAt: "$.data.limits[?(@.type==\"TOKENS_LIMIT\" && @.unit==3)].nextResetTime",
+      remaining: "100 - $.data.limits[?(@.unit==3)].percentage",
+      resetAt: "$.data.limits[?(@.unit==3)].nextResetTime",
       unit: "%",
-      used: "$.data.limits[?(@.type==\"TOKENS_LIMIT\" && @.unit==3)].percentage",
+      used: "$.data.limits[?(@.unit==3)].percentage",
       window: "5h"
     },
     {
@@ -19,10 +30,10 @@ const zhipuQuotaMapping: ProviderAccountMappingConfig = {
       kind: "quota",
       label: "Weekly quota",
       limit: 100,
-      remaining: "100 - $.data.limits[?(@.type==\"TOKENS_LIMIT\" && @.unit==6)].percentage",
-      resetAt: "$.data.limits[?(@.type==\"TOKENS_LIMIT\" && @.unit==6)].nextResetTime",
+      remaining: "100 - $.data.limits[?(@.unit==6)].percentage",
+      resetAt: "$.data.limits[?(@.unit==6)].nextResetTime",
       unit: "%",
-      used: "$.data.limits[?(@.type==\"TOKENS_LIMIT\" && @.unit==6)].percentage",
+      used: "$.data.limits[?(@.unit==6)].percentage",
       window: "weekly"
     }
   ]
