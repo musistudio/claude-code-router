@@ -1,6 +1,6 @@
 import { requestLogOutcome } from "@ccr/core/contracts/app";
 import { randomUUID } from "node:crypto";
-import { closeSync, copyFileSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, copyFileSync, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { REQUEST_LOG_BODIES_DIR, REQUEST_LOGS_DB_FILE } from "@ccr/core/config/constants";
@@ -418,6 +418,7 @@ export class RequestLogStore {
   private insertRequestStatement?: BetterSqliteStatement;
   private insertRouteTraceStatement?: BetterSqliteStatement;
   private lastRetentionCleanupDay?: string;
+  private lastOrphanSweepDay?: string;
   private revision = 0;
   private analysisCache?: AgentAnalysisCacheEntry;
 
@@ -1522,6 +1523,7 @@ export class RequestLogStore {
 
     this.database = database;
     this.pruneOldRequestLogs(database);
+    this.sweepOrphanedBodyFiles(database);
     return database;
   }
 
@@ -1561,11 +1563,78 @@ export class RequestLogStore {
       normalizeFilterValue(String(row.response_body_ref ?? ""))
     ]).filter((value): value is string => Boolean(value));
 
+    // Delete body files first: if this throws, the rows survive and the whole
+    // batch is retried on the next pass. Deleting rows first would strand the
+    // files forever, since no future query could find their refs again.
+    deleteRequestLogBodyRefs(this.bodyDir, refs);
     database.prepare(
       "DELETE FROM request_logs WHERE source_usage_id IS NULL AND created_at < ?",
     ).run(cutoff);
-    deleteRequestLogBodyRefs(this.bodyDir, refs);
     this.lastRetentionCleanupDay = dayKey;
+  }
+
+  /**
+   * Remove body files that no longer have any row pointing at them.
+   *
+   * Retention only deletes files whose refs it can still read from the table.
+   * Once a row is gone, its file becomes unreachable — written during a crash,
+   * or stranded by a failed delete in an earlier pass — and would otherwise
+   * stay on disk forever. Sweeping the directory against the live ref set
+   * reclaims those, at most once per day.
+   */
+  private sweepOrphanedBodyFiles(database: SqlDatabase): void {
+    const now = new Date();
+    const dayKey = formatLocalDayKey(now);
+    if (this.lastOrphanSweepDay === dayKey) {
+      return;
+    }
+    this.lastOrphanSweepDay = dayKey;
+
+    let shards: string[];
+    try {
+      shards = readdirSync(this.bodyDir);
+    } catch {
+      return;
+    }
+
+    const knownRefs = new Set<string>();
+    for (const row of queryRows(database, "SELECT request_body_ref, response_body_ref FROM request_logs", [])) {
+      const requestRef = normalizeBodyRef(String(row.request_body_ref ?? ""));
+      const responseRef = normalizeBodyRef(String(row.response_body_ref ?? ""));
+      if (requestRef) {
+        knownRefs.add(requestRef);
+      }
+      if (responseRef) {
+        knownRefs.add(responseRef);
+      }
+    }
+
+    // Leave recently written files alone: a request still in flight may have
+    // written its body before its row was inserted.
+    const cutoffMs = now.getTime() - 60 * 60 * 1000;
+    for (const shard of shards) {
+      const directory = join(this.bodyDir, shard);
+      let files: string[];
+      try {
+        files = readdirSync(directory);
+      } catch {
+        continue;
+      }
+      for (const file of files) {
+        if (knownRefs.has(file)) {
+          continue;
+        }
+        const filePath = join(directory, file);
+        try {
+          const stats = statSync(filePath);
+          if (stats.isFile() && stats.mtimeMs < cutoffMs) {
+            rmSync(filePath, { force: true });
+          }
+        } catch {
+          // The file may vanish between listing and stat; nothing to do.
+        }
+      }
+    }
   }
 
   private storePendingRawTraceUpdate(database: SqlDatabase, input: RequestLogRawTraceUpdateInput): void {
