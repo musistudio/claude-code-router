@@ -535,3 +535,14 @@ Header 名不区分大小写。Body 字段按点号路径读取，数字片段�
 4. `CCR_JEV_ENDPOINT` 可指定完整接口地址，`CCR_JEV_MODEL` 可指定分类模型。兼容的本地服务不强制要求密钥。
 
 启用后会把最后一条用户文本的前 8192 个字符、输入 Token 数和工具数量发给所配置的分类服务；云端调用会产生该服务的费用。不会发送请求鉴权 Header 或 System 内容。`CCR_JEV_MIN_CONFIDENCE` 默认 `0.75`，这是待按实际任务评估的示例阈值，不代表已验证的路由准确率。示例测试覆盖协议与失败回退，未测量真实模型准确率或延迟。
+
+### 可选：Nadir 提示复杂度路由示例
+
+仓库的 [`examples/routing/nadir.js`](https://github.com/musistudio/claude-code-router/blob/main/examples/routing/nadir.js) 可直接作为 Node.js 脚本规则加载。它调用 [Nadir 决策 API](https://getnadir.com/docs/decision-api)（`POST /v1/bucket`），判断最后一条用户消息属于 `simple`、`medium` 还是 `complex`，再路由到你为该档位配置的模型。Nadir 只返回档位；补全请求仍由 CCR 直接发送给你自己的供应商。
+
+1. 在 CCR 的启动环境中设置 `CCR_NADIR_ROUTING_ENABLED=1`、`CCR_NADIR_SIMPLE_MODEL=供应商/低价模型` 和 `CCR_NADIR_COMPLEX_MODEL=供应商/强模型`。`CCR_NADIR_MEDIUM_MODEL` 可选；未设置时，medium 请求使用 complex 模型。
+2. 添加 Node.js 脚本规则并选择该文件。建议先使用 1500 ms 总超时进行测试，把规则放在处理 `auto` 的静态回退规则之前。
+3. 客户端模型设为 `auto` 时才参与分类。明确指定模型、图片请求、未配置、未知档位、网络错误或超时都会继续后续规则。
+4. `NADIR_API_KEY` 可选。未设置时使用 Nadir 免费匿名档，按 IP 限速，不保存逐条请求记录（仅有聚合计数）。`CCR_NADIR_BASE_URL` 可指向自托管的 Nadir 部署。
+
+启用后会把最后一条用户文本的前 8192 个字符发给所配置的服务。不会发送请求 Header、System 内容或工具定义。示例测试覆盖协议与失败回退，未测量真实分类准确率或延迟。
