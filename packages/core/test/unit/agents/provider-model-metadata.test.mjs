@@ -121,3 +121,31 @@ test("provider model metadata config drops invalid custom prices", () => {
     contextWindow: 128000
   });
 });
+
+test("provider model metadata config preserves reasoning effort maps and requirements", () => {
+  assert.deepEqual(providerModelMetadataFromConfigForTest({
+    reasoning_effort_map: { medium: "high", xhigh: "max" },
+    reasoning_required: true
+  }), {
+    reasoningEffortMap: { medium: "high", xhigh: "max" },
+    reasoningRequired: true
+  });
+
+  assert.deepEqual(providerModelMetadataFromConfigForTest({
+    reasoningEffortMap: { medium: "high" },
+    reasoningRequired: false
+  }), {
+    reasoningEffortMap: { medium: "high" },
+    reasoningRequired: false
+  });
+});
+
+test("provider model metadata config drops invalid reasoning effort maps and requirements", () => {
+  assert.deepEqual(providerModelMetadataFromConfigForTest({
+    reasoning_effort_map: { "": "high", medium: 1 },
+    reasoning_required: "yes",
+    contextWindow: 128000
+  }), {
+    contextWindow: 128000
+  });
+});

@@ -697,6 +697,50 @@ test("Claude App discovery honors configured reasoning levels for uncatalogued m
   assert.equal(model.capabilities.effort.ultra.supported, true);
 });
 
+test("OpenAI-compatible discovery advertises configured reasoning metadata", () => {
+  const config = createConfig({
+    providers: [
+      {
+        modelMetadata: {
+          "reasoning-model": {
+            defaultReasoningLevel: "high",
+            reasoningEffortMap: { medium: "high", xhigh: "max" },
+            reasoningRequired: true,
+            supportedReasoningLevels: [
+              { description: "Low", effort: "low" },
+              { description: "High", effort: "high" },
+              { description: "Max", effort: "max" }
+            ]
+          }
+        },
+        models: ["reasoning-model"],
+        name: "Reasoning",
+        type: "openai_responses"
+      },
+      {
+        models: ["plain-model"],
+        name: "Plain",
+        type: "openai_responses"
+      }
+    ]
+  });
+  const response = createGatewayModelsResponse(config, {});
+  const model = response.data.find((candidate) => candidate.id === "Reasoning/reasoning-model");
+  const plain = response.data.find((candidate) => candidate.id === "Plain/plain-model");
+
+  assert.ok(model);
+  assert.ok(plain);
+  assert.deepEqual(model.supported_reasoning_levels, [
+    { description: "Low", effort: "low" },
+    { description: "High", effort: "high" },
+    { description: "Max", effort: "max" }
+  ]);
+  assert.equal(model.default_reasoning_level, "high");
+  assert.equal(model.reasoning_required, true);
+  assert.deepEqual(model.reasoning_effort_map, { medium: "high", xhigh: "max" });
+  assert.deepEqual(Object.keys(plain).sort(), ["created", "id", "object", "owned_by", "type"]);
+});
+
 test("Claude CLI bootstrap honors configured provider metadata over defaults", () => {
   const config = createConfig({
     providers: [
