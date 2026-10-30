@@ -824,7 +824,7 @@ function usageAwareOpenAiChatAttemptBody(input: {
   body: Buffer | undefined;
   config: AppConfig;
   path: string;
-  target?: { protocol: GatewayProviderProtocol };
+  target?: { protocol: GatewayProviderProtocol; provider?: GatewayProviderConfig };
 }): Buffer | undefined {
   const clientProtocol = requestProtocolForPath(input.path);
   const parsedBody = parseJsonObjectSafe(input.body);
@@ -840,22 +840,44 @@ function usageAwareOpenAiChatAttemptBody(input: {
   if (providerProtocol === "openai_responses" && clientProtocol === "openai_responses") {
     return input.body;
   }
-  const sanitizedBody = stripUnsupportedOpenAiRequestParameters(input.body);
+  const sanitizedBody = stripUnsupportedOpenAiRequestParameters(input.body, {
+    // Anthropic `thinking` is meaningless to an OpenAI upstream, so it always goes. An
+    // OpenAI-protocol client's `thinking` is a vendor extension the provider must opt into.
+    dropThinkingParameters:
+      clientProtocol === "anthropic_messages" ||
+      input.target?.provider?.forwardThinkingParameters !== true
+  });
   return providerProtocol === "openai_chat_completions"
     ? usageAwareOpenAiChatBody(sanitizedBody)
     : sanitizedBody;
 }
 
 
-function stripUnsupportedOpenAiRequestParameters(body: Buffer | undefined): Buffer | undefined {
+/**
+ * Anthropic clients express thinking as a top-level `thinking` object, which OpenAI-protocol
+ * upstreams reject once the request has been converted. OpenAI-protocol clients also send
+ * `thinking` / `reasoning_split`, but there they are vendor extensions (Ark uses them to toggle
+ * reasoning), so they are only stripped for requests converted from an Anthropic client.
+ *
+ * The gate covers only the top-level parameters. Any other sanitizing this function later
+ * grows must stay outside it: those fixes apply to every request regardless of provider.
+ */
+export function stripUnsupportedOpenAiRequestParameters(
+  body: Buffer | undefined,
+  options: { dropThinkingParameters: boolean }
+): Buffer | undefined {
   const parsedBody = parseJsonObjectSafe(body);
-  if (!parsedBody || (!("thinking" in parsedBody) && !("reasoning_split" in parsedBody))) {
+  if (!parsedBody) {
     return body;
   }
   const next = { ...parsedBody };
-  delete next.thinking;
-  delete next.reasoning_split;
-  return serializeJsonBody(next);
+  let changed = false;
+  if (options.dropThinkingParameters && ("thinking" in next || "reasoning_split" in next)) {
+    delete next.thinking;
+    delete next.reasoning_split;
+    changed = true;
+  }
+  return changed ? serializeJsonBody(next) : body;
 }
 
 
