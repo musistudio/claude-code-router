@@ -26,6 +26,10 @@ Choose a provider below to get started. CCR shows what will be added before savi
     <span class="provider-import-icon-shell"><img src="../../../provider-icons/openrouter.ico" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">OpenRouter</span><span class="provider-import-meta">OpenAI compatible gateway</span></span>
   </a>
+  <a class="provider-import-button provider-jzstoken" href="ccr://provider?name=JZSTOKEN&amp;base_url=https%3A%2F%2Fjzstoken.com%2Fapi%2Fv1&amp;protocol=openai_chat_completions&amp;models=claude-sonnet-5%2Cclaude-opus-5%2Cgpt-5.6-terra%2Cdeepseek-v4-pro%2Ckimi-k2.8&amp;source=https%3A%2F%2Fjzstoken.com%2Fdocs%2Fquick-start" aria-label="Import JZSTOKEN provider">
+    <span class="provider-import-icon-shell"><span class="provider-import-mark">JZ</span></span>
+    <span class="provider-import-copy"><span class="provider-import-name">JZSTOKEN</span><span class="provider-import-meta">OpenAI compatible gateway</span></span>
+  </a>
   <a class="provider-import-button provider-nvidia" href="ccr://provider?name=NVIDIA&amp;base_url=https%3A%2F%2Fintegrate.api.nvidia.com%2Fv1&amp;protocol=openai_chat_completions&amp;models=nvidia%2Fnemotron-3-super-120b-a12b%2Cnvidia%2Fnemotron-3-ultra-550b-a55b&amp;source=https%3A%2F%2Fbuild.nvidia.com%2Fmodels" aria-label="Import NVIDIA NIM provider">
     <span class="provider-import-icon-shell"><img src="../../../provider-icons/nvidia.svg" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">NVIDIA</span><span class="provider-import-meta">NIM Chat Completions</span></span>
