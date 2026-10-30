@@ -69,6 +69,13 @@ export function buildRouteScriptInput(
   return input;
 }
 
+// Bodies above this size are replaced with a stub before transport into the
+// 64MB route-script worker: the serialized string plus its parsed form would
+// otherwise overflow the worker's old-generation budget (heap OOM) and take
+// the routing rules down with it. Route decisions are expected to rely on the
+// summary fields, which are bounded at build time.
+const maxScriptInputBodyChars = 2 * 1024 * 1024;
+
 export function serializeRouteScriptInput(input: RouteScriptInput): string {
   const snapshot = bodySnapshots.get(input);
   if (!snapshot) return JSON.stringify(input);
@@ -76,7 +83,13 @@ export function serializeRouteScriptInput(input: RouteScriptInput): string {
   for (const key of Object.keys(input)) {
     if (key !== "body") metadata[key] = input[key as keyof RouteScriptInput];
   }
-  const bodyJson = snapshot.body ? JSON.stringify(snapshot.body) : snapshot.json;
+  let bodyJson = snapshot.body ? JSON.stringify(snapshot.body) : snapshot.json;
+  if (bodyJson.length > maxScriptInputBodyChars) {
+    bodyJson = JSON.stringify({
+      __ccrBodyTruncated: true,
+      ...(input.model ? { model: input.model } : {})
+    });
+  }
   return `${JSON.stringify(metadata).slice(0, -1)},"body":${bodyJson}}`;
 }
 
