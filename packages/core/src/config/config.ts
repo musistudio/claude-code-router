@@ -848,6 +848,9 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
     if (gatewayCorePort) {
       gatewayConfig.corePort = gatewayCorePort;
     }
+    if (gateway.responseModelPolicy === "rewrite" || gateway.responseModelPolicy === "passthrough") {
+      gatewayConfig.responseModelPolicy = gateway.responseModelPolicy;
+    }
     config.gateway = gatewayConfig;
   }
   const profile = parseProfile((value as Record<string, unknown>).profile);
@@ -1453,6 +1456,7 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
         credentials: parseProviderCredentials(item.credentials ?? item.keys ?? item.apiKeys),
         extraBody: item.extraBody,
         extraHeaders: item.extraHeaders ?? item.extra_headers ?? item.headers,
+        forwardThinkingParameters: readBoolean(item.forwardThinkingParameters ?? item.forward_thinking_parameters),
         icon: readString(item.icon),
         id: readString(item.id),
         enabled: item.enabled === false ? false : undefined,

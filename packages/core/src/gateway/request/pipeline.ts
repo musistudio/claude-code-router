@@ -31,7 +31,12 @@ import { reserveApiKeyLimits } from "@ccr/core/gateway/auth/api-key-authorizer";
 import { recordProviderCredentialOutcome } from "@ccr/core/providers/credential-pool";
 import { codexApplyPatchBridgeResponseStream, prepareCodexApplyPatchBridgeRequest } from "@ccr/core/gateway/features/codex-patch-bridge";
 import { codexMultiAgentBridgeResponseStream, prepareCodexMultiAgentBridgeRequest } from "@ccr/core/gateway/features/codex-multi-agent-bridge";
-import { rewriteAnthropicMessageStartModelStream, shouldRewriteAnthropicMessageStartModel } from "@ccr/core/gateway/features/anthropic-response-model";
+import {
+  rewriteAnthropicMessageStartModelStream,
+  rewriteOpenAiResponseModelStream,
+  shouldRewriteAnthropicMessageStartModel,
+  shouldRewriteOpenAiResponseModel
+} from "@ccr/core/gateway/features/anthropic-response-model";
 import { prepareCursorOpenAICompatChatBody } from "@ccr/core/gateway/features/cursor-compat";
 import { filteredResponseHeaders, formatError, formatUpstreamErrorForLog, forwardHeaders, inferGatewayClient, readRequestBody, sendJson, shouldCaptureGatewayUsage, shouldSendBody, stripLocalGatewayAuthHeaders } from "@ccr/core/gateway/http/io";
 import { appendAggregateErrorAttemptSummary, shouldBufferAggregateErrorBody } from "@ccr/core/gateway/http/error-detail";
@@ -895,12 +900,37 @@ export class GatewayRequestPipeline {
       ) {
         responseHeaders.delete("content-length");
       }
-      const rewriteAnthropicResponseModel = upstreamResponse.ok && shouldRewriteAnthropicMessageStartModel({
-        contentType: responseHeaders.get("content-type") ?? undefined,
-        model: clientVisibleResponseModel,
-        protocol: responseProtocol
-      });
-      if (codexApplyPatchBridgeActive || codexMultiAgentBridgeActive || appendContextArchiveFooter || transformCodexCompactResponse || rewriteAnthropicResponseModel) {
+      // Response-model policy (gateway.responseModelPolicy) controls whether the
+      // body `model` carries the client-visible (requested) model or the serving
+      // endpoint's real model. "rewrite" (default) is the backward-compatible
+      // behavior on both protocols; "passthrough" keeps the upstream model name.
+      const responseModelPolicy = this.config.gateway.responseModelPolicy ?? "rewrite";
+      const shouldRewriteResponseModel = responseModelPolicy === "rewrite";
+      const rewriteAnthropicResponseModel = upstreamResponse.ok &&
+        shouldRewriteResponseModel &&
+        shouldRewriteAnthropicMessageStartModel({
+          contentType: responseHeaders.get("content-type") ?? undefined,
+          model: clientVisibleResponseModel,
+          protocol: responseProtocol
+        });
+      const rewriteOpenAiResponseModel = upstreamResponse.ok &&
+        shouldRewriteResponseModel &&
+        shouldRewriteOpenAiResponseModel({
+          contentType: responseHeaders.get("content-type") ?? undefined,
+          model: clientVisibleResponseModel,
+          protocol: responseProtocol
+        });
+      // Always expose both facts as additive headers: what the client asked for
+      // and what the serving leg actually used. Values are sanitized for safe
+      // header transmission (length-capped, control chars stripped).
+      const servedModel = servingModelName(upstreamResult.attempt.model ?? routedModel);
+      if (clientVisibleResponseModel) {
+        responseHeaders.set("x-ccr-requested-model", sanitizeHeaderValue(clientVisibleResponseModel));
+      }
+      if (servedModel) {
+        responseHeaders.set("x-ccr-served-model", sanitizeHeaderValue(servedModel));
+      }
+      if (codexApplyPatchBridgeActive || codexMultiAgentBridgeActive || appendContextArchiveFooter || transformCodexCompactResponse || rewriteAnthropicResponseModel || rewriteOpenAiResponseModel) {
         responseHeaders.delete("content-length");
       }
       recordProviderCredentialOutcome(this.config, method, upstreamResult.attempt, upstreamResponse.status, responseHeaders);
@@ -919,7 +949,8 @@ export class GatewayRequestPipeline {
         !appendContextArchiveFooter &&
         !transformCodexCompactResponse &&
         !hostedWebSearchProtocolContext &&
-        !rewriteAnthropicResponseModel
+        !rewriteAnthropicResponseModel &&
+        !rewriteOpenAiResponseModel
       ) {
         // Aggregate errors from the core gateway keep per-attempt root causes
         // in `error.attempts`, but clients that only render `error.message`
@@ -1028,7 +1059,13 @@ export class GatewayRequestPipeline {
           : hostedWebSearchResponseBody;
       const clientResponseBody = rewriteAnthropicResponseModel && clientVisibleResponseModel
         ? rewriteAnthropicMessageStartModelStream(responseBody, clientVisibleResponseModel)
-        : responseBody;
+        : rewriteOpenAiResponseModel && clientVisibleResponseModel
+          ? rewriteOpenAiResponseModelStream(
+              responseBody,
+              clientVisibleResponseModel,
+              responseHeaders.get("content-type") ?? undefined
+            )
+          : responseBody;
       const sampler = createBodySampler();
       const sseErrorDetector = createSseErrorDetector(responseHeaders.get("content-type") ?? undefined);
       let streamDetectedError: string | undefined;
@@ -1202,6 +1239,21 @@ export class GatewayRequestPipeline {
       statusCode: result.response.status
     };
   }
+}
+
+/**
+ * Extract the bare serving model name from an upstream attempt's model selector,
+ * which is typically `providerId::protocol/model` (or `providerId/model`). Falls
+ * back to the full value when it has no recognizable separator.
+ */
+function servingModelName(selector: string | undefined): string | undefined {
+  if (!selector) {
+    return undefined;
+  }
+  const protocolSplit = selector.split("::");
+  const afterProtocol = protocolSplit.length > 1 ? protocolSplit[protocolSplit.length - 1] : selector;
+  const slash = afterProtocol.lastIndexOf("/");
+  return slash >= 0 ? afterProtocol.slice(slash + 1) || afterProtocol : afterProtocol;
 }
 
 async function routeRequestWithCoreGatewayPlugin(input: {

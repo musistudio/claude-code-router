@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -469,7 +469,7 @@ test("Codex app-server bridges the default codex ChatGPT login read-only", { ski
   assert.deepEqual(JSON.parse(readFileSync(path.join(defaultCodexHome, "auth.json"), "utf8")).tokens.refresh_token, "default-refresh");
 });
 
-test("Codex app-server preserves workspace routing surfaced by newer app-servers", { skip: process.platform === "win32" }, () => {
+test("Codex app-server drops workspace routing so the app keeps legacy routing", { skip: process.platform === "win32" }, () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-workspace-routing-"));
   const runtimeFile = writeRuntimeScript(dir);
   const fakeCodex = path.join(dir, "fake-codex");
@@ -488,9 +488,9 @@ test("Codex app-server preserves workspace routing surfaced by newer app-servers
     "const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });",
     "input.on('line', (line) => {",
     "  const request = JSON.parse(line);",
-    "  const result = request.method === 'account/read'",
-    "    ? { account: { type: 'chatgpt', email: 'native@example.com', planType: 'pro' }, workspaceRouting: " + JSON.stringify(workspaceRouting) + ", requiresOpenaiAuth: true }",
-    "    : { authMethod: null, authToken: null, requiresOpenaiAuth: false };",
+    "  let result = { authMethod: null, authToken: null, requiresOpenaiAuth: false };",
+    "  if (request.method === 'account/read') result = { account: { type: 'chatgpt', email: 'native@example.com', planType: 'pro' }, workspaceRouting: " + JSON.stringify(workspaceRouting) + ", requiresOpenaiAuth: true };",
+    "  if (request.method === 'initialize') result = { userAgent: 'codex_cli_rs/0.161.0 (Mac OS 26.7.2; arm64) unknown (codex; 0.0.1)' };",
     "  process.stdout.write(JSON.stringify({ id: request.id, result }) + '\\n');",
     "});",
     ""
@@ -510,6 +510,7 @@ test("Codex app-server preserves workspace routing surfaced by newer app-servers
     },
     input: [
       JSON.stringify({ id: 1, method: "account/read", params: {} }),
+      JSON.stringify({ id: 2, method: "initialize", params: {} }),
       ""
     ].join("\n")
   });
@@ -518,9 +519,71 @@ test("Codex app-server preserves workspace routing surfaced by newer app-servers
   const responses = result.stdout.trim().split(/\r?\n/).map((line) => JSON.parse(line));
   assert.deepEqual(responses[0].result, {
     account: { type: "chatgpt", account_id: "ccr-virtual-account", id: "ccr-virtual-account", email: "CCR Workspace", planType: "plus" },
-    workspaceRouting,
     requiresOpenaiAuth: true
   });
+  assert.equal("workspaceRouting" in responses[0].result, false);
+  assert.equal(responses[1].result.userAgent, "codex_cli_rs/0.154.0 (Mac OS 26.7.2; arm64) unknown (codex; 0.0.1)");
+});
+
+test("Codex app-server heals a stale profile auth copy back to the shared single-use login", { skip: process.platform === "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-stale-auth-"));
+  const runtimeFile = writeRuntimeScript(dir);
+  const fakeCodex = path.join(dir, "fake-codex");
+  const codexHome = path.join(dir, "codex-home");
+  const isolatedHome = path.join(dir, "home");
+  const defaultCodexHome = path.join(isolatedHome, ".codex");
+  const payload = Buffer.from(JSON.stringify({
+    "https://api.openai.com/profile": { email: "shared@example.com" },
+    "https://api.openai.com/auth": { chatgpt_plan_type: "pro" }
+  }), "utf8").toString("base64url");
+  const token = "header." + payload + ".signature";
+  mkdirSync(codexHome, { recursive: true });
+  mkdirSync(defaultCodexHome, { recursive: true });
+  const auth = { auth_mode: "chatgpt", tokens: { access_token: token, id_token: token, refresh_token: "single-refresh" } };
+  writeFileSync(path.join(defaultCodexHome, "auth.json"), JSON.stringify(auth));
+  // The profile home carries a real-file copy of the same session (same
+  // single-use refresh token), which shadows the shared login's refresh chain.
+  writeFileSync(path.join(codexHome, "auth.json"), JSON.stringify(auth));
+  writeFileSync(fakeCodex, [
+    "#!/usr/bin/env node",
+    "const readline = require('node:readline');",
+    "const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });",
+    "input.on('line', (line) => {",
+    "  const request = JSON.parse(line);",
+    "  const result = request.method === 'account/read'",
+    "    ? { account: null, requiresOpenaiAuth: false }",
+    "    : { authMethod: null, authToken: null, requiresOpenaiAuth: false };",
+    "  process.stdout.write(JSON.stringify({ id: request.id, result }) + '\\n');",
+    "});",
+    ""
+  ].join("\n"));
+  chmodSync(fakeCodex, 0o700);
+
+  const result = spawnSync(process.execPath, [runtimeFile, "app-server"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      CCR_CODEX_REMOTE_FRONTEND_MODE: "app",
+      CCR_PROFILE_SCOPE: "ccr",
+      CCR_REAL_CODEX_CLI_PATH: fakeCodex,
+      CODEX_HOME: codexHome,
+      HOME: isolatedHome
+    },
+    input: [
+      JSON.stringify({ id: 1, method: "account/read", params: {} }),
+      ""
+    ].join("\n")
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const responses = result.stdout.trim().split(/\r?\n/).map((line) => JSON.parse(line));
+  assert.deepEqual(responses[0].result, {
+    account: { type: "chatgpt", email: "shared@example.com", planType: "pro" },
+    requiresOpenaiAuth: true
+  });
+  const profileAuthFile = path.join(codexHome, "auth.json");
+  assert.equal(lstatSync(profileAuthFile).isSymbolicLink(), true);
+  assert.equal(readlinkSync(profileAuthFile), path.join(defaultCodexHome, "auth.json"));
 });
 
 test("Codex app-server delegates public Git marketplaces and leaves account-private marketplaces empty", { skip: process.platform === "win32" }, () => {

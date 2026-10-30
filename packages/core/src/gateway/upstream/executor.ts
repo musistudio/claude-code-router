@@ -11,7 +11,7 @@ import { requestProtocolForPath } from "@ccr/core/routing/protocol-endpoints";
 import { resolveConfiguredProviderModelSelector, resolveUniqueConfiguredProviderModelSelector } from "@ccr/core/routing/model-resolution";
 import { estimateLimitUsage } from "@ccr/core/gateway/limits/window-limiter";
 import { providerCredentialLimitState, readProviderCredentialCooldown, recordProviderCredentialOutcome } from "@ccr/core/providers/credential-pool";
-import { isRecord, stringValue } from "@ccr/core/gateway/internal/value";
+import { isRecord, rawStringValue, stringValue } from "@ccr/core/gateway/internal/value";
 import { isLocalClaudeCodeOauthProviderPlugin, mergeAnthropicBetaValues } from "@ccr/core/providers/oauth-plugin";
 import { abortSignalMessage, formatError, omitLocalObservabilityHeaders, shouldSendBody, withCoreGatewayAuthHeader } from "@ccr/core/gateway/http/io";
 import { parseJsonObjectSafe, releaseJsonObject, serializeJsonBody, serializeJsonBodyWithModel } from "@ccr/core/gateway/http/body";
@@ -824,7 +824,7 @@ function usageAwareOpenAiChatAttemptBody(input: {
   body: Buffer | undefined;
   config: AppConfig;
   path: string;
-  target?: { protocol: GatewayProviderProtocol };
+  target?: { protocol: GatewayProviderProtocol; provider?: GatewayProviderConfig };
 }): Buffer | undefined {
   const clientProtocol = requestProtocolForPath(input.path);
   const parsedBody = parseJsonObjectSafe(input.body);
@@ -840,22 +840,151 @@ function usageAwareOpenAiChatAttemptBody(input: {
   if (providerProtocol === "openai_responses" && clientProtocol === "openai_responses") {
     return input.body;
   }
-  const sanitizedBody = stripUnsupportedOpenAiRequestParameters(input.body);
+  const sanitizedBody = stripUnsupportedOpenAiRequestParameters(input.body, {
+    // Anthropic `thinking` is meaningless to an OpenAI upstream, so it always goes. An
+    // OpenAI-protocol client's `thinking` is a vendor extension the provider must opt into.
+    dropThinkingParameters:
+      clientProtocol === "anthropic_messages" ||
+      input.target?.provider?.forwardThinkingParameters !== true
+  });
   return providerProtocol === "openai_chat_completions"
     ? usageAwareOpenAiChatBody(sanitizedBody)
     : sanitizedBody;
 }
 
 
-function stripUnsupportedOpenAiRequestParameters(body: Buffer | undefined): Buffer | undefined {
+/**
+ * The gate below covers only the top-level parameters. Any other sanitizing this function
+ * grows must stay outside it: those fixes apply to every request regardless of provider.
+ */
+export function stripUnsupportedOpenAiRequestParameters(
+  body: Buffer | undefined,
+  options: { dropThinkingParameters: boolean }
+): Buffer | undefined {
   const parsedBody = parseJsonObjectSafe(body);
-  if (!parsedBody || (!("thinking" in parsedBody) && !("reasoning_split" in parsedBody))) {
+  if (!parsedBody) {
     return body;
   }
   const next = { ...parsedBody };
-  delete next.thinking;
-  delete next.reasoning_split;
-  return serializeJsonBody(next);
+  let changed = false;
+  if (options.dropThinkingParameters && ("thinking" in next || "reasoning_split" in next)) {
+    delete next.thinking;
+    delete next.reasoning_split;
+    changed = true;
+  }
+  if (stripThinkingContentBlocks(next.messages)) {
+    changed = true;
+  }
+  if (stripResponsesReasoningContent(next.input)) {
+    changed = true;
+  }
+  return changed ? serializeJsonBody(next) : body;
+}
+
+/**
+ * OpenAI Responses upstreams reject a `reasoning` input item whose `content` array is
+ * non-empty (HTTP 400 array_above_max_length, e.g. Codex API), but they accept `summary`.
+ * Fold each `reasoning_text` block into `summary` as `summary_text` so the text is kept
+ * rather than dropped, then remove `content`. `encrypted_content` is left as-is; the item is
+ * dropped only when nothing accepted by the endpoint remains. Returns true when any item was
+ * modified or removed. Non-array input (string input, chat-style bodies) is left untouched.
+ */
+function stripResponsesReasoningContent(input: unknown): boolean {
+  if (!Array.isArray(input)) {
+    return false;
+  }
+  let changed = false;
+  const kept: unknown[] = [];
+  for (const item of input) {
+    if (!isRecord(item) || stringValue(item.type) !== "reasoning") {
+      kept.push(item);
+      continue;
+    }
+    let itemChanged = foldReasoningTextIntoSummary(item);
+    if ("content" in item) {
+      // The rejected array goes either way; the fold above already rescued its text.
+      delete item.content;
+      itemChanged = true;
+    }
+    const encrypted = item.encrypted_content;
+    const hasValidEncrypted = typeof encrypted === "string" && encrypted.length > 0;
+    // An empty `summary: []` is valid and required, so its presence keeps the item.
+    if ("summary" in item || hasValidEncrypted) {
+      kept.push(item);
+    } else {
+      itemChanged = true; // nothing accepted remains; drop the item
+    }
+    changed = changed || itemChanged;
+  }
+  if (kept.length !== input.length) {
+    input.length = 0;
+    input.push(...kept);
+    changed = true;
+  }
+  return changed;
+}
+
+/**
+ * Move `reasoning_text` blocks out of a reasoning item's rejected `content` array and into
+ * its `summary` array as `summary_text`, appending to any summary already present. Returns
+ * true when at least one block was folded.
+ */
+function foldReasoningTextIntoSummary(item: Record<string, unknown>): boolean {
+  const content = item.content;
+  if (!Array.isArray(content)) {
+    return false;
+  }
+  const folded: unknown[] = [];
+  for (const block of content) {
+    if (!isRecord(block) || stringValue(block.type) !== "reasoning_text") {
+      continue;
+    }
+    const text = rawStringValue(block.text);
+    if (text === undefined || text.length === 0) {
+      continue;
+    }
+    folded.push({ type: "summary_text", text });
+  }
+  if (folded.length === 0) {
+    return false;
+  }
+  const existing = Array.isArray(item.summary) ? item.summary : [];
+  item.summary = [...existing, ...folded];
+  return true;
+}
+
+/**
+ * OpenAI chat/responses upstreams reject Anthropic `thinking` content blocks in message
+ * history (HTTP 400). Remove them in place from each message's content array. Returns true
+ * when any block was removed. Non-array content (string content, already-OpenAI bodies) is
+ * left untouched.
+ */
+function stripThinkingContentBlocks(messages: unknown): boolean {
+  if (!Array.isArray(messages)) {
+    return false;
+  }
+  let changed = false;
+  for (const message of messages) {
+    if (!isRecord(message)) {
+      continue;
+    }
+    const content = message.content;
+    if (!Array.isArray(content)) {
+      continue;
+    }
+    const filtered = content.filter((block) => {
+      if (!isRecord(block)) {
+        return true;
+      }
+      const type = stringValue(block.type);
+      return type !== "thinking" && type !== "redacted_thinking";
+    });
+    if (filtered.length !== content.length) {
+      message.content = filtered;
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 

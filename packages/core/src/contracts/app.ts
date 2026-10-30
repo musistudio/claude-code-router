@@ -170,6 +170,13 @@ export type GatewayProviderConfig = {
   credentials?: ProviderCredentialConfig[];
   extraBody?: unknown;
   extraHeaders?: unknown;
+  /**
+   * Keep vendor `thinking` / `reasoning_split` request parameters on OpenAI-protocol requests
+   * instead of stripping them. Required by upstreams such as Ark that use `thinking` to toggle
+   * reasoning; leave off for strict OpenAI-compatible upstreams that reject unknown parameters.
+   * Must be a JSON boolean; the string `"true"` is ignored, like the other boolean fields.
+   */
+  forwardThinkingParameters?: boolean;
   icon?: string;
   id?: string;
   enabled?: boolean;
@@ -806,6 +813,16 @@ export type GatewayRuntimeConfig = {
   enabled: boolean;
   host: string;
   port: number;
+  /**
+   * Controls whether the response body's `model` field carries the client-visible
+   * (requested) model or the serving endpoint's real model.
+   * - "rewrite" (default): body `model` is rewritten to the requested model on
+   *   both Anthropic and OpenAI protocols (backward compatible; the serving
+   *   endpoint's real model is still exposed via the `x-ccr-served-model` header).
+   * - "passthrough": body `model` keeps the upstream's real model name.
+   * The serving truth is always available in `x-ccr-served-model`.
+   */
+  responseModelPolicy?: "rewrite" | "passthrough";
 };
 
 export type ProxyMode = "gateway" | "transparent";
