@@ -31,7 +31,12 @@ import { reserveApiKeyLimits } from "@ccr/core/gateway/auth/api-key-authorizer";
 import { recordProviderCredentialOutcome } from "@ccr/core/providers/credential-pool";
 import { codexApplyPatchBridgeResponseStream, prepareCodexApplyPatchBridgeRequest } from "@ccr/core/gateway/features/codex-patch-bridge";
 import { codexMultiAgentBridgeResponseStream, prepareCodexMultiAgentBridgeRequest } from "@ccr/core/gateway/features/codex-multi-agent-bridge";
-import { rewriteAnthropicMessageStartModelStream, shouldRewriteAnthropicMessageStartModel } from "@ccr/core/gateway/features/anthropic-response-model";
+import {
+  rewriteAnthropicMessageStartModelStream,
+  rewriteOpenAiResponseModelStream,
+  shouldRewriteAnthropicMessageStartModel,
+  shouldRewriteOpenAiResponseModel
+} from "@ccr/core/gateway/features/anthropic-response-model";
 import { prepareCursorOpenAICompatChatBody } from "@ccr/core/gateway/features/cursor-compat";
 import { filteredResponseHeaders, formatError, formatUpstreamErrorForLog, forwardHeaders, inferGatewayClient, readRequestBody, sendJson, shouldCaptureGatewayUsage, shouldSendBody, stripLocalGatewayAuthHeaders } from "@ccr/core/gateway/http/io";
 import { appendAggregateErrorAttemptSummary, shouldBufferAggregateErrorBody } from "@ccr/core/gateway/http/error-detail";
@@ -895,12 +900,29 @@ export class GatewayRequestPipeline {
       ) {
         responseHeaders.delete("content-length");
       }
-      const rewriteAnthropicResponseModel = upstreamResponse.ok && shouldRewriteAnthropicMessageStartModel({
-        contentType: responseHeaders.get("content-type") ?? undefined,
-        model: clientVisibleResponseModel,
-        protocol: responseProtocol
-      });
-      if (codexApplyPatchBridgeActive || codexMultiAgentBridgeActive || appendContextArchiveFooter || transformCodexCompactResponse || rewriteAnthropicResponseModel) {
+      // Response-model policy (gateway.responseModelPolicy) controls whether the
+      // body `model` carries the client-visible (requested) model or the serving
+      // endpoint's real model. "rewrite" (default) is the backward-compatible
+      // behavior on both protocols; "passthrough" keeps the upstream model name.
+      const responseModelPolicy = this.config.gateway?.responseModelPolicy ?? "rewrite";
+      const shouldRewriteResponseModel = responseModelPolicy === "rewrite";
+      const rewriteAnthropicResponseModel = upstreamResponse.ok &&
+        shouldRewriteResponseModel &&
+        shouldRewriteAnthropicMessageStartModel({
+          contentType: responseHeaders.get("content-type") ?? undefined,
+          model: clientVisibleResponseModel,
+          protocol: responseProtocol
+        });
+      // OpenAI-protocol paths otherwise echo the serving endpoint's own model,
+      // so a fallback leg would report its model instead of the requested one.
+      const rewriteOpenAiResponseModel = upstreamResponse.ok &&
+        shouldRewriteResponseModel &&
+        shouldRewriteOpenAiResponseModel({
+          contentType: responseHeaders.get("content-type") ?? undefined,
+          model: clientVisibleResponseModel,
+          protocol: responseProtocol
+        });
+      if (codexApplyPatchBridgeActive || codexMultiAgentBridgeActive || appendContextArchiveFooter || transformCodexCompactResponse || rewriteAnthropicResponseModel || rewriteOpenAiResponseModel) {
         responseHeaders.delete("content-length");
       }
       recordProviderCredentialOutcome(this.config, method, upstreamResult.attempt, upstreamResponse.status, responseHeaders);
@@ -919,7 +941,8 @@ export class GatewayRequestPipeline {
         !appendContextArchiveFooter &&
         !transformCodexCompactResponse &&
         !hostedWebSearchProtocolContext &&
-        !rewriteAnthropicResponseModel
+        !rewriteAnthropicResponseModel &&
+        !rewriteOpenAiResponseModel
       ) {
         // Aggregate errors from the core gateway keep per-attempt root causes
         // in `error.attempts`, but clients that only render `error.message`
@@ -1028,7 +1051,13 @@ export class GatewayRequestPipeline {
           : hostedWebSearchResponseBody;
       const clientResponseBody = rewriteAnthropicResponseModel && clientVisibleResponseModel
         ? rewriteAnthropicMessageStartModelStream(responseBody, clientVisibleResponseModel)
-        : responseBody;
+        : rewriteOpenAiResponseModel && clientVisibleResponseModel
+          ? rewriteOpenAiResponseModelStream(
+              responseBody,
+              clientVisibleResponseModel,
+              responseHeaders.get("content-type") ?? undefined
+            )
+          : responseBody;
       const sampler = createBodySampler();
       const sseErrorDetector = createSseErrorDetector(responseHeaders.get("content-type") ?? undefined);
       let streamDetectedError: string | undefined;

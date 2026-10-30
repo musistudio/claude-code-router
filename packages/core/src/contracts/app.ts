@@ -800,12 +800,20 @@ export type RouteScriptTestResult = RouteScriptValidationResult & {
   output?: unknown;
 };
 
+/**
+ * `rewrite` (default) replaces the response body `model` with the client-visible
+ * model, so a fallback leg does not surface its own model. `passthrough` keeps
+ * the model name the serving endpoint returned.
+ */
+export type GatewayResponseModelPolicy = "rewrite" | "passthrough";
+
 export type GatewayRuntimeConfig = {
   coreHost: string;
   corePort: number;
   enabled: boolean;
   host: string;
   port: number;
+  responseModelPolicy?: GatewayResponseModelPolicy;
 };
 
 export type ProxyMode = "gateway" | "transparent";
