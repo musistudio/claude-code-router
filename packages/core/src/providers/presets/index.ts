@@ -16,6 +16,7 @@ import { openaiProviderPreset } from "@ccr/core/providers/presets/openai/index";
 import { openRouterProviderPreset } from "@ccr/core/providers/presets/openrouter/index";
 import { qiniuAiProviderPreset } from "@ccr/core/providers/presets/qiniu-ai/index";
 import { runApiProviderPreset } from "@ccr/core/providers/presets/runapi/index";
+import { septorProviderPreset } from "@ccr/core/providers/presets/septor/index";
 import { siliconFlowProviderPreset } from "@ccr/core/providers/presets/siliconflow/index";
 import { teamoRouterProviderPreset } from "@ccr/core/providers/presets/teamorouter/index";
 import { unity2ProviderPreset } from "@ccr/core/providers/presets/unity2/index";
@@ -69,6 +70,7 @@ export const providerPresets: ProviderPreset[] = [
   fennoProviderPreset,
   infistarAiProviderPreset,
   runApiProviderPreset,
+  septorProviderPreset,
   teamoRouterProviderPreset,
   unity2ProviderPreset,
   code0ProviderPreset,
