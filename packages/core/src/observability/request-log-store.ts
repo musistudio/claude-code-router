@@ -22,6 +22,7 @@ import { compactBase64ImagePayloads } from "@ccr/core/observability/request-log-
 import { requestLogRequestedModel, requestLogResponseModel } from "@ccr/core/observability/request-log-model";
 import { isSensitiveRequestLogHeaderName } from "@ccr/core/observability/sensitive-headers";
 import { inferGatewayClient } from "@ccr/core/gateway/http/io";
+import { createSseBoundaryTracker, type SseBoundaryRepair } from "@ccr/core/gateway/request/sse-terminal";
 import type {
   AgentAnalysisAgentRow,
   AgentAnalysisConversationItem,
@@ -341,7 +342,17 @@ type StreamedToolCallInput = {
 
 export type SseErrorDetector = {
   append: (chunk: Buffer | string) => string | undefined;
+  /**
+   * Bytes a writer must send before its own frame so that frame starts a new
+   * SSE event instead of being absorbed by a partial line or an open event.
+   */
+  boundaryRepair: () => SseBoundaryRepair;
   finish: () => string | undefined;
+  /**
+   * True once a *complete*, blank-line-delimited terminal event was dispatched
+   * to the client. A newline-terminated field or a flush-invented partial event
+   * was never delivered, so it does not count.
+   */
   hasTerminalEvent: () => boolean;
   read: () => string | undefined;
 };
@@ -6146,6 +6157,7 @@ export function detectSseError(text: string, contentType?: string): string | und
 export function createSseErrorDetector(contentType?: string, force = false): SseErrorDetector {
   const active = force || contentTypeLooksSse(contentType);
   const decoder = new StringDecoder("utf8");
+  const boundary = createSseBoundaryTracker();
   let currentEvent = "";
   let dataLines: string[] = [];
   let detectedError: string | undefined;
@@ -6154,19 +6166,24 @@ export function createSseErrorDetector(contentType?: string, force = false): Sse
   let terminalEventSeen = false;
 
   const read = () => detectedError;
-  const flushEvent = () => {
+  // `complete` is true only for a blank-line-delimited dispatch. A leftover
+  // event that `finish()` flushes was never delivered to the client, so it can
+  // report an error for the log but can never be an already-visible terminal.
+  const flushEvent = (complete: boolean) => {
     const eventError = detectSseEventError(currentEvent, dataLines);
-    terminalEventSeen ||= Boolean(eventError) || isSseTerminalEvent(currentEvent, dataLines);
+    if (complete) {
+      terminalEventSeen ||= Boolean(eventError) || isSseTerminalEvent(currentEvent, dataLines);
+    }
     detectedError ??= eventError;
     currentEvent = "";
     dataLines = [];
   };
-  const processLine = (line: string) => {
+  const processLine = (line: string, complete: boolean) => {
     if (!active || detectedError) {
       return;
     }
     if (line === "") {
-      flushEvent();
+      flushEvent(complete);
       return;
     }
     if (line.startsWith(":")) {
@@ -6191,16 +6208,23 @@ export function createSseErrorDetector(contentType?: string, force = false): Sse
       }
       const rawLine = pendingLine.slice(0, newlineIndex);
       pendingLine = pendingLine.slice(newlineIndex + 1);
-      processLine(rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine);
+      processLine(rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine, true);
     }
   };
 
   return {
     append(chunk: Buffer | string) {
-      if (!active || detectedError || finished) {
+      if (!active || finished) {
         return detectedError;
       }
-      processText(Buffer.isBuffer(chunk) ? decoder.write(chunk) : chunk);
+      const text = Buffer.isBuffer(chunk) ? decoder.write(chunk) : chunk;
+      // The boundary follows every byte the client is sent, including bytes
+      // after the first detected error: a later writer still has to know where
+      // the last real event ended.
+      boundary.append(text);
+      if (!detectedError) {
+        processText(text);
+      }
       return detectedError;
     },
     finish() {
@@ -6208,16 +6232,21 @@ export function createSseErrorDetector(contentType?: string, force = false): Sse
         return detectedError;
       }
       finished = true;
-      processText(decoder.end());
-      if (pendingLine) {
-        processLine(pendingLine.endsWith("\r") ? pendingLine.slice(0, -1) : pendingLine);
-        pendingLine = "";
-      }
-      if (currentEvent || dataLines.length > 0) {
-        flushEvent();
+      const tail = decoder.end();
+      boundary.append(tail);
+      if (!detectedError) {
+        processText(tail);
+        if (pendingLine) {
+          processLine(pendingLine.endsWith("\r") ? pendingLine.slice(0, -1) : pendingLine, false);
+          pendingLine = "";
+        }
+        if (currentEvent || dataLines.length > 0) {
+          flushEvent(false);
+        }
       }
       return detectedError;
     },
+    boundaryRepair: () => boundary.repair(),
     hasTerminalEvent() {
       return terminalEventSeen;
     },
