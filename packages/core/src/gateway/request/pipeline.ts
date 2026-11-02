@@ -46,7 +46,7 @@ import { fetchWithSystemProxy } from "@ccr/core/proxy/system-proxy-fetch";
 import { clientClosedRequestStatusCode, clientDisconnectMessage, coreGatewayAuthHeader, resolveStreamRequestLogOutcome, UpstreamRequestError } from "@ccr/core/gateway/internal/shared";
 import type { BrowserWebSearchMcpIntegration, BrowserWebSearchProtocolRecord, UpstreamFetchResult } from "@ccr/core/gateway/internal/shared";
 import { cancelResponseBody, destroyResponseStreams, fetchUpstreamWithFallback, mergeFallbackResponseHeaders, rewriteCapabilityResponseHeaders, uniqueStreams, upstreamResponseHeaders } from "@ccr/core/gateway/upstream/executor";
-import { buildTerminalStreamErrorFrame } from "@ccr/core/gateway/request/stream-terminal-error";
+import { terminalErrorFrame } from "@ccr/core/gateway/request/sse-terminal";
 import { requestProtocolForPath, shouldApplyGatewayRouting } from "@ccr/core/routing/protocol-endpoints";
 import { modelRegistryForConfig } from "@ccr/core/routing/model-registry";
 import { createClaudeCodeWebSearchContinuationContext, createHostedWebSearchProtocolContext, hostedWebSearchProtocolResponseStream, hostedWebSearchUnavailableMessage, prepareClaudeCodeWebSearchContinuationRequestBody, prepareHostedWebSearchProtocolRequestBody, selectClaudeCodeWebSearchContinuationRecords, selectHostedWebSearchProtocolRecords } from "@ccr/core/gateway/features/hosted-web-search/index";
@@ -92,6 +92,16 @@ function reportedRouteChange(
 
 function isReportedRouteChange(change: RequestRouteTraceChange | undefined): change is RequestRouteTraceChange {
   return change !== undefined;
+}
+
+/**
+ * The transport phase already classified by `formatUpstreamErrorForLog`, read
+ * back from its own structured field rather than re-inferring it here. The
+ * result is a diagnostics token, never source text: an unreadable field yields
+ * `undefined` and the client falls back to the generic sentence.
+ */
+function upstreamTransportCode(detail: string): string | undefined {
+  return /(?:^|[;\s])phase=([a-z_]+)(?:[;\]]|$)/.exec(detail)?.[1];
 }
 
 function stripUntrustedCcrRouteHeaders(headers: Record<string, string>): RequestRouteTraceChange[] {
@@ -1135,14 +1145,31 @@ export class GatewayRequestPipeline {
         // bare socket kill leaves the client guessing whether the turn
         // completed. When no terminal event reached the client yet, report the
         // truncation in the client's own protocol, then end normally.
-        const terminalFrame = clientDisconnected || terminalFrameContentType === undefined
-          ? undefined
-          : buildTerminalStreamErrorFrame({
-              contentType: terminalFrameContentType,
-              detail: streamErrorDetail,
-              protocol: responseProtocol,
-              terminalEventSeen: sseErrorDetector.hasTerminalEvent()
-            });
+        //
+        // The frame only reaches the client when it starts a new SSE event: an
+        // upstream that died mid-line or mid-event leaves an unterminated tail
+        // that would otherwise absorb the frame as more of its own data. The
+        // client sees the fixed generic sentence plus, at most, the transport
+        // phase's allowlisted token — never the upstream message or a URL.
+        const sseContentType = (terminalFrameContentType ?? "").toLowerCase().includes("event-stream");
+        const boundaryRepair = sseErrorDetector.boundaryRepair();
+        const terminalFrameBytes =
+          clientDisconnected ||
+          terminalFrameContentType === undefined ||
+          !sseContentType ||
+          sseErrorDetector.hasTerminalEvent()
+            ? undefined
+            : terminalErrorFrame(
+                {
+                  pendingTerminator: boundaryRepair.pendingTerminator,
+                  transportCode: upstreamTransportCode(streamErrorDetail)
+                },
+                responseProtocol
+              );
+        const terminalFrame =
+          terminalFrameBytes === undefined || terminalFrameBytes.byteLength === 0
+            ? undefined
+            : Buffer.concat([Buffer.from(boundaryRepair.bytes, "utf8"), terminalFrameBytes]);
         if (terminalFrame !== undefined && !response.destroyed && !response.writableEnded) {
           // The log body keeps the frame so a recorded truncation reads like the
           // client saw it.
