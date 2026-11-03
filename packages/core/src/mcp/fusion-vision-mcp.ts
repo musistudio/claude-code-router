@@ -34,7 +34,7 @@ type ToolCallResult = {
 };
 
 type FusionBuiltinToolKind = "vision" | "web_search";
-type SearchProvider = "auto" | "bing" | "brave" | "exa" | "google_cse" | "serpapi" | "serper" | "serply" | "tavily";
+type SearchProvider = "auto" | "bing" | "brave" | "exa" | "google_cse" | "serpapi" | "serper" | "serply" | "tavily" | "keenable";
 type SearchInput = {
   count: number;
   country?: string;
@@ -684,6 +684,7 @@ async function searchWithProvider(
   if (provider === "serpapi") return searchSerpApi(input);
   if (provider === "serply") return searchSerply(input);
   if (provider === "tavily") return searchTavily(input);
+  if (provider === "keenable") return searchKeenable(input);
   return searchExa(input);
 }
 
@@ -803,6 +804,44 @@ async function searchTavily(input: SearchInput): Promise<SearchResult[]> {
   });
   const items = isRecord(raw) && Array.isArray(raw.results) ? raw.results : [];
   return items.map((item) => normalizeSearchResult(item, "title", "url", "content")).filter(isSearchResult);
+}
+
+/** Keenable works without a key (public endpoint); with KEENABLE_API_KEY it uses the keyed endpoint. */
+async function searchKeenable(input: SearchInput): Promise<SearchResult[]> {
+  const apiKey = env("KEENABLE_API_KEY");
+  const endpoint = env("KEENABLE_SEARCH_ENDPOINT") ||
+    (apiKey ? "https://api.keenable.ai/v1/search" : "https://api.keenable.ai/v1/search/public");
+  const raw = await fetchJson(endpoint, {
+    body: JSON.stringify({
+      max_results: input.count,
+      query: scopedSearchQuery(input)
+    }),
+    headers: {
+      "content-type": "application/json",
+      "x-keenable-title": "Claude Code Router",
+      ...(apiKey ? { "x-api-key": apiKey } : {})
+    },
+    method: "POST",
+    signal: AbortSignal.timeout(input.timeoutMs)
+  });
+  const items = isRecord(raw) && Array.isArray(raw.results) ? raw.results : [];
+  return items
+    .map((item) => normalizeSearchResult(keenableItem(item), "title", "url", "snippet"))
+    .filter(isSearchResult);
+}
+
+const KEENABLE_SNIPPET_MAX_CHARS = 1000;
+
+/** Prefer Keenable's short `description`; otherwise truncate the (possibly long) `snippet`. */
+function keenableItem(item: unknown): unknown {
+  if (!isRecord(item)) return item;
+  const description = typeof item.description === "string" ? item.description.trim() : "";
+  const snippet = typeof item.snippet === "string" ? item.snippet : "";
+  return {
+    ...item,
+    snippet: description ||
+      (snippet.length > KEENABLE_SNIPPET_MAX_CHARS ? `${snippet.slice(0, KEENABLE_SNIPPET_MAX_CHARS)}…` : snippet)
+  };
 }
 
 async function searchExa(input: SearchInput): Promise<SearchResult[]> {
@@ -1096,7 +1135,7 @@ function resolveSearchProvider(): Exclude<SearchProvider, "auto"> {
   if (configured !== "auto") {
     return configured;
   }
-  const candidates: Array<Exclude<SearchProvider, "auto">> = ["brave", "bing", "google_cse", "serper", "serpapi", "serply", "tavily", "exa"];
+  const candidates: Array<Exclude<SearchProvider, "auto">> = ["brave", "bing", "google_cse", "serper", "serpapi", "serply", "tavily", "exa", "keenable"];
   const provider = candidates.find(searchProviderIsConfigured);
   if (!provider) {
     throw new Error("No search provider configured. Set SEARCH_PROVIDER and its API key.");
@@ -1114,7 +1153,8 @@ function parseSearchProvider(value: string | undefined): SearchProvider | undefi
     value === "serpapi" ||
     value === "serply" ||
     value === "tavily" ||
-    value === "exa"
+    value === "exa" ||
+    value === "keenable"
   ) {
     return value;
   }
@@ -1129,6 +1169,8 @@ function searchProviderIsConfigured(provider: Exclude<SearchProvider, "auto">): 
   if (provider === "serpapi") return Boolean(env("SERPAPI_API_KEY"));
   if (provider === "serply") return Boolean(env("SERPLY_API_KEY"));
   if (provider === "tavily") return Boolean(env("TAVILY_API_KEY"));
+  // Keenable also works keyless, but auto mode only picks it once a key is set.
+  if (provider === "keenable") return Boolean(env("KEENABLE_API_KEY"));
   return Boolean(env("EXA_API_KEY"));
 }
 

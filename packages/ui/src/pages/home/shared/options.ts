@@ -339,7 +339,8 @@ export const fusionWebSearchProviderOptions: Array<{ label: string; value: Virtu
   { label: "SerpAPI", value: "serpapi" },
   { label: "Serply", value: "serply" },
   { label: "Tavily", value: "tavily" },
-  { label: "Exa", value: "exa" }
+  { label: "Exa", value: "exa" },
+  { label: "Keenable", value: "keenable" }
 ];
 
 export const fusionWebSearchEnvKeysByProvider: Record<VirtualModelFusionWebSearchProvider, string[]> = {
@@ -351,7 +352,8 @@ export const fusionWebSearchEnvKeysByProvider: Record<VirtualModelFusionWebSearc
   serper: ["SERPER_API_KEY", "SERPER_SEARCH_ENDPOINT"],
   serpapi: ["SERPAPI_API_KEY", "SERPAPI_SEARCH_ENDPOINT"],
   serply: ["SERPLY_API_KEY", "SERPLY_SEARCH_ENDPOINT"],
-  tavily: ["TAVILY_API_KEY", "TAVILY_SEARCH_ENDPOINT"]
+  tavily: ["TAVILY_API_KEY", "TAVILY_SEARCH_ENDPOINT"],
+  keenable: ["KEENABLE_API_KEY", "KEENABLE_SEARCH_ENDPOINT"]
 };
 
 export const virtualModelClientToolsPolicyOptions: Array<{ label: string; value: VirtualModelClientToolsPolicy }> = [

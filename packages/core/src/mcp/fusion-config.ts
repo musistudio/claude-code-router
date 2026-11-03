@@ -789,6 +789,7 @@ function parseFusionWebSearchProvider(value: unknown): VirtualModelFusionWebSear
     normalized === "serply" ||
     normalized === "tavily" ||
     normalized === "exa" ||
+    normalized === "keenable" ||
     normalized === "browser"
   ) {
     return normalized;
