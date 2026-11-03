@@ -535,6 +535,8 @@ async function runConfiguredWebSearch(input: WebSearchProviderInput): Promise<We
       return searchTavily(input);
     case "exa":
       return searchExa(input);
+    case "keenable":
+      return searchKeenable(input);
   }
 }
 
@@ -688,6 +690,44 @@ async function searchExa(input: WebSearchProviderInput): Promise<WebSearchProvid
   return items.map((item) => webSearchResult(item, "title", "url", "text")).filter(isWebSearchProviderResult);
 }
 
+/** Keenable works without a key (public endpoint); with KEENABLE_API_KEY it uses the keyed endpoint. */
+async function searchKeenable(input: WebSearchProviderInput): Promise<WebSearchProviderResult[]> {
+  const apiKey = searchEnv(input, "KEENABLE_API_KEY");
+  const endpoint = searchEnv(input, "KEENABLE_SEARCH_ENDPOINT") ||
+    (apiKey ? "https://api.keenable.ai/v1/search" : "https://api.keenable.ai/v1/search/public");
+  const raw = await fetchJson(endpoint, {
+    body: JSON.stringify({
+      max_results: input.count,
+      query: input.query
+    }),
+    headers: {
+      "content-type": "application/json",
+      "x-keenable-title": "Claude Code Router",
+      ...(apiKey ? { "x-api-key": apiKey } : {})
+    },
+    method: "POST",
+    signal: AbortSignal.timeout(input.timeoutMs)
+  });
+  const items = isRecord(raw) && Array.isArray(raw.results) ? raw.results : [];
+  return items
+    .map((item) => webSearchResult(keenableItem(item), "title", "url", "snippet"))
+    .filter(isWebSearchProviderResult);
+}
+
+const KEENABLE_SNIPPET_MAX_CHARS = 1000;
+
+/** Prefer Keenable's short `description`; otherwise truncate the (possibly long) `snippet`. */
+function keenableItem(item: unknown): unknown {
+  if (!isRecord(item)) return item;
+  const description = typeof item.description === "string" ? item.description.trim() : "";
+  const snippet = typeof item.snippet === "string" ? item.snippet : "";
+  return {
+    ...item,
+    snippet: description ||
+      (snippet.length > KEENABLE_SNIPPET_MAX_CHARS ? `${snippet.slice(0, KEENABLE_SNIPPET_MAX_CHARS)}…` : snippet)
+  };
+}
+
 async function fetchJson(input: string, init: RequestInit): Promise<unknown> {
   const response = await fetchWithSystemProxy(input, init);
   if (!response.ok) {
@@ -740,6 +780,8 @@ function searchProviderUrl(provider: VirtualModelFusionWebSearchProvider, query:
       return "https://tavily.com";
     case "exa":
       return "https://exa.ai";
+    case "keenable":
+      return "https://keenable.ai";
     case "browser":
       return `https://www.google.com/search?q=${encoded}`;
   }
