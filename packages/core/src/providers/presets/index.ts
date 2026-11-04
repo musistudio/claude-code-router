@@ -18,6 +18,7 @@ import { qiniuAiProviderPreset } from "@ccr/core/providers/presets/qiniu-ai/inde
 import { runApiProviderPreset } from "@ccr/core/providers/presets/runapi/index";
 import { siliconFlowProviderPreset } from "@ccr/core/providers/presets/siliconflow/index";
 import { teamoRouterProviderPreset } from "@ccr/core/providers/presets/teamorouter/index";
+import { uberLlmProviderPreset } from "@ccr/core/providers/presets/uberllm/index";
 import { unity2ProviderPreset } from "@ccr/core/providers/presets/unity2/index";
 import {
   xiaomiMimoProviderPreset,
@@ -73,7 +74,8 @@ export const providerPresets: ProviderPreset[] = [
   unity2ProviderPreset,
   code0ProviderPreset,
   claudeApiProviderPreset,
-  yApiProviderPreset
+  yApiProviderPreset,
+  uberLlmProviderPreset
 ];
 
 export function getProviderPresets(): ProviderPreset[] {
