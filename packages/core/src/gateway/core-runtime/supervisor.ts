@@ -65,7 +65,8 @@ export function spawnGatewayProcess(
     cwd: CONFIGDIR,
     env,
     serialization: "advanced",
-    stdio: ["ignore", "pipe", "pipe", "ipc"]
+    stdio: ["ignore", "pipe", "pipe", "ipc"],
+    windowsHide: true
   });
   captureGatewayChildOutput(child);
   if (!child.send) {
