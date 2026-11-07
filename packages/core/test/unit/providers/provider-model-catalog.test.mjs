@@ -36,6 +36,18 @@ test("provider model catalog maps preset aliases to models.json defaults", () =>
   assert.equal(metadata?.capabilities?.imageInput, true);
 });
 
+test("provider model catalog keeps Wally on its own models instead of matching the inference hostname", () => {
+  for (const request of [
+    { providerPresetId: "wally", baseUrl: "https://inference.runanywhere.ai/v1", name: "Wally" },
+    { baseUrl: "https://inference.runanywhere.ai/v1" }
+  ]) {
+    const catalog = getProviderCatalogModels(request);
+    assert.equal(catalog.provider, "wally");
+    assert.equal(catalog.providerName, "Wally");
+    assert.deepEqual(catalog.models, ["deepseek-v4.1-flash", "glm-5.3-flash"]);
+  }
+});
+
 test("provider model catalog exposes reasoning, web search, and image presets", () => {
   const catalog = getProviderCatalogModels({ providerPresetId: "openai" });
   const metadata = catalog.modelMetadata?.["gpt-5"];

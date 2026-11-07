@@ -67,6 +67,15 @@ const presetCatalogModelOverrides: Record<string, CatalogProviderModelOverride> 
     models: ["kimi-for-coding"],
     provider: "kimi-for-coding",
     providerName: "Kimi Code"
+  },
+  wally: {
+    modelDisplayNames: {
+      "deepseek-v4.1-flash": "DeepSeek V4.1 Flash",
+      "glm-5.3-flash": "GLM-5.3 Flash"
+    },
+    models: ["deepseek-v4.1-flash", "glm-5.3-flash"],
+    provider: "wally",
+    providerName: "Wally"
   }
 };
 

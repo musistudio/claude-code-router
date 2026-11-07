@@ -114,6 +114,10 @@ lead: 通过预设按钮或 ccr://provider 深度链接（deeplink）一键导�
     <span class="provider-import-icon-shell"><img src="../../provider-icons/minimax.ico" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">MiniMax（国内）</span><span class="provider-import-meta">Chat Completions</span></span>
   </a>
+  <a class="provider-import-button provider-wally" href="ccr://provider?name=Wally&amp;base_url=https%3A%2F%2Finference.runanywhere.ai%2Fv1&amp;protocol=openai_chat_completions&amp;models=deepseek-v4.1-flash%2Cglm-5.3-flash&amp;source=https%3A%2F%2Fwww.runwally.com%2F" aria-label="导入 Wally 供应商">
+    <span class="provider-import-icon-shell"><img src="../../provider-icons/wally.svg" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">Wally</span><span class="provider-import-meta">Chat Completions</span></span>
+  </a>
 </div>
 
 ## 嵌入式按钮组件
