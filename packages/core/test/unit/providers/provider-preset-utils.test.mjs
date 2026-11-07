@@ -51,6 +51,9 @@ import {
   unity2ProviderPreset
 } from "@ccr/core/providers/presets/unity2/index.ts";
 import {
+  wallyProviderPreset
+} from "@ccr/core/providers/presets/wally/index.ts";
+import {
   xiaomiMimoProviderPreset,
   xiaomiMimoTokenPlanChinaProviderPreset,
   xiaomiMimoTokenPlanEuropeProviderPreset,
@@ -138,6 +141,18 @@ test("sponsor provider presets expose requested endpoints and protocols", () => 
   assert.equal(providerPresetMatchesBaseUrl(infistarAiProviderPreset, "https://infistar.ai/v1/models"), true);
   assert.equal(providerPresetMatchesBaseUrl(infistarAiProviderPreset, "https://api.infistar.ai/v1"), false);
   assert.deepEqual(infistarAiProviderPreset.endpoints[0]?.protocols, [
+    "openai_chat_completions"
+  ]);
+});
+
+test("Wally preset exposes the OpenAI-compatible chat completions endpoint", () => {
+  assert.equal(providerPresets.find((preset) => preset.id === "wally"), wallyProviderPreset);
+  assert.equal(wallyProviderPreset.websiteUrl, "https://www.runwally.com/");
+  assert.deepEqual(wallyProviderPreset.defaultModels, ["deepseek-v4.1-flash", "glm-5.3-flash"]);
+  assert.equal(providerPresetMatchesBaseUrl(wallyProviderPreset, "https://inference.runanywhere.ai/v1"), true);
+  assert.equal(providerPresetMatchesBaseUrl(wallyProviderPreset, "https://inference.runanywhere.ai/v1/chat/completions"), true);
+  assert.equal(providerPresetMatchesBaseUrl(wallyProviderPreset, "https://www.runwally.com/v1"), false);
+  assert.deepEqual(wallyProviderPreset.endpoints[0]?.protocols, [
     "openai_chat_completions"
   ]);
 });
