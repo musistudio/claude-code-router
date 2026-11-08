@@ -1,9 +1,25 @@
 import assert from "node:assert/strict";
-import test from "node:test";
-import { loadPersistedAppConfig, replacePersistedAppConfig } from "@ccr/core/config/config-repository.ts";
-import { loadAppConfig, saveAppConfig, saveAppThemePreference } from "@ccr/core/config/config.ts";
+import { mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import test, { after } from "node:test";
+
+// This test writes real app config, so it must never resolve the developer's
+// ~/.claude-code-router. Point every runtime path at a throwaway home before
+// any config module is first imported (the constants module snapshots them).
+const testHome = mkdtempSync(path.join(os.tmpdir(), "ccr-theme-preference-"));
+process.env.CCR_INTERNAL_HOME_DIR = testHome;
+process.env.CCR_INTERNAL_APP_DATA_DIR = path.join(testHome, "app-data");
+process.env.CCR_INTERNAL_USER_DATA_DIR = path.join(testHome, "user-data");
+
+after(() => {
+  rmSync(testHome, { force: true, recursive: true });
+});
 
 test("theme preference persistence changes only the theme field", async () => {
+  const { loadPersistedAppConfig, replacePersistedAppConfig } = await import("@ccr/core/config/config-repository.ts");
+  const { loadAppConfig, saveAppConfig, saveAppThemePreference } = await import("@ccr/core/config/config.ts");
+
   const current = await loadAppConfig();
   const markerHost = "theme-preference.test";
   await replacePersistedAppConfig({
@@ -32,6 +48,7 @@ test("theme preference persistence changes only the theme field", async () => {
 });
 
 test("theme preference persistence rejects unsupported values", async () => {
+  const { saveAppThemePreference } = await import("@ccr/core/config/config.ts");
   await assert.rejects(
     saveAppThemePreference("sepia"),
     /Invalid theme preference/
