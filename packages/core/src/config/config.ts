@@ -2482,7 +2482,7 @@ function parseMcpServers(value: unknown): GatewayMcpServerConfig[] | undefined {
       if (!command) {
         return undefined;
       }
-      const stdioMessageMode = readString(item.stdioMessageMode) === "newline-json" ? "newline-json" : "content-length";
+      const stdioMessageMode = readString(item.stdioMessageMode) === "content-length" ? "content-length" : "newline-json";
       return {
         args: parseStringList(item.args),
         command,

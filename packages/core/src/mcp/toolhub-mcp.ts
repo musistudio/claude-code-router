@@ -1896,7 +1896,7 @@ function normalizeServerConfig(value: unknown): GatewayMcpServerConfig | undefin
     command,
     cwd: typeof value.cwd === "string" && value.cwd.trim() ? value.cwd.trim() : undefined,
     env: isStringRecord(value.env) ? value.env : {},
-    stdioMessageMode: value.stdioMessageMode === "newline-json" ? "newline-json" : "content-length",
+    stdioMessageMode: value.stdioMessageMode === "content-length" ? "content-length" : "newline-json",
     transport
   };
 }
