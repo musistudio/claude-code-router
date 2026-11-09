@@ -287,3 +287,26 @@ test("profileOpenCommand quotes profile references for shell usage", () => {
   assert.match(appCommand, / app$/);
   assert.match(workbuddyCommand, / app$/);
 });
+
+test("buildProfileLaunchPlan leaves CLAUDE_CONFIG_DIR unset for a profile on the default ~/.claude", () => {
+  const previousHome = process.env.HOME;
+  const home = path.join(path.sep, "tmp", "ccr-launch-core-home");
+  process.env.HOME = home;
+  try {
+    const configDir = path.join(path.sep, "tmp", "ccr-config");
+    const globalProfile = { ...claudeProfile, id: "claude-global", scope: "global", settingsFile: undefined };
+    assert.equal(resolveClaudeCodeSettingsFile(configDir, globalProfile), path.join(home, ".claude", "settings.json"));
+    const defaultPlan = buildProfileLaunchPlan(configDir, globalProfile, "cli");
+    assert.equal("CLAUDE_CONFIG_DIR" in defaultPlan.env, false);
+
+    const customSettings = path.join(home, ".claude-work", "settings.json");
+    const customPlan = buildProfileLaunchPlan(configDir, { ...globalProfile, settingsFile: customSettings }, "cli");
+    assert.equal(customPlan.env.CLAUDE_CONFIG_DIR, path.dirname(customSettings));
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = previousHome;
+    }
+  }
+});
