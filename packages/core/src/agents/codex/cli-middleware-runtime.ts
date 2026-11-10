@@ -4955,14 +4955,16 @@ function configRequirementsRead(existingResult) {
     : null;
   // Null requirements must pass through untouched: the ChatGPT app only
   // accepts legacy workspace routing while requirements.application.network
-  // stays absent, and normalizing null into an application.network object
-  // leaves the composer blocked on "Couldn't load workspace settings".
-  if (!requirements && !fastModeEnabled) {
+  // stays absent, and fabricating a requirements object that only contains
+  // fast_mode makes the app expect application network requirements that are
+  // not provided, so it refuses to launch with "This app server did not
+  // provide application network requirements" (see issue #1795).
+  if (requirements == null) {
     return existingResult;
   }
 
   const result = hasResult ? { ...existingResult } : {};
-  const next = requirements || {};
+  const next = requirements;
   if (isPlainObject(next.application)) {
     const application = { ...next.application };
     const applicationNetwork = isPlainObject(application.network) ? { ...application.network } : {};
