@@ -808,6 +808,13 @@ export type RouteScriptTestResult = RouteScriptValidationResult & {
   output?: unknown;
 };
 
+/**
+ * `rewrite` (default) replaces the response body `model` with the client-visible
+ * model, so a fallback leg does not surface its own model. `passthrough` keeps
+ * the model name the serving endpoint returned.
+ */
+export type GatewayResponseModelPolicy = "rewrite" | "passthrough";
+
 export type GatewayRuntimeConfig = {
   coreHost: string;
   corePort: number;
@@ -823,7 +830,7 @@ export type GatewayRuntimeConfig = {
    * - "passthrough": body `model` keeps the upstream's real model name.
    * The serving truth is always available in `x-ccr-served-model`.
    */
-  responseModelPolicy?: "rewrite" | "passthrough";
+  responseModelPolicy?: GatewayResponseModelPolicy;
 };
 
 export type ProxyMode = "gateway" | "transparent";

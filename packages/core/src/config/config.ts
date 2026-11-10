@@ -766,6 +766,10 @@ function sanitizeProfileConfigForDisk(profile: AppConfig["profile"]): AppConfig[
   };
 }
 
+export function pickConfigForTest(value: Partial<AppConfig>): LoadedAppConfig {
+  return pickConfig(value);
+}
+
 function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   const config: LoadedAppConfig = {};
 

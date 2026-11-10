@@ -913,6 +913,8 @@ export class GatewayRequestPipeline {
           model: clientVisibleResponseModel,
           protocol: responseProtocol
         });
+      // OpenAI-protocol paths otherwise echo the serving endpoint's own model,
+      // so a fallback leg would report its model instead of the requested one.
       const rewriteOpenAiResponseModel = upstreamResponse.ok &&
         shouldRewriteResponseModel &&
         shouldRewriteOpenAiResponseModel({
