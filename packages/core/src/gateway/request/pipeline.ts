@@ -904,7 +904,7 @@ export class GatewayRequestPipeline {
       // body `model` carries the client-visible (requested) model or the serving
       // endpoint's real model. "rewrite" (default) is the backward-compatible
       // behavior on both protocols; "passthrough" keeps the upstream model name.
-      const responseModelPolicy = this.config.gateway.responseModelPolicy ?? "rewrite";
+      const responseModelPolicy = this.config.gateway?.responseModelPolicy ?? "rewrite";
       const shouldRewriteResponseModel = responseModelPolicy === "rewrite";
       const rewriteAnthropicResponseModel = upstreamResponse.ok &&
         shouldRewriteResponseModel &&
