@@ -854,6 +854,11 @@ function usageAwareOpenAiChatAttemptBody(input: {
 
 
 /**
+ * Anthropic clients express thinking as a top-level `thinking` object, which OpenAI-protocol
+ * upstreams reject once the request has been converted. OpenAI-protocol clients also send
+ * `thinking` / `reasoning_split`, but there they are vendor extensions (Ark uses them to toggle
+ * reasoning), so they are only stripped for requests converted from an Anthropic client.
+ *
  * The gate below covers only the top-level parameters. Any other sanitizing this function
  * grows must stay outside it: those fixes apply to every request regardless of provider.
  */

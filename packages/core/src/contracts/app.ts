@@ -174,6 +174,7 @@ export type GatewayProviderConfig = {
    * Keep vendor `thinking` / `reasoning_split` request parameters on OpenAI-protocol requests
    * instead of stripping them. Required by upstreams such as Ark that use `thinking` to toggle
    * reasoning; leave off for strict OpenAI-compatible upstreams that reject unknown parameters.
+   *
    * Must be a JSON boolean; the string `"true"` is ignored, like the other boolean fields.
    */
   forwardThinkingParameters?: boolean;
