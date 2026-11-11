@@ -57,6 +57,7 @@ import moonshotProviderIconUrl from "@/assets/provider-icons/moonshot.ico";
 import nvidiaProviderIconUrl from "@/assets/provider-icons/nvidia.svg";
 import openaiProviderIconUrl from "@/assets/provider-icons/openai.png";
 import openrouterProviderIconUrl from "@/assets/provider-icons/openrouter.ico";
+import outerlabsProviderIconUrl from "@/assets/provider-icons/outerlabs.svg";
 import qiniuAiProviderIconUrl from "@/assets/provider-icons/qiniu-ai.png";
 import runapiProviderIconUrl from "@/assets/provider-icons/runapi.jpg";
 import siliconflowProviderIconUrl from "@/assets/provider-icons/siliconflow.png";
@@ -389,6 +390,7 @@ export const providerPresetIconUrls: Record<string, string> = {
   openai: openaiProviderIconUrl,
   "opencode-go": openCodeProviderIconUrl,
   openrouter: openrouterProviderIconUrl,
+  outerlabs: outerlabsProviderIconUrl,
   "qiniu-ai": qiniuAiProviderIconUrl,
   runapi: runapiProviderIconUrl,
   siliconflow: siliconflowProviderIconUrl,

@@ -38,6 +38,9 @@ import {
   openCodeGoProviderPreset
 } from "@ccr/core/providers/presets/opencode-go/index.ts";
 import {
+  outerLabsProviderPreset
+} from "@ccr/core/providers/presets/outerlabs/index.ts";
+import {
   providerPresets
 } from "@ccr/core/providers/presets/index.ts";
 import {
@@ -138,6 +141,37 @@ test("sponsor provider presets expose requested endpoints and protocols", () => 
   assert.equal(providerPresetMatchesBaseUrl(infistarAiProviderPreset, "https://infistar.ai/v1/models"), true);
   assert.equal(providerPresetMatchesBaseUrl(infistarAiProviderPreset, "https://api.infistar.ai/v1"), false);
   assert.deepEqual(infistarAiProviderPreset.endpoints[0]?.protocols, [
+    "openai_chat_completions"
+  ]);
+});
+
+test("Outer Labs preset exposes the chat completions and Anthropic messages endpoint", () => {
+  assert.equal(providerPresets.find((preset) => preset.id === "outerlabs"), outerLabsProviderPreset);
+  assert.equal(outerLabsProviderPreset.websiteUrl, "https://outerlabs.ai");
+  assert.deepEqual(outerLabsProviderPreset.defaultModels, [
+    "claude-fable-5",
+    "claude-fable-5-1",
+    "claude-opus-5",
+    "claude-opus-5-5",
+    "claude-sonnet-4-6",
+    "claude-sonnet-5",
+    "claude-sonnet-5-5",
+    "claude-haiku-4-5",
+    "claude-haiku-5-5",
+    "gpt-6-astra",
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
+    "gpt-6-sol",
+    "gpt-6.1-sol",
+    "gpt-5.6-luna",
+    "gpt-6-luna"
+  ]);
+  assert.equal(providerPresetMatchesBaseUrl(outerLabsProviderPreset, "https://api.outerlabs.ai/v1"), true);
+  assert.equal(providerPresetMatchesBaseUrl(outerLabsProviderPreset, "https://api.outerlabs.ai/v1/chat/completions"), true);
+  assert.equal(providerPresetMatchesBaseUrl(outerLabsProviderPreset, "https://api.outerlabs.ai/v1/messages"), true);
+  assert.equal(providerPresetMatchesBaseUrl(outerLabsProviderPreset, "https://outerlabs.ai/v1"), false);
+  assert.deepEqual(outerLabsProviderPreset.endpoints[0]?.protocols, [
+    "anthropic_messages",
     "openai_chat_completions"
   ]);
 });

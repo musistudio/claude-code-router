@@ -114,6 +114,10 @@ lead: 通过预设按钮或 ccr://provider 深度链接（deeplink）一键导�
     <span class="provider-import-icon-shell"><img src="../../provider-icons/minimax.ico" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">MiniMax（国内）</span><span class="provider-import-meta">Chat Completions</span></span>
   </a>
+  <a class="provider-import-button provider-outerlabs" href="ccr://provider?name=Outer+Labs&amp;base_url=https%3A%2F%2Fapi.outerlabs.ai%2Fv1&amp;protocol=openai_chat_completions&amp;models=claude-fable-5%2Cclaude-fable-5-1%2Cclaude-opus-5%2Cclaude-opus-5-5%2Cclaude-sonnet-4-6%2Cclaude-sonnet-5%2Cclaude-sonnet-5-5%2Cclaude-haiku-4-5%2Cclaude-haiku-5-5%2Cgpt-6-astra%2Cgpt-5.6-sol%2Cgpt-5.6-terra%2Cgpt-6-sol%2Cgpt-6.1-sol%2Cgpt-5.6-luna%2Cgpt-6-luna&amp;source=https%3A%2F%2Fouterlabs.ai" aria-label="导入 Outer Labs 供应商">
+    <span class="provider-import-icon-shell"><img src="../../provider-icons/outerlabs.svg" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">Outer Labs</span><span class="provider-import-meta">Chat Completions / Anthropic Messages</span></span>
+  </a>
 </div>
 
 ## 嵌入式按钮组件
