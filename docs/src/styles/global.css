@@ -1663,6 +1663,12 @@ h1 {
   --provider-brand-3: #9b18ff;
 }
 
+.doc-markdown a.provider-import-button.provider-outerlabs {
+  --provider-brand: #0b0b0c;
+  --provider-brand-2: #5a5f66;
+  --provider-brand-3: #f4f4f5;
+}
+
 .doc-markdown > pre,
 .doc-markdown > .code-panel {
   margin: 22px 0 32px;
