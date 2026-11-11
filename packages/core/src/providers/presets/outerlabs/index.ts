@@ -6,6 +6,7 @@ export const outerLabsProviderPreset: ProviderPreset = {
   defaultModels: [
     "claude-fable-5",
     "claude-fable-5-1",
+    "claude-fable-5-2",
     "claude-opus-5",
     "claude-opus-5-5",
     "claude-sonnet-4-6",
@@ -18,6 +19,7 @@ export const outerLabsProviderPreset: ProviderPreset = {
     "gpt-5.6-terra",
     "gpt-6-sol",
     "gpt-6.1-sol",
+    "gpt-6.1-terra",
     "gpt-5.6-luna",
     "gpt-6-luna"
   ],
