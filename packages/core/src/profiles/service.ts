@@ -55,6 +55,7 @@ import {
   bundledToolHubMcpEntryPathCandidates,
   toolHubClaudeCodeMcpConfig,
   toolHubMcpRuntimeConfig,
+  toolHubResolverModel,
   type ClaudeCodeMcpServerConfig,
   type ToolHubMcpRuntimeConfig
 } from "@ccr/core/mcp/toolhub-config";
@@ -4078,23 +4079,6 @@ function defaultClientModel(config: AppConfig): string {
     return `${preferred.name}/${preferred.models[0]}`;
   }
   return "gpt-5-codex";
-}
-
-function toolHubResolverModel(config: AppConfig): string {
-  const model = config.toolHub.llm.model.trim();
-  if (!model) {
-    return "";
-  }
-  if (model.includes("/")) {
-    return model;
-  }
-  const baseUrl = normalizeUrlForMatch(config.toolHub.llm.baseUrl);
-  const enabledProviders = config.Providers.filter(isGatewayProviderEnabled);
-  const provider = enabledProviders.find((candidate) =>
-    candidate.models.includes(model) &&
-    (!baseUrl || normalizeUrlForMatch(providerBaseUrl(candidate)) === baseUrl)
-  ) ?? enabledProviders.find((candidate) => candidate.models.includes(model));
-  return provider?.name ? `${provider.name}/${model}` : model;
 }
 
 function providerBaseUrl(provider: AppConfig["Providers"][number]): string {

@@ -19,10 +19,12 @@ lead: 将多个 MCP server 收束成一个紧凑入口，让 Agent 按任务懒�
 1. 在 **设置 → ToolHub** 中启用 ToolHub。
 2. 选择一个已配置模型作为 **检索模型**。它负责阅读 MCP 工具目录并挑选本轮任务需要的工具；建议使用 `deepseek-v4-flash`，或同等 Flash 价位、响应稳定的轻量模型。
 3. 添加或导入后端 MCP server。ToolHub 支持 `stdio`、`streamable-http` 和 `sse`。
-4. 从 CCR 打开 Claude Code 或 Codex。CCR 会在对应 Agent 配置中写入 `ccr-toolhub`。
+4. 从 CCR 打开 Claude Code、Codex 或 Claude App。CCR 会在对应 Agent 配置中写入 `ccr-toolhub`。
 5. Agent 遇到外部服务、已安装 MCP 能力或业务 API 相关请求时，先调用 `tool_hub.resolve`，再用 `tool_hub.invoke` 执行选中的工具。
 
 ToolHub 会合并 **ToolHub 页面配置的 MCP servers** 和兼容旧配置中的全局 Agent MCP servers，并自动排除 `ccr-toolhub` 自身，避免递归调用。
+
+通过 CCR Desktop 打开 Claude App 时，CCR 会把托管的 `ccr-toolhub` 条目写入 Claude App 的 `claude_desktop_config.json` 的 `mcpServers` 部分。自行配置的 server 不会受影响；CCR 恢复 App 配置时会移除该托管条目。
 
 ## 内置浏览器自动化
 
