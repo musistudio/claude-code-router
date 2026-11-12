@@ -90,7 +90,7 @@ ToolHub 会合并 **ToolHub 页面配置的 MCP servers** 和兼容旧配置中�
 - **Command**：启动命令，例如 `npx`、`node`、`python`。
 - **Arguments**：命令参数。
 - **Working directory**：可选工作目录。
-- **Stdio message mode**：默认 `content-length`，如果 server 使用逐行 JSON，选择 `newline-json`。
+- **Stdio message mode**：默认使用 `newline-json`（MCP stdio 传输标准分帧）；仅对要求带消息头前缀的 LSP 风格 server 选择 `content-length`。
 - **Environment variables**：只放这个 MCP server 需要的变量。
 
 ### streamable-http / sse
@@ -150,7 +150,7 @@ ToolHub 会合并 **ToolHub 页面配置的 MCP servers** 和兼容旧配置中�
         "command": "npx",
         "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
         "env": {},
-        "stdioMessageMode": "content-length",
+        "stdioMessageMode": "newline-json",
         "requestTimeoutMs": 30000,
         "startupTimeoutMs": 600000
       }
