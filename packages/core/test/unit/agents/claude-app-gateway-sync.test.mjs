@@ -235,6 +235,38 @@ test("#1768 restore removes absent takeover keys while preserving newly created 
   }
 });
 
+test("restore removes the managed ToolHub server while preserving user MCP servers", async () => {
+  const { BACKUP_FILE, syncClaudeAppGatewayConfig } = await loadModules();
+  const paths = claudeAppPaths();
+  const toolHubServer = {
+    args: ["/managed/toolhub-mcp.js"],
+    command: process.execPath,
+    env: { ELECTRON_RUN_AS_NODE: "1" }
+  };
+  const userServer = { command: "keep-me", type: "stdio" };
+  try {
+    await syncClaudeAppGatewayConfig(createConfig({ profile: { profiles: [claudeCodeProfile()] } }));
+    writeJsonFile(paths.rootConfigFile, {
+      deploymentMode: "3p",
+      mcpServers: { "ccr-toolhub": toolHubServer, userServer }
+    });
+    await syncClaudeAppGatewayConfig(createConfig());
+    assert.deepEqual(JSON.parse(readFileSync(paths.rootConfigFile, "utf8")), {
+      mcpServers: { userServer }
+    });
+
+    await syncClaudeAppGatewayConfig(createConfig({ profile: { profiles: [claudeCodeProfile()] } }));
+    writeJsonFile(paths.rootConfigFile, {
+      deploymentMode: "3p",
+      mcpServers: { "ccr-toolhub": toolHubServer }
+    });
+    await syncClaudeAppGatewayConfig(createConfig());
+    assert.deepEqual(JSON.parse(readFileSync(paths.rootConfigFile, "utf8")), {});
+  } finally {
+    cleanup(BACKUP_FILE);
+  }
+});
+
 function seedGatewayBackupWithoutExistingFiles(backupFile) {
   writeJsonFile(backupFile, {
     configLibraryFile: { exists: false },
