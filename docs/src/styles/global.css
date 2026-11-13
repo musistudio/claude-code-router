@@ -1572,6 +1572,11 @@ h1 {
   --provider-brand-2: #555b64;
   --provider-brand-3: #f4f4f5;
 }
+.doc-markdown a.provider-import-button.provider-topxai {
+  --provider-brand: #0b1f4b;
+  --provider-brand-2: #2458ef;
+  --provider-brand-3: #e8eefc;
+}
 
 .doc-markdown a.provider-import-button.provider-unity2 {
   --provider-brand: #050505;
