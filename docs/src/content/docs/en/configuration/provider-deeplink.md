@@ -82,7 +82,7 @@ Choose a provider below to get started. CCR shows what will be added before savi
     <span class="provider-import-icon-shell"><img src="../../../provider-icons/teamorouter.png" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">TeamoRouter</span><span class="provider-import-meta">Anthropic / Chat / Responses</span></span>
   </a>
-  <a class="provider-import-button provider-topxai" href="ccr://provider?name=TopxAI&amp;base_url=https%3A%2F%2Fai.topxea.com%2Fv1&amp;protocol=anthropic_messages&amp;source=https%3A%2F%2Fai.topxea.com%2F" aria-label="Import TopxAI provider">
+  <a class="provider-import-button provider-topxai" href="ccr://provider?name=TopxAI&amp;base_url=https%3A%2F%2Fapi.topxai.xyz%2Fv1&amp;protocol=anthropic_messages&amp;source=https%3A%2F%2Fapi.topxai.xyz%2F" aria-label="Import TopxAI provider">
     <span class="provider-import-icon-shell"><img src="../../../provider-icons/topxai.png" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">TopxAI</span><span class="provider-import-meta">Anthropic / Chat / Responses</span></span>
   </a>

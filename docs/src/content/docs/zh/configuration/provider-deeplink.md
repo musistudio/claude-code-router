@@ -82,7 +82,7 @@ lead: 通过预设按钮或 ccr://provider 深度链接（deeplink）一键导�
     <span class="provider-import-icon-shell"><img src="../../provider-icons/teamorouter.png" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">TeamoRouter</span><span class="provider-import-meta">Anthropic / Chat / Responses</span></span>
   </a>
-  <a class="provider-import-button provider-topxai" href="ccr://provider?name=TopxAI&amp;base_url=https%3A%2F%2Fai.topxea.com%2Fv1&amp;protocol=anthropic_messages&amp;source=https%3A%2F%2Fai.topxea.com%2F" aria-label="导入 TopxAI 供应商">
+  <a class="provider-import-button provider-topxai" href="ccr://provider?name=TopxAI&amp;base_url=https%3A%2F%2Fapi.topxai.xyz%2Fv1&amp;protocol=anthropic_messages&amp;source=https%3A%2F%2Fapi.topxai.xyz%2F" aria-label="导入 TopxAI 供应商">
     <span class="provider-import-icon-shell"><img src="../../provider-icons/topxai.png" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">TopxAI</span><span class="provider-import-meta">Anthropic / Chat / Responses</span></span>
   </a>
