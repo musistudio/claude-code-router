@@ -38,6 +38,9 @@ import {
   openCodeGoProviderPreset
 } from "@ccr/core/providers/presets/opencode-go/index.ts";
 import {
+  llmtrProviderPreset
+} from "@ccr/core/providers/presets/llmtr/index.ts";
+import {
   providerPresets
 } from "@ccr/core/providers/presets/index.ts";
 import {
@@ -140,6 +143,20 @@ test("sponsor provider presets expose requested endpoints and protocols", () => 
   assert.deepEqual(infistarAiProviderPreset.endpoints[0]?.protocols, [
     "openai_chat_completions"
   ]);
+});
+
+test("LLMTR preset exposes the official OpenAI-compatible endpoint", () => {
+  assert.equal(providerPresets.find((preset) => preset.id === "llmtr"), llmtrProviderPreset);
+  assert.equal(llmtrProviderPreset.name, "LLMTR");
+  assert.equal(llmtrProviderPreset.websiteUrl, "https://llmtr.com");
+  assert.deepEqual(llmtrProviderPreset.endpoints, [
+    {
+      baseUrl: "https://llmtr.com/v1",
+      protocols: ["openai_chat_completions"]
+    }
+  ]);
+  assert.equal(providerPresetMatchesBaseUrl(llmtrProviderPreset, "https://llmtr.com/v1/chat/completions"), true);
+  assert.equal(providerPresetMatchesBaseUrl(llmtrProviderPreset, "https://api.llmtr.com/v1"), false);
 });
 
 test("OpenCode Go preset resolves the official usage endpoint without matching Zen", () => {
