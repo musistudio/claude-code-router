@@ -1,4 +1,4 @@
-import { Readable, Transform } from "node:stream";
+import { Readable, Transform, pipeline } from "node:stream";
 import { StringDecoder } from "node:string_decoder";
 import { isRecord } from "@ccr/core/gateway/internal/value";
 
@@ -55,7 +55,10 @@ export function normalizeDeepSeekCacheUsageStream(response: Response): Response 
   }
 
   const source = Readable.fromWeb(response.body as unknown as Parameters<typeof Readable.fromWeb>[0]);
-  const normalized = source.pipe(new CacheUsageSseTransform());
+  // pipeline() (not .pipe()) forwards an upstream error to the client body and cancels the
+  // upstream when the client goes away; .pipe() does neither and leaves the error unhandled.
+  const normalized = new CacheUsageSseTransform();
+  pipeline(source, normalized, () => undefined);
   const headers = new Headers(response.headers);
   headers.delete("content-encoding");
   headers.delete("content-length");
