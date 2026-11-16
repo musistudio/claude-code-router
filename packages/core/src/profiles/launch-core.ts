@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { AppConfig, ProfileConfig, ProfileOpenSurface } from "@ccr/core/contracts/app";
 import { claudeCodeModelEnv as claudeCodeProfileModelEnv, claudeCodeUtcTimezoneEnvOverride } from "@ccr/core/agents/claude-code/environment";
+import { claudeCodeConfigDirEnv } from "@ccr/core/agents/claude-code/config-home";
 import { resolveKiloConfigFile as resolveKiloProfileConfigFile } from "@ccr/core/agents/kilo/profile-config";
 import { resolveOpenCodeConfigFile as resolveOpenCodeProfileConfigFile } from "@ccr/core/agents/opencode/profile-config";
 import { piWrapperFilename, resolvePiAgentDir, resolvePiSessionDir } from "@ccr/core/agents/pi/profile-config";
@@ -323,7 +324,7 @@ function buildClaudeCodeLaunchPlan(
     args: extraArgs,
     command: launcher,
     env: {
-      CLAUDE_CONFIG_DIR: path.dirname(settingsFile),
+      ...claudeCodeConfigDirEnv(path.dirname(settingsFile), homeDir()),
       CCR_PROFILE_SURFACE: surface,
       ...claudeCodeProfileModelEnv(profile),
       ...claudeCodeUtcTimezoneEnvOverride()
