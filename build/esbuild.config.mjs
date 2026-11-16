@@ -4,6 +4,7 @@ import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSyn
 import { builtinModules, createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { aiGatewayPatchPlugin } from "./ai-gateway-patches.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const requireFromHere = createRequire(import.meta.url);
@@ -337,7 +338,7 @@ export function createMainBuildOptions({ mode = "production", plugins = [] } = {
     minify: mode === "production",
     outdir: electronMainOutDir,
     platform: "node",
-    plugins: [packageAliasPlugin(), ...plugins],
+    plugins: [packageAliasPlugin(), aiGatewayPatchPlugin(gatewayPackageRoot), ...plugins],
     sourcemap: mode !== "production",
     target: "node22"
   };
@@ -369,7 +370,7 @@ export function createCliBuildOptions({ mode = "production", plugins = [] } = {}
     minify: mode === "production",
     outdir: cliMainOutDir,
     platform: "node",
-    plugins: [forbidCliElectronPlugin(), packageAliasPlugin(), ...plugins],
+    plugins: [forbidCliElectronPlugin(), packageAliasPlugin(), aiGatewayPatchPlugin(gatewayPackageRoot), ...plugins],
     sourcemap: mode !== "production",
     target: "node22"
   };
@@ -401,7 +402,7 @@ export function createCoreServerBuildOptions({ mode = "production", plugins = []
     minify: mode === "production",
     outdir: coreMainOutDir,
     platform: "node",
-    plugins: [forbidCliElectronPlugin(), packageAliasPlugin(), ...plugins],
+    plugins: [forbidCliElectronPlugin(), packageAliasPlugin(), aiGatewayPatchPlugin(gatewayPackageRoot), ...plugins],
     sourcemap: mode !== "production",
     target: "node22"
   };
