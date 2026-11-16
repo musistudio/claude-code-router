@@ -4543,10 +4543,6 @@ const requestLogMigrationBatchSize = 500;
 const modelSummaryMigrationBatchSize = 4;
 const gatewayOutcomeMigrationName = "gateway-outcome-v1";
 const gatewayFinalAttemptMigrationName = "gateway-final-attempt-v1";
-const streamFlagsMigrationName = "stream-flags-v1";
-// Bodies are unbounded per row, so keep the row page small enough that a page
-// still fits the worker heap even when every row carries a large payload.
-const streamFlagsMigrationBatchSize = 8;
 
 function ensureRequestLogMigrationSchema(database: SqlDatabase): void {
   database.exec(`
@@ -4723,19 +4719,34 @@ function ensurePendingRawTraceUpdateSchema(database: SqlDatabase): void {
 // rows for this repair include every request logged since the last retention
 // prune, bodies and all. Reading them as one result set can exceed the worker
 // heap before that prune gets a chance to run, which is why the two workers
-// respawn forever (issue #1898). Walk the rows one cursor page at a time and
-// record the last scanned rowid per page so a restarted worker resumes instead
-// of re-reading everything: better-sqlite3 rejects writes while a statement is
-// still iterating this connection, so each page must be fully read first.
+// respawn forever (issue #1898). Collect the row ids first and read one row at
+// a time instead: better-sqlite3 rejects writes while a statement is still
+// iterating this connection, so the ids loop must close before the updates.
 function backfillRequestLogStreamFlags(database: SqlDatabase): void {
-  const state = requestLogMigrationState(database, streamFlagsMigrationName);
-  if (state.completed) {
+  const ids: number[] = [];
+  for (const row of iterateRows(
+    database,
+      `
+        SELECT rowid AS id
+        FROM request_logs
+        WHERE source_usage_id IS NULL
+          AND is_stream = 0
+          AND (
+            path LIKE '%stream%' OR
+            url LIKE '%stream%' OR
+            request_body_text LIKE '%stream%' OR
+            response_headers LIKE '%event-stream%' OR
+            response_body_content_type LIKE '%event-stream%'
+          )
+      `
+  )) {
+    ids.push(normalizeCount(row.id));
+  }
+  if (ids.length === 0) {
     return;
   }
-  // Legacy rows can carry multi-megabyte bodies, so walking them all in one
-  // query exhausts the bounded worker heap before it becomes ready. Read a
-  // cursor page at a time, record progress per page, and skip later starts.
-  const selectBatch = database.prepare(`
+
+  const readRow = database.prepare(`
     SELECT
       rowid AS id,
       path,
@@ -4746,50 +4757,28 @@ function backfillRequestLogStreamFlags(database: SqlDatabase): void {
       request_body_encoding,
       response_body_content_type
     FROM request_logs
-    WHERE rowid > ?
-      AND source_usage_id IS NULL
-      AND is_stream = 0
-      AND (
-        path LIKE '%stream%' OR
-        url LIKE '%stream%' OR
-        request_body_text LIKE '%stream%' OR
-        response_headers LIKE '%event-stream%' OR
-        response_body_content_type LIKE '%event-stream%'
-      )
-    ORDER BY rowid ASC
-    LIMIT ?
+    WHERE rowid = ?
   `);
   const statement = database.prepare("UPDATE request_logs SET is_stream = 1 WHERE rowid = ?");
-  const updateProgress = database.prepare(`
-    UPDATE request_log_schema_migrations
-    SET last_id = ?, updated_at = ?
-    WHERE migration = ?
-  `);
-  let lastId = state.lastId;
-  for (;;) {
-    const rows = selectBatch.all(lastId, streamFlagsMigrationBatchSize) as Record<string, SqlValue>[];
-    if (rows.length === 0) {
-      completeRequestLogMigration(database, streamFlagsMigrationName, lastId);
-      return;
+  for (const id of ids) {
+    const row = readRow.get(id) as Record<string, SqlValue> | undefined;
+    if (!row) {
+      continue;
     }
-    for (const row of rows) {
-      const requestBodyText = String(row.request_body_encoding ?? "utf8") === "utf8"
-        ? String(row.request_body_text ?? "")
-        : undefined;
-      const isStream = inferRequestLogIsStream({
-        path: String(row.path ?? ""),
-        requestBodyText,
-        requestHeaders: parseHeaderJson(row.request_headers),
-        responseBodyContentType: String(row.response_body_content_type ?? ""),
-        responseHeaders: parseHeaderJson(row.response_headers),
-        url: String(row.url ?? "")
-      });
-      if (isStream) {
-        statement.run(normalizeCount(row.id));
-      }
-      lastId = normalizeCount(row.id);
+    const requestBodyText = String(row.request_body_encoding ?? "utf8") === "utf8"
+      ? String(row.request_body_text ?? "")
+      : undefined;
+    const isStream = inferRequestLogIsStream({
+      path: String(row.path ?? ""),
+      requestBodyText,
+      requestHeaders: parseHeaderJson(row.request_headers),
+      responseBodyContentType: String(row.response_body_content_type ?? ""),
+      responseHeaders: parseHeaderJson(row.response_headers),
+      url: String(row.url ?? "")
+    });
+    if (isStream) {
+      statement.run(id);
     }
-    updateProgress.run(lastId, Date.now(), streamFlagsMigrationName);
   }
 }
 
