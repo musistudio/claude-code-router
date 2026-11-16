@@ -127,6 +127,45 @@ Ask the agent to find a public page and read it. ToolHub discovers the server's 
 
 Once enabled, the agent can call these tools during its work. Queries, requested URLs, and any supplied objectives or context are sent to Parallel. To remove this connection, delete `parallel-search` from ToolHub's MCP servers, save settings, and reopen the agent so it loads the updated configuration.
 
+### Local code navigation with Sem
+
+[Sem](https://github.com/Ataraxy-Labs/sem) exposes structural code search,
+callers, impact analysis, and diffs. It is an optional local backend, not a
+replacement for basic file tools. Install Sem separately (`sem --version`;
+tested with 0.27.0), then import this configuration:
+
+```json
+{
+  "mcpServers": [
+    {
+      "name": "sem",
+      "transport": "stdio",
+      "command": "/absolute/path/to/sem",
+      "args": ["mcp"],
+      "env": {
+        "SEM_REPO": "/absolute/path/to/your/repository",
+        "SEM_NO_NETWORK": "1",
+        "SEM_NO_TELEMETRY": "1"
+      },
+      "stdioMessageMode": "newline-json",
+      "startupTimeoutMs": 30000,
+      "requestTimeoutMs": 60000
+    }
+  ]
+}
+```
+
+Replace both absolute paths on the machine running CCR. Sem uses newline-delimited
+JSON, so do not leave this backend on the `content-length` default. Save and reopen
+the agent. Ask it to resolve Sem's `sem_find` for a known function, then invoke it
+with that function's name; `mode: "context"` requests source and related entities.
+The resolver/model may still require its provider credentials.
+
+Use trusted repositories: Sem can write index caches, and `sem_check` can execute
+validation commands. Repository selection and offline flags are not a sandbox.
+Keep normal approvals for command execution. To remove it, delete the `sem`
+backend, save, and reopen the agent. No default providers are changed.
+
 ## JSON example
 
 The desktop app's SQLite config is the effective source, so prefer editing through the UI. The fields below are useful for backups, migration, or troubleshooting:
