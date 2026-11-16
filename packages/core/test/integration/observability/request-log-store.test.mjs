@@ -163,7 +163,8 @@ test("RequestLogStore resumes interrupted gateway migrations across bounded batc
       `).all();
       assert.deepEqual(migrations, [
         { completed: 1, migration: "gateway-final-attempt-v1" },
-        { completed: 1, migration: "gateway-outcome-v1" }
+        { completed: 1, migration: "gateway-outcome-v1" },
+        { completed: 1, migration: "stream-flags-v1" }
       ]);
       const indexes = migrated.prepare("PRAGMA index_list(request_logs)").all();
       assert.equal(indexes.some((index) => index.name === "request_logs_request_id_idx"), true);
@@ -1952,6 +1953,116 @@ test("RequestLogStore reports when analysis is bounded by the maximum row count"
   }
 });
 
+test("RequestLogStore backfills stream flags once and records the migration", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-stream-flags-test-"));
+  let store;
+  try {
+    const dbFile = path.join(dir, "request-logs.sqlite");
+    const legacy = createBetterSqliteDatabase(dbFile);
+    try {
+      legacy.exec(`
+        CREATE TABLE request_logs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          created_at TEXT NOT NULL,
+          method TEXT NOT NULL,
+          path TEXT NOT NULL,
+          model TEXT NOT NULL,
+          request_body_text TEXT NOT NULL,
+          response_body_text TEXT NOT NULL
+        );
+      `);
+      const insert = legacy.prepare(`
+        INSERT INTO request_logs (
+          created_at, method, path, model, request_body_text, response_body_text
+        ) VALUES (?, 'POST', '/v1/messages', 'legacy-model', ?, '{}')
+      `);
+      const createdAt = new Date().toISOString();
+      insert.run(createdAt, JSON.stringify({ model: "legacy-model", stream: true, padding: "x".repeat(4096) }));
+      insert.run(createdAt, JSON.stringify({ model: "legacy-model", stream: false, note: "no streaming here" }));
+    } finally {
+      legacy.close();
+    }
+
+    store = new RequestLogStore(dbFile);
+    await store.initialize();
+
+    const database = createBetterSqliteDatabase(dbFile);
+    try {
+      const flags = database.prepare("SELECT is_stream FROM request_logs ORDER BY id").all()
+        .map((row) => row.is_stream);
+      assert.deepEqual(flags, [1, 0]);
+      const migration = database.prepare(
+        "SELECT last_id, completed FROM request_log_schema_migrations WHERE migration = 'stream-flags-v1'"
+      ).get();
+      assert.equal(migration.completed, 1);
+      assert.ok(migration.last_id > 0);
+    } finally {
+      database.close();
+    }
+  } finally {
+    await store?.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore backfills stream flags within the bounded worker heap", {
+  skip: !isBoundedHeapWorker,
+  timeout: 45000
+}, async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-stream-flags-heap-test-"));
+  let store;
+  try {
+    const dbFile = path.join(dir, "request-logs.sqlite");
+    const legacy = createBetterSqliteDatabase(dbFile);
+    const requestCount = 160;
+    try {
+      legacy.exec(`
+        CREATE TABLE request_logs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          created_at TEXT NOT NULL,
+          method TEXT NOT NULL,
+          path TEXT NOT NULL,
+          model TEXT NOT NULL,
+          request_body_text TEXT NOT NULL,
+          response_body_text TEXT NOT NULL
+        );
+      `);
+      const insert = legacy.prepare(`
+        INSERT INTO request_logs (
+          created_at, method, path, model, request_body_text, response_body_text
+        ) VALUES (?, 'POST', '/v1/messages', 'bounded-model', ?, '{}')
+      `);
+      const createdAt = new Date().toISOString();
+      const requestBodyText = JSON.stringify({
+        model: "bounded-model",
+        stream: true,
+        padding: "x".repeat(1024 * 1024)
+      });
+      legacy.transaction(() => {
+        for (let index = 0; index < requestCount; index += 1) {
+          insert.run(createdAt, requestBodyText);
+        }
+      })();
+    } finally {
+      legacy.close();
+    }
+
+    store = new RequestLogStore(dbFile);
+    await store.initialize();
+
+    const database = createBetterSqliteDatabase(dbFile);
+    try {
+      const marked = database.prepare("SELECT COUNT(*) AS total FROM request_logs WHERE is_stream = 1").get();
+      assert.equal(marked.total, requestCount);
+    } finally {
+      database.close();
+    }
+  } finally {
+    await store?.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("RequestLogStore bounded heap regression", {
   skip: isBoundedHeapWorker,
   timeout: 45000
@@ -1973,6 +2084,7 @@ test("RequestLogStore bounded heap regression", {
     }
   );
   assert.match(`${stdout}\n${stderr}`, /streams more body text than the bounded worker heap/);
+  assert.match(`${stdout}\n${stderr}`, /backfills stream flags within the bounded worker heap/);
 });
 
 test("RequestLogStore identifies Grok CLI requests in agent analysis", async () => {
