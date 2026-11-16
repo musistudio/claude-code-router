@@ -24,6 +24,7 @@ const CONFIG_DIR = resolveConfigDir();
 const LOG_PATH = process.env.CCR_CODEX_CLI_MIDDLEWARE_LOG || "";
 const CLAUDE_CODE_MCP_CONFIG_ENV = "CCR_CLAUDE_CODE_MCP_CONFIG";
 const CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV = "CODEXL_CLAUDE_CODE_MCP_CONFIG";
+const MODEL_CATALOG_CAPABILITIES = new WeakMap();
 const CLAUDE_CODE_CHINA_TIME_ZONES = new Set([
   "asia/chongqing",
   "asia/chungking",
@@ -4466,7 +4467,9 @@ function codexModelListItemFromCatalog(item, selectedModel) {
   const id = normalizeModelSelector(modelItemId(item));
   if (!id) return undefined;
   if (!item || typeof item !== "object") {
-    return codexModelItem(id, selectedModel);
+    const output = codexModelItem(id, selectedModel);
+    MODEL_CATALOG_CAPABILITIES.set(output, {});
+    return output;
   }
   const base = codexModelItem(id, selectedModel);
   const displayName = stringValue(item.displayName) || stringValue(item.display_name) || base.displayName;
@@ -4486,7 +4489,7 @@ function codexModelListItemFromCatalog(item, selectedModel) {
   const contextWindow = positiveInteger(item.contextWindow ?? item.context_window) ?? base.contextWindow;
   const inputModalities = readArrayValue(item.inputModalities) ?? readArrayValue(item.input_modalities) ?? base.inputModalities;
   const supportedReasoningEfforts = readArrayValue(item.supportedReasoningEfforts) ?? readArrayValue(item.supported_reasoning_efforts) ?? base.supportedReasoningEfforts;
-  return {
+  const output = {
     ...base,
     ...item,
     id: stringValue(item.id) || id,
@@ -4513,11 +4516,35 @@ function codexModelListItemFromCatalog(item, selectedModel) {
     defaultServiceTier,
     default_service_tier: defaultServiceTier
   };
+  MODEL_CATALOG_CAPABILITIES.set(output, item);
+  return output;
 }
 
 function mergeCatalogModelListItem(existingItem, catalogItem) {
   if (!catalogItem || typeof catalogItem !== "object") return existingItem;
   const output = { ...catalogItem, ...existingItem };
+  const capabilities = MODEL_CATALOG_CAPABILITIES.get(catalogItem) ?? catalogItem;
+  for (const [camelKey, snakeKey] of [
+    ["inputModalities", "input_modalities"],
+    ["supportedReasoningEfforts", "supported_reasoning_efforts"]
+  ]) {
+    const catalogValue = readArrayValue(capabilities[camelKey]) ?? readArrayValue(capabilities[snakeKey]);
+    if (catalogValue) {
+      output[camelKey] = catalogValue;
+      output[snakeKey] = catalogValue;
+    }
+  }
+  for (const [camelKey, snakeKey] of [
+    ["defaultReasoningEffort", "default_reasoning_effort"]
+  ]) {
+    if (capabilities[camelKey] !== undefined || capabilities[snakeKey] !== undefined) {
+      const catalogValue = capabilities[camelKey] !== undefined
+        ? capabilities[camelKey]
+        : capabilities[snakeKey];
+      output[camelKey] = catalogValue;
+      output[snakeKey] = catalogValue;
+    }
+  }
   for (const [camelKey, snakeKey] of [
     ["additionalSpeedTiers", "additional_speed_tiers"],
     ["serviceTiers", "service_tiers"]
