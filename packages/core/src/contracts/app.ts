@@ -237,6 +237,8 @@ export type ProviderModelMetadata = {
   maxOutputTokens?: number;
   openRouterDiscountRouting?: ProviderModelOpenRouterDiscountRoutingConfig;
   pricing?: ProviderModelPricing;
+  reasoningEffortMap?: Record<string, string>;
+  reasoningRequired?: boolean;
   serviceTiers?: unknown[];
   supportsFastMode?: boolean;
   supportedReasoningLevels?: ProviderReasoningLevel[];

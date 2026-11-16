@@ -648,6 +648,8 @@ function normalizeDeepLinkModelMetadata(value: unknown): ProviderModelMetadata |
   const maxOutputTokens = positiveInteger(value.maxOutputTokens ?? value.max_output_tokens ?? value.outputTokens ?? value.output_tokens);
   const openRouterDiscountRouting = normalizeDeepLinkOpenRouterDiscountRouting(value.openRouterDiscountRouting ?? value.open_router_discount_routing);
   const pricing = normalizeDeepLinkModelPricing(value.pricing);
+  const reasoningEffortMap = normalizeDeepLinkReasoningEffortMap(value.reasoningEffortMap ?? value.reasoning_effort_map);
+  const reasoningRequiredValue = value.reasoningRequired ?? value.reasoning_required;
   const defaultReasoningLevelValue = value.defaultReasoningLevel ?? value.default_reasoning_level;
   const defaultReasoningLevel = defaultReasoningLevelValue === null
     ? null
@@ -669,6 +671,8 @@ function normalizeDeepLinkModelMetadata(value: unknown): ProviderModelMetadata |
     ...(maxOutputTokens ? { maxOutputTokens } : {}),
     ...(openRouterDiscountRouting ? { openRouterDiscountRouting } : {}),
     ...(pricing ? { pricing } : {}),
+    ...(reasoningEffortMap ? { reasoningEffortMap } : {}),
+    ...(typeof reasoningRequiredValue === "boolean" ? { reasoningRequired: reasoningRequiredValue } : {}),
     ...(Array.isArray(value.serviceTiers) ? { serviceTiers: value.serviceTiers } : {}),
     ...(Array.isArray(value.service_tiers) ? { serviceTiers: value.service_tiers } : {}),
     ...(typeof supportsFastModeValue === "boolean" ? { supportsFastMode: supportsFastModeValue } : {}),
@@ -729,6 +733,21 @@ function normalizeDeepLinkOpenRouterDiscountRouting(value: unknown): ProviderMod
     routing.providerBlacklist = providerBlacklist;
   }
   return Object.keys(routing).length > 0 ? routing : undefined;
+}
+
+function normalizeDeepLinkReasoningEffortMap(value: unknown): ProviderModelMetadata["reasoningEffortMap"] {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const map: Record<string, string> = {};
+  for (const [rawKey, rawValue] of Object.entries(value)) {
+    const key = normalizedString(rawKey);
+    const effort = normalizedString(rawValue);
+    if (key && effort) {
+      map[key] = effort;
+    }
+  }
+  return Object.keys(map).length > 0 ? map : undefined;
 }
 
 function normalizeDeepLinkReasoningLevels(value: unknown): ProviderModelMetadata["supportedReasoningLevels"] {

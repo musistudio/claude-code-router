@@ -228,13 +228,20 @@ function formatCompactTokenCount(tokens: number): string {
 function createOpenAICompatibleGatewayModelsResponse(config: AppConfig, profile?: ProfileConfig): Record<string, unknown> {
   const data = buildGatewayDiscoverableModelIds(config, profile).map((id) => {
     const catalogEntry = findModelCatalogEntry(id);
+    const metadata = providerModelDiscoveryForSelector(config, id).metadata;
+    const defaultReasoningLevel = metadata?.defaultReasoningLevel;
+    const supportedReasoningLevels = metadata?.supportedReasoningLevels;
     return {
       id,
       object: "model",
       created: 0,
       owned_by: gatewayModelOwner(id),
       type: "model",
-      ...(catalogEntry?.displayName ? { display_name: catalogEntry.displayName } : {})
+      ...(typeof defaultReasoningLevel === "string" && defaultReasoningLevel ? { default_reasoning_level: defaultReasoningLevel } : {}),
+      ...(catalogEntry?.displayName ? { display_name: catalogEntry.displayName } : {}),
+      ...(metadata?.reasoningEffortMap ? { reasoning_effort_map: metadata.reasoningEffortMap } : {}),
+      ...(metadata?.reasoningRequired !== undefined ? { reasoning_required: metadata.reasoningRequired } : {}),
+      ...(supportedReasoningLevels?.length ? { supported_reasoning_levels: supportedReasoningLevels } : {})
     };
   });
 

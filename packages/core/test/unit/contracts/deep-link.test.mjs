@@ -57,6 +57,8 @@ test("parseProviderDeepLinkPayload reads payload JSON, models, descriptions, dis
           output_usd_per_million_tokens: 8
         },
         supports_fast_mode: true,
+        reasoning_effort_map: { medium: "high", xhigh: "max" },
+        reasoning_required: true,
         supported_reasoning_levels: ["low", "medium", "high", "xhigh", "max", "ultra"],
         supports_reasoning_summaries: true
       },
@@ -106,6 +108,8 @@ test("parseProviderDeepLinkPayload reads payload JSON, models, descriptions, dis
         outputUsdPerMillionTokens: 8
       },
       supportsFastMode: true,
+      reasoningEffortMap: { medium: "high", xhigh: "max" },
+      reasoningRequired: true,
       supportedReasoningLevels: [
         { description: "low", effort: "low" },
         { description: "medium", effort: "medium" },
