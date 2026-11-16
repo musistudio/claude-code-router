@@ -65,7 +65,11 @@ export function spawnGatewayProcess(
     cwd: CONFIGDIR,
     env,
     serialization: "advanced",
-    stdio: ["ignore", "pipe", "pipe", "ipc"]
+    stdio: ["ignore", "pipe", "pipe", "ipc"],
+    // The gateway runs headless behind the daemonized service. On Windows a
+    // console child of a console-less parent allocates a fresh console window,
+    // which would flash a cmd shell on every (re)start.
+    windowsHide: true
   });
   captureGatewayChildOutput(child);
   if (!child.send) {
