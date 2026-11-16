@@ -249,3 +249,7 @@ OpenCode 导入会同时读取本机认证文件、OpenCode 配置和模型目�
 ### 本地模型的用量与价格
 
 本地兼容服务（如 llama.cpp）也会按配置中的供应商名称汇总 Token 用量。运行时协议/凭据别名会归一为该名称。GGUF 文件别名通常不在云端价格目录中，因此需要在模型元数据的 `pricing` 配置 `inputUsdPerMillionTokens` 和 `outputUsdPerMillionTokens` 才能计算自定义费用；两项均为每百万 Token 的美元价格。设置为 `0` 可明确表示本地推理不计 API 费用。没有价格时不推测机器、电力或托管成本；修复不会自动改写历史记录。
+
+### 延迟工具加载兼容性
+
+如果供应商 API 因不支持 deferred loader 而拒绝 `defer_loading`，请在供应商高级设置中关闭**延迟工具加载**，对应配置为 `supportsDeferredTools: false`。CCR 只在发往该供应商的尝试中移除工具声明上的这个标记，包括命名空间中的工具；完整工具定义和输入参数 schema 会保留。默认开启，回退供应商使用各自的设置。

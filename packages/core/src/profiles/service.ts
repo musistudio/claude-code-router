@@ -600,6 +600,7 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
       ? codexContextArchiveMcpConfig(config, profile, token)
       : undefined;
     const nextConfig = buildCodexConfigToml(source, {
+      isolatedIdentity: profile.agent === "codex" && profile.scope !== "global",
       baseUrl: endpoint,
       contextArchiveMcp,
       modelCatalogFile,
@@ -636,6 +637,7 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
     const extras = [
       modelCatalogFile ? `catalog ${modelCatalogFile}` : "",
       appModelCatalogResult.file ? `app catalog ${appModelCatalogResult.file}` : "",
+      appModelCatalogResult.legacyAuthBackup ? `retired legacy login ${appModelCatalogResult.legacyAuthBackup}` : "",
       appModelCatalogResult.workbuddyModelsConfig?.file ? `workbuddy models ${appModelCatalogResult.workbuddyModelsConfig.file}` : "",
       toolHubMcpResult.file ? `toolhub runtime ${toolHubMcpResult.file}` : "",
       contextArchiveMcp ? "context archive MCP" : "",
@@ -1103,6 +1105,7 @@ function ccrManagedProfileDir(profile: ProfileConfig): string {
 function buildCodexConfigToml(
   source: string,
   values: {
+    isolatedIdentity?: boolean;
     baseUrl: string;
     contextArchiveMcp?: CodexContextArchiveMcpConfig;
     modelCatalogFile: string;
@@ -1140,11 +1143,12 @@ function buildCodexConfigToml(
     ?? (values.showAllSessions ? "show_all_sessions = true" : undefined);
   const cleanedRoot = removeManagedConfiguredModelLine(removeRootTomlKeys(
     rootSource,
-    ["model", "model_catalog_json", "model_provider", "show_all_sessions"]
+    ["model", "model_catalog_json", "model_provider", "show_all_sessions", ...(values.isolatedIdentity ? ["cli_auth_credentials_store"] : [])]
   ));
   const rootBlock = [
     managedRootStart,
     `model_provider = ${tomlString(values.providerId)}`,
+    ...(values.isolatedIdentity ? ['cli_auth_credentials_store = "file"'] : []),
     modelAssignment,
     `model_catalog_json = ${tomlString(values.modelCatalogFile)}`,
     `${managedConfiguredModelPrefix}${tomlString(values.model)}`,
@@ -2776,6 +2780,10 @@ function codexMiddlewareShellScript(
     "#!/bin/sh",
     ...envExports,
     ...agentEnvExports,
+    ...(profile.agent === "codex" ? shellEnvExports({
+      CCR_CODEX_ISOLATED_IDENTITY: normalizeProfileScope(profile.scope) === "global" ? "0" : "1",
+      CODEXL_CODEX_ISOLATED_IDENTITY: normalizeProfileScope(profile.scope) === "global" ? "0" : "1"
+    }) : []),
     ...shellProfileSurfaceExports(surface),
     ...botEnvExports,
     ...shellCodexlProfileSurfaceExports(),
@@ -2906,6 +2914,10 @@ function codexMiddlewareCmdScript(
     "@echo off",
     ...envExports,
     ...agentEnvExports,
+    ...(profile.agent === "codex" ? cmdEnvExports({
+      CCR_CODEX_ISOLATED_IDENTITY: normalizeProfileScope(profile.scope) === "global" ? "0" : "1",
+      CODEXL_CODEX_ISOLATED_IDENTITY: normalizeProfileScope(profile.scope) === "global" ? "0" : "1"
+    }) : []),
     ...cmdProfileSurfaceExports(surface),
     ...botEnvExports,
     ...cmdCodexlProfileSurfaceExports(),

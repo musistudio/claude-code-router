@@ -176,3 +176,7 @@ With a Bot bound, WorkBuddy can relay conversations through the selected IM chan
 2. While testing, prefer **Only opened from CCR** to avoid changing the system default agent.
 3. To keep desktop windows side by side, use `App only` or `CLI & APP`, then open the App from CCR.
 4. If the same config is already running, opening it again activates the existing window. Create another Agent Config when you need a second instance.
+
+## Repair unavailable model selections
+
+The model picker lists unavailable saved selections separately with a **Remove** button. Saving a profile removes stale entries from its explicit model allowlist and keeps its valid default model. If an enabled profile's default is no longer configured, select an available model or disable that profile before saving. CCR reports the affected provider and its configured models instead of silently broadening an invalid allowlist to all models.

@@ -393,6 +393,18 @@ test("AddProviderForm renders auto model refresh in advanced settings", () => {
   assert.match(html, /aria-checked="true"/);
 });
 
+test("#1912 deferred tool compatibility defaults on and remains editable after saving false", () => {
+  assert.equal(createProviderDraft([]).supportsDeferredTools, true);
+  const draft = createProviderDraftFromProvider({ name: "Legacy", models: ["tool-model"], supportsDeferredTools: false });
+  assert.equal(draft.supportsDeferredTools, false);
+  const html = renderToStaticMarkup(React.createElement(AddProviderForm, {
+    activeStep: "verify", draft, error: "", mode: "edit", onChange: () => undefined,
+    probeLoading: false, providers: []
+  }));
+  assert.match(html, /aria-label="Deferred tool loading"[^>]*aria-checked="false"|aria-checked="false"[^>]*aria-label="Deferred tool loading"/);
+  assert.match(html, /tool definitions are sent without defer_loading/);
+});
+
 test("edit provider dialog keeps advanced settings collapsed by default", () => {
   const draft = {
     ...createProviderDraft([]),

@@ -1843,6 +1843,7 @@ function App() {
       account: accountConfig,
       extraBody,
       extraHeaders,
+      supportsDeferredTools: providerDraft.supportsDeferredTools ? undefined : false,
       credentials: credentials.length > 0 ? credentials : undefined,
       enabled: existingProvider?.enabled === false ? false : undefined,
       icon: providerDraft.icon.trim() || undefined,

@@ -88,3 +88,9 @@ With a Bot bound and ChatGPT opened from CCR, ChatGPT can relay conversations th
 - **Wrong model in the app:** confirm the **Codex model** field; if left empty, CCR falls back to the first available default model.
 - **The app says application network requirements are missing:** update CCR and reopen the app. CCR explicitly declares that this entry point needs no additional application network domains.
 - **A task stays read-only after you allow a write:** sandbox mode and approval routing are separate settings; typing “allow writing” in chat does not change the sandbox. Select **Workspace write** in the task permissions. CCR preserves the approval reviewer selected in the Codex app; **Approve for me** changes who reviews eligible approval requests but does not widen the sandbox.
+
+## Account ownership and older profiles
+
+Profiles limited to CCR launches use an isolated identity and a local file credential store. A ChatGPT login copied into an older CCR-managed home is retired as `auth.json.ccr-legacy-<id>` beside that profile's `auth.json`; CCR does not reuse its refresh token. A custom home outside CCR's configuration directory is left for its owner to manage: use a separate managed home for isolation or choose the system-default scope to share an account.
+
+System-default profiles share the native account owner. CCR reads the file-store owner's latest credentials for account RPCs, preserves an account switch already in flight, and includes account routing metadata. Desktop account requests use the native backend rather than CCR's isolated loopback responder. Authentication and refresh remain owned by Codex. If a legacy refresh token has already been invalidated, sign in once through the official client; moving an old file cannot restore an invalid token.

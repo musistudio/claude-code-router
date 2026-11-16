@@ -1,0 +1,1568 @@
+diff --git a/src/gateway/handler.ts b/src/gateway/handler.ts
+index 052d698..563837c 100644
+--- a/src/gateway/handler.ts
++++ b/src/gateway/handler.ts
+@@ -76,6 +76,10 @@ import {
+   relayConvertedStreamFromStandardResponse,
+   relayConvertedStreamFromUpstreamResponse
+ } from './streaming-conversion';
++import {
++  buildStreamTerminalErrorFrames,
++  guardStreamTerminalError
++} from './stream-terminal-error';
+ import {
+   addNamespaceFieldsToStandardResponse,
+   isHostedWebSearchTool
+@@ -1071,7 +1075,14 @@ export async function handleGatewayRequest(
+         if (shouldForceEventStreamHeaders(source, isStreaming)) {
+           forceEventStreamHeaders(reply);
+         }
+-        return relayUpstreamResponse(reply, upstreamResponse, clientAbortSignal);
++        return relayUpstreamResponse(
++          reply,
++          guardStreamTerminalError(upstreamResponse, {
++            adapterKey: source.adapterKey,
++            signal: clientAbortSignal
++          }),
++          clientAbortSignal
++        );
+       } else {
+         const streamHookResult = await applyGatewayPluginStreamResponseHooks(runtime.streamHooks.list(), {
+           request,
+@@ -1161,7 +1172,14 @@ export async function handleGatewayRequest(
+       if (shouldForceEventStreamHeaders(source, isStreaming)) {
+         forceEventStreamHeaders(reply);
+       }
+-      return relayUpstreamResponse(reply, passthroughStreamResponse, clientAbortSignal);
++      return relayUpstreamResponse(
++        reply,
++        guardStreamTerminalError(passthroughStreamResponse, {
++          adapterKey: source.adapterKey,
++          signal: clientAbortSignal
++        }),
++        clientAbortSignal
++      );
+     }
+ 
+     if (isStreaming) {
+@@ -4768,17 +4786,13 @@ function buildOptimisticVirtualModelStreamErrorFrames(
+   source: GatewaySourceContext,
+   message: string
+ ): string[] {
+-  const payload = JSON.stringify({
+-    type: 'error',
+-    error: {
+-      message
+-    }
+-  });
+-
+-  if (source.adapterKey === 'openai_responses') {
+-    return [`data: ${payload}\n\n`, 'data: [DONE]\n\n'];
++  const frames = buildStreamTerminalErrorFrames({ adapterKey: source.adapterKey, message });
++  if (frames.length > 0) {
++    return frames;
+   }
+ 
++  // Adapters without a protocol-native error event keep the generic shape.
++  const payload = JSON.stringify({ type: 'error', error: { message } });
+   return [`event: error\ndata: ${payload}\n\n`];
+ }
+ 
+diff --git a/src/gateway/routes.test.ts b/src/gateway/routes.test.ts
+index 376f591..06e7db4 100644
+--- a/src/gateway/routes.test.ts
++++ b/src/gateway/routes.test.ts
+@@ -12554,6 +12554,150 @@ export function createGatewayPlugin() {
+     }
+   });
+ 
++  it('reports a truncated Anthropic upstream stream as a terminal error event', async () => {
++    const fetchMock = vi.fn(async () =>
++      createTruncatedSseResponse(
++        [
++          'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_cut","type":"message","role":"assistant","model":"claude-sonnet-4","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":3,"output_tokens":0}}}\n\n',
++          'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"live"}}\n\n'
++        ],
++        new Error('terminated')
++      )
++    );
++    vi.stubGlobal('fetch', fetchMock as typeof fetch);
++
++    const app = Fastify({ logger: false });
++    registerGatewayRoutes(
++      app,
++      createConfig([
++        createProviderConfig('anthropic-main', 'anthropic_messages', ['claude-sonnet-4'])
++      ]),
++      createGatewayRuntime()
++    );
++    await app.ready();
++
++    try {
++      const response = await app.inject({
++        method: 'POST',
++        url: '/v1/messages',
++        headers: {
++          'content-type': 'application/json',
++          'x-target-provider': 'anthropic-main'
++        },
++        payload: {
++          model: 'claude-sonnet-4',
++          max_tokens: 128,
++          stream: true,
++          messages: [{ role: 'user', content: 'Think about it' }]
++        }
++      });
++
++      expect(response.statusCode).toBe(200);
++      expect(response.headers['content-type']).toContain('text/event-stream');
++      expect(fetchMock).toHaveBeenCalledTimes(1);
++      // The chunk that was mid-flight when the body failed is lost with the
++      // destroyed source stream, so assert on the bytes the client did get.
++      expect(response.body).toContain('"type":"message_start"');
++      expect(response.body.match(/^event: error$/gm)).toHaveLength(1);
++      expect(response.body).toContain('"type":"api_error"');
++      expect(response.body).toContain('Upstream stream failed before the response completed.');
++      expect(response.body).not.toContain('event: message_stop');
++      expect(response.body.indexOf('event: error')).toBeGreaterThan(
++        response.body.indexOf('event: message_start')
++      );
++    } finally {
++      await app.close();
++    }
++  });
++
++  it('reports a truncated OpenAI chat upstream stream as an error chunk and done sentinel', async () => {
++    const fetchMock = vi.fn(async () =>
++      createTruncatedSseResponse(
++        [
++          'data: {"id":"chatcmpl_cut","object":"chat.completion.chunk","model":"glm-5","choices":[{"index":0,"delta":{"content":"hi"}}]}\n\n',
++          'data: {"id":"chatcmpl_cut","object":"chat.completion.chunk","model":"glm-5","choices":[{"index":0,"delta":{"content":" there"}}]}\n\n'
++        ],
++        new Error('terminated')
++      )
++    );
++    vi.stubGlobal('fetch', fetchMock as typeof fetch);
++
++    const app = Fastify({ logger: false });
++    registerGatewayRoutes(
++      app,
++      createConfig([createProviderConfig('openai-main', 'openai_chat_completions', ['glm-5'])]),
++      createGatewayRuntime()
++    );
++    await app.ready();
++
++    try {
++      const response = await app.inject({
++        method: 'POST',
++        url: '/v1/chat/completions',
++        headers: {
++          'content-type': 'application/json',
++          'x-target-provider': 'openai-main'
++        },
++        payload: {
++          model: 'glm-5',
++          stream: true,
++          messages: [{ role: 'user', content: 'Say hi' }]
++        }
++      });
++
++      expect(response.statusCode).toBe(200);
++      expect(response.body).toContain('"delta":{"content":"hi"}');
++      expect(response.body).toContain('"code":"upstream_stream_error"');
++      expect(response.body.endsWith('data: [DONE]\n\n')).toBe(true);
++    } finally {
++      await app.close();
++    }
++  });
++
++  it('reports a truncated OpenAI Responses upstream stream as a failed response event', async () => {
++    const fetchMock = vi.fn(async () =>
++      createTruncatedSseResponse(
++        [
++          'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_cut","object":"response","status":"in_progress","model":"gpt-5","output":[]}}\n\n'
++        ],
++        new Error('terminated')
++      )
++    );
++    vi.stubGlobal('fetch', fetchMock as typeof fetch);
++
++    const app = Fastify({ logger: false });
++    registerGatewayRoutes(
++      app,
++      createConfig([createProviderConfig('responses-main', 'openai_responses', ['gpt-5'])]),
++      createGatewayRuntime()
++    );
++    await app.ready();
++
++    try {
++      const response = await app.inject({
++        method: 'POST',
++        url: '/v1/responses',
++        headers: {
++          'content-type': 'application/json',
++          'x-target-provider': 'responses-main'
++        },
++        payload: {
++          model: 'gpt-5',
++          stream: true,
++          input: 'Say hi'
++        }
++      });
++
++      expect(response.statusCode).toBe(200);
++      expect(response.body).toContain('event: response.created');
++      expect(response.body.match(/^event: response\.failed$/gm)).toHaveLength(1);
++      expect(response.body).toContain('"status":"failed"');
++      expect(response.body.endsWith('data: [DONE]\n\n')).toBe(true);
++    } finally {
++      await app.close();
++    }
++  });
++
+   it('streams buffered virtual model responses as OpenAI Responses events', async () => {
+     const fetchMock = vi
+       .fn()
+@@ -13787,6 +13931,27 @@ function createSseResponse(chunks: string[]): Response {
+   });
+ }
+ 
++function createTruncatedSseResponse(chunks: string[], error: Error): Response {
++  let index = 0;
++  const stream = new ReadableStream<Uint8Array>({
++    pull(controller) {
++      if (index < chunks.length) {
++        controller.enqueue(new TextEncoder().encode(chunks[index]));
++        index += 1;
++        return;
++      }
++      controller.error(error);
++    }
++  });
++
++  return new Response(stream, {
++    status: 200,
++    headers: {
++      'content-type': 'text/event-stream; charset=utf-8'
++    }
++  });
++}
++
+ function parseJsonSseEvents(body: string): Array<{
+   event?: string;
+   data: Record<string, any>;
+diff --git a/src/gateway/streaming-conversion.ts b/src/gateway/streaming-conversion.ts
+index 85f9757..7df3e87 100644
+--- a/src/gateway/streaming-conversion.ts
++++ b/src/gateway/streaming-conversion.ts
+@@ -1,3 +1,4 @@
++import { guardStreamTerminalError } from './stream-terminal-error';
+ import { randomUUID } from 'node:crypto';
+ import { Readable } from 'node:stream';
+ import type { FastifyReply } from 'fastify';
+@@ -338,7 +339,13 @@ export function relayConvertedStreamFromUpstreamResponse(
+   bindAbortSignalToReadable(stream, abortSignal, () => {
+     upstreamResponse.body?.cancel(abortSignal?.reason).catch(() => undefined);
+   });
+-  return reply.send(stream);
++  // Guard after conversion so the terminal error uses the downstream protocol.
++  // Conversion generators can throw after emitting partial output as well.
++  const guarded = guardStreamTerminalError(new Response(
++    Readable.toWeb(stream) as ReadableStream<Uint8Array>,
++    { headers: { 'content-type': 'text/event-stream' } }
++  ), { adapterKey: source.adapterKey, signal: abortSignal });
++  return reply.send(Readable.fromWeb(guarded.body as ReadableStream<Uint8Array>));
+ }
+ 
+ export function canRelayOptimisticOpenAIChatStream(source: GatewaySourceContext): boolean {
+diff --git a/src/gateway/stream-terminal-error.ts b/src/gateway/stream-terminal-error.ts
+new file mode 100644
+--- /dev/null
++++ b/src/gateway/stream-terminal-error.ts
+@@ -0,0 +1,388 @@
++import { createSseEventTracker, type SseEvent, type SseEventTracker } from './stream-terminal-events';
++import { asString, isObject } from '../utils';
++
++const defaultTerminalErrorMessage = 'Upstream stream failed before the response completed.';
++const upstreamStreamErrorCode = 'upstream_stream_error';
++const defaultTerminalErrorType = 'api_error';
++
++// Transport failures worth naming back to the client: the client cannot discover
++// these from a truncated body, and none of them carries request or credential
++// material. The set is closed on purpose - anything else stays generic, so no
++// provider message, URL or error object can reach the client through this path.
++const knownTransportCodes: Record<string, true> = {
++  EAI_AGAIN: true,
++  ECONNABORTED: true,
++  ECONNREFUSED: true,
++  ECONNRESET: true,
++  EHOSTUNREACH: true,
++  ENETUNREACH: true,
++  EPIPE: true,
++  ETIMEDOUT: true,
++  UND_ERR_BODY_TIMEOUT: true,
++  UND_ERR_CLOSED: true,
++  UND_ERR_CONNECT_TIMEOUT: true,
++  UND_ERR_HEADERS_TIMEOUT: true,
++  UND_ERR_SOCKET: true
++};
++
++const maxTransportCauseDepth = 4;
++
++const terminalSseEventNames: Record<string, true> = {
++  error: true,
++  message_stop: true,
++  'response.completed': true,
++  'response.error': true,
++  'response.failed': true,
++  'response.incomplete': true
++};
++
++// A terminal `type` is only meaningful on the payload's own top level. Nested
++// objects carry provider or tool data - an Anthropic tool input can hold
++// `{"type":"error"}` quite legitimately - so a nested occurrence says nothing
++// about the stream.
++const terminalSsePayloadTypes: Record<string, true> = {
++  error: true,
++  message_stop: true,
++  'response.completed': true,
++  'response.error': true,
++  'response.failed': true,
++  'response.incomplete': true
++};
++
++export interface StreamTerminalErrorFrameInput {
++  adapterKey: string;
++  code?: string;
++  errorType?: string;
++  message?: string;
++}
++
++export interface SseTerminalEventDetector {
++  hasTerminalEvent(): boolean;
++  push(chunk: Uint8Array): void;
++}
++
++export interface StreamTerminalErrorGuardInput {
++  adapterKey: string;
++  message?: string;
++  signal?: AbortSignal;
++}
++
++/**
++ * Adapters that can express a failed stream in-band. Checked before building
++ * anything so a caller can decide support without allocating a frame.
++ */
++function supportsTerminalErrorFrame(adapterKey: string): boolean {
++  return (
++    adapterKey === 'anthropic_messages' ||
++    adapterKey === 'openai_chat' ||
++    adapterKey === 'openai_responses'
++  );
++}
++
++/**
++ * Frames a downstream client can classify as a failed stream, in the client's own
++ * protocol. An empty result means the adapter has no in-band error event, so the
++ * caller must keep failing the stream the other way (socket close).
++ */
++export function buildStreamTerminalErrorFrames(input: StreamTerminalErrorFrameInput): string[] {
++  const message = input.message ?? defaultTerminalErrorMessage;
++  const code = input.code ?? upstreamStreamErrorCode;
++  const errorType = input.errorType ?? defaultTerminalErrorType;
++  const error = { code, message, type: errorType };
++
++  switch (input.adapterKey) {
++    case 'anthropic_messages':
++      return [encodeSseFrame('error', { error, type: 'error' })];
++    case 'openai_chat':
++      return [encodeSseFrame(undefined, { error }), encodeSseFrame(undefined, '[DONE]')];
++    case 'openai_responses':
++      return [
++        encodeSseFrame('response.failed', {
++          response: { error, object: 'response', status: 'failed' },
++          type: 'response.failed'
++        }),
++        encodeSseFrame(undefined, '[DONE]')
++      ];
++    default:
++      return [];
++  }
++}
++
++export function createSseTerminalEventDetector(
++  tracker: SseEventTracker = createSseEventTracker()
++): SseTerminalEventDetector {
++  let terminalEventSeen = false;
++
++  return {
++    hasTerminalEvent: () => terminalEventSeen,
++    push(chunk: Uint8Array): void {
++      if (terminalEventSeen) {
++        return;
++      }
++
++      // Only events a blank line dispatched can suppress a terminal frame: a
++      // field line still being written, or the tail the transport cut off, was
++      // never delivered, so the stream still needs its error.
++      for (const event of tracker.push(chunk)) {
++        if (isTerminalSseEvent(event)) {
++          terminalEventSeen = true;
++          return;
++        }
++      }
++    }
++  };
++}
++
++/**
++ * Wraps an event-stream response so a body that dies mid-stream ends with one
++ * terminal error frame instead of a bare EOF. The client cannot tell a truncated
++ * frame from a completed answer otherwise, and never retries.
++ */
++export function guardStreamTerminalError(
++  response: Response,
++  input: StreamTerminalErrorGuardInput
++): Response {
++  const body = response.body;
++  if (
++    !body ||
++    !isEventStreamContentType(response.headers.get('content-type')) ||
++    // An adapter with no in-band error event has nothing to end the stream with,
++    // so the response must pass through untouched.
++    !supportsTerminalErrorFrame(input.adapterKey)
++  ) {
++    return response;
++  }
++
++  const reader = body.getReader();
++  const tracker = createSseEventTracker();
++  const state: TerminalErrorPumpState = {
++    cancelled: false,
++    detector: createSseTerminalEventDetector(tracker),
++    encoder: new TextEncoder(),
++    // Built only when the stream actually fails, because only then is the
++    // transport failure known - and only then can its identity be reported.
++    buildFrames: (cause) =>
++      buildStreamTerminalErrorFrames({
++        adapterKey: input.adapterKey,
++        message: terminalErrorMessageFor(input.message, cause)
++      }),
++    isClientAbort: () => Boolean(input.signal?.aborted)
++  };
++  const stream = createTerminalErrorBody(reader, tracker, state);
++
++  const headers = new Headers(response.headers);
++  // The terminal frame changes the body length, so the upstream value cannot stand.
++  headers.delete('content-length');
++
++  return new Response(stream, {
++    headers,
++    status: response.status,
++    statusText: response.statusText
++  });
++}
++
++interface TerminalErrorPumpState {
++  cancelled: boolean;
++  detector: SseTerminalEventDetector;
++  encoder: TextEncoder;
++  buildFrames: (cause: unknown) => string[];
++  isClientAbort: () => boolean;
++}
++
++/**
++ * The configured message stays authoritative; a recognised transport code is
++ * appended so the client learns why the body stopped without the server ever
++ * copying a provider message into the frame.
++ */
++function terminalErrorMessageFor(configured: string | undefined, cause: unknown): string {
++  const code = readTransportCode(cause);
++  if (!code) {
++    return configured ?? defaultTerminalErrorMessage;
++  }
++
++  const base = configured ?? defaultTerminalErrorMessage;
++  // A configured message that already names the code is a caller's deliberate
++  // wording; appending again would read as a doubled diagnostic.
++  return base.includes(code) ? base : `${base} (transport: ${code})`;
++}
++
++/**
++ * Walks a bounded `code`/`cause` chain and returns the first closed-set transport
++ * code. Nothing else about the error is read: no message, no URL, no object.
++ */
++function readTransportCode(error: unknown): string | undefined {
++  let current: unknown = error;
++
++  for (let depth = 0; depth < maxTransportCauseDepth; depth += 1) {
++    if (!current || typeof current !== 'object') {
++      return undefined;
++    }
++
++    const record = current as { cause?: unknown; code?: unknown };
++    const code = record.code;
++    if (typeof code === 'string' && knownTransportCodes[code] === true) {
++      return code;
++    }
++
++    // Only an explicitly closed set is ever returned, so an unknown code on this
++    // record must not stop the walk - the real cause may be one level deeper.
++    current = record.cause;
++  }
++
++  return undefined;
++}
++
++/**
++ * The relayed body, read only as fast as the client asks for it. A pull-driven
++ * stream keeps the upstream socket under the client's own backpressure: the
++ * queue holds at most one chunk, so a slow consumer cannot make the gateway
++ * buffer a fast provider in memory.
++ *
++ * That single chunk is required rather than zero: the relay hands the body to
++ * `Readable.fromWeb`, which discards the bytes already read when the source
++ * errors unless one chunk is queued, so a zero bound silently loses the last
++ * event before a terminal frame.
++ */
++function createTerminalErrorBody(
++  reader: ReadableStreamDefaultReader<Uint8Array>,
++  tracker: SseEventTracker,
++  state: TerminalErrorPumpState
++): ReadableStream<Uint8Array> {
++  let sourceFinished = false;
++
++  return new ReadableStream<Uint8Array>(
++    {
++      async pull(controller): Promise<void> {
++        if (sourceFinished) {
++          return;
++        }
++
++        let read: { done: false; value: Uint8Array } | { done: true };
++        try {
++          read = await reader.read();
++        } catch (error) {
++          sourceFinished = true;
++          failWithTerminalError(controller, tracker, state, error);
++          return;
++        }
++
++        // A consumer that cancelled while this read was in flight has nobody
++        // left to receive the bytes, and the controller can no longer accept them.
++        if (state.cancelled) {
++          return;
++        }
++
++        if (read.done) {
++          sourceFinished = true;
++          controller.close();
++          return;
++        }
++
++        state.detector.push(read.value);
++        controller.enqueue(read.value);
++      },
++      async cancel(reason): Promise<void> {
++        state.cancelled = true;
++        sourceFinished = true;
++        await reader.cancel(reason);
++      }
++    },
++    // One chunk of slack is what `Readable.fromWeb` and Fastify need to flush
++    // bytes that already arrived before the source errors; holding strictly
++    // nothing makes them discard that in-flight chunk. Anything above one is
++    // unbounded read-ahead again, so the bound stays here.
++    { highWaterMark: 1 }
++  );
++}
++
++function failWithTerminalError(
++  controller: ReadableStreamDefaultController<Uint8Array>,
++  tracker: SseEventTracker,
++  state: TerminalErrorPumpState,
++  error: unknown
++): void {
++  if (state.cancelled) {
++    return;
++  }
++  // A terminal event already reached the client: a second one would be a
++  // protocol violation, so let the stream fail as before. The same holds once
++  // the client is gone - there is nobody left to read a frame.
++  if (state.isClientAbort() || state.detector.hasTerminalEvent()) {
++    controller.error(error);
++    return;
++  }
++  const frames = state.buildFrames(error);
++  if (frames.length === 0) {
++    controller.error(error);
++    return;
++  }
++  // Bytes the transport cut off were never delivered as an event; ending that
++  // event first keeps the frame separate instead of appending it to the last
++  // partial line the client is still holding.
++  const boundary = tracker.closeRetainedEvent();
++  if (boundary.length > 0) {
++    controller.enqueue(boundary);
++  }
++  for (const frame of frames) {
++    controller.enqueue(state.encoder.encode(frame));
++  }
++  controller.close();
++}
++
++/**
++ * A dispatched event is terminal when the protocol itself says the stream is
++ * over, read from the event name or from the payload's own top level. Nothing
++ * below the top level counts: a tool input or provider metadata can repeat a
++ * terminal word without the stream ending.
++ */
++function isTerminalSseEvent(event: SseEvent): boolean {
++  const eventName = event.event?.trim().toLowerCase();
++  if (eventName && terminalSseEventNames[eventName] === true) {
++    return true;
++  }
++
++  const data = event.data.trim();
++  if (data.length === 0) {
++    return false;
++  }
++  if (data === '[DONE]') {
++    return true;
++  }
++
++  const payload = parseSsePayload(data);
++  if (!payload) {
++    return false;
++  }
++
++  // An error chunk carries its signal in the `error` key itself - OpenAI chat
++  // sends `{"error":{"message":"..."}}` with no `type` at all - so the key
++  // presence is the evidence, not a value inside it.
++  if (isObject(payload.error)) {
++    return true;
++  }
++
++  const type = asString(payload.type)?.toLowerCase();
++  return type !== undefined && terminalSsePayloadTypes[type] === true;
++}
++
++function parseSsePayload(data: string): Record<string, unknown> | undefined {
++  try {
++    const parsed: unknown = JSON.parse(data);
++    return isObject(parsed) ? parsed : undefined;
++  } catch {
++    return undefined;
++  }
++}
++
++function isEventStreamContentType(contentType: string | null): boolean {
++  return Boolean(contentType && contentType.toLowerCase().includes('text/event-stream'));
++}
++
++function encodeSseFrame(eventName: string | undefined, data: unknown): string {
++  const payload = typeof data === 'string' ? data : JSON.stringify(data);
++  const dataLines = payload
++    .split('\n')
++    .map((line) => `data: ${line}`)
++    .join('\n');
++  return eventName ? `event: ${eventName}\n${dataLines}\n\n` : `${dataLines}\n\n`;
++}
+diff --git a/src/gateway/stream-terminal-error.test.ts b/src/gateway/stream-terminal-error.test.ts
+new file mode 100644
+--- /dev/null
++++ b/src/gateway/stream-terminal-error.test.ts
+@@ -0,0 +1,688 @@
++import { describe, expect, it } from 'vitest';
++import {
++  buildStreamTerminalErrorFrames,
++  createSseTerminalEventDetector,
++  guardStreamTerminalError
++} from './stream-terminal-error';
++import { parseSseChunks } from '../sse';
++
++const encoder = new TextEncoder();
++
++function createEventStream(chunks: string[], errorAfter?: unknown): Response {
++  let index = 0;
++  const stream = new ReadableStream<Uint8Array>({
++    pull(controller) {
++      if (index < chunks.length) {
++        controller.enqueue(encoder.encode(chunks[index]));
++        index += 1;
++        return;
++      }
++      if (errorAfter) {
++        controller.error(errorAfter);
++        return;
++      }
++      controller.close();
++    }
++  });
++
++  return new Response(stream, {
++    headers: { 'content-type': 'text/event-stream' },
++    status: 200
++  });
++}
++
++function createByteStream(chunks: Uint8Array[], errorAfter?: unknown): Response {
++  let index = 0;
++  const stream = new ReadableStream<Uint8Array>({
++    pull(controller) {
++      if (index < chunks.length) {
++        controller.enqueue(chunks[index]);
++        index += 1;
++        return;
++      }
++      if (errorAfter) {
++        controller.error(errorAfter);
++        return;
++      }
++      controller.close();
++    }
++  });
++
++  return new Response(stream, {
++    headers: { 'content-type': 'text/event-stream' },
++    status: 200
++  });
++}
++
++/**
++ * A source that only hands out a chunk when the consumer's read actually asks for
++ * one, so a read that happens ahead of demand is visible as an extra `pull`.
++ */
++function createDemandStream(): {
++  response: Response;
++  pullCount: () => number;
++  cancelReason: () => unknown;
++  grant: () => void;
++} {
++  let permits = 1;
++  let pulls = 0;
++  let cancelled = false;
++  let cancelledWith: unknown;
++  const waiters: Array<() => void> = [];
++
++  const stream = new ReadableStream<Uint8Array>(
++    {
++      async pull(controller) {
++        pulls += 1;
++        while (permits === 0 && !cancelled) {
++          await new Promise<void>((resolve) => {
++            waiters.push(resolve);
++          });
++        }
++        if (cancelled || permits === 0) {
++          return;
++        }
++        permits -= 1;
++        controller.enqueue(encoder.encode(`data: {"n":${pulls}}\n\n`));
++      },
++      cancel(reason) {
++        cancelled = true;
++        cancelledWith = reason;
++        for (const resolve of waiters.splice(0)) {
++          resolve();
++        }
++      }
++    },
++    { highWaterMark: 0 }
++  );
++
++  return {
++    response: new Response(stream, {
++      headers: { 'content-type': 'text/event-stream' },
++      status: 200
++    }),
++    pullCount: () => pulls,
++    cancelReason: () => cancelledWith,
++    grant: () => {
++      permits += 1;
++      for (const resolve of waiters.splice(0)) {
++        resolve();
++      }
++    }
++  };
++}
++
++/** Parses the guarded bytes with the gateway's own SSE consumer, not with the detector. */
++async function dispatchedEvents(body: Uint8Array): Promise<Array<{ event?: string; data: string }>> {
++  const events: Array<{ event?: string; data: string }> = [];
++  for await (const parsed of parseSseChunks(new Response(body))) {
++    events.push({ event: parsed.event, data: parsed.data });
++  }
++  return events;
++}
++
++function transportError(code: string, message = 'transport detail that must not leak'): Error {
++  const error = new Error(message);
++  (error as Error & { code?: string }).code = code;
++  return error;
++}
++
++const truncatedThinkingChunk =
++  'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"live"}}\n\n';
++
++const anthropicTerminalFrame =
++  'event: error\ndata: {"error":{"code":"upstream_stream_error","message":"Upstream stream failed.","type":"api_error"},"type":"error"}\n\n';
++
++describe('buildStreamTerminalErrorFrames', () => {
++  it('emits an Anthropic error event carrying a typed api error', () => {
++    const frames = buildStreamTerminalErrorFrames({
++      adapterKey: 'anthropic_messages',
++      message: 'Upstream stream failed.'
++    });
++
++    expect(frames).toHaveLength(1);
++    expect(frames[0]).toBe(anthropicTerminalFrame);
++  });
++
++  it('emits an OpenAI chat error chunk followed by the done sentinel', () => {
++    const frames = buildStreamTerminalErrorFrames({
++      adapterKey: 'openai_chat',
++      message: 'Upstream stream failed.'
++    });
++
++    expect(frames).toHaveLength(2);
++    expect(frames[0].startsWith('data: {')).toBe(true);
++    expect(frames[0]).not.toContain('event:');
++    expect(frames[1]).toBe('data: [DONE]\n\n');
++  });
++
++  it('emits a failed Responses event followed by the done sentinel', () => {
++    const frames = buildStreamTerminalErrorFrames({
++      adapterKey: 'openai_responses',
++      message: 'Upstream stream failed.'
++    });
++
++    expect(frames).toHaveLength(2);
++    expect(frames[0].startsWith('event: response.failed\n')).toBe(true);
++    expect(frames[0]).toContain('"status":"failed"');
++    expect(frames[1]).toBe('data: [DONE]\n\n');
++  });
++
++  it('returns no frame for adapters without an in-band error event', () => {
++    expect(
++      buildStreamTerminalErrorFrames({
++        adapterKey: 'gemini_generate_content',
++        message: 'Upstream stream failed.'
++      })
++    ).toEqual([]);
++  });
++});
++
++describe('createSseTerminalEventDetector', () => {
++  it('detects a terminal event split across chunks', () => {
++    const detector = createSseTerminalEventDetector();
++    detector.push(encoder.encode('event: message_'));
++    expect(detector.hasTerminalEvent()).toBe(false);
++    detector.push(encoder.encode('stop\ndata: {"type":"message_stop"}\n\n'));
++
++    expect(detector.hasTerminalEvent()).toBe(true);
++  });
++
++  it('detects the OpenAI done sentinel', () => {
++    const detector = createSseTerminalEventDetector();
++    detector.push(encoder.encode('data: [DONE]\n\n'));
++
++    expect(detector.hasTerminalEvent()).toBe(true);
++  });
++
++  it('ignores the word error inside streamed text', () => {
++    const detector = createSseTerminalEventDetector();
++    const delta = JSON.stringify({ choices: [{ delta: { content: '{"type":"error"}' } }] });
++    detector.push(encoder.encode(`data: ${delta}\n\n`));
++
++    expect(detector.hasTerminalEvent()).toBe(false);
++  });
++
++  it('reads a terminal payload assembled from several data lines', () => {
++    const detector = createSseTerminalEventDetector();
++    detector.push(encoder.encode('data: {"type":\ndata: "error"}\n\n'));
++
++    expect(detector.hasTerminalEvent()).toBe(true);
++  });
++
++  it('accepts CRLF line endings', () => {
++    const detector = createSseTerminalEventDetector();
++    detector.push(encoder.encode('event: message_stop\r\ndata: {"type":"message_stop"}\r\n\r\n'));
++
++    expect(detector.hasTerminalEvent()).toBe(true);
++  });
++
++  it('does not count a field line that no blank line delivered', () => {
++    const detector = createSseTerminalEventDetector();
++    detector.push(encoder.encode('event: message_stop\ndata: {"type":"message_stop"}\n'));
++
++    expect(detector.hasTerminalEvent()).toBe(false);
++  });
++
++  it('does not count an event name that carries no payload yet', () => {
++    const detector = createSseTerminalEventDetector();
++    detector.push(encoder.encode('event: error\n'));
++    expect(detector.hasTerminalEvent()).toBe(false);
++
++    detector.push(encoder.encode('\n'));
++    expect(detector.hasTerminalEvent()).toBe(true);
++  });
++
++  it('does not count a terminal word below the payload top level', () => {
++    const nested = [
++      { type: 'response.output_item.added', item: { type: 'function_call', nested: { type: 'error' } } },
++      { type: 'content_block_start', content_block: { type: 'tool_use', input: { kind: 'error', type: 'error' } } },
++      { type: 'content_block_delta', delta: { partial_json: '{"type":"error"}' } },
++      { type: 'message_delta', delta: { stop_reason: null }, metadata: { type: 'error' } }
++    ];
++
++    for (const payload of nested) {
++      const detector = createSseTerminalEventDetector();
++      detector.push(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
++      expect(detector.hasTerminalEvent()).toBe(false);
++    }
++  });
++
++  it('treats an OpenAI chat error chunk as terminal, with or without an inner type', () => {
++    // The gateway's own fixtures send `{"error":{"message":"invalid key"}}` with
++    // no `type` at either level, so the `error` key is the whole signal.
++    for (const payload of [
++      { error: { message: 'invalid key' } },
++      { error: { message: 'x', type: 'api_error' } },
++      { error: { message: 'x', type: 'error' } }
++    ]) {
++      const detector = createSseTerminalEventDetector();
++      detector.push(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
++      expect(detector.hasTerminalEvent()).toBe(true);
++    }
++  });
++});
++
++describe('guardStreamTerminalError', () => {
++  it('ends a truncated Anthropic stream with one terminal error frame', async () => {
++    const guarded = guardStreamTerminalError(
++      createEventStream(
++        ['event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"live"}}\n\n'],
++        new Error('terminated')
++      ),
++      { adapterKey: 'anthropic_messages', message: 'Upstream stream failed.' }
++    );
++
++    const body = await guarded.text();
++
++    expect(body).toContain('"type":"thinking_delta"');
++    expect(body.endsWith(anthropicTerminalFrame)).toBe(true);
++  });
++
++  it('never writes a second terminal event', async () => {
++    const guarded = guardStreamTerminalError(
++      createEventStream(
++        ['event: message_stop\ndata: {"type":"message_stop"}\n\n'],
++        new Error('terminated')
++      ),
++      { adapterKey: 'anthropic_messages', message: 'Upstream stream failed.' }
++    );
++
++    await expect(guarded.text()).rejects.toThrow('terminated');
++  });
++
++  it('stays out of the way of non event-stream responses', () => {
++    const response = new Response('{"ok":true}', {
++      headers: { 'content-type': 'application/json' }
++    });
++
++    expect(guardStreamTerminalError(response, { adapterKey: 'anthropic_messages' })).toBe(response);
++  });
++
++  it('stays out of the way of adapters without a terminal error frame', () => {
++    const response = createEventStream(['data: {"candidates":[]}\n\n']);
++
++    expect(guardStreamTerminalError(response, { adapterKey: 'gemini_generate_content' })).toBe(
++      response
++    );
++  });
++
++  it('does not mask the failure after the client aborted', async () => {
++    const controller = new AbortController();
++    controller.abort();
++    const guarded = guardStreamTerminalError(
++      createEventStream(['data: {"choices":[]}\n\n'], new Error('aborted')),
++      { adapterKey: 'openai_chat', message: 'Upstream stream failed.', signal: controller.signal }
++    );
++
++    await expect(guarded.text()).rejects.toThrow('aborted');
++  });
++});
++
++describe('guardStreamTerminalError transport identity', () => {
++  it('names a recognised socket code without copying its message', async () => {
++    const guarded = guardStreamTerminalError(
++      createEventStream([truncatedThinkingChunk], transportError('ECONNRESET')),
++      { adapterKey: 'anthropic_messages', message: 'Upstream stream failed.' }
++    );
++
++    const body = await guarded.text();
++
++    expect(body.endsWith(
++      'event: error\ndata: {"error":{"code":"upstream_stream_error","message":"Upstream stream failed. (transport: ECONNRESET)","type":"api_error"},"type":"error"}\n\n'
++    )).toBe(true);
++    expect(body).not.toContain('transport detail that must not leak');
++  });
++
++  it('finds the code nested in a cause chain', async () => {
++    const inner = transportError('UND_ERR_SOCKET', 'socket closed while reading');
++    const middle = new Error('fetch failed', { cause: inner });
++    const outer = new Error('upstream request failed', { cause: middle });
++
++    const guarded = guardStreamTerminalError(
++      createEventStream([truncatedThinkingChunk], outer),
++      { adapterKey: 'anthropic_messages', message: 'Upstream stream failed.' }
++    );
++
++    const body = await guarded.text();
++
++    expect(body).toContain('"message":"Upstream stream failed. (transport: UND_ERR_SOCKET)"');
++    for (const leaked of ['socket closed while reading', 'fetch failed', 'upstream request failed']) {
++      expect(body).not.toContain(leaked);
++    }
++  });
++
++  it('keeps the OpenAI chat framing when the failure is identified', async () => {
++    const guarded = guardStreamTerminalError(
++      createEventStream(['data: {"choices":[]}\n\n'], transportError('ETIMEDOUT')),
++      { adapterKey: 'openai_chat', message: 'Upstream stream failed.' }
++    );
++
++    const body = await guarded.text();
++
++    expect(body.endsWith(
++      'data: {"error":{"code":"upstream_stream_error","message":"Upstream stream failed. (transport: ETIMEDOUT)","type":"api_error"}}\n\ndata: [DONE]\n\n'
++    )).toBe(true);
++  });
++
++  it('keeps the failed Responses framing when the failure is identified', async () => {
++    const guarded = guardStreamTerminalError(
++      createEventStream(['data: {"type":"response.created"}\n\n'], transportError('EPIPE')),
++      { adapterKey: 'openai_responses', message: 'Upstream stream failed.' }
++    );
++
++    const body = await guarded.text();
++
++    expect(body.endsWith(
++      'event: response.failed\ndata: {"response":{"error":{"code":"upstream_stream_error","message":"Upstream stream failed. (transport: EPIPE)","type":"api_error"},"object":"response","status":"failed"},"type":"response.failed"}\n\ndata: [DONE]\n\n'
++    )).toBe(true);
++  });
++
++  it('falls back to the default message plus the code when none is configured', async () => {
++    const guarded = guardStreamTerminalError(
++      createEventStream([truncatedThinkingChunk], transportError('EAI_AGAIN')),
++      { adapterKey: 'anthropic_messages' }
++    );
++
++    const body = await guarded.text();
++
++    expect(body).toContain(
++      '"message":"Upstream stream failed before the response completed. (transport: EAI_AGAIN)"'
++    );
++  });
++
++  it('refuses an unknown code and a private message', async () => {
++    const guarded = guardStreamTerminalError(
++      createEventStream(
++        [truncatedThinkingChunk],
++        transportError('ERR_SOMETHING_PRIVATE', 'secret upstream body at https://internal/route')
++      ),
++      { adapterKey: 'anthropic_messages', message: 'Upstream stream failed.' }
++    );
++
++    const body = await guarded.text();
++
++    expect(body.endsWith(anthropicTerminalFrame)).toBe(true);
++    expect(body).not.toContain('ERR_SOMETHING_PRIVATE');
++    expect(body).not.toContain('secret upstream body');
++    expect(body).not.toContain('internal/route');
++  });
++
++  it('ignores a code carried in the message when the error has none', async () => {
++    const guarded = guardStreamTerminalError(
++      createEventStream([truncatedThinkingChunk], new Error('read ECONNRESET on socket')),
++      { adapterKey: 'anthropic_messages', message: 'Upstream stream failed.' }
++    );
++
++    const body = await guarded.text();
++
++    expect(body.endsWith(anthropicTerminalFrame)).toBe(true);
++    expect(body).not.toContain('(transport:');
++  });
++
++  it('survives a circular cause chain without reporting a code', async () => {
++    const first = new Error('first');
++    const second = new Error('second', { cause: first });
++    (first as Error & { cause?: unknown }).cause = second;
++
++    const guarded = guardStreamTerminalError(
++      createEventStream([truncatedThinkingChunk], first),
++      { adapterKey: 'anthropic_messages', message: 'Upstream stream failed.' }
++    );
++
++    const body = await guarded.text();
++
++    expect(body).toContain('"message":"Upstream stream failed."');
++    expect(body).not.toContain('(transport:');
++  });
++
++  it('accepts a recognised code on the thrown error itself when the cause is unrelated', async () => {
++    const failure = transportError('ECONNREFUSED', 'connect ECONNREFUSED 192.0.2.1:443');
++
++    const guarded = guardStreamTerminalError(
++      createEventStream([truncatedThinkingChunk], failure),
++      { adapterKey: 'anthropic_messages' }
++    );
++
++    const body = await guarded.text();
++
++    expect(body).toContain('(transport: ECONNREFUSED)');
++    expect(body).not.toContain('192.0.2.1');
++  });
++});
++
++describe('guardStreamTerminalError frame accounting', () => {
++  it('writes no extra frame once a terminal event already arrived', async () => {
++    const guarded = guardStreamTerminalError(
++      createEventStream(
++        ['event: message_stop\ndata: {"type":"message_stop"}\n\n'],
++        transportError('ECONNRESET')
++      ),
++      { adapterKey: 'anthropic_messages', message: 'Upstream stream failed.' }
++    );
++
++    await expect(guarded.text()).rejects.toThrow('transport detail that must not leak');
++  });
++
++  it('writes no frame after the client aborted, even with a recognised code', async () => {
++    const controller = new AbortController();
++    controller.abort();
++    const guarded = guardStreamTerminalError(
++      createEventStream(['data: {"choices":[]}\n\n'], transportError('ECONNRESET')),
++      { adapterKey: 'openai_chat', message: 'Upstream stream failed.', signal: controller.signal }
++    );
++
++    await expect(guarded.text()).rejects.toThrow('transport detail that must not leak');
++  });
++
++  it('keeps the identity passthrough for an unknown adapter', () => {
++    const response = createEventStream(['data: {"candidates":[]}\n\n']);
++
++    expect(guardStreamTerminalError(response, { adapterKey: 'gemini_generate_content' })).toBe(
++      response
++    );
++  });
++});
++
++describe('guardStreamTerminalError event boundaries', () => {
++  it('keeps a cut-off UTF-8 line out of the terminal frame', async () => {
++    // A line the transport stopped inside: `data: {"t":"` plus the first two bytes
++    // of a three-byte code point.
++    const cutOff = Uint8Array.from([...encoder.encode('data: {"t":"'), 0xe2, 0x85]);
++
++    const guarded = guardStreamTerminalError(
++      createByteStream([cutOff], transportError('ECONNRESET')),
++      { adapterKey: 'anthropic_messages', message: 'Upstream stream failed.' }
++    );
++
++    const body = new Uint8Array(await guarded.arrayBuffer());
++    const text = new TextDecoder().decode(body);
++
++    // Not the old behaviour, which appended the frame to the partial line.
++    expect(text).not.toContain('"t":event: error');
++    expect(text).toContain('\n\nevent: error\n');
++
++    const events = await dispatchedEvents(body);
++    const last = events[events.length - 1];
++    expect(last?.event).toBe('error');
++    expect(JSON.parse(last?.data ?? '{}')).toMatchObject({
++      type: 'error',
++      error: { code: 'upstream_stream_error' }
++    });
++  });
++
++  it('delivers the frame as its own event after a field line with no blank line', async () => {
++    const guarded = guardStreamTerminalError(
++      createEventStream(['data: {"type":"message_start"}\n'], transportError('ECONNRESET')),
++      { adapterKey: 'anthropic_messages', message: 'Upstream stream failed.' }
++    );
++
++    const body = new Uint8Array(await guarded.arrayBuffer());
++
++    expect(new TextDecoder().decode(body)).toContain('\n\nevent: error\n');
++    const events = await dispatchedEvents(body);
++    expect(events[events.length - 1]?.event).toBe('error');
++  });
++
++  it('treats an undelivered terminal event as missing, not as an already-delivered one', async () => {
++    const guarded = guardStreamTerminalError(
++      createEventStream(
++        ['event: message_stop\ndata: {"type":"message_stop"}\n'],
++        transportError('ECONNRESET')
++      ),
++      { adapterKey: 'anthropic_messages', message: 'Upstream stream failed.' }
++    );
++
++    const body = await guarded.text();
++
++    expect(body.endsWith(
++      'event: error\ndata: {"error":{"code":"upstream_stream_error","message":"Upstream stream failed. (transport: ECONNRESET)","type":"api_error"},"type":"error"}\n\n'
++    )).toBe(true);
++  });
++
++  it('treats an event name with no data as undelivered', async () => {
++    const guarded = guardStreamTerminalError(
++      createEventStream(['event: error\n'], new Error('terminated')),
++      { adapterKey: 'anthropic_messages', message: 'Upstream stream failed.' }
++    );
++
++    const body = await guarded.text();
++
++    expect(body.endsWith(anthropicTerminalFrame)).toBe(true);
++  });
++
++  it('does not let a nested terminal word suppress the frame', async () => {
++    const toolInput = JSON.stringify({
++      type: 'content_block_start',
++      index: 1,
++      content_block: { type: 'tool_use', id: 'toolu_1', name: 'report', input: { kind: 'error', type: 'error' } }
++    });
++
++    const guarded = guardStreamTerminalError(
++      createEventStream([`data: ${toolInput}\n\n`], transportError('ECONNRESET')),
++      { adapterKey: 'anthropic_messages', message: 'Upstream stream failed.' }
++    );
++
++    const body = await guarded.text();
++
++    expect(body).toContain(toolInput);
++    expect(body.endsWith(
++      'event: error\ndata: {"error":{"code":"upstream_stream_error","message":"Upstream stream failed. (transport: ECONNRESET)","type":"api_error"},"type":"error"}\n\n'
++    )).toBe(true);
++  });
++
++  it('relays ordinary chunk bytes unchanged and in order', async () => {
++    const chunks = [
++      'event: message_start\ndata: {"type":"message_start"}\n\n',
++      'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"text":"h\u00e9llo \u4e16\u754c"}}\n\n'
++    ];
++
++    const guarded = guardStreamTerminalError(
++      createByteStream(chunks.map((chunk) => encoder.encode(chunk))),
++      { adapterKey: 'anthropic_messages', message: 'Upstream stream failed.' }
++    );
++
++    const body = new Uint8Array(await guarded.arrayBuffer());
++
++    expect(body).toEqual(encoder.encode(chunks.join('')));
++  });
++
++  it('keeps the done sentinel last for both OpenAI protocols', async () => {
++    for (const adapterKey of ['openai_chat', 'openai_responses']) {
++      const guarded = guardStreamTerminalError(
++        createEventStream(['data: {"partial":true}\n'], transportError('ECONNRESET')),
++        { adapterKey, message: 'Upstream stream failed.' }
++      );
++
++      const body = await guarded.text();
++
++      expect(body).toContain('\n\ndata: ');
++      expect(body.endsWith('data: [DONE]\n\n')).toBe(true);
++      const events = await dispatchedEvents(encoder.encode(body));
++      expect(events[events.length - 1]?.data).toBe('[DONE]');
++    }
++  });
++});
++
++describe('guardStreamTerminalError backpressure', () => {
++  it('leaves the upstream stream unread until the client asks', async () => {
++    // A source with no gate at all: an eager pump drains it immediately, while a
++    // pull-driven stream leaves every chunk where it is.
++    const chunks = Array.from({ length: 32 }, (_, index) => `data: {"n":${index}}\n\n`);
++    let served = 0;
++    const upstream = new ReadableStream<Uint8Array>({
++      pull(controller) {
++        if (served < chunks.length) {
++          controller.enqueue(encoder.encode(chunks[served]));
++          served += 1;
++          return;
++        }
++        controller.close();
++      }
++    });
++    const guarded = guardStreamTerminalError(
++      new Response(upstream, { headers: { 'content-type': 'text/event-stream' } }),
++      { adapterKey: 'anthropic_messages' }
++    );
++
++    await Promise.resolve();
++    await Promise.resolve();
++    await Promise.resolve();
++
++    // One queued chunk is the transport's slack; the eager pump served all 32.
++    expect(served).toBeLessThanOrEqual(2);
++    await guarded.body!.cancel();
++  });
++
++  it('keeps upstream read-ahead bounded as the client reads', async () => {
++    const source = createDemandStream();
++    const guarded = guardStreamTerminalError(source.response, {
++      adapterKey: 'anthropic_messages'
++    });
++    const reader = guarded.body!.getReader();
++
++    // Read-ahead stays at one chunk; it must not grow with the number of reads.
++    for (let read = 1; read <= 4; read += 1) {
++      await reader.read();
++      await Promise.resolve();
++      await Promise.resolve();
++      expect(source.pullCount()).toBe(read + 1);
++      source.grant();
++    }
++
++    await reader.cancel();
++  });
++
++  it('cancels the upstream body when the client goes away', async () => {
++    const source = createDemandStream();
++    const guarded = guardStreamTerminalError(source.response, {
++      adapterKey: 'anthropic_messages'
++    });
++    const reader = guarded.body!.getReader();
++
++    await reader.read();
++    await Promise.resolve();
++    await reader.cancel(new Error('client gone'));
++    await Promise.resolve();
++    await Promise.resolve();
++
++    expect(source.cancelReason()).toEqual(new Error('client gone'));
++    // One served chunk plus the single queued one; no further reads after cancel.
++    expect(source.pullCount()).toBeGreaterThanOrEqual(1);
++    expect(source.pullCount()).toBeLessThanOrEqual(2);
++  });
++
++  it('never buffers more than one chunk for a client that never asks', async () => {
++    const source = createDemandStream();
++    const guarded = guardStreamTerminalError(source.response, {
++      adapterKey: 'anthropic_messages'
++    });
++
++    await Promise.resolve();
++    await Promise.resolve();
++
++    // At most the single queued chunk; never the whole stream.
++    expect(source.pullCount()).toBeLessThanOrEqual(1);
++    await guarded.body!.cancel();
++  });
++});
+diff --git a/src/gateway/stream-terminal-events.ts b/src/gateway/stream-terminal-events.ts
+new file mode 100644
+--- /dev/null
++++ b/src/gateway/stream-terminal-events.ts
+@@ -0,0 +1,176 @@
++/**
++ * Byte-level SSE event boundaries.
++ *
++ * The gateway relays upstream event streams byte for byte, so the only trustworthy
++ * evidence that an event reached the client is a blank line that ended it. This
++ * module answers exactly that question without re-encoding or copying the relayed
++ * bytes: it scans raw bytes, keeps only what is still undelivered, and reports the
++ * events a client parser would actually dispatch.
++ *
++ * Splitting on `\n` / `\r` never cuts a UTF-8 sequence, because no multi-byte
++ * sequence contains those bytes, so a completed line always decodes cleanly.
++ */
++
++export interface SseEvent {
++  event?: string;
++  /** Joined `data:` field values, newline separated, exactly as a parser would read them. */
++  data: string;
++}
++
++export interface SseEventTracker {
++  /**
++   * Consumes raw bytes and returns the events dispatched by this chunk: only
++   * events a blank line terminated. A trailing field line or a partially written
++   * event is held back, never reported.
++   */
++  push(chunk: Uint8Array): SseEvent[];
++  /**
++   * Bytes held since the last dispatched event boundary; 0 means the client
++   * currently holds nothing between events.
++   */
++  pendingBytes(): number;
++  /**
++   * The shortest bytes to append so that whatever is held becomes a dispatched
++   * event of its own. Empty when nothing is held.
++   */
++  closeRetainedEvent(): Uint8Array;
++}
++
++const lfByte = 0x0a;
++const crByte = 0x0d;
++const spaceByte = 0x20;
++
++export function createSseEventTracker(): SseEventTracker {
++  const decoder = new TextDecoder();
++  let lineBytes = new Uint8Array(256);
++  let lineLength = 0;
++  let eventName: string | undefined;
++  let dataLines: string[] = [];
++  // Held bytes are counted, not retained: the relay already forwards them, so the
++  // tracker only needs to know whether anything is still undelivered and whether
++  // the last one was a line ending.
++  let pendingBytes = 0;
++  let lastPendingByte: number | undefined;
++  // A chunk can end between `\r` and `\n`, where the pair is one line ending and
++  // must not be read as a line ending followed by a blank line.
++  let pendingCrLf = false;
++
++  function dispatch(): SseEvent | undefined {
++    const event =
++      eventName === undefined && dataLines.length === 0
++        ? undefined
++        : { event: eventName, data: dataLines.join('\n') };
++    eventName = undefined;
++    dataLines = [];
++    return event;
++  }
++
++  function endLine(out: SseEvent[]): void {
++    if (lineLength === 0) {
++      // A blank line is the only event boundary; anything else is a field line.
++      const event = dispatch();
++      if (event) {
++        out.push(event);
++      }
++      return;
++    }
++
++    const line = decoder.decode(lineBytes.subarray(0, lineLength));
++    lineLength = 0;
++    // A byte array avoids one boxed JS number per byte on large SSE lines.
++    // Release a large backing buffer as soon as its line is decoded.
++    if (lineBytes.length > 64 * 1024) lineBytes = new Uint8Array(256);
++
++    // A comment line is ignored, and a line with no colon is a field with an
++    // empty value, which carries nothing this tracker needs.
++    // `String#indexOf` needs the character, not the byte value: a numeric
++    // argument never matches a string here.
++    const separator = line.indexOf(':');
++    if (separator <= 0) {
++      return;
++    }
++
++    const field = line.slice(0, separator);
++    const rawValue = line.slice(separator + 1);
++    const value = rawValue.charCodeAt(0) === spaceByte ? rawValue.slice(1) : rawValue;
++
++    if (field === 'event') {
++      eventName = value.trim();
++    } else if (field === 'data') {
++      dataLines.push(value);
++    }
++  }
++
++  return {
++    push(chunk: Uint8Array): SseEvent[] {
++      if (chunk.length === 0) {
++        return [];
++      }
++
++      const events: SseEvent[] = [];
++
++      for (let index = 0; index < chunk.length; index += 1) {
++        const byte = chunk[index];
++
++        if (pendingCrLf && byte === lfByte) {
++          // Second half of a line ending split across chunks; the line was already
++          // ended when the `\r` arrived.
++          pendingCrLf = false;
++          pendingBytes += 1;
++          lastPendingByte = byte;
++          continue;
++        }
++        pendingCrLf = false;
++
++        if (byte === lfByte) {
++          const before = events.length;
++          endLine(events);
++          // A line ending that dispatched an event ends the held region; anything
++          // after it is new, and the blank line itself holds nothing.
++          pendingBytes = events.length > before ? 0 : pendingBytes + 1;
++          lastPendingByte = byte;
++          continue;
++        }
++
++        if (byte === crByte) {
++          const before = events.length;
++          endLine(events);
++          if (chunk[index + 1] === lfByte) {
++            // `\r\n` is one line ending, not a line ending plus a blank line.
++            index += 1;
++            pendingBytes = events.length > before ? 0 : pendingBytes + 2;
++            lastPendingByte = lfByte;
++          } else {
++            pendingCrLf = true;
++            pendingBytes = events.length > before ? 0 : pendingBytes + 1;
++            lastPendingByte = byte;
++          }
++          continue;
++        }
++
++        if (lineLength === lineBytes.length) {
++          const next = new Uint8Array(lineBytes.length * 2);
++          next.set(lineBytes);
++          lineBytes = next;
++        }
++        lineBytes[lineLength++] = byte;
++        pendingBytes += 1;
++        lastPendingByte = byte;
++      }
++
++      return events;
++    },
++
++    pendingBytes: () => pendingBytes,
++
++    closeRetainedEvent(): Uint8Array {
++      if (pendingBytes === 0 && !pendingCrLf) {
++        return new Uint8Array(0);
++      }
++      // The held bytes end mid-line (or on a `\r` whose `\n` never came), so one
++      // line ending finishes them and one more makes the blank line that
++      // dispatches them.
++      return Uint8Array.from([lfByte, lfByte]);
++    }
++  };
++}
+diff --git a/src/gateway/stream-terminal-events.test.ts b/src/gateway/stream-terminal-events.test.ts
+new file mode 100644
+--- /dev/null
++++ b/src/gateway/stream-terminal-events.test.ts
+@@ -0,0 +1,19 @@
++import { spawnSync } from 'node:child_process';
++import path from 'node:path';
++import { buildSync } from 'esbuild';
++import { expect, it } from 'vitest';
++
++it('tracks a multi-MiB SSE line within a 64 MiB JS heap', () => {
++  const bundle = buildSync({ entryPoints: [path.resolve('src/gateway/stream-terminal-events.ts')],
++    platform: 'node', format: 'cjs', bundle: true, write: false }).outputFiles[0].text;
++  const code = bundle + `
++    const tracker=module.exports.createSseEventTracker();
++    const line=Buffer.alloc(12*1024*1024,120);line[0]=58;
++    tracker.push(line);tracker.push(Buffer.from('\\n\\n'));
++    if(tracker.closeRetainedEvent().length>2)throw new Error('invalid boundary');
++    process.stdout.write('bounded tracker');
++  `;
++  const result = spawnSync(process.execPath, ['--max-old-space-size=64', '-e', code], { encoding: 'utf8', timeout: 15000 });
++  expect(result.status, result.stderr).toBe(0);
++  expect(result.stdout).toBe('bounded tracker');
++});

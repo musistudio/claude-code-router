@@ -249,3 +249,7 @@ Field paths use CCR's lightweight JSONPath syntax:
 ### Local model usage and pricing
 
 Local compatible services such as llama.cpp also group token usage under the configured provider name. Runtime protocol and credential aliases are normalized to that name. A GGUF filename alias usually has no cloud catalog price. To calculate custom costs, set `inputUsdPerMillionTokens` and `outputUsdPerMillionTokens` in the model metadata's `pricing` object; both are USD per million tokens. Set both to `0` to explicitly record no API charge. Without a configured price, CCR does not infer hardware, electricity, or hosting costs. Existing historical records are not automatically rewritten.
+
+### Deferred tool loading compatibility
+
+In the provider's advanced settings, turn off **Deferred tool loading** if its API rejects `defer_loading` because it has no deferred loader. This saves `supportsDeferredTools: false`. CCR removes that flag from tool declarations for attempts sent to this provider, including nested namespace tools, while preserving the full tool definitions and their input schemas. The default is enabled. Fallback providers retain their own setting.
