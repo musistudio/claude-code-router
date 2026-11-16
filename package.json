@@ -105,6 +105,7 @@
     "js-yaml": "^4.3.1",
     "lucide-react": "^1.17.0",
     "motion": "^12.40.0",
+    "patch-package": "^8.0.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "recharts": "^3.8.1",
