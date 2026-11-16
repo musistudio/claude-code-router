@@ -64,10 +64,15 @@ const ccrRoutingHeaderNames = new Set([
   "x-target-providers"
 ]);
 
-const clientAuthHeaderNames = new Set<string>(sdkCompatibleTokenHeaderNames);
+const clientAuthHeaderNames = new Set<string>([
+  ...sdkCompatibleTokenHeaderNames,
+  "cookie"
+]);
 
 const proxyMetadataHeaderNames = new Set([
+  "cdn-loop",
   "forwarded",
+  "true-client-ip",
   "via",
   "x-real-ip"
 ]);
@@ -180,9 +185,10 @@ export function sanitizeUpstreamProviderHeaders(headers: Record<string, string>)
 
 /**
  * Restores client headers after the core protocol adapter has rebuilt the
- * provider request. Provider-generated auth and content headers win on name
- * collisions, while transport, proxy metadata and CCR-owned headers never
- * cross the boundary.
+ * provider request, excluding client auth, cookies and proxy metadata (including
+ * Cloudflare headers). Explicit provider headers win on name collisions and may
+ * supply their own cookies or Cloudflare credentials. Transport and CCR-owned
+ * headers remain excluded.
  */
 export function mergeUpstreamProviderHeaders(
   requestHeaders: Record<string, string | string[] | undefined> | undefined,
@@ -207,6 +213,7 @@ export function mergeUpstreamProviderHeaders(
       ccrRoutingHeaderNames.has(normalized) ||
       clientAuthHeaderNames.has(normalized) ||
       proxyMetadataHeaderNames.has(normalized) ||
+      normalized.startsWith("cf-") ||
       normalized.startsWith("x-forwarded-") ||
       connectionHeaders.has(normalized)
     ) {
