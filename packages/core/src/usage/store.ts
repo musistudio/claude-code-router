@@ -731,7 +731,9 @@ function toStoredUsageEvent(row: Record<string, SqlValue>): StoredUsageEvent {
   };
 }
 
-const usageTotalsSelect = `
+function usageTotalsSelect(latestAttemptOnly = false): string {
+  const latestAttemptCondition = latestAttemptOnly ? "latest_request_attempt = 1 AND " : "";
+  return `
             COUNT(*) AS request_count,
             COALESCE(SUM(input_tokens), 0) AS input_tokens,
             COALESCE(SUM(output_tokens), 0) AS output_tokens,
@@ -743,22 +745,36 @@ const usageTotalsSelect = `
             END), 0) AS computed_total_tokens,
             COALESCE(SUM(COALESCE(cost_usd, 0)), 0) AS cost_usd,
             COALESCE(SUM(duration_ms), 0) AS duration_ms,
-            COALESCE(SUM(CASE WHEN status_code >= 200 AND status_code < 400 THEN 1 ELSE 0 END), 0) AS success_count,
-            COALESCE(SUM(CASE WHEN status_code > 0 AND (status_code < 200 OR status_code >= 400) THEN 1 ELSE 0 END), 0) AS error_count,
+            COALESCE(SUM(CASE WHEN ${latestAttemptCondition}status_code >= 200 AND status_code < 400 THEN 1 ELSE 0 END), 0) AS success_count,
+            COALESCE(SUM(CASE WHEN ${latestAttemptCondition}status_code > 0 AND (status_code < 200 OR status_code >= 400) THEN 1 ELSE 0 END), 0) AS error_count,
             COALESCE(SUM(CASE
               WHEN total_tokens - output_tokens > input_tokens + cache_read_tokens + cache_write_tokens THEN total_tokens - output_tokens
               ELSE input_tokens + cache_read_tokens + cache_write_tokens
             END), 0) AS prompt_tokens
 `;
+}
+
+function latestUsageAttemptQuery(where: string): string {
+  // Empty request IDs cannot link retries, so keep each row independent.
+  return `
+    SELECT
+      usage_events.*,
+      ROW_NUMBER() OVER (
+        PARTITION BY request_id, CASE WHEN request_id = '' THEN id ELSE 0 END
+        ORDER BY created_at DESC, id DESC
+      ) AS latest_request_attempt
+    FROM usage_events
+    WHERE ${where}
+  `;
+}
 
 function readUsageTotals(database: SqlDatabase, query: UsageWhereClause): UsageTotals {
   const row = queryRows(
     database,
     `
       SELECT
-        ${usageTotalsSelect}
-      FROM usage_events
-      WHERE ${query.where}
+        ${usageTotalsSelect(true)}
+      FROM (${latestUsageAttemptQuery(query.where)}) AS usage_events
     `,
     query.params
   )[0];
@@ -780,9 +796,8 @@ function readUsageSeries(
     `
       SELECT
         ${bucketExpression} AS bucket,
-        ${usageTotalsSelect}
-      FROM usage_events
-      WHERE ${query.where}
+        ${usageTotalsSelect(true)}
+      FROM (${latestUsageAttemptQuery(query.where)}) AS usage_events
       GROUP BY bucket
     `,
     query.params
@@ -880,7 +895,7 @@ function readUsageGroupRows(
     `
       SELECT
         ${selectColumns},
-        ${usageTotalsSelect}
+        ${usageTotalsSelect()}
       FROM usage_events
       WHERE ${query.where}
       GROUP BY ${groupBy}
