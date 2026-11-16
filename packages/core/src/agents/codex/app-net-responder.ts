@@ -1,5 +1,6 @@
 import { appendFile, mkdir } from "node:fs/promises";
-import { createServer as createHttpServer } from "node:http";
+import { createServer as createHttpServer, type RequestListener } from "node:http";
+import { createServer as createHttpsServer } from "node:https";
 import path from "node:path";
 
 export type CodexVirtualRoute = {
@@ -152,8 +153,8 @@ export function matchCodexVirtualRoute(
  */
 export const CODEX_APP_NET_RESPONDER_PORT = 8000;
 
-export function codexAppApiBaseUrl(port: number = CODEX_APP_NET_RESPONDER_PORT): string {
-  return `http://localhost:${port}`;
+export function codexAppApiBaseUrl(port: number = CODEX_APP_NET_RESPONDER_PORT, secure = true): string {
+  return `${secure ? "https" : "http"}://localhost:${port}`;
 }
 
 async function appendResponderLog(logPath: string, entry: Record<string, unknown>): Promise<void> {
@@ -176,6 +177,7 @@ const responders = new Map<number, Promise<CodexAppNetResponder>>();
 export function ensureCodexAppNetResponder(options: {
   listenPort: number;
   logPath: string;
+  tls?: { cert: string; key: string };
 }): Promise<CodexAppNetResponder> {
   const existing = responders.get(options.listenPort);
   if (existing) return existing;
@@ -194,7 +196,7 @@ export function ensureCodexAppNetResponder(options: {
 }
 
 /**
- * Loopback HTTP responder for the CCR-launched ChatGPT app. Pointed at via
+ * Loopback HTTP(S) responder for the CCR-launched ChatGPT app. Pointed at via
  * the CODEX_API_BASE_URL environment variable (honored by the app's desktop
  * API URL builder), it serves the virtual-account routes locally and records
  * every other request for further route discovery.
@@ -203,11 +205,12 @@ export async function startCodexAppNetResponder(options: {
   listenPort: number;
   logPath: string;
   routes?: CodexVirtualRoute[];
+  tls?: { cert: string; key: string };
 }): Promise<CodexAppNetResponder> {
   const routes = options.routes ?? codexVirtualAccountRoutes();
   const logPath = options.logPath;
 
-  const server = createHttpServer((request, response) => {
+  const handleRequest: RequestListener = (request, response) => {
     void (async () => {
       const url = new URL(request.url || "/", "http://localhost");
       const route = matchCodexVirtualRoute(url.pathname, routes);
@@ -245,7 +248,8 @@ export async function startCodexAppNetResponder(options: {
     })().catch(() => {
       response.destroy();
     });
-  });
+  };
+  const server = options.tls ? createHttpsServer(options.tls, handleRequest) : createHttpServer(handleRequest);
 
   const boundPort = await new Promise<number>((resolve, reject) => {
     server.once("error", reject);
@@ -259,7 +263,7 @@ export async function startCodexAppNetResponder(options: {
 
   return {
     port: boundPort,
-    baseUrl: codexAppApiBaseUrl(boundPort),
+    baseUrl: codexAppApiBaseUrl(boundPort, Boolean(options.tls)),
     close() {
       server.close();
     }

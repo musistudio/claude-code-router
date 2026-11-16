@@ -408,7 +408,7 @@ test("Codex app-server bridges shared ChatGPT auth into an isolated profile with
   assert.deepEqual(JSON.parse(readFileSync(sharedAuthFile, "utf8")), sharedAuth);
 });
 
-test("Codex app-server bridges the default codex ChatGPT login read-only", { skip: process.platform === "win32" }, () => {
+test("Codex app-server bridges the default codex ChatGPT login only with explicit opt-in", { skip: process.platform === "win32" }, () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-default-auth-bridge-"));
   const runtimeFile = writeRuntimeScript(dir);
   const fakeCodex = path.join(dir, "fake-codex");
@@ -442,6 +442,7 @@ test("Codex app-server bridges the default codex ChatGPT login read-only", { ski
     env: {
       ...process.env,
       CCR_CODEX_REMOTE_FRONTEND_MODE: "app",
+      CCR_CODEX_SHARE_CHATGPT_AUTH: "1",
       CCR_PROFILE_SCOPE: "ccr",
       CCR_REAL_CODEX_CLI_PATH: fakeCodex,
       CODEX_HOME: codexHome,
@@ -465,8 +466,69 @@ test("Codex app-server bridges the default codex ChatGPT login read-only", { ski
     account: { type: "chatgpt", email: "default@example.com", planType: "pro" },
     requiresOpenaiAuth: true
   });
+  const unshared = spawnSync(process.execPath, [runtimeFile, "app-server"], {
+    encoding: "utf8", timeout: 10000,
+    env: { ...process.env, HOME: isolatedHome, CODEX_HOME: codexHome,
+      CCR_REAL_CODEX_CLI_PATH: fakeCodex, CCR_PROFILE_SCOPE: "ccr", CCR_CODEX_REMOTE_FRONTEND_MODE: "app",
+      CCR_CODEX_SHARE_CHATGPT_AUTH: "0", CODEXL_CODEX_SHARE_CHATGPT_AUTH: "0",
+      CCR_CODEX_CHATGPT_AUTH_FILE: "", CODEXL_CODEX_CHATGPT_AUTH_FILE: "" },
+    input: JSON.stringify({ id: 1, method: "account/read" }) + "\n"
+  });
+  assert.equal(unshared.status, 0, unshared.stderr);
+  assert.equal(JSON.parse(unshared.stdout.trim()).result.account.account_id, "ccr-virtual-account");
   assert.equal(existsSync(path.join(codexHome, "auth.json")), false);
   assert.deepEqual(JSON.parse(readFileSync(path.join(defaultCodexHome, "auth.json"), "utf8")).tokens.refresh_token, "default-refresh");
+});
+
+test("isolated Codex desktop identity ignores personal logins and supplies matching local workspace routing", { skip: process.platform === "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-isolated-workspace-"));
+  try {
+    const runtime = writeRuntimeScript(dir);
+    const fakeCodex = path.join(dir, "fake-codex");
+    const profileHome = path.join(dir, "profile");
+    const personalHome = path.join(dir, "home");
+    const personalAuth = path.join(personalHome, ".codex", "auth.json");
+    const profileAuth = path.join(profileHome, "auth.json");
+    const auth = JSON.stringify({ auth_mode: "chatgpt", tokens: { access_token: "personal-access-token", refresh_token: "preserve-refresh-token" } });
+    for (const file of [personalAuth, profileAuth]) {
+      mkdirSync(path.dirname(file), { recursive: true });
+      writeFileSync(file, auth);
+    }
+    writeFileSync(fakeCodex, `#!/usr/bin/env node
+      require('node:readline').createInterface({ input: process.stdin }).on('line', line => {
+        const request = JSON.parse(line);
+        const result = request.method === 'configRequirements/read'
+          ? { requirements: null, supportsIndependentSpeedModes: true }
+          : { account: { type: 'chatgpt', email: 'personal@example.com', planType: 'pro' }, workspaceRouting: null };
+        process.stdout.write(JSON.stringify({ id: request.id, result }) + '\\n');
+      });
+    `);
+    chmodSync(fakeCodex, 0o700);
+    const result = spawnSync(process.execPath, [runtime, "app-server"], {
+      encoding: "utf8", timeout: 10000,
+      env: { ...process.env, HOME: personalHome, CODEX_HOME: profileHome,
+        CCR_REAL_CODEX_CLI_PATH: fakeCodex, CCR_PROFILE_SCOPE: "ccr", CCR_CODEX_REMOTE_FRONTEND_MODE: "app",
+        CCR_CODEX_ISOLATED_IDENTITY: "1", CCR_CODEX_CHATGPT_AUTH_FILE: personalAuth,
+        CCR_CODEX_SHARE_CHATGPT_AUTH: "1", CCR_CODEX_WORKSPACE_BACKEND_ORIGIN: "https://localhost:8000",
+        CCR_CODEX_WORKSPACE_NAME: "CCR Workspace", CCR_CODEX_MODEL_CATALOG: '{"models":[]}' },
+      input: [
+        { id: 1, method: "getAuthStatus", params: { includeToken: true } },
+        { id: 2, method: "account/read" },
+        { id: 3, method: "configRequirements/read" }
+      ].map(JSON.stringify).join("\n") + "\n"
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const responses = new Map(result.stdout.trim().split("\n").map(JSON.parse).map((r) => [r.id, r.result]));
+    const claims = JSON.parse(Buffer.from(responses.get(1).authToken.split(".")[1], "base64url"));
+    assert.equal(claims["https://api.openai.com/auth"].chatgpt_account_id, "ccr-virtual-account");
+    assert.equal(responses.get(2).account.email, "CCR Workspace");
+    assert.deepEqual(responses.get(2).workspaceRouting, {
+      chatgptAccountId: "ccr-virtual-account", backendOrigin: "https://localhost:8000", accountRoutingOverride: "NO_CONSTRAINT"
+    });
+    assert.deepEqual(responses.get(3), { requirements: null, supportsIndependentSpeedModes: true });
+    assert.equal(readFileSync(personalAuth, "utf8"), auth);
+    assert.equal(readFileSync(profileAuth, "utf8"), auth);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 test("Codex app-server preserves workspace routing surfaced by newer app-servers", { skip: process.platform === "win32" }, () => {
@@ -503,6 +565,8 @@ test("Codex app-server preserves workspace routing surfaced by newer app-servers
       ...process.env,
       CCR_CODEX_REMOTE_FRONTEND_MODE: "app",
       CCR_PROFILE_SCOPE: "ccr",
+      CCR_CODEX_ISOLATED_IDENTITY: "1",
+      CCR_CODEX_WORKSPACE_BACKEND_ORIGIN: "https://localhost:8000",
       CCR_REAL_CODEX_CLI_PATH: fakeCodex,
       CODEX_HOME: codexHome,
       CODEXL_CODEX_WORKSPACE_NAME: "CCR Workspace",

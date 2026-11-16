@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createHash, X509Certificate } from "node:crypto";
+import { request as httpsRequest } from "node:https";
 import test from "node:test";
 import {
   codexAppApiBaseUrl,
@@ -11,6 +13,7 @@ import {
   startCodexAppNetResponder
 } from "@ccr/core/agents/codex/app-net-responder.ts";
 import { codexAppNetResponderEnv, codexElectronArgsForTest } from "@ccr/core/agents/codex/app-launch.ts";
+import { codexAppApiCertificate } from "@ccr/core/agents/codex/app-api-certificate.ts";
 
 test("virtual account routes match the gated Codex desktop endpoints", () => {
   const routes = codexVirtualAccountRoutes();
@@ -124,9 +127,12 @@ test("responder serves virtual routes over loopback HTTP and records misses", as
 });
 
 test("codex app env points the desktop API base at the loopback responder", () => {
-  assert.equal(codexAppApiBaseUrl(), "http://localhost:8000");
-  assert.equal(codexAppApiBaseUrl(8000), "http://localhost:8000");
-  assert.deepEqual(codexAppNetResponderEnv("codex", 8000), { CODEX_API_BASE_URL: "http://localhost:8000" });
+  assert.equal(codexAppApiBaseUrl(), "https://localhost:8000");
+  assert.equal(codexAppApiBaseUrl(8000), "https://localhost:8000");
+  assert.deepEqual(codexAppNetResponderEnv("codex", 8000), {
+    CODEX_API_BASE_URL: "https://localhost:8000",
+    CCR_CODEX_WORKSPACE_BACKEND_ORIGIN: "https://localhost:8000"
+  });
   assert.deepEqual(codexAppNetResponderEnv("codex", undefined), {});
   assert.deepEqual(codexAppNetResponderEnv("zcode", 8000), {});
 });
@@ -135,4 +141,48 @@ test("codex electron args never carry debug injection switches", () => {
   const args = codexElectronArgsForTest("/tmp/user-data");
   assert.ok(args.includes("--remote-debugging-port=0"));
   assert.ok(args.every((arg) => !arg.startsWith("--inspect") && !arg.startsWith("--proxy-server") && !arg.startsWith("--ignore-certificate")));
+});
+
+test("desktop workspace API uses HTTPS and trusts only its persistent loopback key", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-codex-api-tls-"));
+  let responder;
+  try {
+    const certificate = codexAppApiCertificate(dir);
+    assert.deepEqual(codexAppApiCertificate(dir), certificate);
+    responder = await startCodexAppNetResponder({ listenPort: 0, logPath: path.join(dir, "api.log"), tls: certificate });
+    // The desktop trusts this key only through the SPKI pin, never the system
+    // CA store (Electron's BoringSSL rejects self-signed ca anchors), so verify
+    // the served key the same way and confirm it stays untrusted without the pin.
+    const result = await new Promise((resolve, reject) => {
+      httpsRequest(`${responder.baseUrl}/accounts/check/v4-2023-04-27`, {
+        rejectUnauthorized: false,
+        agent: false,
+        headers: { "chatgpt-account-id": "ccr-virtual-account" }
+      }, (response) => {
+        const socket = response.socket;
+        const served = new X509Certificate(socket.getPeerCertificate().raw);
+        const servedSpki = createHash("sha256").update(served.publicKey.export({ type: "spki", format: "der" })).digest("base64");
+        const authorized = socket.authorized;
+        let body = "";
+        response.on("data", (chunk) => { body += chunk; });
+        response.on("end", () => resolve({
+          status: response.statusCode,
+          body: JSON.parse(body),
+          spki: servedSpki,
+          authorized
+        }));
+      }).on("error", reject).end();
+    });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.accounts["ccr-virtual-account"].account.account_id, "ccr-virtual-account");
+    assert.equal(result.spki, certificate.spki);
+    assert.equal(result.authorized, false);
+    const args = codexElectronArgsForTest(dir, certificate.spki);
+    assert.ok(args.includes(`--ignore-certificate-errors-spki-list=${certificate.spki}`));
+    assert.ok(!args.includes("--ignore-certificate-errors"));
+    assert.ok(codexElectronArgsForTest(dir, "invalid,other-key").every((arg) => !arg.startsWith("--ignore-certificate")));
+  } finally {
+    responder?.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
 });

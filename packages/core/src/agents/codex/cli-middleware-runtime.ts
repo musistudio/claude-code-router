@@ -4727,6 +4727,10 @@ function loadChatGptAuth() {
     nonEmptyEnv("CODEXL_CODEX_WORKSPACE_NAME") ||
     nonEmptyEnv("CODEXL_CODEX_INSTANCE_NAME") ||
     agentEnv("codex", "PROFILE");
+  // Isolation must apply before reading either profile or shared credentials.
+  if (boolEnv("CCR_CODEX_ISOLATED_IDENTITY") || boolEnv("CODEXL_CODEX_ISOLATED_IDENTITY")) {
+    return virtualChatGptAuth(workspaceName);
+  }
   const seen = new Set();
   for (const authFile of [
     path.join(codexRuntimeHome(), "auth.json"),
@@ -4745,11 +4749,9 @@ function loadChatGptAuth() {
 function defaultCodexChatGptAuthFallback() {
   // The desktop app validates the app-server token against real chatgpt.com
   // endpoints that cannot be redirected (statsig, webview session linking), so
-  // a synthetic token is rejected there. Bridge the user's real default codex
-  // login by default; credits enforcement stays virtual because the desktop
-  // API base points at the local net responder. Set CCR_CODEX_ISOLATED_IDENTITY
-  // to keep the fully synthetic token.
-  if (boolEnv("CCR_CODEX_ISOLATED_IDENTITY") || boolEnv("CODEXL_CODEX_ISOLATED_IDENTITY")) return "";
+  // a synthetic token is rejected there. Sharing a separate default login is
+  // explicit; CCR profiles must not silently borrow the personal identity.
+  if (!boolEnv("CCR_CODEX_SHARE_CHATGPT_AUTH") && !boolEnv("CODEXL_CODEX_SHARE_CHATGPT_AUTH")) return "";
   if (codexRuntimeAgent() === "zcode") return "";
   const fallback = path.join(os.homedir(), ".codex", "auth.json");
   return fallback === path.join(codexRuntimeHome(), "auth.json") ? "" : fallback;
@@ -4839,6 +4841,21 @@ function codexAppAccountRead(auth, existingResult) {
     planType: auth.planType || "unknown"
   };
   result.requiresOpenaiAuth = true;
+  if (auth.accountId === "ccr-virtual-account" && result.workspaceRouting == null) {
+    const origin = nonEmptyEnv("CCR_CODEX_WORKSPACE_BACKEND_ORIGIN");
+    try {
+      const url = new URL(origin);
+      if (url.protocol === "https:" && url.hostname === "localhost" && url.origin === origin) {
+        // 0.155+ requires explicit routing even for local API-key profiles.
+        // Keep the synthetic identity and desktop requests on our TLS listener.
+        result.workspaceRouting = {
+          chatgptAccountId: auth.accountId,
+          backendOrigin: origin,
+          accountRoutingOverride: "NO_CONSTRAINT"
+        };
+      }
+    } catch {}
+  }
   return result;
 }
 
