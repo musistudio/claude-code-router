@@ -62,6 +62,7 @@ import {
   transformCodexMultiAgentBridgeResponseValue
 } from "@ccr/core/gateway/features/codex-multi-agent-bridge";
 import { requestLogRequestedModel } from "@ccr/core/observability/request-log-model";
+import { forwardBailianCountTokens } from "@ccr/core/gateway/features/bailian-count-tokens";
 import { createStreamExperienceMeter, LiveTokenRateTracker } from "@ccr/core/observability/stream-experience";
 import {
   finalizeOpenRouterDiscountProviderRouterSelection,
@@ -104,6 +105,7 @@ type GatewayPluginHttpRequest = {
   url?: string;
 };
 type GatewayPluginHttpReply = {
+  header?(name: string, value: string): unknown;
   code(statusCode: number): {
     send(payload: unknown): unknown;
   };
@@ -350,6 +352,20 @@ export async function createGatewayPlugin(input: GatewayPluginFactoryInput = {})
         const profile = profileForApiKey(config, apiKey);
         if (requestedModel && !isModelAllowedForProfile(config, profile, requestedModel)) {
           return reply.code(403).send(profileModelNotAllowedError(requestedModel));
+        }
+        const upstream = await forwardBailianCountTokens({
+          apiKey,
+          body,
+          config,
+          headers: request.headers ?? {},
+          request: request.raw,
+          response: reply.raw,
+          router
+        });
+        if (reply.raw?.destroyed) return;
+        if (upstream) {
+          for (const [name, value] of Object.entries(upstream.headers)) reply.header?.(name, value);
+          return reply.code(upstream.statusCode).send(upstream.body);
         }
         return router.countTokens(body);
       }

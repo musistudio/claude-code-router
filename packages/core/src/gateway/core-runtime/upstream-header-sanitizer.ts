@@ -4,6 +4,7 @@ import { applyResponsesSessionAffinity, inboundMetadataUserId, resolveResponsesS
 import type { ResponsesSessionAffinityInput } from "@ccr/core/gateway/core-runtime/responses-session-affinity";
 import { applyResponsesToolStrictness } from "@ccr/core/gateway/core-runtime/responses-tool-strictness";
 import type { ResponsesToolStrictnessInput } from "@ccr/core/gateway/core-runtime/responses-tool-strictness";
+import { normalizeBailianThinking } from "@ccr/core/gateway/features/bailian-thinking";
 import {
   normalizeDeepSeekCacheUsage,
   normalizeDeepSeekCacheUsageStream
@@ -295,6 +296,10 @@ export function createGatewayPlugin() {
           headers: mergeUpstreamProviderHeaders(input.request?.headers, input.upstreamRequest.headers),
           url: rewriteUpstreamProviderUrl(input.upstreamRequest.url, input.targetProviderConfig, input.config)
         };
+        if ((upstreamRequest.bodyEncoding ?? "json") === "json") {
+          upstreamRequest.body = normalizeBailianThinking(upstreamRequest.body, upstreamRequest.url);
+          if (upstreamRequest.body !== input.upstreamRequest.body) delete upstreamRequest.headers["content-length"];
+        }
         const apiKey = input.targetProviderConfig?.apikey?.trim();
         if (!upstreamRequest.headers["x-opencode-session"]?.trim()) {
           try {

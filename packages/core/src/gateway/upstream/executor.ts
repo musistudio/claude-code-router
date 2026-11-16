@@ -1016,7 +1016,7 @@ function firstTargetProviderHeader(headers: Record<string, string>): string | un
 }
 
 
-function selectProviderCredentials(
+export function selectProviderCredentials(
   provider: GatewayProviderConfig,
   protocol: GatewayProviderProtocol,
   credentials: ProviderCredentialConfig[],

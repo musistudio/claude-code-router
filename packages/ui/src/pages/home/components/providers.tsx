@@ -14,7 +14,7 @@ import {
   ProviderAccountTestResult, providerBaseUrl, providerCapabilitiesSummary, ProviderCredentialDraft, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerDraftSafetyIssue, providerCredentialDraftPatchFromJson, providerHttpJsonConnectorFromDraft,
   providerBrowserConnectorFromDraft, providerBrowserCredentialsOptions,
   ProviderConnectivityCheckReport, providerCapabilityBaseUrlForProtocol, providerConnectivityApiKeyFromDraft, providerDeepLinkDisplayIcon, providerDraftHasReadyCredentialPool, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerProbeHasSupportedProtocol,
-  providerDisplayIcon, providerGlobalBaseUrlForProbe, providerModelDisplayName, providerModelDisplayTitle, providerProbeModelsForProtocol, providerProtocolOptions, providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
+  providerDisplayIcon, providerGlobalBaseUrlForProbe, providerModelDisplayName, providerModelDisplayTitle, providerProbeModelsForProtocol, providerProtocolOptions, providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, isProviderDraftIdentityReady, providerPresetDraftDefaults, providerPresetPrimaryTemplateEndpointBaseUrl, Search, SelectControl,
   RefreshCw, resolveProviderDeepLinkPreset, ShieldCheck, splitLines, Switch, Tabs, TabsList, TabsTrigger, Textarea, Toggle, translatedProviderProtocolLabel, translateOptions,
   translateProbeProtocolMessage, Trash2, uniqueProviderName, uniqueProviderProtocols, useAppErrorText, useAppText, useEffect, useLayoutEffect, useMemo,
   useRef, useState, X, isGatewayProviderEnabled, isPlainRecord
@@ -2035,7 +2035,7 @@ export function AddProviderForm({
     credentialApiKey &&
     configuredModels.length > 0
   );
-  const providerIdentityReady = importMode || Boolean(selectedPreset || draft.baseUrl.trim());
+  const providerIdentityReady = importMode || isProviderDraftIdentityReady(draft);
   const credentialReady = localAgentImport || Boolean(
     draft.credentialMode === "pool"
       ? credentialPoolReady
@@ -2159,6 +2159,10 @@ export function AddProviderForm({
         modelMetadata: undefined,
         modelSearch: "",
         presetId,
+        presetEndpointVariables: {},
+        presetUsesTemplateEndpoints: false,
+        enhancedSearchApiKey: "",
+        enhancedSearchEnabled: false,
         providerPlugins: [],
         selectedModels: [],
         selectedProtocols: []
@@ -2177,6 +2181,10 @@ export function AddProviderForm({
         modelMetadata: undefined,
         modelSearch: "",
         presetId,
+        presetEndpointVariables: {},
+        presetUsesTemplateEndpoints: false,
+        enhancedSearchApiKey: "",
+        enhancedSearchEnabled: false,
         providerPlugins: [],
         selectedModels: [],
         selectedProtocols: []
@@ -2185,13 +2193,13 @@ export function AddProviderForm({
     }
 
     const preset = findProviderPreset(presetId);
-    const endpoint = preset ? primaryProviderPresetEndpoint(preset) : undefined;
+    const presetDefaults = preset ? providerPresetDraftDefaults(preset) : undefined;
     const previousPreset = findProviderPreset(draft.presetId);
     const generatedName = providerDraftNameShouldFollowPreset(draft.name, previousPreset, t);
     const accountDraft = createProviderAccountDraftFromConfig(defaultProviderAccountConfigForPreset(presetId));
     onChange({
       ...accountDraft,
-      baseUrl: endpoint?.baseUrl ?? "",
+      baseUrl: presetDefaults?.baseUrl ?? "",
       catalogModelMetadata: undefined,
       icon: "",
       modelDescriptions: undefined,
@@ -2201,10 +2209,14 @@ export function AddProviderForm({
       modelsText: draft.modelsText.trim() || preset?.defaultModels?.join("\n") || "",
       name: mode === "add" && preset && generatedName ? uniqueProviderName(providers, t(preset.name)) : draft.name,
       presetId,
+      presetEndpointVariables: presetDefaults?.presetEndpointVariables ?? {},
+      presetUsesTemplateEndpoints: presetDefaults?.presetUsesTemplateEndpoints ?? false,
+      enhancedSearchApiKey: "",
+      enhancedSearchEnabled: false,
       providerPlugins: [],
-      protocol: endpoint?.protocols[0] ?? draft.protocol,
+      protocol: presetDefaults?.protocol ?? draft.protocol,
       selectedModels: [],
-      selectedProtocols: uniqueProviderProtocols(preset?.endpoints.flatMap((item) => item.protocols) ?? endpoint?.protocols ?? [])
+      selectedProtocols: presetDefaults?.selectedProtocols ?? []
     }, true);
   }
 
@@ -2279,6 +2291,19 @@ export function AddProviderForm({
                     options={providerPresetOptions}
                   />
                 </div>
+                {selectedPreset?.id === "bailian" && selectedPreset.endpoints.some((item) => item.variables?.length) ? (
+                  <ProviderTemplateEndpointFields
+                    draft={draft}
+                    onChange={onChange}
+                    preset={selectedPreset}
+                  />
+                ) : null}
+                {selectedPreset?.id === "bailian" ? (
+                  <ProviderBailianEnhancedSearchFields
+                    draft={draft}
+                    onChange={onChange}
+                  />
+                ) : null}
               </>
             )}
             <Field className="sm:col-span-2" label={t("Name")}>
@@ -2881,6 +2906,131 @@ function ProviderCredentialRow({
           </AnimatedDisclosure>
         ) : null}
       </AnimatePresence>
+    </div>
+  );
+}
+
+function ProviderBailianEnhancedSearchFields({
+  draft,
+  onChange
+}: {
+  draft: AddProviderDraft;
+  onChange: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
+}) {
+  const t = useAppText();
+  const description = t("Handle Claude Code dedicated WebSearch queries routed to this provider with Bailian enhanced search. Leave the API key empty to use an available provider API key.");
+  return (
+    <div className="sm:col-span-2 space-y-3 rounded-md border border-border bg-background/60 p-3">
+      <div className="flex min-w-0 items-center justify-between gap-3 text-[12px] font-semibold">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="min-w-0 truncate">{t("Enhanced web search")}</span>
+          <Tooltip
+            aria-label={description}
+            className="h-5 w-5 items-center justify-center rounded-full text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+            content={description}
+            contentClassName="w-[260px] max-w-[calc(100vw-64px)] whitespace-normal px-2.5 py-2 text-left font-medium leading-4"
+            side="right"
+            tabIndex={0}
+          >
+            <Info className="h-3.5 w-3.5" aria-hidden="true" />
+          </Tooltip>
+        </span>
+        <Switch
+          aria-label={t("Enhanced web search")}
+          checked={draft.enhancedSearchEnabled}
+          onCheckedChange={(enhancedSearchEnabled) => onChange({ enhancedSearchEnabled })}
+        />
+      </div>
+      {draft.enhancedSearchEnabled ? (
+        <Field label={t("Enhanced search API key")}>
+          <Input
+            placeholder={t("Leave empty to use the provider API key")}
+            type="password"
+            value={draft.enhancedSearchApiKey}
+            onChange={(event) => onChange({ enhancedSearchApiKey: event.target.value })}
+          />
+        </Field>
+      ) : null}
+    </div>
+  );
+}
+
+function ProviderTemplateEndpointFields({
+  draft,
+  onChange,
+  preset
+}: {
+  draft: AddProviderDraft;
+  onChange: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
+  preset: ProviderPreset;
+}) {
+  const t = useAppText();
+  const templateVariables = preset.endpoints.find((item) => item.variables?.length)?.variables ?? [];
+  const domainTypeOptions = [
+    { label: t("Workspace domain"), value: "workspace" },
+    { label: t("DashScope domain"), value: "dashscope" }
+  ];
+
+  function updateDomainType(value: string) {
+    const usesTemplate = value === "workspace";
+    if (usesTemplate === draft.presetUsesTemplateEndpoints) {
+      return;
+    }
+    onChange(usesTemplate
+      ? {
+          presetEndpointVariables: draft.presetEndpointVariables,
+          presetUsesTemplateEndpoints: true,
+          baseUrl: providerPresetPrimaryTemplateEndpointBaseUrl(preset, draft.presetEndpointVariables)
+        }
+      : {
+          presetUsesTemplateEndpoints: false,
+          baseUrl: primaryProviderPresetEndpoint(preset)?.baseUrl ?? ""
+        }, true);
+  }
+
+  function updateTemplateVariable(name: string, value: string) {
+    const presetEndpointVariables = { ...draft.presetEndpointVariables, [name]: value.trim() };
+    onChange({
+      baseUrl: providerPresetPrimaryTemplateEndpointBaseUrl(preset, presetEndpointVariables),
+      presetEndpointVariables
+    }, true);
+  }
+
+  return (
+    <div className="sm:col-span-2 space-y-3 rounded-md border border-border bg-background/60 p-3">
+      <Field label={t("Domain type")}>
+        <SelectControl
+          onChange={updateDomainType}
+          options={domainTypeOptions}
+          value={draft.presetUsesTemplateEndpoints ? "workspace" : "dashscope"}
+        />
+      </Field>
+      {draft.presetUsesTemplateEndpoints ? (
+        <>
+          {templateVariables.map((variable) => (
+            <Field key={variable.name} label={t(variable.label ?? variable.name)}>
+              {variable.kind === "select" ? (
+                <SelectControl
+                  onChange={(value) => updateTemplateVariable(variable.name, value)}
+                  options={(variable.options ?? []).map((option) => ({
+                    label: t(option.label),
+                    value: option.value
+                  }))}
+                  value={draft.presetEndpointVariables[variable.name] ?? (variable.options ?? [])[0]?.value ?? ""}
+                />
+              ) : (
+                <Input
+                  value={draft.presetEndpointVariables[variable.name] ?? ""}
+                  onChange={(event) => updateTemplateVariable(variable.name, event.target.value)}
+                />
+              )}
+            </Field>
+          ))}
+          <div className="min-h-4 break-all font-mono text-[11px] leading-5 text-muted-foreground" title={draft.baseUrl}>
+            {draft.baseUrl || t("Enter the workspace ID to build the dedicated endpoint domain.")}
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -3512,9 +3662,8 @@ export function AddProviderDialog({
   const submitLoading = probeLoading || connectivityLoading || iconDetecting || submitting;
   const submitDisabled = !canSubmit || submitLoading;
   const wizardMode = mode === "add";
-  const selectedPreset = findProviderPreset(draft.presetId);
   const localAgentImport = draft.providerPlugins.length > 0;
-  const providerIdentityReady = Boolean(importProvider) || Boolean(selectedPreset || draft.baseUrl.trim());
+  const providerIdentityReady = Boolean(importProvider) || isProviderDraftIdentityReady(draft);
   const credentialPoolReady = providerDraftHasReadyCredentialPool(draft);
   const credentialReady = localAgentImport || Boolean(
     draft.credentialMode === "pool"

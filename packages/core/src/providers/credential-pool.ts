@@ -64,6 +64,19 @@ export function recordProviderCredentialOutcome(
   }
 }
 
+/** Reserve non-model usage, such as a provider-hosted search request. */
+export function reserveProviderCredentialUsage(
+  provider: GatewayProviderConfig,
+  credential: ProviderCredentialConfig,
+  usage: ApiKeyLimitUsage
+): boolean {
+  if (readProviderCredentialCooldown(provider, credential) || providerCredentialLimitState(provider, credential, usage).blocked) {
+    return false;
+  }
+  incrementProviderCredentialCounters(provider, credential, usage);
+  return true;
+}
+
 export function readProviderCredentialCooldown(
   provider: GatewayProviderConfig,
   credential: ProviderCredentialConfig

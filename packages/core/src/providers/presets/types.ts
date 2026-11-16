@@ -1,9 +1,22 @@
 import type { GatewayProviderProtocol, ProviderAccountConfig } from "@ccr/core/contracts/app";
 
+export type ProviderPresetEndpointVariableOption = {
+  label: string;
+  value: string;
+};
+
+export type ProviderPresetEndpointVariable = {
+  kind: "text" | "select";
+  label?: string;
+  name: string;
+  options?: ProviderPresetEndpointVariableOption[];
+};
+
 export type ProviderPresetEndpoint = {
   baseUrl: string;
   label?: string;
   protocols: GatewayProviderProtocol[];
+  variables?: ProviderPresetEndpointVariable[];
   websiteUrl?: string;
 };
 

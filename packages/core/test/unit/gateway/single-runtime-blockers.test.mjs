@@ -3,6 +3,19 @@ import test from "node:test";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
 import { singleGatewayRuntimeBlockersForTest } from "@ccr/core/gateway/application/gateway-service.ts";
 
+test("Bailian enhanced search uses the CCR request pipeline only while an enabled provider needs it", () => {
+  const config = createDefaultAppConfig();
+  const provider = { name: "Bailian", models: ["test"], enhancedSearch: { enabled: true } };
+  config.Providers = [provider];
+  assert.ok(singleGatewayRuntimeBlockersForTest(config, pluginCapableOptions()).includes("bailian-enhanced-search"));
+
+  provider.enhancedSearch.enabled = false;
+  assert.equal(singleGatewayRuntimeBlockersForTest(config, pluginCapableOptions()).includes("bailian-enhanced-search"), false);
+  provider.enhancedSearch.enabled = true;
+  provider.enabled = false;
+  assert.equal(singleGatewayRuntimeBlockersForTest(config, pluginCapableOptions()).includes("bailian-enhanced-search"), false);
+});
+
 test("single gateway runtime falls back when Media Tools need CCR HTTP routes", () => {
   const config = createDefaultAppConfig();
   config.mediaTools.enabled = true;

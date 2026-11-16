@@ -255,7 +255,8 @@ import {
   primaryProviderPresetEndpoint as primaryProviderPresetEndpointFromPreset,
   providerApiKeySafetyIssueInList,
   providerEndpointCanReceiveProviderApiKeyInList,
-  providerIdentitySafetyIssueInList
+  providerIdentitySafetyIssueInList,
+  providerPresetTemplateEndpointVariablesForBaseUrlInList
 } from "@ccr/core/providers/presets/utils";
 import { normalizeProviderBaseUrl, providerUrlWithDefaultScheme } from "@ccr/core/providers/url";
 import {
@@ -508,6 +509,10 @@ function findProviderPresetByBaseUrl(baseUrl: string): ProviderPreset | undefine
   return findProviderPresetByBaseUrlInList(providerPresetCache, baseUrl);
 }
 
+function providerPresetTemplateEndpointVariablesForBaseUrl(baseUrl: string): Record<string, string> | undefined {
+  return providerPresetTemplateEndpointVariablesForBaseUrlInList(providerPresetCache, baseUrl);
+}
+
 function findProviderPresetByIdentity(name: string | undefined): ProviderPreset | undefined {
   return findProviderPresetByIdentityInList(providerPresetCache, name);
 }
@@ -562,7 +567,7 @@ export {
   zaiGlobalGeneralProviderIconUrl, zhipuCnCodingProviderIconUrl, zhipuCnGeneralProviderIconUrl, trayCyanIconUrl, trayOrangeIconUrl, trayVioletIconUrl, BUILTIN_FUSION_TOOL_SERVER_NAME,
   BUILTIN_FUSION_VISION_TOOL_NAME, BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, enforceSingleEnabledGlobalProfilePerAgent, OVERVIEW_WIDGET_SIZE_VALUES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS,
   customProviderPresetId, defaultProviderAccountConfig, findProviderPreset, findProviderPresetByBaseUrl, findProviderPresetByIdentity, primaryProviderPresetEndpoint, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey,
-  providerIdentitySafetyIssue, getProviderPresets, setProviderPresets, standardProviderAccountConfig, normalizeProviderBaseUrl, providerUrlWithDefaultScheme
+  providerIdentitySafetyIssue, providerPresetTemplateEndpointVariablesForBaseUrl, getProviderPresets, setProviderPresets, standardProviderAccountConfig, normalizeProviderBaseUrl, providerUrlWithDefaultScheme
 };
 export type {
   HTMLAttributes, ReactDragEvent, ReactPointerEvent, ReactNode, CollisionDetection, DragEndEvent, DragOverEvent, DragStartEvent,
