@@ -13,12 +13,22 @@ provider URLs are never copied into the generated error.
 
 The release action applies this patch to its isolated gateway checkout before
 typechecking, running the upstream regressions, and packing the dependency. For
-a local source build, apply it to an isolated checkout of that revision, build
+a local source build, apply both patches in the order used by the release action to an isolated checkout of that revision, build
 the gateway, and set `CCR_GATEWAY_SOURCE_DIR` (or
 `CCR_DOCKER_GATEWAY_SOURCE_DIR` for Docker) to that checkout. Set
 `CCR_TEST_GATEWAY_ENTRY` to its `dist/index.js` when running CCR's wire tests.
 The registry package alone does not contain this unreleased fix. Remove the
 patch when updating the pinned gateway to a revision containing these changes.
+
+`ai-gateway-native-safeguards.patch` applies after the stream patch. It preserves
+opaque native Anthropic request/response fields while a virtual model passes
+through the standard representation, including safeguards, verdicts and future
+fields. Symbol metadata stays internal and is not serialized into other
+protocols. Buffered and optimistic SSE retain the native verdict and tool IDs.
+Virtual profiles with internal gateway tools reject safeguards requests before
+an upstream call or tool execution: their tool execution owner differs from the
+client-owned execution expected by the native protocol. Ordinary native models
+and virtual profiles without internal tools support the transparent path.
 
 The upstream code is MIT licensed:
 

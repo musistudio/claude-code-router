@@ -16,6 +16,7 @@ import type {
   AppRenderHtmlPngRequest,
   AppRenderHtmlPngResult,
   AppSaveConfigOptions,
+  GlobalProfileRecoveryResult,
   AppUpdateStatus,
   ApiKeyConfig,
   BotGatewayQrLoginCancelRequest,
@@ -106,6 +107,7 @@ function localizedIpcError(error: unknown): Error {
 contextBridge.exposeInMainWorld("ccr", {
   applyClaudeAppGateway: (config?: AppConfig) => invoke(IPC_CHANNELS.appApplyClaudeAppGateway, config) as Promise<ClaudeAppGatewayApplyResult>,
   applyProfile: () => invoke(IPC_CHANNELS.appApplyProfile) as Promise<ProfileApplyResult>,
+  recoverGlobalProfile: (profileId: string) => invoke(IPC_CHANNELS.appRecoverGlobalProfile, profileId) as Promise<GlobalProfileRecoveryResult>,
   cancelBotGatewayQrLogin: (request: BotGatewayQrLoginCancelRequest) => invoke(IPC_CHANNELS.appBotGatewayQrLoginCancel, request) as Promise<BotGatewayQrLoginCancelResult>,
   captureElementPng: (request: AppCaptureElementPngRequest) => invoke(IPC_CHANNELS.appCaptureElementPng, request) as Promise<AppCaptureElementPngResult>,
   checkProviderConnectivity: (request: GatewayProviderConnectivityCheckRequest) => invoke(IPC_CHANNELS.appCheckProviderConnectivity, request) as Promise<GatewayProviderConnectivityCheckReport>,

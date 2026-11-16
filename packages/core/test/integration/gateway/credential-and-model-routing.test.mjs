@@ -43,7 +43,7 @@ async function run(providerFactory, probes, options = {}) {
       res.end(JSON.stringify({ error: { message: "defer_loading requires a deferred loader" } }));
       return;
     }
-    if (key === "bad" || failure === "all-fail") {
+    if (key === "bad" || failure === "all-fail" || failure === "config-error") {
       if (failure === "network") { req.socket.destroy(); return; }
       if (failure === "timeout") return; // The core must abort this attempt.
       if (failure === "partial") {
@@ -58,16 +58,16 @@ async function run(providerFactory, probes, options = {}) {
         setTimeout(() => res.destroy(), 30).unref();
         return;
       }
-      const status = typeof failure === "number" ? failure : 401;
+      const status = failure === "config-error" ? 500 : typeof failure === "number" ? failure : 401;
       res.writeHead(status, { "content-type": "application/json", "retry-after": "0" });
-      res.end(JSON.stringify({ error: { message: `synthetic ${status}` } }));
+      res.end(JSON.stringify({ error: { message: failure === "config-error" ? "DEVIN_AGENTIC_HOME must be an absolute path inside the bridge sandbox" : `synthetic ${status}` } }));
       return;
     }
     if (req.url.startsWith("/native") && body.stream) {
       const safeguardResults = body.safeguards ? { safeguard_results: { synthetic_verdict: "allow", tool_use_id: "toolu_guard_test_123" } } : {};
       const message = { id: "msg_test", type: "message", role: "assistant", model: body.model, content: [], usage: { input_tokens: 1, output_tokens: 1 } };
       res.writeHead(200, { "content-type": "text/event-stream" });
-      res.end(`event: message_start\ndata: ${JSON.stringify({ type: "message_start", message, ...safeguardResults })}\n\nevent: content_block_start\ndata: ${JSON.stringify({ type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "toolu_guard_test_123", name: "t", input: {} } })}\n\nevent: message_delta\ndata: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 1 }, ...safeguardResults })}\n\nevent: message_stop\ndata: {"type":"message_stop"}\n\n`);
+      res.end(`event: message_start\ndata: ${JSON.stringify({ type: "message_start", message, ...safeguardResults })}\n\nevent: content_block_start\ndata: ${JSON.stringify({ type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "toolu_guard_test_123", name: "t", input: {} } })}\n\nevent: message_delta\ndata: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "tool_use", ...(body.safeguards ? { safeguard_results: safeguardResults.safeguard_results } : {}) }, usage: { output_tokens: 1 }, ...safeguardResults })}\n\nevent: message_stop\ndata: {"type":"message_stop"}\n\n`);
     } else if (req.url.startsWith("/native")) {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ id: "msg_test", type: "message", role: "assistant", model: body.model,
@@ -100,7 +100,7 @@ async function run(providerFactory, probes, options = {}) {
     const port = reserve.address().port;
     await close(reserve);
     const file = path.join(root, "gateway.json");
-    writeFileSync(file, JSON.stringify({ host: "127.0.0.1", port, upstreamTimeoutMs: 200,
+    writeFileSync(file, JSON.stringify({ host: "127.0.0.1", port, upstreamTimeoutMs: 2000,
       auth: { enabled: false }, rawTrace: { enabled: false }, billing: { enabled: false },
       logging: { level: "error", accessLog: false }, providers: compiled.providers, plugins: [router], virtualModelProfiles: compiled.virtualModelProfiles }));
     gateway = spawn(process.execPath, [gatewayEntry], { cwd: root,
@@ -135,7 +135,11 @@ async function run(providerFactory, probes, options = {}) {
         assert.equal(attempt.body.temperature, probe.body.temperature, probe.name);
         assert.equal(attempt.path, attempts[0].path, "credential fallback preserves the endpoint");
       }
-      if (failure === "all-fail") {
+      if (failure === "config-error") {
+        assert.ok(response.status >= 400, responseText);
+        assert.match(JSON.parse(responseText).error.message, /devin.*500.*DEVIN_AGENTIC_HOME/i);
+        assert.match(JSON.parse(responseText).error.message, /Requested model: devin\/agent/);
+      } else if (failure === "all-fail") {
         assert.ok(response.status >= 400, responseText);
         assert.match(responseText, /401|synthetic/);
         assert.ok(attempts.some(attempt => attempt.key === "good"));
@@ -207,10 +211,15 @@ test("#1912 incompatible native upstreams receive complete tool definitions with
   await run(url => [{ id: "legacy", name: "Legacy", type: "anthropic_messages", api_base_url: `${url}/native`, api_key: "test", models: ["tool-model"], supportsDeferredTools: false }], [p]);
 });
 
+test("#1951 failed configured providers expose their name and nested upstream cause to Claude and Codex", async () => {
+  await run(url => [{ id: "devin", name: "Devin", type: "openai_chat_completions", api_base_url: `${url}/v1`, api_key: "test", models: ["agent"] }],
+    [probe("devin/agent", "config-error", "/v1/messages"), probe("devin/agent", "config-error", "/v1/responses")]);
+});
+
 test("#1932 native safeguards, beta headers, verdicts and tool IDs survive JSON and SSE", async () => {
   const probes = [false, true].map(stream => {
     const p = probe("safe/guard-model", undefined, "/v1/messages", stream);
-    p.body.safeguards = { synthetic_check: { tool_use_id: "toolu_guard_test_123" } };
+    p.body.safeguards = { synthetic_check: { tool_use_id: "toolu_guard_test_123", opaque_config: { unknown_future: [1, "keep"] } } };
     p.body.tools = [{ name: "t", defer_loading: true, input_schema: { type: "object" } }];
     p.headers = { "anthropic-beta": "synthetic-safeguards-2026-11-16" };
     p.assertResponse = (text, calls) => {
@@ -225,6 +234,39 @@ test("#1932 native safeguards, beta headers, verdicts and tool IDs survive JSON 
     return p;
   });
   await run(url => [{ id: "safe", name: "Safe", type: "anthropic_messages", api_base_url: `${url}/native`, api_key: "test", models: ["guard-model"] }], probes);
+});
+
+test("#1932 native virtual models retain safeguards and their verdicts", { skip: !process.env.CCR_TEST_GATEWAY_ENTRY, timeout: 30000 }, async () => {
+  for (const streamMode of ["buffered", "optimistic"]) {
+    const probes = [false, true].flatMap(coreOnly => [false, true].map(stream => {
+      const p = { ...probe("Fusion/guarded", undefined, "/v1/messages", stream), coreOnly, expectedUpstreamModel: "guard-model" };
+      p.body.safeguards = { synthetic_check: { tool_use_id: "toolu_guard_test_123", opaque_config: { unknown_future: [1, "keep"] } } };
+      p.body.future_native_request = { keep: ["opaque", 123] };
+      p.body.tools = [{ name: "t", input_schema: { type: "object" } }];
+      p.headers = { "anthropic-beta": "synthetic-safeguards-2026-11-16" };
+      p.assertResponse = (text, calls) => {
+        assert.deepEqual(calls[0].body.safeguards, p.body.safeguards, `request safeguards: ${streamMode} ${coreOnly} ${stream}`);
+        assert.deepEqual(calls[0].body.future_native_request, p.body.future_native_request);
+        assert.equal(calls[0].beta, p.headers["anthropic-beta"]);
+        assert.match(text, /"safeguard_results":\s*\{/);
+        assert.match(text, /"synthetic_verdict":\s*"allow"/);
+        assert.match(text, /"tool_use_id":\s*"toolu_guard_test_123"/);
+        assert.match(text, /"id":\s*"toolu_guard_test_123"/);
+        if (stream) {
+          const events = text.split(/\r?\n/).filter(line => line.startsWith("data: {")).map(line => JSON.parse(line.slice(6)));
+          assert.deepEqual(events.find(event => event.type === "message_delta").delta.safeguard_results,
+            { synthetic_verdict: "allow", tool_use_id: "toolu_guard_test_123" }, "native final-delta verdict remains client-readable");
+        }
+      };
+      return p;
+    }));
+    await run(url => [{ id: "safe", name: "Safe", type: "anthropic_messages", api_base_url: `${url}/native`, api_key: "test", models: ["guard-model"] }], probes,
+      { virtualModelProfiles: [{ id: "guarded", key: "guarded", displayName: "Guarded", enabled: true,
+        match: { exactAliases: ["guarded", "Fusion/guarded"], prefixes: [], suffixes: [] },
+        baseModel: { mode: "fixed", fixedModel: "safe/guard-model" }, tools: [],
+        execution: { mode: "tool_loop", maxTurns: 2, maxToolCalls: 2, clientToolsPolicy: "passthrough", streamMode },
+        materialization: { enabled: true, includeInGatewayModels: true } }] });
+  }
 });
 
 

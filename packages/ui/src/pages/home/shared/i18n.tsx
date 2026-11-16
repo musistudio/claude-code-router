@@ -887,6 +887,8 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Agent Mix": "Agent 分布",
       "Agent profile": "Agent 配置档案",
       "Agent profiles": "Agent 配置档案",
+      "Restore original settings": "恢复原始设置",
+      "Original settings restored. This profile is disabled. Reopen the agent.": "已恢复原始设置并停用此配置。请重新打开 Agent。",
       "All agents": "全部 Agent",
       "All models": "全部模型",
       "All providers": "全部供应商",

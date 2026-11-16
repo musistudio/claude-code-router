@@ -33,6 +33,9 @@ export type AggregateErrorAttempt = {
   message?: unknown;
   stage?: unknown;
   status?: unknown;
+  provider?: unknown;
+  provider_name?: unknown;
+  model?: unknown;
 };
 
 type AggregateErrorPayload = {
@@ -55,7 +58,7 @@ export function appendAggregateErrorAttemptSummary(text: string, previousAttempt
   error?: string;
   model?: string;
   statusCode?: number;
-}> = []): string | undefined {
+}> = [], context: { requestedModel?: string; recoveryProfile?: string } = {}): string | undefined {
   let payload: AggregateErrorPayload;
   try {
     const parsed: unknown = JSON.parse(text);
@@ -111,11 +114,15 @@ export function appendAggregateErrorAttemptSummary(text: string, previousAttempt
   }
 
   const summary = formatAttemptSummaries(error.attempts);
-  if (!summary || error.message.endsWith(summary)) {
+  if (!summary) {
     return undefined;
   }
-
-  const enriched: AggregateErrorPayload = { ...payload, error: { ...error, message: `${error.message} ${summary}` } };
+  const label = (value: string) => value.replace(/[\r\n\t]/g, " ").slice(0, 160);
+  const tail = summary
+    + (context.requestedModel ? ` Requested model: ${label(context.requestedModel)}.` : "")
+    + (context.recoveryProfile ? ` To disable profile "${label(context.recoveryProfile)}", open CCR Agent profiles and choose Restore original settings.` : "");
+  if (error.message.endsWith(tail)) return undefined;
+  const enriched: AggregateErrorPayload = { ...payload, error: { ...error, message: `${error.message} ${tail}` } };
   return `${JSON.stringify(enriched)}\n`;
 }
 
@@ -225,7 +232,10 @@ function formatAttemptSummary(attempt: AggregateErrorAttempt): string | undefine
   if (!stage && !status && !message) {
     return undefined;
   }
-  const label = [stage, status].filter(Boolean).join("|");
+  const provider = primitiveLabel(attempt.provider_name) ?? primitiveLabel(attempt.provider);
+  const model = primitiveLabel(attempt.model);
+  const target = [provider, model].filter(Boolean).map(value => value!.replace(/[\r\n\t]/g, " ").slice(0, 100)).join("/");
+  const label = [target, stage, status].filter(Boolean).join("|");
   return label ? `[${label}] ${message ?? ""}`.trim() : (message ?? "");
 }
 
@@ -258,6 +268,11 @@ function extractAttemptDetailMessage(details: unknown): string | undefined {
   if (direct) {
     return direct;
   }
+  if (typeof record.error === "object" && record.error !== null && !Array.isArray(record.error)) {
+    const nested = describeDetailError(record.error as Record<string, unknown>);
+    if (nested) return nested;
+  }
+  if (typeof record.error === "string" && record.error.trim()) return record.error.trim().slice(0, attemptMessageLimit);
   const raw = record.raw;
   if (typeof raw === "string" && raw.trim()) {
     const parsed = parseSseErrorPayload(raw);

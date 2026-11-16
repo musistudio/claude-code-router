@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import net from "node:net";
 import os from "node:os";
@@ -212,6 +212,114 @@ test("startGateway reuses an already healthy CCR gateway on the configured port"
     await gatewayService.stop();
     await closeServer(externalGateway);
   }
+});
+
+test("#1951 authenticated recovery restores both agent configs while the gateway is down and survives reapply", async () => {
+  const { startWebManagementServer } = await import("@ccr/core/web/management-server.ts");
+  const { createDefaultAppConfig } = await import("@ccr/core/config/default-config.ts");
+  const { applyProfileConfig } = await import("@ccr/core/profiles/service.ts");
+  const { loadAppConfig, saveAppConfig } = await import("@ccr/core/config/config.ts");
+  const { replacePersistedAppConfig } = await import("@ccr/core/config/config-repository.ts");
+  const root = mkdtempSync(path.join(runtimeRoot, "recovery-"));
+  const claudeFile = path.join(root, "claude", "settings.json");
+  const codexFile = path.join(root, "codex", "config.toml");
+  const originals = new Map([
+    [claudeFile, JSON.stringify({ env: { USER_SETTING: "kept", ANTHROPIC_BASE_URL: "https://original.invalid", ANTHROPIC_API_BASE_URL: "https://original.invalid", CLAUDE_AGENT_API_BASE_URL: "https://original.invalid" }, permissions: { defaultMode: "default" } }) + "\n"],
+    [codexFile, 'model = "original-model"\nmodel_provider = "original-provider"\n[model_providers.original-provider]\nbase_url = "https://original.invalid/v1"\n']
+  ]);
+  for (const [file, content] of originals) { mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, content); }
+  const config = createDefaultAppConfig();
+  config.Providers = [{ name: "Broken", models: ["m"], type: "openai_chat_completions", api_key: "private-provider-key" }];
+  config.virtualModelProfiles = [];
+  config.profile.enabled = true;
+  config.profile.profiles = [
+    { id: "recovery-claude", name: "Claude Main", agent: "claude-code", scope: "global", enabled: true, model: "Broken/m", settingsFile: claudeFile },
+    { id: "recovery-codex", name: "Codex Main", agent: "codex", scope: "global", enabled: true, model: "Broken/m", configFile: codexFile }
+  ];
+  await applyProfileConfig(config);
+  for (const [file, content] of originals) assert.notEqual(readFileSync(file, "utf8"), content);
+  const edited = JSON.parse(readFileSync(claudeFile, "utf8"));
+  edited.env.USER_SETTING = "edited after takeover";
+  edited.statusLine = { type: "command", command: "my-status" };
+  writeFileSync(claudeFile, JSON.stringify(edited));
+  const expectedClaude = JSON.parse(originals.get(claudeFile));
+  expectedClaude.env.USER_SETTING = edited.env.USER_SETTING;
+  expectedClaude.statusLine = edited.statusLine;
+  await replacePersistedAppConfig(config);
+  const stale = await loadAppConfig();
+  // Invalid unrelated settings must not prevent a narrowly scoped emergency opt-out.
+  config.profile.profiles.push({ id: "invalid-unrelated", name: "Unrelated", agent: "claude-code", scope: "ccr", enabled: true, model: "Gone/model", availableModels: ["Gone/model"] });
+  await replacePersistedAppConfig(config);
+  const runtime = await startWebManagementServer({ authToken: "recovery-auth", host: "127.0.0.1", port: 0, startGateway: false });
+  try {
+    const denied = await fetch(new URL("/api/ccr/rpc", runtime.url), { method: "POST",
+      body: JSON.stringify({ method: "recoverGlobalProfile", args: ["recovery-claude"] }), headers: { "content-type": "application/json" } });
+    assert.equal(denied.status, 401);
+    assert.equal((await loadAppConfig()).profile.profiles[0].enabled, true);
+    for (const id of ["recovery-claude", "recovery-codex"]) {
+      const result = await rpc(runtime.url, "recovery-auth", "recoverGlobalProfile", [id]);
+      assert.equal(result.ok, true, JSON.stringify(result));
+      assert.equal(result.value.status.ok, true);
+      assert.equal(result.value.config.profile.profiles.find(profile => profile.id === id).enabled, false);
+      assert.ok(!JSON.stringify(result).includes("private-provider-key"), "web recovery redacts returned credentials");
+    }
+    await assert.rejects(saveAppConfig(stale), error => error.name === "AppConfigConflictError");
+    const saved = await loadAppConfig();
+    assert.equal(saved.profile.profiles.find(profile => profile.id === "invalid-unrelated").enabled, true);
+    await applyProfileConfig(saved);
+    assert.deepEqual(JSON.parse(readFileSync(claudeFile, "utf8")), expectedClaude, "restore preserves unrelated user edits and never reinstalls the takeover");
+    assert.equal(readFileSync(codexFile, "utf8"), originals.get(codexFile));
+    const rejected = await fetch(new URL("/api/ccr/rpc", runtime.url), { method: "POST",
+      body: JSON.stringify({ method: "recoverGlobalProfile", args: ["invalid-unrelated"] }),
+      headers: { "content-type": "application/json", "x-ccr-web-auth": "recovery-auth" } });
+    assert.equal(rejected.status, 500);
+  } finally { await runtime.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+test("#1951 missing original backup reports failure while persisting the disabled state", async () => {
+  const { recoverGlobalAgentProfile } = await import("@ccr/core/profiles/service.ts");
+  const { createDefaultAppConfig } = await import("@ccr/core/config/default-config.ts");
+  const { loadAppConfig } = await import("@ccr/core/config/config.ts");
+  const { replacePersistedAppConfig } = await import("@ccr/core/config/config-repository.ts");
+  const root = mkdtempSync(path.join(runtimeRoot, "missing-backup-"));
+  const file = path.join(root, "config.toml");
+  const managed = '# BEGIN CCR managed profile\nmodel = "broken"\n# END CCR managed profile\n';
+  writeFileSync(file, managed);
+  const config = createDefaultAppConfig();
+  config.profile.profiles = [{ id: "missing-backup", name: "Missing backup", agent: "codex", scope: "global", enabled: true, model: "broken", configFile: file }];
+  await replacePersistedAppConfig(config);
+  try {
+    const result = await recoverGlobalAgentProfile("missing-backup");
+    assert.equal(result.status.ok, false);
+    assert.match(result.status.message, /No original.*backup/);
+    assert.equal((await loadAppConfig()).profile.profiles[0].enabled, false);
+    assert.equal(readFileSync(file, "utf8"), managed);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("#1951 recovery preserves edits to a newly created Claude file and reports malformed settings", async () => {
+  const { recoverGlobalAgentProfile } = await import("@ccr/core/profiles/service.ts");
+  const { createDefaultAppConfig } = await import("@ccr/core/config/default-config.ts");
+  const { replacePersistedAppConfig } = await import("@ccr/core/config/config-repository.ts");
+  const root = mkdtempSync(path.join(runtimeRoot, "claude-recovery-extra-"));
+  try {
+    for (const malformed of [false, true]) {
+      const file = path.join(root, malformed ? "bad.json" : "new.json");
+      const config = createDefaultAppConfig();
+      config.profile.profiles = [{ id: "claude-recovery-extra", name: "Claude recovery", agent: "claude-code", enabled: true, scope: "global", settingsFile: file }];
+      await replacePersistedAppConfig(config);
+      const content = malformed ? "{bad JSON" : JSON.stringify({ apiKeyHelper: "ccr-claude-code-api-key-extra",
+        env: { ANTHROPIC_BASE_URL: "http://127.0.0.1:3456", ANTHROPIC_API_BASE_URL: "http://127.0.0.1:3456", CLAUDE_AGENT_API_BASE_URL: "http://127.0.0.1:3456", TZ: "UTC", USER_EDIT: "keep" } });
+      writeFileSync(file, content); writeFileSync(file + ".ccr-original-missing", "");
+      const result = await recoverGlobalAgentProfile("claude-recovery-extra");
+      assert.equal(result.config.profile.profiles[0].enabled, false);
+      assert.equal(result.status.ok, !malformed);
+      if (malformed) {
+        assert.match(result.status.message, /disabled.*not valid JSON/);
+        assert.equal(readFileSync(file, "utf8"), content);
+      } else assert.deepEqual(JSON.parse(readFileSync(file, "utf8")), { env: { USER_EDIT: "keep" } });
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 async function rpc(baseUrl, authToken, method, args = []) {
