@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { createServer } from "node:http";
 import path from "node:path";
 import test from "node:test";
@@ -539,6 +540,90 @@ test("built ToolHub MCP runtime does not add CCR handoff tools for non-CCR brows
   assert.deepEqual(response.result.selectedToolNames, ["mcp.playwright.navigate"]);
 });
 
+test("built ToolHub MCP runtime speaks newline JSON to stdio backends without explicit framing", async (t) => {
+  const runtime = toolHubRuntimePath();
+  if (!existsSync(runtime)) {
+    t.skip("ToolHub MCP runtime has not been built.");
+    return;
+  }
+
+  const scriptDir = mkdtempSync(path.join(tmpdir(), "toolhub-stdio-backend-"));
+  const scriptPath = path.join(scriptDir, "backend.mjs");
+  writeFileSync(scriptPath, NEWLINE_JSON_STDBACKEND_SCRIPT);
+
+  const resolver = createFixedResolverServer(["mcp.stdio_test.campaign-calendar"]);
+  try {
+    await listen(resolver);
+  } catch (error) {
+    resolver.close();
+    t.skip(`Local HTTP listen is unavailable: ${error.message}`);
+    return;
+  }
+  const resolverPort = resolver.address().port;
+  t.after(() => resolver.close());
+
+  const child = spawn(process.execPath, [runtime], {
+    env: {
+      ...process.env,
+      TOOLHUB_MCP_SERVERS_JSON: JSON.stringify([
+        {
+          args: [scriptPath],
+          command: process.execPath,
+          name: "stdio-test",
+          requestTimeoutMs: 8000,
+          startupTimeoutMs: 8000,
+          transport: "stdio"
+        }
+      ]),
+      TOOLHUB_OPENAI_API_KEY: "test-key",
+      TOOLHUB_OPENAI_BASE_URL: `http://127.0.0.1:${resolverPort}/v1`,
+      TOOLHUB_OPENAI_MODEL: "resolver-model",
+      TOOLHUB_REQUEST_TIMEOUT_MS: "10000"
+    },
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+  t.after(() => child.kill());
+
+  const stderr = [];
+  child.stderr.on("data", (chunk) => stderr.push(chunk.toString("utf8")));
+  const reader = jsonLineReader(child);
+  writeJsonLine(child, {
+    id: 1,
+    jsonrpc: "2.0",
+    method: "initialize",
+    params: {
+      capabilities: {},
+      clientInfo: { name: "stdio-framing-test", version: "1.0.0" },
+      protocolVersion: "2024-11-05"
+    }
+  });
+  await reader.nextMessage(1);
+  writeJsonLine(child, {
+    jsonrpc: "2.0",
+    method: "notifications/initialized",
+    params: {}
+  });
+  writeJsonLine(child, {
+    id: 2,
+    jsonrpc: "2.0",
+    method: "tools/call",
+    params: {
+      name: "tool_hub.resolve",
+      arguments: {
+        constraints: { maxTools: 10 },
+        task: "查询麦当劳这个月有什么优惠活动"
+      }
+    }
+  });
+  const response = await reader.nextMessage(2, 12_000).catch((error) => {
+    error.message += ` stderr: ${stderr.join("")}`;
+    throw error;
+  });
+  assert.equal(response.error, undefined, `stderr: ${stderr.join("")}`);
+  assert.equal(stderr.some((chunk) => chunk.includes("received content-length framing")), false);
+  assert.deepEqual(response.result.selectedToolNames, ["mcp.stdio_test.campaign-calendar"]);
+});
+
 test("built ToolHub MCP runtime keeps resolve cache scoped by task", async (t) => {
   const runtime = toolHubRuntimePath();
   if (!existsSync(runtime)) {
@@ -666,6 +751,55 @@ function toolHubRuntimePath() {
 function writeJsonLine(child, message) {
   child.stdin.write(`${JSON.stringify(message)}\n`);
 }
+
+const NEWLINE_JSON_STDBACKEND_SCRIPT = `
+let buffer = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => {
+  if (chunk.includes("Content-Length:")) {
+    process.stderr.write("received content-length framing");
+    process.exit(1);
+  }
+  buffer += chunk;
+  for (;;) {
+    const newlineIndex = buffer.indexOf("\\n");
+    if (newlineIndex < 0) {
+      return;
+    }
+    const line = buffer.slice(0, newlineIndex).trim();
+    buffer = buffer.slice(newlineIndex + 1);
+    if (!line) {
+      continue;
+    }
+    const message = JSON.parse(line);
+    if (message.method === "initialize") {
+      process.stdout.write(JSON.stringify({
+        id: message.id,
+        jsonrpc: "2.0",
+        result: {
+          capabilities: { tools: {} },
+          protocolVersion: message.params?.protocolVersion ?? "2024-11-05",
+          serverInfo: { name: "stdio-test", version: "1.0.0" }
+        }
+      }) + "\\n");
+    } else if (message.method === "tools/list") {
+      process.stdout.write(JSON.stringify({
+        id: message.id,
+        jsonrpc: "2.0",
+        result: {
+          tools: [
+            {
+              description: "查询麦当劳中国当月的营销活动日历。",
+              inputSchema: { type: "object" },
+              name: "campaign-calendar"
+            }
+          ]
+        }
+      }) + "\\n");
+    }
+  }
+});
+`;
 
 function jsonLineReader(child) {
   let stdout = "";

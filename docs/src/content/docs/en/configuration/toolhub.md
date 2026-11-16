@@ -90,7 +90,7 @@ Use `stdio` for local command-line MCP servers. Configure:
 - **Command**: launch command, such as `npx`, `node`, or `python`.
 - **Arguments**: command arguments.
 - **Working directory**: optional working directory.
-- **Stdio message mode**: keep `content-length` by default; use `newline-json` for line-delimited JSON servers.
+- **Stdio message mode**: keep `newline-json` by default (the MCP stdio transport framing); use `content-length` only for LSP-style servers that expect header-prefixed messages.
 - **Environment variables**: variables needed only by this MCP server.
 
 ### streamable-http / sse
@@ -150,7 +150,7 @@ The desktop app's SQLite config is the effective source, so prefer editing throu
         "command": "npx",
         "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
         "env": {},
-        "stdioMessageMode": "content-length",
+        "stdioMessageMode": "newline-json",
         "requestTimeoutMs": 30000,
         "startupTimeoutMs": 600000
       }
