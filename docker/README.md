@@ -39,7 +39,7 @@ Open the management URL that the entrypoint prints in the container log, `http:/
 
 The npm Compose script prepares a local `../../next-ai/gateway` checkout before building so the image uses that plugin-capable ai-gateway runtime. If you run `docker compose up -d --build` directly, run `npm run docker:prepare-gateway` first. `npm run docker:build` performs the same preparation automatically.
 
-The repository Compose file publishes `3458:8080`, stores data in the `ccr-data` named volume, and restarts the service unless explicitly stopped. A mapping without a host IP binds on every host interface. For local-only access, change it to:
+The repository Compose file publishes `127.0.0.1:3458:8080`, stores data in the `ccr-data` named volume, and restarts the service unless explicitly stopped. Only local clients can access this default mapping:
 
 ```yaml
 ports:
@@ -282,7 +282,7 @@ docker compose logs -f ccr
 
 这个 npm Compose 脚本会在构建前准备本机的 `../../next-ai/gateway` checkout，让镜像使用支持插件的 ai-gateway runtime。如果直接运行 `docker compose up -d --build`，请先执行 `npm run docker:prepare-gateway`。`npm run docker:build` 也会自动打包这份本地 ai-gateway。
 
-仓库默认映射是 `3458:8080`，会监听宿主机所有网卡。如果只允许本机访问，请改为：
+仓库默认映射是 `127.0.0.1:3458:8080`，仅允许本机访问：
 
 ```yaml
 ports:
@@ -338,3 +338,7 @@ docker compose logs --tail=200 ccr
 - 容器健康但模型请求失败：继续检查服务状态、供应商连通性、CCR 客户端 Key、路由和请求日志；容器健康只表示 Nginx / UI 可访问。
 
 完整的环境变量、端口拓扑、远程部署、构建参数和烟雾测试说明见本页英文主体，对应变量名和命令在中英文环境中完全相同。
+
+Management RPC validates browser Origin / Referer, and Nginx forwards the original source headers. For remote access, explicitly change the port binding and set `CCR_PUBLIC_BASE_URL` to the browser-facing URL. Additional trusted origins use `CCR_WEB_ALLOWED_ORIGINS` (comma-separated). CLI calls without source headers still require the management token.
+
+The web config API masks provider keys and sensitive authentication headers with references beginning `[CCR REDACTED]`. Keep the full reference to preserve a saved secret, enter a new value to replace it, or clear the field to remove it. Client gateway keys remain available through their dedicated API Keys page.

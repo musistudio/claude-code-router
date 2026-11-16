@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, NO_AVAILABLE_GATEWAY_MODELS_MESSAGE, availableGatewayModelIds, enforceSingleEnabledGlobalProfilePerAgent, hasAvailableGatewayModels, isGatewayProviderEnabled, type AppConfig, type ProfileApplyResult, type ProfileClientApplyStatus, type ProfileClientKind, type ProfileConfig } from "@ccr/core/contracts/app";
 import { CLAUDE_CODE_AUTH_MODE_ENV, resolveClaudeCodeGatewayAuthMode, type ClaudeCodeGatewayAuthMode } from "@ccr/core/agents/claude-code/auth-mode";
+import { CLAUDE_CONFIG_DIR_ENV, claudeCodeConfigDirEnv, isDefaultClaudeConfigDir, resolveClaudeCodeGlobalConfigFile } from "@ccr/core/agents/claude-code/config-home";
 import { updatePersistedApiKeys } from "@ccr/core/config/config-repository";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import {
@@ -1600,6 +1601,7 @@ function claudeCodeWrapperShellScript(
     "#!/bin/sh",
     ...envExports,
     ...claudeCodeFirstPartyProviderEnvKeys.map((key) => `unset ${key}`),
+    ...(isDefaultClaudeConfigDir(settingsDir) ? [`unset ${CLAUDE_CONFIG_DIR_ENV}`] : []),
     ...shellEnvExports(claudeCodeRuntimeEnv(config, profile, settingsDir, auth.wifIdentityTokenFile)),
     ...shellEnvExports(claudeCodeMcpConfigEnv(mcpConfigFile)),
     ...shellEnvExports(claudeCodeUtcTimezoneEnvOverride()),
@@ -1639,6 +1641,7 @@ function claudeCodeWrapperCmdScript(
     "@echo off",
     ...envExports,
     ...claudeCodeFirstPartyProviderEnvKeys.map((key) => cmdSetLine(key, "")),
+    ...(isDefaultClaudeConfigDir(settingsDir) ? [cmdSetLine(CLAUDE_CONFIG_DIR_ENV, "")] : []),
     ...cmdEnvExports(claudeCodeRuntimeEnv(config, profile, settingsDir, auth.wifIdentityTokenFile)),
     ...cmdEnvExports(claudeCodeMcpConfigEnv(mcpConfigFile)),
     ...cmdEnvExports(claudeCodeUtcTimezoneEnvOverride()),
@@ -2566,7 +2569,7 @@ function claudeCodeRuntimeEnv(config: AppConfig, profile: ProfileConfig, setting
     ANTHROPIC_API_BASE_URL: endpoint,
     ANTHROPIC_BASE_URL: endpoint,
     CLAUDE_AGENT_API_BASE_URL: endpoint,
-    CLAUDE_CONFIG_DIR: settingsDir
+    ...claudeCodeConfigDirEnv(settingsDir)
   };
   if (wifIdentityTokenFile) {
     Object.assign(env, claudeCodeWifEnv(wifIdentityTokenFile));
@@ -2615,7 +2618,7 @@ function writeClaudeCodeAutoCompactWindowsCache(
   config: AppConfig,
   settingsFile: string
 ): { backupFile?: string; changed: boolean; file: string } {
-  const file = path.join(path.dirname(settingsFile), ".claude.json");
+  const file = resolveClaudeCodeGlobalConfigFile(path.dirname(settingsFile));
   const current = readClaudeCodeGlobalConfigObject(file);
   const next = {
     ...current,

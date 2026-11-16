@@ -8,7 +8,8 @@ import {
 import {
   createRoutingRuleDraft,
   createRoutingRuleDraftFromRule,
-  isRoutingRuleDraftSubmittable
+  isRoutingRuleDraftSubmittable,
+  routingRuleFromDraft
 } from "@ccr/ui/pages/home/shared/providers.ts";
 import { appConfigFixture } from "../fixtures/index.ts";
 
@@ -110,4 +111,18 @@ test("route script test JSON accepts request headers and body together", () => {
     () => normalizeRouteScriptSampleRequest({ body: {}, headers: { invalid: 123 } }),
     /headers/i
   );
+});
+
+ test("#1868 UI edits preserve a script prefilter and empty pass-through rewrites", () => {
+  const condition = { left: "request.body.model", operator: "starts-with" as const, right: "lane/" };
+  const script = { enabled: true, id: "filtered", name: "Filtered", type: "script" as const, condition,
+    script: { apiVersion: 1 as const, language: "javascript" as const, file: "/tmp/route.js", timeoutMs: 2000 } };
+  const draft = createRoutingRuleDraftFromRule(script);
+  assert.equal(isRoutingRuleDraftSubmittable(draft), true);
+  assert.deepEqual(routingRuleFromDraft(draft, [], script).condition, condition);
+  const pass = { enabled: true, id: "pass", name: "Pass", type: "condition" as const, condition };
+  const passDraft = createRoutingRuleDraftFromRule(pass);
+  assert.deepEqual(passDraft.rewrites, []);
+  assert.equal(isRoutingRuleDraftSubmittable(passDraft), true);
+  assert.deepEqual(routingRuleFromDraft(passDraft, [], pass).rewrites, []);
 });

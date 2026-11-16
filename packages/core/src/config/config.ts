@@ -1549,6 +1549,8 @@ function parseProviderModelMetadata(value: unknown): ProviderModelMetadata | und
   const maxOutputTokens = readPositiveInteger(value.maxOutputTokens ?? value.max_output_tokens ?? value.outputTokens ?? value.output_tokens);
   const openRouterDiscountRouting = parseOpenRouterDiscountRouting(value.openRouterDiscountRouting ?? value.open_router_discount_routing);
   const pricing = parseProviderModelPricing(value.pricing);
+  const reasoningEffortMap = parseStringRecord(value.reasoningEffortMap ?? value.reasoning_effort_map);
+  const reasoningRequired = value.reasoningRequired ?? value.reasoning_required;
   const metadata: ProviderModelMetadata = {
     ...(Array.isArray(value.additionalSpeedTiers) ? { additionalSpeedTiers: value.additionalSpeedTiers } : {}),
     ...(Array.isArray(value.additional_speed_tiers) ? { additionalSpeedTiers: value.additional_speed_tiers } : {}),
@@ -1566,6 +1568,8 @@ function parseProviderModelMetadata(value: unknown): ProviderModelMetadata | und
     ...(maxOutputTokens ? { maxOutputTokens } : {}),
     ...(openRouterDiscountRouting ? { openRouterDiscountRouting } : {}),
     ...(pricing ? { pricing } : {}),
+    ...(reasoningEffortMap ? { reasoningEffortMap } : {}),
+    ...(typeof reasoningRequired === "boolean" ? { reasoningRequired } : {}),
     ...(Array.isArray(value.serviceTiers) ? { serviceTiers: value.serviceTiers } : {}),
     ...(Array.isArray(value.service_tiers) ? { serviceTiers: value.service_tiers } : {}),
     ...(typeof value.supportsFastMode === "boolean" ? { supportsFastMode: value.supportsFastMode } : {}),
@@ -2490,7 +2494,7 @@ function parseMcpServers(value: unknown): GatewayMcpServerConfig[] | undefined {
       if (!command) {
         return undefined;
       }
-      const stdioMessageMode = readString(item.stdioMessageMode) === "newline-json" ? "newline-json" : "content-length";
+      const stdioMessageMode = readString(item.stdioMessageMode) === "content-length" ? "content-length" : "newline-json";
       return {
         args: parseStringList(item.args),
         command,

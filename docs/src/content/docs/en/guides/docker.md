@@ -68,7 +68,7 @@ Do not add `--volumes` to `docker compose down` unless you explicitly want to de
 
 ## Local-only access
 
-The repository default mapping `3458:8080` listens on every host interface. If you only access it from the current machine, change it to:
+The repository default mapping `127.0.0.1:3458:8080` permits access from the current machine only:
 
 ```yaml
 services:
@@ -294,3 +294,7 @@ docker compose logs --tail=200 ccr
 - [CLI installation and command reference](../cli/)
 - [Server](../../configuration/server/)
 - [API Keys](../../configuration/api-keys/)
+
+Management RPC validates browser Origin / Referer, and Nginx forwards the original source headers. For remote access, explicitly change the port binding and set `CCR_PUBLIC_BASE_URL` to the browser-facing URL. Additional trusted origins use `CCR_WEB_ALLOWED_ORIGINS` (comma-separated). CLI calls without source headers still require the management token.
+
+The web config API masks provider keys and sensitive authentication headers with references beginning `[CCR REDACTED]`. Keep the full reference to preserve a saved secret, enter a new value to replace it, or clear the field to remove it. Client gateway keys remain available through their dedicated API Keys page.

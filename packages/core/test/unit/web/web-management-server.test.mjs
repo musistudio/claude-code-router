@@ -35,7 +35,7 @@ test("normalizeExternalHttpTarget accepts absolute http, https, and CCR plugin U
   assert.throws(() => normalizeExternalHttpTarget("example.com"), /valid absolute URL/);
 });
 
-test("web RPC ignores Origin and Referer when the auth token is valid", async () => {
+test("web RPC accepts loopback tools with a valid auth token", async () => {
   const { startWebManagementServer } = await import("@ccr/core/web/management-server.ts");
   const authToken = "test-web-auth-token";
   const runtime = await startWebManagementServer({
@@ -66,16 +66,90 @@ test("web RPC ignores Origin and Referer when the auth token is valid", async ()
   }
 });
 
+test("#1835 web RPC rejects hostile browser sources even with a valid token", async () => {
+  const { startWebManagementServer } = await import("@ccr/core/web/management-server.ts");
+  const runtime = await startWebManagementServer({ authToken: "source-test", host: "127.0.0.1", port: 0, startGateway: false });
+  try {
+    for (const headers of [{ origin: "https://evil.example" }, { referer: "https://evil.example/page" }, { origin: "null" }, { origin: "file://localhost" }]) {
+      const response = await fetch(new URL("/api/ccr/rpc", runtime.url), {
+        method: "POST", body: JSON.stringify({ method: "getConfig", args: [] }),
+        headers: { "content-type": "application/json", "x-ccr-web-auth": "source-test", ...headers }
+      });
+      assert.equal(response.status, 403, JSON.stringify(headers));
+    }
+  } finally { await runtime.close(); }
+});
+
+test("#1835 browser origins support explicit public URLs and allowlists", async (t) => {
+  const previousPublic = process.env.CCR_PUBLIC_BASE_URL;
+  const previousAllowed = process.env.CCR_WEB_ALLOWED_ORIGINS;
+  process.env.CCR_PUBLIC_BASE_URL = "https://ccr.example.com";
+  process.env.CCR_WEB_ALLOWED_ORIGINS = "https://tools.example.com";
+  t.after(() => { setOptionalEnv("CCR_PUBLIC_BASE_URL", previousPublic); setOptionalEnv("CCR_WEB_ALLOWED_ORIGINS", previousAllowed); });
+  const { startWebManagementServer } = await import("@ccr/core/web/management-server.ts");
+  const runtime = await startWebManagementServer({ authToken: "remote-test", host: "127.0.0.1", port: 0, startGateway: false });
+  try {
+    for (const origin of ["https://ccr.example.com", "https://tools.example.com"]) {
+      const response = await fetch(new URL("/api/ccr/rpc", runtime.url), { method: "POST", body: JSON.stringify({ method: "getAppInfo" }),
+        headers: { "content-type": "application/json", "x-ccr-web-auth": "remote-test", origin, referer: `${origin}/page` } });
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get("access-control-allow-origin"), origin);
+    }
+    const denied = await fetch(new URL("/api/ccr/rpc", runtime.url), { method: "OPTIONS", headers: { origin: "https://evil.example" } });
+    assert.equal(denied.status, 403);
+    assert.equal(denied.headers.get("access-control-allow-origin"), null);
+  } finally { await runtime.close(); }
+});
+
+test("#1835 getConfig and saveConfig redact provider credentials without overwriting them", async (t) => {
+  const { loadAppConfig, saveAppConfig } = await import("@ccr/core/config/config.ts");
+  const { gatewayService } = await import("@ccr/core/gateway/service.ts");
+  const { startWebManagementServer } = await import("@ccr/core/web/management-server.ts");
+  const config = await loadAppConfig();
+  config.Providers = [
+    { id: "first", name: "First", type: "openai_chat_completions", models: ["alpha"], api_base_url: "http://127.0.0.1:9/v1", api_key: "first-secret", extraHeaders: { Authorization: "Bearer header-secret", "x-visible": "visible" }, credentials: [{ id: "credential", api_key: "credential-secret" }] },
+    { id: "second", name: "Second", type: "openai_chat_completions", models: ["beta"], api_base_url: "http://127.0.0.1:9/v1", api_key: "second-secret" }
+  ];
+  await saveAppConfig(config);
+  const status = gatewayService.getStatus();
+  t.mock.method(gatewayService, "start", async () => status);
+  t.mock.method(gatewayService, "updateConfig", async () => status);
+  const runtime = await startWebManagementServer({ authToken: "redaction-test", host: "127.0.0.1", port: 0, startGateway: false });
+  try {
+    let current = (await rpc(runtime.url, "redaction-test", "getConfig")).value;
+    assert.doesNotMatch(JSON.stringify(current), /first-secret|second-secret|header-secret|credential-secret/);
+    assert.equal(current.Providers[0].extraHeaders["x-visible"], "visible");
+    current.Providers.reverse();
+    current.Providers[1].name = "Renamed";
+    const saved = await rpc(runtime.url, "redaction-test", "saveConfig", [current, { applyProfile: false }]);
+    assert.equal(saved.ok, true);
+    assert.doesNotMatch(JSON.stringify(saved.value), /first-secret|second-secret|header-secret|credential-secret/);
+    const stored = await loadAppConfig();
+    assert.equal(stored.Providers.find(p => p.id === "first").api_key, "first-secret");
+    assert.equal(stored.Providers.find(p => p.id === "second").api_key, "second-secret");
+    assert.equal(stored.Providers.find(p => p.id === "first").credentials[0].api_key, "credential-secret");
+    const stale = await fetch(new URL("/api/ccr/rpc", runtime.url), { method: "POST", body: JSON.stringify({ method: "saveConfig", args: [current, { applyProfile: false }] }),
+      headers: { "content-type": "application/json", "x-ccr-web-auth": "redaction-test" } });
+    assert.equal(stale.status, 409, "mask restoration must preserve config conflict detection");
+    current = saved.value;
+    current.Providers[1].api_key = "replacement-secret";
+    current = (await rpc(runtime.url, "redaction-test", "saveConfig", [current, { applyProfile: false }])).value;
+    assert.equal((await loadAppConfig()).Providers.find(p => p.id === "first").api_key, "replacement-secret");
+    current.Providers[1].api_key = "";
+    await rpc(runtime.url, "redaction-test", "saveConfig", [current, { applyProfile: false }]);
+    assert.equal((await loadAppConfig()).Providers.find(p => p.id === "first").api_key ?? "", "");
+  } finally { await runtime.close(); }
+});
+
 test("startGateway reuses an already healthy CCR gateway on the configured port", async () => {
-  const { saveAppConfig } = await import("@ccr/core/config/config.ts");
-  const { createDefaultAppConfig } = await import("@ccr/core/config/default-config.ts");
+  const { loadAppConfig, saveAppConfig } = await import("@ccr/core/config/config.ts");
   const { gatewayRuntimeConfigRevision } = await import("@ccr/core/gateway/runtime-config-control.ts");
   const { gatewayService } = await import("@ccr/core/gateway/service.ts");
   const { startWebManagementServer } = await import("@ccr/core/web/management-server.ts");
   await gatewayService.stop();
   const gatewayPort = await findAvailablePort();
   const webAuthToken = "test-web-auth-token";
-  const config = createDefaultAppConfig();
+  const config = await loadAppConfig();
   config.gateway.port = gatewayPort;
   config.gateway.corePort = await findAvailablePort();
   config.Providers = [{
@@ -130,7 +204,7 @@ test("startGateway reuses an already healthy CCR gateway on the configured port"
     assert.equal(saveResult.ok, true);
     assert.equal(externalGatewayState.reloadRequests.length, reloadCountBeforeSave + 1);
     assert.equal(externalGatewayState.reloadRequests.at(-1).forceRestart, true);
-    assert.equal(externalGatewayState.revision, gatewayRuntimeConfigRevision(saveResult.value));
+    assert.equal(externalGatewayState.revision, gatewayRuntimeConfigRevision(await loadAppConfig()));
     assert.equal(gatewayService.getStatus().gatewayManagedExternally, true);
   } finally {
     gatewayService.start = originalStart;

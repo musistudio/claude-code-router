@@ -1277,7 +1277,8 @@ class StdioMcpClient implements McpClient {
         ...process.env,
         ...(this.server.env ?? {})
       },
-      stdio: ["pipe", "pipe", "pipe"]
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true
     }) as ChildProcessWithoutNullStreams;
     child.stdout.on("data", (chunk: Buffer) => this.readStdout(chunk));
     child.stderr.on("data", (chunk: Buffer) => {
@@ -1896,7 +1897,7 @@ function normalizeServerConfig(value: unknown): GatewayMcpServerConfig | undefin
     command,
     cwd: typeof value.cwd === "string" && value.cwd.trim() ? value.cwd.trim() : undefined,
     env: isStringRecord(value.env) ? value.env : {},
-    stdioMessageMode: value.stdioMessageMode === "newline-json" ? "newline-json" : "content-length",
+    stdioMessageMode: value.stdioMessageMode === "content-length" ? "content-length" : "newline-json",
     transport
   };
 }

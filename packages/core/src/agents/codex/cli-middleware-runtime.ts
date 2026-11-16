@@ -13,7 +13,7 @@ const readline = require("node:readline");
 const { pathToFileURL } = require("node:url");
 
 const VERSION = "3.0.0";
-const DEFAULT_MODEL = "claude-sonnet-4-5";
+const DEFAULT_MODEL = "claude-sonnet-4-6";
 const PROTOCOL_VERSION = "2025-06-18";
 const BOT_SESSION_ENTRY_VERSION = 3;
 const OPENCODE_BOT_SESSION_STORE_VERSION = 3;
@@ -24,6 +24,7 @@ const CONFIG_DIR = resolveConfigDir();
 const LOG_PATH = process.env.CCR_CODEX_CLI_MIDDLEWARE_LOG || "";
 const CLAUDE_CODE_MCP_CONFIG_ENV = "CCR_CLAUDE_CODE_MCP_CONFIG";
 const CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV = "CODEXL_CLAUDE_CODE_MCP_CONFIG";
+const MODEL_CATALOG_CAPABILITIES = new WeakMap();
 const CLAUDE_CODE_CHINA_TIME_ZONES = new Set([
   "asia/chongqing",
   "asia/chungking",
@@ -4468,7 +4469,9 @@ function codexModelListItemFromCatalog(item, selectedModel) {
   const id = normalizeModelSelector(modelItemId(item));
   if (!id) return undefined;
   if (!item || typeof item !== "object") {
-    return codexModelItem(id, selectedModel);
+    const output = codexModelItem(id, selectedModel);
+    MODEL_CATALOG_CAPABILITIES.set(output, {});
+    return output;
   }
   const base = codexModelItem(id, selectedModel);
   const displayName = stringValue(item.displayName) || stringValue(item.display_name) || base.displayName;
@@ -4488,7 +4491,7 @@ function codexModelListItemFromCatalog(item, selectedModel) {
   const contextWindow = positiveInteger(item.contextWindow ?? item.context_window) ?? base.contextWindow;
   const inputModalities = readArrayValue(item.inputModalities) ?? readArrayValue(item.input_modalities) ?? base.inputModalities;
   const supportedReasoningEfforts = readArrayValue(item.supportedReasoningEfforts) ?? readArrayValue(item.supported_reasoning_efforts) ?? base.supportedReasoningEfforts;
-  return {
+  const output = {
     ...base,
     ...item,
     id: stringValue(item.id) || id,
@@ -4515,11 +4518,35 @@ function codexModelListItemFromCatalog(item, selectedModel) {
     defaultServiceTier,
     default_service_tier: defaultServiceTier
   };
+  MODEL_CATALOG_CAPABILITIES.set(output, item);
+  return output;
 }
 
 function mergeCatalogModelListItem(existingItem, catalogItem) {
   if (!catalogItem || typeof catalogItem !== "object") return existingItem;
   const output = { ...catalogItem, ...existingItem };
+  const capabilities = MODEL_CATALOG_CAPABILITIES.get(catalogItem) ?? catalogItem;
+  for (const [camelKey, snakeKey] of [
+    ["inputModalities", "input_modalities"],
+    ["supportedReasoningEfforts", "supported_reasoning_efforts"]
+  ]) {
+    const catalogValue = readArrayValue(capabilities[camelKey]) ?? readArrayValue(capabilities[snakeKey]);
+    if (catalogValue) {
+      output[camelKey] = catalogValue;
+      output[snakeKey] = catalogValue;
+    }
+  }
+  for (const [camelKey, snakeKey] of [
+    ["defaultReasoningEffort", "default_reasoning_effort"]
+  ]) {
+    if (capabilities[camelKey] !== undefined || capabilities[snakeKey] !== undefined) {
+      const catalogValue = capabilities[camelKey] !== undefined
+        ? capabilities[camelKey]
+        : capabilities[snakeKey];
+      output[camelKey] = catalogValue;
+      output[snakeKey] = catalogValue;
+    }
+  }
   for (const [camelKey, snakeKey] of [
     ["additionalSpeedTiers", "additional_speed_tiers"],
     ["serviceTiers", "service_tiers"]
@@ -4729,6 +4756,10 @@ function loadChatGptAuth() {
     nonEmptyEnv("CODEXL_CODEX_WORKSPACE_NAME") ||
     nonEmptyEnv("CODEXL_CODEX_INSTANCE_NAME") ||
     agentEnv("codex", "PROFILE");
+  // Isolation must apply before reading either profile or shared credentials.
+  if (boolEnv("CCR_CODEX_ISOLATED_IDENTITY") || boolEnv("CODEXL_CODEX_ISOLATED_IDENTITY")) {
+    return virtualChatGptAuth(workspaceName);
+  }
   const seen = new Set();
   // A real file at the profile home carrying the shared login's single-use
   // refresh token is a stale copy, not a separate session: whichever side
@@ -4810,11 +4841,9 @@ function healStaleCodexAuthCopy(profileFile) {
 function defaultCodexChatGptAuthFallback() {
   // The desktop app validates the app-server token against real chatgpt.com
   // endpoints that cannot be redirected (statsig, webview session linking), so
-  // a synthetic token is rejected there. Bridge the user's real default codex
-  // login by default; credits enforcement stays virtual because the desktop
-  // API base points at the local net responder. Set CCR_CODEX_ISOLATED_IDENTITY
-  // to keep the fully synthetic token.
-  if (boolEnv("CCR_CODEX_ISOLATED_IDENTITY") || boolEnv("CODEXL_CODEX_ISOLATED_IDENTITY")) return "";
+  // a synthetic token is rejected there. Sharing a separate default login is
+  // explicit; CCR profiles must not silently borrow the personal identity.
+  if (!boolEnv("CCR_CODEX_SHARE_CHATGPT_AUTH") && !boolEnv("CODEXL_CODEX_SHARE_CHATGPT_AUTH")) return "";
   if (codexRuntimeAgent() === "zcode") return "";
   const fallback = path.join(os.homedir(), ".codex", "auth.json");
   return fallback === path.join(codexRuntimeHome(), "auth.json") ? "" : fallback;
@@ -4904,14 +4933,40 @@ function codexAppAccountRead(auth, existingResult) {
     planType: auth.planType || "unknown"
   };
   result.requiresOpenaiAuth = true;
-  // Drop workspaceRouting entirely rather than filling it in. The desktop app
-  // routes every desktop API call through "routing": "workspace" rewrites the
-  // origin onto workspaceRouting.backendOrigin (https://chatgpt.com), which
-  // bypasses the local responder and 404s, while "legacy" leaves the URL alone
-  // so it stays on CODEX_API_BASE_URL (http://localhost:8000) and the responder
-  // can proxy /wham/* to the real API. Only an absent field selects "legacy",
-  // and the real app-server reports null under a custom model provider.
-  delete result.workspaceRouting;
+  // Two routing modes, selected by whether a local TLS workspace origin is set.
+  //
+  // TLS mode (CCR_CODEX_WORKSPACE_BACKEND_ORIGIN=https://localhost:...): 0.155+
+  // requires explicit workspace routing even for local API-key profiles, so pin
+  // the desktop API onto our TLS loopback listener.
+  //
+  // Legacy mode (no origin configured): drop workspaceRouting entirely. The
+  // desktop app rewrites "routing": "workspace" calls onto
+  // workspaceRouting.backendOrigin (https://chatgpt.com), which bypasses the
+  // local responder and 404s, while "legacy" leaves the URL alone so it stays on
+  // CODEX_API_BASE_URL (http://localhost:8000) and the responder can proxy
+  // /wham/* to the real API. Only an absent field selects "legacy", and the real
+  // app-server reports null under a custom model provider.
+  const workspaceOrigin = auth.accountId === "ccr-virtual-account"
+    ? nonEmptyEnv("CCR_CODEX_WORKSPACE_BACKEND_ORIGIN")
+    : undefined;
+  let pinnedToLocalTls = false;
+  if (workspaceOrigin) {
+    try {
+      const url = new URL(workspaceOrigin);
+      if (url.protocol === "https:" && url.hostname === "localhost" && url.origin === workspaceOrigin) {
+        // Keep the synthetic identity and desktop requests on our TLS listener.
+        result.workspaceRouting = result.workspaceRouting ?? {
+          chatgptAccountId: auth.accountId,
+          backendOrigin: workspaceOrigin,
+          accountRoutingOverride: "NO_CONSTRAINT"
+        };
+        pinnedToLocalTls = true;
+      }
+    } catch {}
+  }
+  if (!pinnedToLocalTls) {
+    delete result.workspaceRouting;
+  }
   return result;
 }
 

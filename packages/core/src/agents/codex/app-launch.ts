@@ -6,6 +6,7 @@ import type { AppConfig, ProfileConfig } from "@ccr/core/contracts/app";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import { buildCodexModelCatalog, type CodexModelCatalog, type CodexModelCatalogItem } from "@ccr/core/agents/codex/model-catalog";
 import { CODEX_APP_NET_RESPONDER_PORT, codexAppApiBaseUrl, ensureCodexAppNetResponder } from "@ccr/core/agents/codex/app-net-responder";
+import { codexAppApiCertificate } from "@ccr/core/agents/codex/app-api-certificate";
 import { prepareCodexAppCdpUserDataDir } from "@ccr/core/agents/codex/media-preview-bridge";
 import { buildProfileLaunchPlan, resolveCodexConfigFile } from "@ccr/core/profiles/launch-core";
 import { normalizeWindowsDesktopAppCandidate, windowsDesktopAppCandidates } from "@ccr/core/platform/windows-app-discovery";
@@ -78,7 +79,9 @@ const workbuddyVirtualAuthToken = "ccr-local-profile";
 const workbuddyVirtualAuthExpiresAt = 1_999_999_999_999;
 
 const codexAppSpec: CodexCompatibleAppSpec = {
-  bundledCliNames: ["codex", "Codex", "OpenAI Codex"],
+  // New ChatGPT builds package the matching CLI under codex-cli. Prefer it
+  // over legacy entries so startup checks never fall back to an older PATH CLI.
+  bundledCliNames: ["codex-cli/bin/codex", "codex-cli/CodexCLI.app/Contents/MacOS/codex", "codex", "Codex", "OpenAI Codex"],
   defaultCliCommand: "codex",
   displayName: codexDesktopAppName,
   envPathKeys: ["CCR_CHATGPT_APP_PATH", "CHATGPT_APP_PATH", "CODEXL_CHATGPT_PATH", "CCR_CODEX_APP_PATH", "CODEX_APP_PATH", "CODEXL_CODEX_PATH"],
@@ -587,6 +590,7 @@ async function launchCodexCompatibleAppProfile(
   const { modelCatalogFile, userDataDir, workbuddyVirtualAuth } = refreshCodexCompatibleAppProfileFiles(configDir, profile, config);
   if (spec.kind === "codex") prepareCodexAppCdpUserDataDir(userDataDir);
   const netResponderPort = codexAppNetResponderPort(spec.kind);
+  const localApi = netResponderPort ? await prepareCodexAppNetResponder(configDir) : undefined;
 
   const appEnv: Record<string, string> = {
     ...plan.env,
@@ -610,8 +614,7 @@ async function launchCodexCompatibleAppProfile(
   delete env.CODEXL_ZCODE_MODEL_CATALOG_B64;
   sanitizeCodexCompatibleAppEnv(env, spec.kind);
 
-  const launch = codexAppLaunchCommand(lookup.executable, userDataDir);
-  if (spec.kind === "codex") await prepareCodexAppNetResponder(configDir);
+  const launch = codexAppLaunchCommand(lookup.executable, userDataDir, localApi?.certificateSpki);
   const child = spawn(launch.command, launch.args, {
     detached: true,
     env,
@@ -641,10 +644,15 @@ function codexCompatibleAppGatewayEnv(spec: CodexCompatibleAppSpec, config?: App
   };
 }
 
+export function codexProfileEnvForTest(profile: ProfileConfig, appExecutable: string): Record<string, string> {
+  return codexProfileEnv(profile, appExecutable, codexAppSpec);
+}
+
 function codexProfileEnv(profile: ProfileConfig, appExecutable: string, spec: CodexCompatibleAppSpec): Record<string, string> {
   const providerId = sanitizeCodexProviderId(profile.providerId || "") || "claude-code-router";
   const realCliPath = profile.codexCliPath?.trim() || bundledCodexCliPath(appExecutable, spec) || spec.defaultCliCommand;
   const remoteFrontendMode = normalizeCodexRemoteFrontendMode(profile.remoteFrontendMode);
+  const isolatedIdentity = spec.kind === "codex" && profile.scope !== "global";
   if (spec.kind === "zcode") {
     return {
       ...(profile.model.trim() ? { CCR_ZCODE_MODEL: profile.model.trim() } : {}),
@@ -664,7 +672,12 @@ function codexProfileEnv(profile: ProfileConfig, appExecutable: string, spec: Co
     ...(process.env.CCR_CODEX_CLI_MIDDLEWARE_LOG?.trim()
       ? { CCR_CODEX_CLI_MIDDLEWARE_LOG: process.env.CCR_CODEX_CLI_MIDDLEWARE_LOG.trim() }
       : {}),
-    ...codexSharedChatGptAuthEnv(),
+    ...(isolatedIdentity ? {
+      CCR_CODEX_ISOLATED_IDENTITY: "1",
+      CODEXL_CODEX_ISOLATED_IDENTITY: "1",
+      CCR_CODEX_CHATGPT_AUTH_FILE: "",
+      CODEXL_CODEX_CHATGPT_AUTH_FILE: ""
+    } : codexSharedChatGptAuthEnv()),
     CCR_CODEX_MODEL_PROVIDER: providerId,
     CCR_CODEX_PROFILE: providerId,
     CCR_CODEX_REMOTE_FRONTEND_MODE: remoteFrontendMode,
@@ -963,11 +976,13 @@ function bundledCodexCliPath(appExecutable: string, spec: CodexCompatibleAppSpec
   return undefined;
 }
 
-function codexElectronArgs(userDataDir: string): string[] {
+function codexElectronArgs(userDataDir: string, certificateSpki?: string): string[] {
   return [
     "--remote-debugging-port=0",
     "--remote-debugging-address=127.0.0.1",
     `--user-data-dir=${userDataDir}`,
+    ...(certificateSpki && /^[A-Za-z0-9+/]{43}=$/.test(certificateSpki)
+      ? [`--ignore-certificate-errors-spki-list=${certificateSpki}`] : []),
     "--remote-allow-origins=*",
     "--disable-renderer-backgrounding",
     "--disable-background-timer-throttling",
@@ -975,14 +990,14 @@ function codexElectronArgs(userDataDir: string): string[] {
   ];
 }
 
-export function codexElectronArgsForTest(userDataDir: string): string[] {
-  return codexElectronArgs(userDataDir);
+export function codexElectronArgsForTest(userDataDir: string, certificateSpki?: string): string[] {
+  return codexElectronArgs(userDataDir, certificateSpki);
 }
 
-function codexAppLaunchCommand(executable: string, userDataDir: string): { args: string[]; command: string; pidIsLauncher?: boolean } {
+function codexAppLaunchCommand(executable: string, userDataDir: string, certificateSpki?: string): { args: string[]; command: string; pidIsLauncher?: boolean } {
   return {
     command: executable,
-    args: codexElectronArgs(userDataDir)
+    args: codexElectronArgs(userDataDir, certificateSpki)
   };
 }
 
@@ -1002,12 +1017,14 @@ function codexAppNetResponderPort(kind: CodexCompatibleAppKind): number | undefi
   return CODEX_APP_NET_RESPONDER_PORT;
 }
 
-export async function prepareCodexAppNetResponder(configDir: string): Promise<void> {
+export async function prepareCodexAppNetResponder(configDir: string): Promise<{ certificateSpki: string } | undefined> {
   const port = codexAppNetResponderPort("codex");
   if (!port) return;
   const logPath = path.join(configDir, "codex-app-inspector.log");
   try {
-    await ensureCodexAppNetResponder({ listenPort: port, logPath });
+    const certificate = codexAppApiCertificate(configDir);
+    await ensureCodexAppNetResponder({ listenPort: port, logPath, tls: certificate });
+    return { certificateSpki: certificate.spki };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     try {
@@ -1020,7 +1037,10 @@ export async function prepareCodexAppNetResponder(configDir: string): Promise<vo
 
 export function codexAppNetResponderEnv(kind: CodexCompatibleAppKind, port: number | undefined): Record<string, string> {
   if (kind !== "codex" || !port) return {};
-  return { CODEX_API_BASE_URL: codexAppApiBaseUrl(port) };
+  return {
+    CODEX_API_BASE_URL: codexAppApiBaseUrl(port),
+    CCR_CODEX_WORKSPACE_BACKEND_ORIGIN: codexAppApiBaseUrl(port)
+  };
 }
 
 function macAppBundleFromExecutable(executable: string): string | undefined {

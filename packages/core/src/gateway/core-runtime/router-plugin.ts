@@ -44,6 +44,7 @@ import {
   type CcrRouterPluginRouteRequest
 } from "@ccr/core/gateway/core-runtime/router-plugin-contract";
 import { coalesceAnthropicReasoningResponse } from "@ccr/core/gateway/features/anthropic-reasoning-response";
+import { hoistAnthropicToolResultImages } from "@ccr/core/gateway/features/anthropic-tool-result-images";
 import { coreGatewayAuthHeader, rawTraceSyncHeader, rawTraceSyncPath, sdkCompatibleTokenHeaderNames } from "@ccr/core/gateway/internal/shared";
 import { gatewayRuntimeConfigControlPath, gatewayRuntimeConfigRevision } from "@ccr/core/gateway/runtime-config-control";
 import {
@@ -1067,8 +1068,11 @@ function resolveCcrGatewayRoute(
     return undefined;
   }
 
-  const requestBody = requestBodyWithModel(requestInput.requestBody, resolved.model);
+  const modelBody = requestBodyWithModel(requestInput.requestBody, resolved.model);
   if (resolved.kind === "gateway") {
+    const requestBody = protocol === "anthropic_messages"
+      ? hoistAnthropicToolResultImages(modelBody).value
+      : modelBody;
     return {
       model: resolved.model,
       requestBody
@@ -1076,10 +1080,20 @@ function resolveCcrGatewayRoute(
   }
 
   const parsedSelector = parseProviderModelSelector(publicModel);
-  const targetProviderName = coreGatewayProviderSelectorName(resolved.provider, protocol, parsedSelector?.provider);
+  const targetProtocol = coreGatewayProviderProtocol(resolved.provider, protocol);
+  const targetProviderName = coreGatewayProviderSelectorName(
+    resolved.provider,
+    protocol,
+    parsedSelector?.provider,
+    targetProtocol
+  );
   if (!targetProviderName) {
     return undefined;
   }
+
+  const requestBody = protocol === "anthropic_messages" && targetProtocol !== "anthropic_messages"
+    ? hoistAnthropicToolResultImages(modelBody).value
+    : modelBody;
 
   return {
     model: resolved.model,
@@ -1134,18 +1148,27 @@ function requestBodyWithModel(body: Record<string, unknown>, model: string): Rec
   return body.model === model ? body : { ...body, model };
 }
 
-function coreGatewayProviderSelectorName(
+function coreGatewayProviderProtocol(
   provider: GatewayProviderConfig,
-  clientProtocol: GatewayProviderProtocol,
-  requestedProviderName?: string
-): string | undefined {
+  clientProtocol: GatewayProviderProtocol
+): GatewayProviderProtocol | undefined {
   const capability = providerCapabilityForClientProtocol(provider, clientProtocol);
   const explicitCapabilities = normalizedProviderCapabilities(provider);
-  const protocol = capability?.type ?? (
+  return capability?.type ?? (
     explicitCapabilities.length === 0
       ? providerProtocolForClientProtocol(provider, clientProtocol)
       : undefined
   );
+}
+
+function coreGatewayProviderSelectorName(
+  provider: GatewayProviderConfig,
+  clientProtocol: GatewayProviderProtocol,
+  requestedProviderName?: string,
+  resolvedProtocol?: GatewayProviderProtocol
+): string | undefined {
+  const capability = providerCapabilityForClientProtocol(provider, clientProtocol);
+  const protocol = resolvedProtocol ?? coreGatewayProviderProtocol(provider, clientProtocol);
   if (!protocol) {
     return undefined;
   }

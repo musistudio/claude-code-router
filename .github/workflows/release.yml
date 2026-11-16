@@ -68,7 +68,7 @@ jobs:
         include:
           - arch: arm64
             arch_flag: --arm64
-            runner: macos-14
+            runner: macos-15
             display_name: Apple Silicon
             release_label: Apple-Silicon
             artifact_name: macos-apple-silicon-arm64

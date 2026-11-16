@@ -1088,6 +1088,8 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Node.js script": "Node.js 脚本",
       "Rule type": "规则类型",
       "Node.js route script file": "Node.js 路由脚本文件",
+      "Prefilter (optional)": "预过滤条件（可选）",
+      "Matching requests pass through unchanged and skip later rules.": "匹配的请求保持原样，并跳过后续规则。",
       "Choose file": "选择文件",
       "Choose a provider preset or endpoint, enter an API key, and add at least one model.": "选择供应商预设或端点，填写 API Key，并至少添加一个模型。",
       "Choose an agent, model, and required profile settings.": "选择 Agent、模型和必填的配置档案设置。",

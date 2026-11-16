@@ -1249,6 +1249,9 @@ async function resolveRouterRule(
   const rewrites = compiledRule.rewrites;
 
   if (rule.type === "script") {
+    // Evaluate the optional prefilter before taking a body snapshot or sending
+    // anything to a worker. Rules without a condition retain existing behavior.
+    if (rule.condition && !routerRuleConditionMatches(rule.condition, request, options.auth)) return undefined;
     if (!rule.script || !runtime.scriptRuntime) {
       runtime.runtimeDiagnostics.push({
         code: "script-runtime-error",

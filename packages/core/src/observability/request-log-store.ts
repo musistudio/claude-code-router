@@ -22,6 +22,7 @@ import { compactBase64ImagePayloads } from "@ccr/core/observability/request-log-
 import { requestLogRequestedModel, requestLogResponseModel } from "@ccr/core/observability/request-log-model";
 import { isSensitiveRequestLogHeaderName } from "@ccr/core/observability/sensitive-headers";
 import { inferGatewayClient } from "@ccr/core/gateway/http/io";
+import { createSseBoundaryTracker, type SseBoundaryRepair } from "@ccr/core/gateway/request/sse-terminal";
 import type {
   AgentAnalysisAgentRow,
   AgentAnalysisConversationItem,
@@ -341,7 +342,17 @@ type StreamedToolCallInput = {
 
 export type SseErrorDetector = {
   append: (chunk: Buffer | string) => string | undefined;
+  /**
+   * Bytes a writer must send before its own frame so that frame starts a new
+   * SSE event instead of being absorbed by a partial line or an open event.
+   */
+  boundaryRepair: () => SseBoundaryRepair;
   finish: () => string | undefined;
+  /**
+   * True once a *complete*, blank-line-delimited terminal event was dispatched
+   * to the client. A newline-terminated field or a flush-invented partial event
+   * was never delivered, so it does not count.
+   */
   hasTerminalEvent: () => boolean;
   read: () => string | undefined;
 };
@@ -4691,19 +4702,19 @@ function ensurePendingRawTraceUpdateSchema(database: SqlDatabase): void {
   prunePendingRawTraceUpdates(database, Date.now());
 }
 
+// Every non-streaming request body contains `"stream":false`, so the candidate
+// rows for this repair include every request logged since the last retention
+// prune, bodies and all. Reading them as one result set can exceed the worker
+// heap before that prune gets a chance to run, which is why the two workers
+// respawn forever (issue #1898). Collect the row ids first and read one row at
+// a time instead: better-sqlite3 rejects writes while a statement is still
+// iterating this connection, so the ids loop must close before the updates.
 function backfillRequestLogStreamFlags(database: SqlDatabase): void {
-  const rows = queryRows(
+  const ids: number[] = [];
+  for (const row of iterateRows(
     database,
       `
-        SELECT
-          rowid AS id,
-          path,
-          url,
-          request_headers,
-          response_headers,
-          request_body_text,
-          request_body_encoding,
-          response_body_content_type
+        SELECT rowid AS id
         FROM request_logs
         WHERE source_usage_id IS NULL
           AND is_stream = 0
@@ -4715,13 +4726,32 @@ function backfillRequestLogStreamFlags(database: SqlDatabase): void {
             response_body_content_type LIKE '%event-stream%'
           )
       `
-  );
-  if (rows.length === 0) {
+  )) {
+    ids.push(normalizeCount(row.id));
+  }
+  if (ids.length === 0) {
     return;
   }
 
+  const readRow = database.prepare(`
+    SELECT
+      rowid AS id,
+      path,
+      url,
+      request_headers,
+      response_headers,
+      request_body_text,
+      request_body_encoding,
+      response_body_content_type
+    FROM request_logs
+    WHERE rowid = ?
+  `);
   const statement = database.prepare("UPDATE request_logs SET is_stream = 1 WHERE rowid = ?");
-  for (const row of rows) {
+  for (const id of ids) {
+    const row = readRow.get(id) as Record<string, SqlValue> | undefined;
+    if (!row) {
+      continue;
+    }
     const requestBodyText = String(row.request_body_encoding ?? "utf8") === "utf8"
       ? String(row.request_body_text ?? "")
       : undefined;
@@ -4734,7 +4764,7 @@ function backfillRequestLogStreamFlags(database: SqlDatabase): void {
       url: String(row.url ?? "")
     });
     if (isStream) {
-      statement.run(normalizeCount(row.id));
+      statement.run(id);
     }
   }
 }
@@ -6146,6 +6176,7 @@ export function detectSseError(text: string, contentType?: string): string | und
 export function createSseErrorDetector(contentType?: string, force = false): SseErrorDetector {
   const active = force || contentTypeLooksSse(contentType);
   const decoder = new StringDecoder("utf8");
+  const boundary = createSseBoundaryTracker();
   let currentEvent = "";
   let dataLines: string[] = [];
   let detectedError: string | undefined;
@@ -6154,19 +6185,24 @@ export function createSseErrorDetector(contentType?: string, force = false): Sse
   let terminalEventSeen = false;
 
   const read = () => detectedError;
-  const flushEvent = () => {
+  // `complete` is true only for a blank-line-delimited dispatch. A leftover
+  // event that `finish()` flushes was never delivered to the client, so it can
+  // report an error for the log but can never be an already-visible terminal.
+  const flushEvent = (complete: boolean) => {
     const eventError = detectSseEventError(currentEvent, dataLines);
-    terminalEventSeen ||= Boolean(eventError) || isSseTerminalEvent(currentEvent, dataLines);
+    if (complete) {
+      terminalEventSeen ||= Boolean(eventError) || isSseTerminalEvent(currentEvent, dataLines);
+    }
     detectedError ??= eventError;
     currentEvent = "";
     dataLines = [];
   };
-  const processLine = (line: string) => {
+  const processLine = (line: string, complete: boolean) => {
     if (!active || detectedError) {
       return;
     }
     if (line === "") {
-      flushEvent();
+      flushEvent(complete);
       return;
     }
     if (line.startsWith(":")) {
@@ -6191,16 +6227,23 @@ export function createSseErrorDetector(contentType?: string, force = false): Sse
       }
       const rawLine = pendingLine.slice(0, newlineIndex);
       pendingLine = pendingLine.slice(newlineIndex + 1);
-      processLine(rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine);
+      processLine(rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine, true);
     }
   };
 
   return {
     append(chunk: Buffer | string) {
-      if (!active || detectedError || finished) {
+      if (!active || finished) {
         return detectedError;
       }
-      processText(Buffer.isBuffer(chunk) ? decoder.write(chunk) : chunk);
+      const text = Buffer.isBuffer(chunk) ? decoder.write(chunk) : chunk;
+      // The boundary follows every byte the client is sent, including bytes
+      // after the first detected error: a later writer still has to know where
+      // the last real event ended.
+      boundary.append(text);
+      if (!detectedError) {
+        processText(text);
+      }
       return detectedError;
     },
     finish() {
@@ -6208,16 +6251,21 @@ export function createSseErrorDetector(contentType?: string, force = false): Sse
         return detectedError;
       }
       finished = true;
-      processText(decoder.end());
-      if (pendingLine) {
-        processLine(pendingLine.endsWith("\r") ? pendingLine.slice(0, -1) : pendingLine);
-        pendingLine = "";
-      }
-      if (currentEvent || dataLines.length > 0) {
-        flushEvent();
+      const tail = decoder.end();
+      boundary.append(tail);
+      if (!detectedError) {
+        processText(tail);
+        if (pendingLine) {
+          processLine(pendingLine.endsWith("\r") ? pendingLine.slice(0, -1) : pendingLine, false);
+          pendingLine = "";
+        }
+        if (currentEvent || dataLines.length > 0) {
+          flushEvent(false);
+        }
       }
       return detectedError;
     },
+    boundaryRepair: () => boundary.repair(),
     hasTerminalEvent() {
       return terminalEventSeen;
     },

@@ -2191,3 +2191,72 @@ async function applyProfileFixture(config, options) {
   await replacePersistedApiKeys(config.APIKEYS ?? []);
   return applyProfileConfig(config, options);
 }
+
+test("profile service keeps a default ~/.claude profile on Claude Code's own global config file", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "ccr-claude-default-home-"));
+  const previousHome = process.env.HOME;
+  const takeoverFile = path.join(CONFIGDIR, "global-profile-takeover.json");
+  const profileId = "default-home-claude-code";
+  const commandExtension = process.platform === "win32" ? ".cmd" : "";
+  try {
+    process.env.HOME = home;
+    assert.equal(os.homedir(), home);
+    rmSync(takeoverFile, { force: true });
+    const settingsFile = path.join(home, ".claude", "settings.json");
+    mkdirSync(path.dirname(settingsFile), { recursive: true });
+    writeFileSync(settingsFile, "{}\n");
+    writeFileSync(path.join(home, ".claude.json"), `${JSON.stringify({ hasCompletedOnboarding: true }, null, 2)}\n`);
+
+    const config = createDefaultAppConfig();
+    config.APIKEY = "ccr-profile-default-home-test";
+    config.APIKEYS = [{
+      createdAt: "2026-01-01T00:00:00.000Z",
+      id: `profile:${profileId}`,
+      key: "ccr-profile-default-home-test",
+      name: "Profile: Claude Code"
+    }];
+    config.Providers = [{
+      api_base_url: "https://example.test/v1",
+      api_key: "provider-key",
+      models: ["model"],
+      name: "Provider"
+    }];
+    config.profile.profiles = [{
+      agent: "claude-code",
+      enabled: true,
+      env: {},
+      id: profileId,
+      model: "Provider/model",
+      name: "Claude Code",
+      scope: "global",
+      settingsFile: "~/.claude/settings.json",
+      smallFastModel: "",
+      surface: "auto"
+    }];
+
+    const result = await applyProfileFixture(config);
+    assert.equal(result.clients.some((client) => client.client === "claude-code" && client.ok), true);
+
+    const wrapperContent = readFileSync(path.join(CONFIGDIR, "bin", `ccr-claude-code-wrapper-${profileId}${commandExtension}`), "utf8");
+    if (process.platform === "win32") {
+      assert.match(wrapperContent, /^set CLAUDE_CONFIG_DIR=\r?$/m);
+    } else {
+      assert.match(wrapperContent, /^unset CLAUDE_CONFIG_DIR$/m);
+      assert.doesNotMatch(wrapperContent, /export CLAUDE_CONFIG_DIR=/);
+    }
+
+    const globalConfig = JSON.parse(readFileSync(path.join(home, ".claude.json"), "utf8"));
+    assert.equal(globalConfig.hasCompletedOnboarding, true);
+    assert.equal(typeof globalConfig.autoCompactWindowsCache, "object");
+    assert.equal(existsSync(path.join(home, ".claude", ".claude.json")), false);
+  } finally {
+    restoreGlobalProfileConfigsOnExit([], { manageMarker: true });
+    rmSync(takeoverFile, { force: true });
+    if (previousHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = previousHome;
+    }
+    rmSync(home, { force: true, recursive: true });
+  }
+});
