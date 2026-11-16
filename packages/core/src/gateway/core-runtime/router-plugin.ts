@@ -189,6 +189,7 @@ type GatewayRouteResolution = {
   reason?: string;
   requestBody?: Record<string, unknown>;
   targetProviderName?: string;
+  targetProviders?: { providerName: string }[];
 };
 
 export async function createGatewayPlugin(input: GatewayPluginFactoryInput = {}) {
@@ -1087,19 +1088,41 @@ function resolveCcrGatewayRoute(
     parsedSelector?.provider,
     targetProtocol
   );
-  if (!targetProviderName) {
+  if (!targetProviderName || !targetProtocol) {
     return undefined;
   }
 
+  const credentials = sortProviderCredentialsForConfig(activeProviderCredentials(resolved.provider));
+  const credentialNames = credentials.map((credential) =>
+    providerCredentialInternalName(resolved.provider, targetProtocol, credential));
+  const explicitCredential = parsedSelector?.provider.toLowerCase().includes("::cred:");
+  // Qualify vendor model IDs once so the core parses the outer selector only.
+  // A pool uses its protocol rather than one concrete key, allowing every
+  // credential in the selected chain to resolve the same upstream model.
+  const modelProvider = credentials.length > 1 && !explicitCredential
+    ? targetProtocol.split("_")[0]
+    : targetProviderName;
+  const gatewayModel = resolved.model.includes("/")
+    ? `${modelProvider}/${resolved.model}`
+    : resolved.model;
+  const qualifiedBody = requestBodyWithModel(modelBody, gatewayModel);
   const requestBody = protocol === "anthropic_messages" && targetProtocol !== "anthropic_messages"
-    ? hoistAnthropicToolResultImages(modelBody).value
-    : modelBody;
+    ? hoistAnthropicToolResultImages(qualifiedBody).value
+    : qualifiedBody;
+  // The host has already applied cooldowns, limits and priority. Retain that
+  // ordered chain instead of narrowing the route back down to its first key.
+  const selectedNames = (readHeader(requestInput.request?.headers, "x-target-providers") ?? "")
+    .split(",").map((name) => name.trim()).filter((name) => credentialNames.includes(name));
+  const targetProviders = !explicitCredential && credentialNames.length > 0
+    ? (selectedNames.length > 0 ? selectedNames : credentialNames).map((providerName) => ({ providerName }))
+    : undefined;
 
   return {
-    model: resolved.model,
+    model: gatewayModel,
     reason: readHeader(requestInput.request?.headers, ccrRouteReasonHeader),
     requestBody,
-    targetProviderName
+    targetProviderName,
+    ...(targetProviders ? { targetProviders } : {})
   };
 }
 

@@ -318,7 +318,7 @@ test("Codex local account credential refreshes when only a refresh token is avai
     client_id: "app_EMoamEEZ73f0CkXaXp7hrann",
     grant_type: "refresh_token",
     refresh_token: "refresh-only",
-    scope: "openid profile email offline_access api.connectors.read api.connectors.invoke"
+    scope: "openid profile email offline_access"
   });
 });
 
@@ -651,3 +651,15 @@ function jwt(payload) {
 function base64url(value) {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
+
+
+test("#1941 valid model-only Codex tokens do not refresh for connector scopes", async (t) => {
+  useTemporaryCodexHome(t, "ccr-model-only-account-");
+  const accessToken = jwt({ exp: Math.floor(Date.now() / 1000) + 3600, scope: "openid profile email offline_access" });
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error("a valid model token must not be refreshed"); };
+  t.after(() => { globalThis.fetch = previousFetch; });
+  const credential = await localCodexAccountCredentialForTest({ key: "ccr-local-agent-test-codex-oauth",
+    codexOauth: { accessToken, refreshToken: "unused-refresh", tokenEndpoint: "https://auth.invalid/token" } });
+  assert.equal(credential.apiKey, accessToken);
+});

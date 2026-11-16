@@ -229,7 +229,17 @@ function readImageDimensions(header: Buffer): { width: number; height: number } 
 }
 
 function estimateTextTokens(text: string): number {
-  const asciiWords = text.match(/[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g)?.length ?? 0;
-  const cjkChars = text.match(/[\u3400-\u9fff]/g)?.length ?? 0;
+  if (text.length <= 1024 * 1024) {
+    const words = text.match(/[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g)?.length ?? 0;
+    const cjk = text.match(/[\u3400-\u9fff]/g)?.length ?? 0;
+    return Math.max(1, Math.ceil((words + cjk) * 1.15));
+  }
+  // Count large strings without retaining an array proportional to the request size.
+  let asciiWords = 0;
+  let cjkChars = 0;
+  const words = /[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g;
+  const cjk = /[\u3400-\u9fff]/g;
+  while (words.exec(text) !== null) asciiWords += 1;
+  while (cjk.exec(text) !== null) cjkChars += 1;
   return Math.max(1, Math.ceil((asciiWords + cjkChars) * 1.15));
 }

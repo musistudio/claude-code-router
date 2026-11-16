@@ -518,7 +518,7 @@ test("connectivity probe refreshes Codex OAuth plugin auth", async (t) => {
     client_id: "app_EMoamEEZ73f0CkXaXp7hrann",
     grant_type: "refresh_token",
     refresh_token: "refresh-current",
-    scope: "openid profile email offline_access api.connectors.read api.connectors.invoke"
+    scope: "openid profile email offline_access"
   });
   assert.equal(calls[1]?.authorization, `Bearer ${accessToken}`);
   assert.equal(calls[1]?.chatgptAccountId, "acct-refreshed");
@@ -1046,3 +1046,25 @@ function useTemporaryCodexHome(t, prefix) {
   });
   return home;
 }
+
+
+test("#1941 a model-only Codex token passes inference probing without connector authorization", async (t) => {
+  const accessToken = jwt({ exp: Math.floor(Date.now() / 1000) + 3600, scope: "openid profile email offline_access" });
+  const previousFetch = globalThis.fetch;
+  const urls = [];
+  globalThis.fetch = async (input, init) => {
+    const url = String(input); urls.push(url);
+    assert.ok(!url.includes("/oauth/"), "model inference must not force connector reauthorization");
+    assert.equal(new Headers(init.headers).get("authorization"), `Bearer ${accessToken}`);
+    return new Response(JSON.stringify({ id: "model-only-ok" }), { status: 200 });
+  };
+  t.after(() => { globalThis.fetch = previousFetch; });
+  const report = await checkGatewayProviderConnectivity({ apiKey: "ccr-local-agent-login", forceRefresh: true,
+    candidates: [{ baseUrl: "http://127.0.0.1:49131/codex", name: "Model Only Codex", protocols: ["openai_responses"], source: "custom" }],
+    models: ["gpt-5-codex"], protocols: ["openai_responses"],
+    providerPlugins: [{ key: "ccr-local-agent-model-only-codex-oauth", providerName: "Model Only Codex",
+      codexOauth: { accessToken, refreshToken: "unused", tokenEndpoint: "http://127.0.0.1:49131/oauth/token", required: true } }] });
+  assert.equal(report.failed.length, 0);
+  assert.equal(report.passed.length, 1);
+  assert.equal(urls.length, 1);
+});

@@ -188,6 +188,21 @@ try {
   assert.equal(typeof runningGatewayHealthPayload.runtimeId, "string");
   assert.ok(runningGatewayHealthPayload.runtimeId.length > 0);
 
+  const processUids = JSON.parse(run("docker", ["exec", containerId, "node", "-e", `
+    const fs=require('node:fs');
+    const rows=fs.readdirSync('/proc').filter(p=>/^\\d+$/.test(p)).flatMap(p=>{
+      try { const cmd=fs.readFileSync('/proc/'+p+'/cmdline','utf8');
+        if (!/(server\\.js|gateway-bootstrap|next-ai-gateway|nginx|[Pp][Mm]2)/.test(cmd) || cmd.includes('const fs=')) return [];
+        return [{cmd,uid:fs.readFileSync('/proc/'+p+'/status','utf8').match(/^Uid:\\s+(.+)$/m)[1].trim().split(/\\s+/).map(Number)}];
+      } catch { return []; }
+    }); process.stdout.write(JSON.stringify(rows));
+  `]));
+  for (const role of [/pm2/i, /server\.js/, /nginx/, /gateway-bootstrap|next-ai-gateway/]) {
+    assert.ok(processUids.some(process => role.test(process.cmd)), `missing service process: ${role}`);
+  }
+  for (const process of processUids) assert.ok(process.uid.every(uid => uid === 10001), JSON.stringify(process));
+  console.log(`Verified ${processUids.length} service processes run as UID 10001.`);
+
   const configStorage = dockerConfigStorage(containerId);
   assert.equal(configStorage.configDatabase, true);
   assert.equal(configStorage.legacyConfigJson, false);

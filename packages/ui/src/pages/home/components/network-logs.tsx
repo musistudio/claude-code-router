@@ -1,3 +1,4 @@
+import { prepareLogBodyForWorker, logBodyFullTextLimit } from "../shared/log-body-worker-protocol";
 import { memo } from "react";
 import { requestLogOutcome } from "@ccr/core/contracts/app";
 import { Maximize2, Route, X } from "lucide-react";
@@ -1636,7 +1637,7 @@ function useLogBodyWorkerView(
     };
 
     worker.postMessage({
-      body,
+      body: prepareLogBodyForWorker(body, mode),
       bodyKey,
       id: formatRequestId,
       kind: "format",
@@ -1951,6 +1952,10 @@ function LogJsonPanel({
         if (!chunk) {
           throw new Error(t("Request log body is not available."));
         }
+        if (offset + chunk.length > logBodyFullTextLimit || chunk.sizeBytes > logBodyFullTextLimit) {
+          await loadBodyChunk(0);
+          return;
+        }
         chunks.push(chunk.text);
         lastChunk = chunk;
         if (chunk.eof) {
@@ -1982,7 +1987,7 @@ function LogJsonPanel({
   useEffect(() => {
     if (
       !effectiveBody?.bodyRef ||
-      !effectiveBody.preview ||
+      (!effectiveBody.preview && effectiveBody.text.length <= logBodyFullTextLimit) ||
       loadedBody ||
       fullBodyLoading ||
       fullBodyError ||

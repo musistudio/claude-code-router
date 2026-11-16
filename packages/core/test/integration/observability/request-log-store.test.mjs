@@ -1113,7 +1113,8 @@ test("SSE terminal detection distinguishes completed streams from interrupted st
   failed.append('event: response.failed\ndata: {"type":"response.failed","response":{"status":"failed","error":{"message":"upstream failed"}}}');
   assert.equal(failed.hasTerminalEvent(), false);
   assert.match(failed.finish() ?? "", /upstream failed/);
-  assert.equal(failed.hasTerminalEvent(), true);
+  // EOF can expose an error payload but cannot dispatch an incomplete SSE event.
+  assert.equal(failed.hasTerminalEvent(), false);
 
   const responseStatusError = createSseErrorDetector("text/event-stream");
   responseStatusError.append('data: {"response":{"status":"error"}}\n\n');

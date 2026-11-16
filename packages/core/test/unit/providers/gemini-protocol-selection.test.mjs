@@ -17,7 +17,7 @@ test("#1778 Gemini OpenAI endpoint keeps selected protocol through compilation a
     config: { Providers: [provider], Router: { fallback: { mode: "off", models: [], retryCount: 0 }, rules: [] }, virtualModelProfiles: [] },
     headers: {}, method: "POST", path: "/v1/messages", routedModel: "GeminiOpenAPI/gemini-2.5-flash"
   });
-  assert.equal(attempt.headers["x-target-provider"], "gemini::openai_chat_completions");
+  assert.equal(attempt.headers["x-target-provider"], "provider-gemini::openai_chat_completions");
 });
 
 test("#1778 endpoint inference distinguishes Google OpenAI compatibility from native Gemini", () => {

@@ -259,3 +259,17 @@ function useTemporaryCodexHome(t, prefix) {
   });
   return home;
 }
+
+
+test("#1941 runtime migration exempts only imported Codex model plugins from connector scopes", async () => {
+  const config = createDefaultAppConfig();
+  config.providerPlugins = [
+    { key: "ccr-local-agent-test-codex-oauth", providerName: "Test", codexOauth: { required: true } },
+    { key: "custom-connector", providerName: "Test", codexOauth: { required: true } },
+    { key: "ccr-local-agent-explicit-codex-oauth", providerName: "Test", codexOauth: { requiredScopes: ["api.connectors.read"] } }
+  ];
+  const compiled = await compileCoreGatewayConfig(config, "trace", "billing", "auth");
+  assert.deepEqual(compiled.providerPlugins.find(p => p.key === config.providerPlugins[0].key).codexOauth.requiredScopes, []);
+  assert.equal(compiled.providerPlugins.find(p => p.key === "custom-connector").codexOauth.requiredScopes, undefined);
+  assert.deepEqual(compiled.providerPlugins.find(p => p.key === config.providerPlugins[2].key).codexOauth.requiredScopes, ["api.connectors.read"]);
+});

@@ -1,3 +1,4 @@
+import { localCodexOauthConfig } from "@ccr/core/agents/local-providers/codex-scopes";
 /**
  * Extracted from gateway/service.ts. Keep this module focused on its named gateway boundary.
  */
@@ -553,7 +554,7 @@ function withCodexOauthRuntimeDefaults(providerPlugins: unknown[]): unknown[] {
       return plugin;
     }
 
-    const codexOauth = plugin.codexOauth;
+    const codexOauth = localCodexOauthConfig(plugin);
     const nextCodexOauth = {
       ...codexOauth,
       ...(codexAuth?.accessToken ? { accessToken: codexAuth.accessToken } : {}),

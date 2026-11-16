@@ -194,7 +194,11 @@ export function parseProviderModelSelector(value: string | undefined): { model: 
 export function providerRuntimeId(provider: GatewayProviderConfig): string {
   const explicit = sanitizeProviderHeaderId(provider.id);
   if (explicit) {
-    return explicit;
+    // The core interprets these aliases as protocol selectors. Keep explicit
+    // provider IDs usable publicly without shadowing a protocol internally.
+    return ["openai", "anthropic", "claude", "gemini", "google"].includes(explicit.toLowerCase())
+      ? `provider-${explicit}`
+      : explicit;
   }
   const normalized = provider.name
     .normalize("NFKD")

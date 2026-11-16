@@ -1,7 +1,7 @@
 import { requestLogOutcome } from "@ccr/core/contracts/app";
 import { randomUUID } from "node:crypto";
-import { closeSync, copyFileSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { closeSync, copyFileSync, existsSync, fstatSync, mkdirSync, opendirSync, openSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { REQUEST_LOG_BODIES_DIR, REQUEST_LOGS_DB_FILE } from "@ccr/core/config/constants";
 import { decodeClaudeAppGatewayRouteId } from "@ccr/core/agents/claude-app/gateway-routes";
@@ -429,6 +429,8 @@ export class RequestLogStore {
   private insertRequestStatement?: BetterSqliteStatement;
   private insertRouteTraceStatement?: BetterSqliteStatement;
   private lastRetentionCleanupDay?: string;
+  private bodySweep?: Generator<string>;
+  private bodySweepCompletedAt = 0;
   private revision = 0;
   private analysisCache?: AgentAnalysisCacheEntry;
 
@@ -458,6 +460,8 @@ export class RequestLogStore {
     this.initPromise = undefined;
     this.insertRequestStatement = undefined;
     this.insertRouteTraceStatement = undefined;
+    this.bodySweep?.return(undefined);
+    this.bodySweep = undefined;
     database?.close();
   }
 
@@ -467,6 +471,7 @@ export class RequestLogStore {
     const orderedCommands = [...commands].sort((left, right) => left.sequence - right.sequence);
     const pricingRefreshNeeded = batchNeedsUsagePricing(database, orderedCommands) &&
       usagePriceCatalogNeedsRefresh();
+    this.pruneOldRequestLogs(database);
     database.exec("BEGIN IMMEDIATE");
     try {
       for (const command of orderedCommands) {
@@ -477,7 +482,7 @@ export class RequestLogStore {
             const pending = this.takePendingRawTraceUpdate(database, requestId);
             if (pending) {
               if (command.input.captureBody === false) {
-                deleteRequestLogBodyRefs(this.bodyDir, bodyRefsFromRawTraceInput(pending));
+                deleteRequestLogBodyRefs(database, this.bodyDir, bodyRefsFromRawTraceInput(pending));
               }
               const pendingInput = command.input.captureBody === false
                 ? suppressRequestLogRawTraceBodies(pending)
@@ -510,9 +515,11 @@ export class RequestLogStore {
         }
       }
       database.exec("COMMIT");
+      flushRequestLogBodyDeletes(database, this.bodyDir);
       return { pricingRefreshNeeded };
     } catch (error) {
       if (database.inTransaction) database.exec("ROLLBACK");
+      flushRequestLogBodyDeletes(database, this.bodyDir);
       throw error;
     }
   }
@@ -662,172 +669,184 @@ export class RequestLogStore {
     const cost = database.inTransaction
       ? estimateUsageCostUsdFromLoadedCatalog(costInput)
       : await estimateUsageCostUsd(costInput);
-    const capturedRequestBody = bodyFromBuffer(
-      input.requestBody,
-      headerValue(requestHeaders, "content-type"),
-      { bodyDir: this.bodyDir, side: "request" }
-    );
-    const requestBody: RequestLogBody = {
-      ...capturedRequestBody,
-      sizeBytes: Math.max(capturedRequestBody.sizeBytes, normalizeCount(input.requestBodySizeBytes)),
-      truncated: capturedRequestBody.truncated || Boolean(input.requestBodyTruncated)
-    };
-    const responseBody = bodyFromText(
-      responseBodyText,
-      headerValue(responseHeaders, "content-type"),
-      Boolean(input.responseBodyTruncated),
-      input.responseBodySizeBytes,
-      undefined,
-      { bodyDir: this.bodyDir, side: "response" }
-    );
-    const isStream = inferRequestLogIsStream({
-      path: input.path,
-      requestBodyText: requestBody.encoding === "utf8" ? requestBody.text : undefined,
-      requestHeaders,
-      responseBodyContentType: responseBody.contentType,
-      responseHeaders,
-      url: input.url
-    });
-    const streamMetrics = resolveStoredStreamMetrics(input.streamMetrics, outputTokens, reasoningTokens);
-
-    const statement = this.insertRequestStatement ??= database.prepare(`
-      INSERT OR IGNORE INTO request_logs (
-        created_at,
-        completed_at,
-        request_id,
-        event_id,
-        client,
-        method,
-        path,
-        url,
-        provider,
-        credential_id,
-        credential_chain,
-        credential_saturated,
-        model,
-        requested_model,
-        resolved_model,
-        response_model,
-        route_trace_version,
-        route_hop_count,
-        route_attempt_count,
-        route_trace_truncated,
-        is_stream,
-        status_code,
-        ok,
-        duration_ms,
-        input_tokens,
-        output_tokens,
-        reasoning_tokens,
-        cache_read_tokens,
-        cache_write_tokens,
-        total_tokens,
-        cost_usd,
-        pricing_json,
-        request_headers,
-        response_headers,
-        request_body_text,
-        request_body_encoding,
-        request_body_content_type,
-        request_body_size_bytes,
-        request_body_truncated,
-        request_body_ref,
-        response_body_text,
-        response_body_encoding,
-        response_body_content_type,
-        response_body_size_bytes,
-        response_body_truncated,
-        response_body_ref,
-        stream_metrics_json,
-        error
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    let inserted = false;
-    const insert = () => {
-      const result = statement.run(
-        input.startedAt,
-        input.completedAt ?? new Date().toISOString(),
-        input.requestId ?? "",
-        input.eventId ?? "",
-        normalizeLabel(input.client, "unknown"),
-        input.method,
-        input.path,
-        input.url,
-        providerName,
-        credentialInfo.id,
-        credentialInfo.chain.join(","),
-        credentialInfo.saturated ? 1 : 0,
-        model,
-        requestedModel,
-        resolvedModel,
-        responseModel,
-        input.routeTrace?.version ?? 0,
-        input.routeTrace?.hopCount ?? 0,
-        input.routeTrace?.attemptCount ?? 0,
-        input.routeTrace?.truncated ? 1 : 0,
-        isStream ? 1 : 0,
-        normalizeCount(input.statusCode),
-        isSuccessStatus(input.statusCode, responseError) ? 1 : 0,
-        normalizeCount(input.durationMs),
-        inputTokens,
-        outputTokens,
-        reasoningTokens,
-        cacheReadTokens,
-        cacheWriteTokens,
-        totalTokens,
-        cost?.amountUsd ?? null,
-        input.pricing ? JSON.stringify(input.pricing) : "",
-        JSON.stringify(requestHeaders),
-        JSON.stringify(responseHeaders),
-        requestBody.text,
-        requestBody.encoding,
-        requestBody.contentType ?? "",
-        requestBody.sizeBytes,
-        requestBody.truncated ? 1 : 0,
-        requestBody.bodyRef ?? "",
-        responseBody.text,
-        responseBody.encoding,
-        responseBody.contentType ?? "",
-        responseBody.sizeBytes,
-        responseBody.truncated ? 1 : 0,
-        responseBody.bodyRef ?? "",
-        streamMetrics ? JSON.stringify(streamMetrics) : "",
-        responseError ?? ""
+    const ownsBodyTransaction = !database.inTransaction;
+    if (ownsBodyTransaction) database.exec("BEGIN IMMEDIATE");
+    try {
+      const capturedRequestBody = bodyFromBuffer(
+        input.requestBody,
+        headerValue(requestHeaders, "content-type"),
+        { bodyDir: this.bodyDir, side: "request" }
       );
-      if (result.changes === 0) return;
-      inserted = true;
-      database.prepare(`
-        UPDATE request_logs
-        SET
-          gateway_status_code = ?,
-          gateway_ok = ?,
-          gateway_error = ?,
-          gateway_final_attempt = ?,
-          gateway_body_capture_policy = ?,
-          gateway_body_capture_max_bytes = ?
-        WHERE id = ?
-      `).run(
-        normalizeCount(input.statusCode),
-        isSuccessStatus(input.statusCode, responseError) ? 1 : 0,
-        responseError ?? "",
-        finalAttemptFromHeaders(responseHeaders, input.routeTrace?.attemptCount),
-        input.bodyCapturePolicy ?? (input.captureBody === false ? "none" : "all"),
-        normalizeCount(input.maxBodyBytes),
-        Number(result.lastInsertRowid)
+      const requestBody: RequestLogBody = {
+        ...capturedRequestBody,
+        sizeBytes: Math.max(capturedRequestBody.sizeBytes, normalizeCount(input.requestBodySizeBytes)),
+        truncated: capturedRequestBody.truncated || Boolean(input.requestBodyTruncated)
+      };
+      const responseBody = bodyFromText(
+        responseBodyText,
+        headerValue(responseHeaders, "content-type"),
+        Boolean(input.responseBodyTruncated),
+        input.responseBodySizeBytes,
+        undefined,
+        { bodyDir: this.bodyDir, side: "response" }
       );
-      if (input.routeTrace) {
-        insertRequestRouteTrace(
-          this.insertRouteTraceStatement ??= prepareRequestRouteTraceInsert(database),
-          Number(result.lastInsertRowid),
+      const isStream = inferRequestLogIsStream({
+        path: input.path,
+        requestBodyText: requestBody.encoding === "utf8" ? requestBody.text : undefined,
+        requestHeaders,
+        responseBodyContentType: responseBody.contentType,
+        responseHeaders,
+        url: input.url
+      });
+      const streamMetrics = resolveStoredStreamMetrics(input.streamMetrics, outputTokens, reasoningTokens);
+
+      const statement = this.insertRequestStatement ??= database.prepare(`
+        INSERT OR IGNORE INTO request_logs (
+          created_at,
+          completed_at,
+          request_id,
+          event_id,
+          client,
+          method,
+          path,
+          url,
+          provider,
+          credential_id,
+          credential_chain,
+          credential_saturated,
+          model,
+          requested_model,
+          resolved_model,
+          response_model,
+          route_trace_version,
+          route_hop_count,
+          route_attempt_count,
+          route_trace_truncated,
+          is_stream,
+          status_code,
+          ok,
+          duration_ms,
+          input_tokens,
+          output_tokens,
+          reasoning_tokens,
+          cache_read_tokens,
+          cache_write_tokens,
+          total_tokens,
+          cost_usd,
+          pricing_json,
+          request_headers,
+          response_headers,
+          request_body_text,
+          request_body_encoding,
+          request_body_content_type,
+          request_body_size_bytes,
+          request_body_truncated,
+          request_body_ref,
+          response_body_text,
+          response_body_encoding,
+          response_body_content_type,
+          response_body_size_bytes,
+          response_body_truncated,
+          response_body_ref,
+          stream_metrics_json,
+          error
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      let inserted = false;
+      const insert = () => {
+        const result = statement.run(
+          input.startedAt,
+          input.completedAt ?? new Date().toISOString(),
           input.requestId ?? "",
-          input.routeTrace
+          input.eventId ?? "",
+          normalizeLabel(input.client, "unknown"),
+          input.method,
+          input.path,
+          input.url,
+          providerName,
+          credentialInfo.id,
+          credentialInfo.chain.join(","),
+          credentialInfo.saturated ? 1 : 0,
+          model,
+          requestedModel,
+          resolvedModel,
+          responseModel,
+          input.routeTrace?.version ?? 0,
+          input.routeTrace?.hopCount ?? 0,
+          input.routeTrace?.attemptCount ?? 0,
+          input.routeTrace?.truncated ? 1 : 0,
+          isStream ? 1 : 0,
+          normalizeCount(input.statusCode),
+          isSuccessStatus(input.statusCode, responseError) ? 1 : 0,
+          normalizeCount(input.durationMs),
+          inputTokens,
+          outputTokens,
+          reasoningTokens,
+          cacheReadTokens,
+          cacheWriteTokens,
+          totalTokens,
+          cost?.amountUsd ?? null,
+          input.pricing ? JSON.stringify(input.pricing) : "",
+          JSON.stringify(requestHeaders),
+          JSON.stringify(responseHeaders),
+          requestBody.text,
+          requestBody.encoding,
+          requestBody.contentType ?? "",
+          requestBody.sizeBytes,
+          requestBody.truncated ? 1 : 0,
+          requestBody.bodyRef ?? "",
+          responseBody.text,
+          responseBody.encoding,
+          responseBody.contentType ?? "",
+          responseBody.sizeBytes,
+          responseBody.truncated ? 1 : 0,
+          responseBody.bodyRef ?? "",
+          streamMetrics ? JSON.stringify(streamMetrics) : "",
+          responseError ?? ""
         );
+        if (result.changes === 0) return;
+        inserted = true;
+        database.prepare(`
+          UPDATE request_logs
+          SET
+            gateway_status_code = ?,
+            gateway_ok = ?,
+            gateway_error = ?,
+            gateway_final_attempt = ?,
+            gateway_body_capture_policy = ?,
+            gateway_body_capture_max_bytes = ?
+          WHERE id = ?
+        `).run(
+          normalizeCount(input.statusCode),
+          isSuccessStatus(input.statusCode, responseError) ? 1 : 0,
+          responseError ?? "",
+          finalAttemptFromHeaders(responseHeaders, input.routeTrace?.attemptCount),
+          input.bodyCapturePolicy ?? (input.captureBody === false ? "none" : "all"),
+          normalizeCount(input.maxBodyBytes),
+          Number(result.lastInsertRowid)
+        );
+        if (input.routeTrace) {
+          insertRequestRouteTrace(
+            this.insertRouteTraceStatement ??= prepareRequestRouteTraceInsert(database),
+            Number(result.lastInsertRowid),
+            input.requestId ?? "",
+            input.routeTrace
+          );
+        }
+      };
+      if (database.inTransaction) insert();
+      else database.transaction(insert)();
+      if (inserted) this.revision += 1;
+      if (ownsBodyTransaction) {
+        database.exec("COMMIT");
+        flushRequestLogBodyDeletes(database, this.bodyDir);
       }
-    };
-    if (database.inTransaction) insert();
-    else database.transaction(insert)();
-    if (inserted) this.revision += 1;
+    } catch (error) {
+      if (ownsBodyTransaction && database.inTransaction) database.exec("ROLLBACK");
+      if (ownsBodyTransaction) flushRequestLogBodyDeletes(database, this.bodyDir);
+      throw error;
+    }
   }
 
   async updateFromRawTrace(rawInput: RequestLogRawTraceUpdateInput): Promise<boolean> {
@@ -876,7 +895,7 @@ export class RequestLogStore {
       finalSuccessful
     );
     if (captureResolution.bodiesSuppressed) {
-      deleteRequestLogBodyRefs(this.bodyDir, bodyRefsFromRawTraceInput(rawInput));
+      deleteRequestLogBodyRefs(database, this.bodyDir, bodyRefsFromRawTraceInput(rawInput));
     }
     const input = captureResolution.input;
     const existingUsageContext = readRequestLogUsageContext(database, requestId);
@@ -1026,59 +1045,71 @@ export class RequestLogStore {
         url
       }) ? 1 : 0);
     }
-    const shouldApplyRequestBody = input.requestBodyText !== undefined ||
-      Boolean(input.requestBodyRef && (!input.requestBodyTruncated || !existingOutcome.hasRequestBody));
-    if (shouldApplyRequestBody && (
-      captureResolution.bodiesSuppressed || Boolean(input.requestBodyRef) || (input.requestBodyText?.length ?? 0) > 0 || !existingOutcome.hasRequestBody
-    )) {
-      const requestBody = bodyFromText(
-        input.requestBodyText ?? "",
-        input.requestBodyContentType ?? headerValue(mergedRequestHeaders ?? {}, "content-type"),
-        Boolean(input.requestBodyTruncated),
-        input.requestBodySizeBytes,
-        rawTraceHardMaxBodyBytes,
-        { bodyDir: this.bodyDir, bodyRef: input.requestBodyRef, side: "request" }
-      );
-      pushBodyValues(sets, params, "request", requestBody);
-    }
-    const preserveExistingResponseBody = shouldPreserveExistingResponseBodyForRawTrace(
-      existingOutcome,
-      input,
-      responseHeaders,
-      responseBodyContentType,
-      sseError
-    );
-    const shouldApplyResponseBody = !preserveExistingResponseBody && (
-      input.responseBodyText !== undefined ||
-      Boolean(input.responseBodyRef && (!input.responseBodyTruncated || !existingOutcome.hasResponseBody))
-    );
-    if (shouldApplyResponseBody && (
-      captureResolution.bodiesSuppressed || Boolean(input.responseBodyRef) || (input.responseBodyText?.length ?? 0) > 0 || !existingOutcome.hasResponseBody
-    )) {
-      const responseBody = bodyFromText(
-        input.responseBodyText ?? "",
-        responseBodyContentType,
-        Boolean(input.responseBodyTruncated),
-        input.responseBodySizeBytes,
-        rawTraceHardMaxBodyBytes,
-        { bodyDir: this.bodyDir, bodyRef: input.responseBodyRef, side: "response" }
-      );
-      pushBodyValues(sets, params, "response", responseBody);
-    } else if (preserveExistingResponseBody && input.responseBodyRef) {
-      deleteRequestLogBodyRefs(this.bodyDir, [input.responseBodyRef]);
-    }
-
-    const update = () => {
-      if (sets.length > 0) {
-        database.prepare(`UPDATE request_logs SET ${sets.join(", ")} WHERE request_id = ?`).run(...params, requestId);
+    const ownsBodyTransaction = !database.inTransaction;
+    if (ownsBodyTransaction) database.exec("BEGIN IMMEDIATE");
+    try {
+      const shouldApplyRequestBody = input.requestBodyText !== undefined ||
+        Boolean(input.requestBodyRef && (!input.requestBodyTruncated || !existingOutcome.hasRequestBody));
+      if (shouldApplyRequestBody && (
+        captureResolution.bodiesSuppressed || Boolean(input.requestBodyRef) || (input.requestBodyText?.length ?? 0) > 0 || !existingOutcome.hasRequestBody
+      )) {
+        const requestBody = bodyFromText(
+          input.requestBodyText ?? "",
+          input.requestBodyContentType ?? headerValue(mergedRequestHeaders ?? {}, "content-type"),
+          Boolean(input.requestBodyTruncated),
+          input.requestBodySizeBytes,
+          rawTraceHardMaxBodyBytes,
+          { bodyDir: this.bodyDir, bodyRef: input.requestBodyRef, side: "request" }
+        );
+        pushBodyValues(sets, params, "request", requestBody);
       }
-    };
-    if (database.inTransaction) update();
-    else database.transaction(update)();
-    if (sets.length > 0) {
-      this.revision += 1;
+      const preserveExistingResponseBody = shouldPreserveExistingResponseBodyForRawTrace(
+        existingOutcome,
+        input,
+        responseHeaders,
+        responseBodyContentType,
+        sseError
+      );
+      const shouldApplyResponseBody = !preserveExistingResponseBody && (
+        input.responseBodyText !== undefined ||
+        Boolean(input.responseBodyRef && (!input.responseBodyTruncated || !existingOutcome.hasResponseBody))
+      );
+      if (shouldApplyResponseBody && (
+        captureResolution.bodiesSuppressed || Boolean(input.responseBodyRef) || (input.responseBodyText?.length ?? 0) > 0 || !existingOutcome.hasResponseBody
+      )) {
+        const responseBody = bodyFromText(
+          input.responseBodyText ?? "",
+          responseBodyContentType,
+          Boolean(input.responseBodyTruncated),
+          input.responseBodySizeBytes,
+          rawTraceHardMaxBodyBytes,
+          { bodyDir: this.bodyDir, bodyRef: input.responseBodyRef, side: "response" }
+        );
+        pushBodyValues(sets, params, "response", responseBody);
+      } else if (preserveExistingResponseBody && input.responseBodyRef) {
+        deleteRequestLogBodyRefs(database, this.bodyDir, [input.responseBodyRef]);
+      }
+
+      const update = () => {
+        if (sets.length > 0) {
+          database.prepare(`UPDATE request_logs SET ${sets.join(", ")} WHERE request_id = ?`).run(...params, requestId);
+        }
+      };
+      if (database.inTransaction) update();
+      else database.transaction(update)();
+      if (sets.length > 0) {
+        this.revision += 1;
+      }
+      if (ownsBodyTransaction) {
+        database.exec("COMMIT");
+        flushRequestLogBodyDeletes(database, this.bodyDir);
+      }
+      return true;
+    } catch (error) {
+      if (ownsBodyTransaction && database.inTransaction) database.exec("ROLLBACK");
+      if (ownsBodyTransaction) flushRequestLogBodyDeletes(database, this.bodyDir);
+      throw error;
     }
-    return true;
   }
 
   async list(filter: RequestLogListFilter = {}): Promise<RequestLogPage> {
@@ -1537,6 +1568,10 @@ export class RequestLogStore {
   }
 
   private pruneOldRequestLogs(database: SqlDatabase): void {
+    // Cleanup must never unlink a reference whose row could be restored by an
+    // enclosing write batch rollback. Run retention before opening that batch.
+    if (database.inTransaction) return;
+    database.transaction(() => this.sweepOrphanBodies(database)).immediate();
     const now = new Date();
     const dayKey = formatLocalDayKey(now);
     if (this.lastRetentionCleanupDay === dayKey) {
@@ -1559,24 +1594,49 @@ export class RequestLogStore {
       return;
     }
 
-    const refs = queryRows(
-      database,
-      `
-        SELECT request_body_ref, response_body_ref
-        FROM request_logs
-        WHERE source_usage_id IS NULL AND created_at < ?
-      `,
-      [cutoff]
-    ).flatMap((row) => [
-      normalizeFilterValue(String(row.request_body_ref ?? "")),
-      normalizeFilterValue(String(row.response_body_ref ?? ""))
-    ]).filter((value): value is string => Boolean(value));
-
-    database.prepare(
-      "DELETE FROM request_logs WHERE source_usage_id IS NULL AND created_at < ?",
-    ).run(cutoff);
-    deleteRequestLogBodyRefs(this.bodyDir, refs);
+    while (true) {
+      const removed = database.transaction(() => {
+        const rows = queryRows(database, `SELECT id, request_body_ref, response_body_ref FROM request_logs
+          WHERE source_usage_id IS NULL AND created_at < ? LIMIT 128`, [cutoff]);
+        const remove = database.prepare("DELETE FROM request_logs WHERE id = ?");
+        for (const row of rows) remove.run(row.id);
+        deleteRequestLogBodyRefs(database, this.bodyDir, rows.flatMap((row) =>
+          [String(row.request_body_ref ?? ""), String(row.response_body_ref ?? "")]).filter(Boolean));
+        return rows.length;
+      }).immediate();
+      flushRequestLogBodyDeletes(database, this.bodyDir);
+      if (removed === 0) break;
+    }
     this.lastRetentionCleanupDay = dayKey;
+  }
+
+  private sweepOrphanBodies(database: SqlDatabase): void {
+    const now = Date.now();
+    if (!this.bodySweep) {
+      if (now - this.bodySweepCompletedAt < 60 * 60 * 1000) return;
+      this.bodySweep = requestLogBodyFiles(this.bodyDir);
+    }
+    const refs: string[] = [];
+    for (let index = 0; index < 256; index += 1) {
+      let next: IteratorResult<string>;
+      try { next = this.bodySweep.next(); } catch {
+        this.bodySweep = undefined;
+        this.bodySweepCompletedAt = now;
+        break;
+      }
+      if (next.done) {
+        this.bodySweep = undefined;
+        this.bodySweepCompletedAt = now;
+        break;
+      }
+      const filePath = next.value;
+      try {
+        if (statSync(filePath).mtimeMs > now - 60 * 60 * 1000) continue;
+        const ref = basename(filePath);
+        refs.push(ref);
+      } catch { /* Entries can disappear while a previous cleanup completes. */ }
+    }
+    deleteUnreferencedBodyRefs(database, this.bodyDir, refs);
   }
 
   private storePendingRawTraceUpdate(database: SqlDatabase, input: RequestLogRawTraceUpdateInput): void {
@@ -4402,35 +4462,31 @@ function parseDateMs(value: string): number {
 }
 
 function migrateRequestLogModelSummaries(database: SqlDatabase): void {
-  const rows = queryRows(database, `
-    SELECT
-      rowid AS id,
-      model,
-      path,
-      request_body_text,
-      response_body_text
-    FROM request_logs
+  const read = database.prepare(`
+    SELECT rowid AS id, model, path, request_body_text, response_body_text
+    FROM request_logs WHERE rowid = ?
   `);
-  if (rows.length === 0) {
-    return;
-  }
-
   const update = database.prepare(`
     UPDATE request_logs
     SET requested_model = ?, resolved_model = ?, response_model = ?
     WHERE rowid = ?
   `);
-  database.transaction(() => {
-    for (const row of rows) {
-      const requestedModel = requestLogRequestedModel(
-        String(row.request_body_text ?? ""),
-        String(row.path ?? "")
-      ) ?? "";
-      const resolvedModel = normalizeFilterValue(String(row.model ?? "")) ?? "";
-      const responseModel = requestLogResponseModel(String(row.response_body_text ?? "")) ?? "";
-      update.run(requestedModel, resolvedModel, responseModel, normalizeCount(row.id));
-    }
-  })();
+  let afterId = 0;
+  while (true) {
+    // Fetch only a bounded page of IDs. Retain at most one pair of bodies.
+    const ids = queryRows(database, "SELECT rowid AS id FROM request_logs WHERE rowid > ? ORDER BY rowid LIMIT 128", [afterId]);
+    if (ids.length === 0) break;
+    database.transaction(() => {
+      for (const { id } of ids) {
+        const row = read.get(id) as Record<string, SqlValue>;
+        const requestedModel = requestLogRequestedModel(String(row.request_body_text ?? ""), String(row.path ?? "")) ?? "";
+        const resolvedModel = normalizeFilterValue(String(row.model ?? "")) ?? "";
+        const responseModel = requestLogResponseModel(String(row.response_body_text ?? "")) ?? "";
+        update.run(requestedModel, resolvedModel, responseModel, id);
+      }
+    })();
+    afterId = Number(ids[ids.length - 1].id);
+  }
 }
 
 function ensureRequestLogSchema(database: SqlDatabase): void {
@@ -4516,6 +4572,8 @@ function ensureRequestLogSchema(database: SqlDatabase): void {
   database.exec("CREATE INDEX IF NOT EXISTS request_logs_created_at_idx ON request_logs(created_at)");
   database.exec("CREATE INDEX IF NOT EXISTS request_logs_credential_id_idx ON request_logs(credential_id)");
   database.exec("CREATE INDEX IF NOT EXISTS request_logs_model_idx ON request_logs(model)");
+  database.exec("CREATE INDEX IF NOT EXISTS request_logs_request_body_ref_idx ON request_logs(request_body_ref)");
+  database.exec("CREATE INDEX IF NOT EXISTS request_logs_response_body_ref_idx ON request_logs(response_body_ref)");
   database.exec("CREATE INDEX IF NOT EXISTS request_logs_provider_idx ON request_logs(provider)");
   database.exec("CREATE INDEX IF NOT EXISTS request_logs_request_id_idx ON request_logs(request_id)");
   database.exec("CREATE INDEX IF NOT EXISTS request_logs_source_usage_id_idx ON request_logs(source_usage_id)");
@@ -5663,11 +5721,65 @@ function normalizeBodyRef(value: string | undefined): string | undefined {
   return normalized;
 }
 
-function deleteRequestLogBodyRefs(bodyDir: string, refs: string[]): void {
+function* requestLogBodyFiles(bodyDir: string): Generator<string> {
+  if (!existsSync(bodyDir)) return;
+  const root = opendirSync(bodyDir);
+  try {
+    let shard;
+    while ((shard = root.readSync())) {
+      if (!shard.isDirectory() || !/^[A-Za-z0-9._-]{2}$/.test(shard.name)) continue;
+      const dir = opendirSync(join(bodyDir, shard.name));
+      try {
+        let entry;
+        while ((entry = dir.readSync())) {
+          if (entry.isFile() && normalizeBodyRef(entry.name) && entry.name.startsWith(shard.name)) {
+            yield join(bodyDir, shard.name, entry.name);
+          }
+        }
+      } finally { dir.closeSync(); }
+    }
+  } finally { root.closeSync(); }
+}
+
+function requestLogBodyIsReferenced(database: SqlDatabase, ref: string, pendingRefs: Set<string>): boolean {
+  if (database.prepare("SELECT 1 FROM request_logs WHERE request_body_ref = ? OR response_body_ref = ? LIMIT 1").get(ref, ref)) return true;
+  return pendingRefs.has(ref);
+}
+
+const pendingBodyDeletes = new WeakMap<SqlDatabase, Set<string>>();
+
+function deleteRequestLogBodyRefs(database: SqlDatabase, bodyDir: string, refs: string[]): void {
+  if (database.inTransaction) {
+    const pending = pendingBodyDeletes.get(database) ?? new Set<string>();
+    for (const ref of refs) pending.add(ref);
+    pendingBodyDeletes.set(database, pending);
+    return;
+  }
+  database.transaction(() => deleteUnreferencedBodyRefs(database, bodyDir, refs)).immediate();
+}
+
+function flushRequestLogBodyDeletes(database: SqlDatabase, bodyDir: string): void {
+  if (database.inTransaction) return;
+  const refs = pendingBodyDeletes.get(database);
+  pendingBodyDeletes.delete(database);
+  if (!refs?.size) return;
+  try {
+    // Both a successful commit and a rollback are safe: recheck the surviving
+    // references under the same lock that writers use to publish body files.
+    database.transaction(() => deleteUnreferencedBodyRefs(database, bodyDir, [...refs])).immediate();
+  } catch { /* The periodic sweep retries orphan files if cleanup cannot lock. */ }
+}
+
+function deleteUnreferencedBodyRefs(database: SqlDatabase, bodyDir: string, refs: string[]): void {
+  if (refs.length === 0) return;
+  // The pending table is capped at 200 entries / 8 MiB. Read it once per batch,
+  // rather than re-parsing all pending bodies for each filesystem entry.
+  const pendingRefs = new Set(bodyRefsFromPendingRawTraceRows(
+    queryRows(database, "SELECT update_json FROM request_log_pending_updates")));
   for (const ref of refs) {
     const filePath = requestLogBodyPath(bodyDir, ref);
-    if (!filePath) continue;
-    rmSync(filePath, { force: true });
+    if (!filePath || requestLogBodyIsReferenced(database, ref, pendingRefs)) continue;
+    try { rmSync(filePath, { force: true }); } catch { /* The orphan sweep retries failed unlinks. */ }
   }
 }
 
@@ -5878,9 +5990,9 @@ function prunePendingRawTraceUpdates(database: SqlDatabase, now: number, bodyDir
     "SELECT update_json FROM request_log_pending_updates WHERE received_at < ?",
     [now - pendingRawTraceTtlMs]
   );
-  if (bodyDir) deleteRequestLogBodyRefs(bodyDir, bodyRefsFromPendingRawTraceRows(expiredRows));
   database.prepare("DELETE FROM request_log_pending_updates WHERE received_at < ?")
     .run(now - pendingRawTraceTtlMs);
+  if (bodyDir) deleteRequestLogBodyRefs(database, bodyDir, bodyRefsFromPendingRawTraceRows(expiredRows));
   const rows = queryRows(
     database,
     `
@@ -5896,8 +6008,8 @@ function prunePendingRawTraceUpdates(database: SqlDatabase, now: number, bodyDir
     const bytes = normalizeCount(row.update_bytes);
     if (retainedEntries >= maxPendingRawTraceEntries ||
       retainedBytes + bytes > maxPendingRawTraceTotalBytes) {
-      if (bodyDir) deleteRequestLogBodyRefs(bodyDir, bodyRefsFromPendingRawTraceRows([row]));
       remove.run(String(row.request_id ?? ""));
+      if (bodyDir) deleteRequestLogBodyRefs(database, bodyDir, bodyRefsFromPendingRawTraceRows([row]));
       continue;
     }
     retainedEntries += 1;

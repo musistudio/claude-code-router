@@ -34,6 +34,8 @@ async function seedRequestLogs(dbFile, { bodyPaddingBytes, requestCount }) {
 
   const database = createBetterSqliteDatabase(dbFile);
   try {
+    // Reproduce databases created before model-summary columns were introduced.
+    database.exec("ALTER TABLE request_logs DROP COLUMN requested_model; ALTER TABLE request_logs DROP COLUMN resolved_model; ALTER TABLE request_logs DROP COLUMN response_model;");
     const padding = "x".repeat(bodyPaddingBytes);
     const nonStreamingBody = JSON.stringify({ model: "gpt-test", padding, stream: false });
     const streamingBody = JSON.stringify({ model: "gpt-test", stream: true });
@@ -150,6 +152,10 @@ test("RequestLogStore backfill worker opens the seeded database in 64 MB", {
   const store = new RequestLogStore(dbFile);
   try {
     await store.initialize();
+    const db = createBetterSqliteDatabase(dbFile);
+    try {
+      assert.equal(db.prepare("SELECT COUNT(*) AS n FROM request_logs WHERE requested_model = 'gpt-test'").get().n, 514);
+    } finally { db.close(); }
     assert.deepEqual(readStreamFlagCounts(dbFile), { non_streaming: 512, streaming: 2 });
   } finally {
     await store.close();
