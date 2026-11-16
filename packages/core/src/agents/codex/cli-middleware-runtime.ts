@@ -13,7 +13,7 @@ const readline = require("node:readline");
 const { pathToFileURL } = require("node:url");
 
 const VERSION = "3.0.0";
-const DEFAULT_MODEL = "claude-sonnet-4-5";
+const DEFAULT_MODEL = "claude-sonnet-4-6";
 const PROTOCOL_VERSION = "2025-06-18";
 const BOT_SESSION_ENTRY_VERSION = 3;
 const OPENCODE_BOT_SESSION_STORE_VERSION = 3;
