@@ -1,6 +1,14 @@
 import type { ProviderAccountConfig, ProviderAccountMappingConfig } from "@ccr/core/contracts/app";
 import type { ProviderPreset } from "@ccr/core/providers/presets/types";
 
+// Same endpoint and same payload shape as the coding plan preset.
+//
+// `percentage` is the CONSUMED share of the window (6 % consumed = 94 % left),
+// so `remaining` is `100 - percentage`. The windows are discriminated by
+// `unit` (3 = rolling 5 h window, 6 = weekly window) rather than by `type`:
+// Z.ai renamed the limit type from `TOKENS_LIMIT` to `CREDIT_LIMIT` when the
+// plans moved from tokens to credits, so filtering on the type name made every
+// meter come back empty.
 const zaiQuotaMapping: ProviderAccountMappingConfig = {
   meters: [
     {
@@ -8,10 +16,10 @@ const zaiQuotaMapping: ProviderAccountMappingConfig = {
       kind: "quota",
       label: "5h quota",
       limit: 100,
-      remaining: "100 - $.data.limits[?(@.type==\"TOKENS_LIMIT\" && @.unit==3)].percentage",
-      resetAt: "$.data.limits[?(@.type==\"TOKENS_LIMIT\" && @.unit==3)].nextResetTime",
+      remaining: "100 - $.data.limits[?(@.unit==3)].percentage",
+      resetAt: "$.data.limits[?(@.unit==3)].nextResetTime",
       unit: "%",
-      used: "$.data.limits[?(@.type==\"TOKENS_LIMIT\" && @.unit==3)].percentage",
+      used: "$.data.limits[?(@.unit==3)].percentage",
       window: "5h"
     },
     {
@@ -19,10 +27,10 @@ const zaiQuotaMapping: ProviderAccountMappingConfig = {
       kind: "quota",
       label: "Weekly quota",
       limit: 100,
-      remaining: "100 - $.data.limits[?(@.type==\"TOKENS_LIMIT\" && @.unit==6)].percentage",
-      resetAt: "$.data.limits[?(@.type==\"TOKENS_LIMIT\" && @.unit==6)].nextResetTime",
+      remaining: "100 - $.data.limits[?(@.unit==6)].percentage",
+      resetAt: "$.data.limits[?(@.unit==6)].nextResetTime",
       unit: "%",
-      used: "$.data.limits[?(@.type==\"TOKENS_LIMIT\" && @.unit==6)].percentage",
+      used: "$.data.limits[?(@.unit==6)].percentage",
       window: "weekly"
     }
   ]
