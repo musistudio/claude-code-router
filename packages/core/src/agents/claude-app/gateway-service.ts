@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -11,6 +11,14 @@ import {
   type ClaudeAppGatewayInferenceModel,
   type ClaudeAppGatewayModelRouteOptions
 } from "@ccr/core/agents/claude-app/gateway-routes";
+import {
+  TOOL_HUB_MCP_RUNTIME_FILE_NAME,
+  TOOL_HUB_MCP_SERVER_NAME,
+  bundledToolHubMcpEntryPathCandidates,
+  toolHubClaudeCodeMcpConfig,
+  toolHubResolverModel,
+  type ClaudeCodeMcpServerConfig
+} from "@ccr/core/mcp/toolhub-config";
 import { NO_AVAILABLE_GATEWAY_MODELS_MESSAGE, hasAvailableGatewayModels, type ApiKeyConfig, type AppConfig, type ClaudeAppGatewayApplyResult } from "@ccr/core/contracts/app";
 import { findModelCatalogEntry } from "@ccr/core/gateway/model-catalog";
 
@@ -168,11 +176,12 @@ export function applyClaudeAppGatewayConfig(config: AppConfig, options: ClaudeAp
   if (options.backup !== false) {
     backupClaudeAppGatewayConfig(paths);
   }
+  const toolHubServer = claudeAppToolHubServerConfig(state.config, state.apiKey, endpoint);
   for (const targetPaths of uniqueClaudeAppGatewayPaths([paths, activePaths])) {
     mkdirSync(targetPaths.libraryDir, { mode: 0o700, recursive: true });
     applyClaudeAppGatewayLibraryConfig(targetPaths.configLibraryFile, gatewayConfig);
     applyClaudeAppConfigMeta(targetPaths.metaFile);
-    applyClaudeAppDeploymentMode(targetPaths.rootConfigFile);
+    applyClaudeAppRootConfig(targetPaths.rootConfigFile, toolHubServer);
     if (options.refreshModelDiscoveryCache) {
       refreshClaudeAppModelDiscoveryCache(targetPaths.dataDir);
     }
@@ -216,6 +225,7 @@ export function restoreClaudeAppGatewayConfig(): void {
 
   const paths = getClaudeAppGatewayPaths();
   restoreClaudeAppOwnedKey(paths.rootConfigFile, backup.rootConfigFile, "deploymentMode", "3p");
+  removeManagedToolHubServer(paths.rootConfigFile);
   restoreClaudeAppOwnedKey(paths.metaFile, backup.metaFile, "appliedId", CLAUDE_APP_CONFIG_ID);
   // The inactive library entry contains preferences Claude writes during takeover.
   rmSync(CLAUDE_APP_GATEWAY_BACKUP_FILE, { force: true });
@@ -508,12 +518,73 @@ function normalizeMetaEntries(value: unknown): Array<{ id: string; name: string 
   return entries;
 }
 
-function applyClaudeAppDeploymentMode(rootConfigFile: string): void {
+function applyClaudeAppRootConfig(rootConfigFile: string, toolHubServer: ClaudeCodeMcpServerConfig | undefined): void {
   const current = readJsonRecord(rootConfigFile);
-  writeJsonFile(rootConfigFile, {
+  const next: Record<string, unknown> = {
     ...(current ?? {}),
     deploymentMode: "3p"
-  });
+  };
+  delete next.mcpServers;
+  const servers: Record<string, unknown> =
+    isPlainRecord(current?.mcpServers) ? { ...current.mcpServers } : {};
+  delete servers[TOOL_HUB_MCP_SERVER_NAME];
+  if (toolHubServer) {
+    servers[TOOL_HUB_MCP_SERVER_NAME] = toolHubServer;
+  }
+  if (Object.keys(servers).length > 0) {
+    next.mcpServers = servers;
+  }
+  writeJsonFile(rootConfigFile, next);
+}
+
+function claudeAppToolHubServerConfig(
+  config: AppConfig,
+  apiKey: string,
+  endpoint: string
+): ClaudeCodeMcpServerConfig | undefined {
+  const entry = toolHubClaudeCodeMcpConfig(config, {
+    entryPath: path.join(CONFIGDIR, "bin", TOOL_HUB_MCP_RUNTIME_FILE_NAME),
+    resolver: {
+      apiKey,
+      baseUrl: `${endpoint.replace(/\/+$/g, "")}/v1`,
+      model: toolHubResolverModel(config)
+    }
+  })?.mcpServers?.[TOOL_HUB_MCP_SERVER_NAME];
+  return entry && ensureClaudeAppToolHubRuntimeFile() ? entry : undefined;
+}
+
+function ensureClaudeAppToolHubRuntimeFile(): boolean {
+  const destination = path.join(CONFIGDIR, "bin", TOOL_HUB_MCP_RUNTIME_FILE_NAME);
+  if (existsSync(destination)) {
+    return true;
+  }
+  const source = bundledToolHubMcpEntryPathCandidates().find((candidate) => existsSync(candidate));
+  if (!source) {
+    return false;
+  }
+  mkdirSync(path.dirname(destination), { recursive: true });
+  copyFileSync(source, destination);
+  try {
+    chmodSync(destination, 0o755);
+  } catch {
+    // File permissions are best-effort across platforms.
+  }
+  return true;
+}
+
+function removeManagedToolHubServer(rootConfigFile: string): void {
+  const current = readJsonRecord(rootConfigFile);
+  const servers = current?.mcpServers;
+  if (!current || !isPlainRecord(servers) || !Object.hasOwn(servers, TOOL_HUB_MCP_SERVER_NAME)) {
+    return;
+  }
+  delete servers[TOOL_HUB_MCP_SERVER_NAME];
+  if (Object.keys(servers).length > 0) {
+    current.mcpServers = servers;
+  } else {
+    delete current.mcpServers;
+  }
+  writeJsonFile(rootConfigFile, current);
 }
 
 function readJsonRecord(file: string): Record<string, unknown> | undefined {

@@ -1,5 +1,6 @@
 import { join as pathJoin } from "node:path";
 import { CONFIGDIR } from "@ccr/core/config/constants";
+import { isGatewayProviderEnabled } from "@ccr/core/contracts/app";
 import type { AppConfig, GatewayMcpServerConfig } from "@ccr/core/contracts/app";
 
 export const TOOL_HUB_MCP_SERVER_NAME = "ccr-toolhub";
@@ -146,6 +147,23 @@ export function toolHubClaudeCodeMcpConfig(
     : undefined;
 }
 
+export function toolHubResolverModel(config: AppConfig | undefined): string {
+  const model = config?.toolHub?.llm?.model?.trim() ?? "";
+  if (!model) {
+    return "";
+  }
+  if (model.includes("/")) {
+    return model;
+  }
+  const baseUrl = normalizeUrlForMatch(config?.toolHub?.llm?.baseUrl);
+  const enabledProviders = (config?.Providers ?? []).filter(isGatewayProviderEnabled);
+  const provider = enabledProviders.find((candidate) =>
+    candidate.models.includes(model) &&
+    (!baseUrl || normalizeUrlForMatch(providerBaseUrl(candidate)) === baseUrl)
+  ) ?? enabledProviders.find((candidate) => candidate.models.includes(model));
+  return provider?.name ? `${provider.name}/${model}` : model;
+}
+
 export function bundledToolHubMcpEntryPath(): string {
   return pathJoin(__dirname, TOOL_HUB_MCP_RUNTIME_FILE_NAME);
 }
@@ -174,6 +192,14 @@ export function bundledToolHubMcpEntryPathCandidates(): string[] {
 
 function isToolHubBackendServer(value: unknown): value is Record<string, unknown> {
   return isRecord(value) && stringValue(value.name)?.toLowerCase() !== TOOL_HUB_MCP_SERVER_NAME;
+}
+
+function providerBaseUrl(provider: AppConfig["Providers"][number]): string {
+  return provider.api_base_url || provider.baseUrl || provider.baseurl || "";
+}
+
+function normalizeUrlForMatch(value: string | undefined): string {
+  return (value || "").trim().replace(/\/+$/g, "");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
