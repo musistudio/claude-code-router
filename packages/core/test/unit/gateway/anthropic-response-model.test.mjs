@@ -3,6 +3,7 @@ import { Readable, Writable } from "node:stream";
 import test from "node:test";
 import { ClaudeCodeRouterPlugin } from "@ccr/core/gateway/claude-code-router-plugin.ts";
 import {
+  rewriteAnthropicMessageModelJsonStream,
   rewriteAnthropicMessageStartModelStream,
   rewriteAnthropicSseBlockMessageStartModelForTest,
   shouldRewriteAnthropicMessageStartModel
@@ -45,6 +46,21 @@ test("Anthropic SSE response model rewrite leaves unrelated blocks unchanged", (
   assert.equal(rewriteAnthropicSseBlockMessageStartModelForTest(block, "kimi-test/k3"), block);
   assert.equal(rewriteAnthropicSseBlockMessageStartModelForTest("data: [DONE]", "kimi-test/k3"), "data: [DONE]");
   assert.equal(rewriteAnthropicSseBlockMessageStartModelForTest("data: not-json", "kimi-test/k3"), "data: not-json");
+});
+
+test("Anthropic model rewrites propagate resets and cancel their source", async () => {
+  for (const rewrite of [rewriteAnthropicMessageStartModelStream, rewriteAnthropicMessageModelJsonStream]) {
+    let input = new Readable({ read() {} });
+    const reading = streamText(rewrite(input, "client-model"));
+    input.destroy(new Error("upstream reset"));
+    await assert.rejects(reading, /upstream reset/);
+    input = new Readable({ read() {} });
+    const reader = Readable.toWeb(rewrite(input, "client-model")).getReader();
+    const closed = new Promise(resolve => input.once("close", resolve));
+    await reader.cancel();
+    await closed;
+    assert.equal(input.destroyed, true);
+  }
 });
 
 test("Anthropic response model rewrite activates only for Anthropic SSE with a model", () => {
