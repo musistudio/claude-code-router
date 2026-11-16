@@ -6,7 +6,7 @@ import test from "node:test";
 import { claudeDesignRuntimePluginConfig, claudeShipRuntimePluginConfig, migrateKnownGatewayPluginConfigsForTest, withClaudeDesignRuntimePluginConfig } from "@ccr/core/config/config.ts";
 import { CCR_DESKTOP_APP_ENV } from "@ccr/core/runtime/desktop-app.ts";
 
-test("legacy combined Claude Design plugin config migrates to split Design and Ship plugins", () => {
+test("legacy combined Claude Design plugin config migrates to split Design and Ship plugins", { skip: !process.versions.electron }, () => {
   const extensionsRoot = mkdtempSync(path.join(os.tmpdir(), "ccr-extensions-migration-"));
   const previousExtensionsDir = process.env.CCR_EXTENSIONS_DIR;
   const previousDesktopApp = process.env[CCR_DESKTOP_APP_ENV];
@@ -97,7 +97,7 @@ test("legacy Claude Design migration does not duplicate an existing Claude Ship 
   }
 });
 
-test("Claude Design runtime plugin config resolves from the bundled plugin in CCR Desktop without persisting", () => {
+test("Claude Design runtime plugin config resolves from the bundled plugin in CCR Desktop without persisting", { skip: !process.versions.electron }, () => {
   const previousDesktopApp = process.env[CCR_DESKTOP_APP_ENV];
   try {
     process.env[CCR_DESKTOP_APP_ENV] = "1";
