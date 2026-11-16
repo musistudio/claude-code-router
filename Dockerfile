@@ -66,7 +66,10 @@ COPY docker/entrypoint.sh /usr/local/bin/ccr-docker-entrypoint
 COPY docker/pm2.config.cjs docker/pm2.config.cjs
 
 RUN chmod +x /usr/local/bin/ccr-docker-entrypoint \
-  && mkdir -p /data /run/nginx /var/lib/nginx /var/log/nginx
+  && mkdir -p /data /run/nginx /var/lib/nginx /var/log/nginx \
+  && sed -i -e 's#^pid .*#pid /run/nginx/nginx.pid;#' -e '/^user /d' /etc/nginx/nginx.conf \
+  && groupadd --system --gid 10001 ccr \
+  && useradd --system --uid 10001 --gid ccr --home-dir /data --no-create-home --shell /usr/sbin/nologin ccr
 
 VOLUME ["/data"]
 EXPOSE 8080
