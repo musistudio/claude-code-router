@@ -1,3 +1,4 @@
+import { localCodexOauthConfig } from "@ccr/core/agents/local-providers/codex-scopes";
 import { createHash, randomUUID } from "node:crypto";
 import type {
   GatewayProviderConnectivityCheckReport,
@@ -1001,6 +1002,7 @@ function providerProbeLiveCodexOauth(
     codexOauth: {
       ...(auth.accessToken ? { accessToken: auth.accessToken } : {}),
       ...(auth.accountId ? { accountId: auth.accountId } : {}),
+      requiredScopes: [],
       refreshIfMissingAccessToken: true,
       ...(auth.refreshToken ? { refreshToken: auth.refreshToken } : {}),
       required: true
@@ -1281,7 +1283,7 @@ function providerPluginCodexOauth(plugin: unknown): Record<string, unknown> | un
   if (!isRecord(plugin) || !isRecord(plugin.codexOauth)) {
     return undefined;
   }
-  return plugin.codexOauth;
+  return localCodexOauthConfig(plugin);
 }
 
 function providerPluginRequest(plugin: unknown): Record<string, unknown> | undefined {

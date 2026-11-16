@@ -118,7 +118,7 @@ Each execution receives its own read-only `input` object:
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `input.body` | `Record<string, unknown>` | Complete JSON request body. |
+| `input.body` | `Record<string, unknown>` | JSON request body, bounded to 2 MiB. |
 | `input.headers` | `Record<string, string \| string[]>` | Complete request headers, potentially including authentication, cookies, API keys, and CCR-internal headers. |
 | `input.method` | `string` | HTTP method, such as `POST`. |
 | `input.url` | `string` | Gateway-relative request URL, such as `/v1/messages`. |
@@ -132,6 +132,8 @@ Each execution receives its own read-only `input` object:
 | `input.summary.messageCount` | `number` | Number of elements in `body.messages`. |
 | `input.summary.toolNames` | `string[]` | Tool names extracted from `body.tools`, limited to 128 entries. |
 | `input.summary.hasImage` | `boolean` | Whether image content was detected anywhere in the request body. |
+
+Requests whose serialized body exceeds 2 MiB expose `{ __ccrBodyTruncated: true, model }` as `input.body` to protect the isolated worker heap. `input.summary` and `input.tokenCount` still describe the original request; the forwarded request body is unchanged. Check `input.body.__ccrBodyTruncated` before accessing messages directly.
 
 Header names should normally be read in lowercase. A value can be an array of strings, so handle both forms when needed:
 

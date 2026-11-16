@@ -1000,3 +1000,19 @@ function multiAgentNamespaceTool() {
     type: "namespace"
   };
 }
+
+
+test("#1923 the core route preserves the host's eligible credential order and exclusion", async () => {
+  const config = createDefaultAppConfig();
+  config.Providers = [{ id: "pool-order", name: "Pool", type: "openai_chat_completions", models: ["model"],
+    credentials: [{ id: "first", apiKey: "bad", priority: 1 }, { id: "second", apiKey: "good", priority: 2 }] }];
+  const plugin = await createGatewayPlugin({ plugin: { config: { appConfig: config } } });
+  const resolver = plugin.routeResolvers.find(item => item.key === ccrRouterRouteResolverKey);
+  const second = "pool-order::openai_chat_completions::cred:second";
+  const first = "pool-order::openai_chat_completions::cred:first";
+  for (const eligible of [[second], [second, first]]) {
+    const result = resolver.resolve({ requestBody: { model: "Pool/model", messages: [] },
+      request: { method: "POST", url: "/v1/chat/completions", headers: { "x-target-providers": eligible.join(",") } } });
+    assert.deepEqual(result.targetProviders.map(target => target.providerName), eligible);
+  }
+});

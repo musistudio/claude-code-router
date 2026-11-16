@@ -3,6 +3,15 @@ import { formatLogBodyView, type FormattedLogBody } from "./logs";
 
 export const logBodyLargeTextThreshold = 256 * 1024;
 export const logBodyPreviewTextLimit = 160 * 1024;
+export const logBodyFullTextLimit = 2 * 1024 * 1024;
+
+// Bound the structured clone before the body reaches the worker.
+export function prepareLogBodyForWorker(body: RequestLogBody | undefined, mode: LogBodyFormatMode): RequestLogBody | undefined {
+  const limit = mode === "full" ? logBodyFullTextLimit : logBodyPreviewTextLimit;
+  return body && body.text.length > limit
+    ? { ...body, preview: true, sizeBytes: Math.max(body.sizeBytes, body.text.length), text: createLogBodyPreviewText(body, logBodyPreviewTextLimit) }
+    : body;
+}
 
 export type LogBodyFormatMode = "full" | "preview";
 
@@ -113,7 +122,7 @@ export function formatLogBodyForWorker(
   sourceSizeBytes: number;
 } {
   const large = isLargeLogBody(body, largeTextThreshold);
-  const preview = large && mode !== "full";
+  const preview = Boolean(body?.preview) || (large && mode !== "full") || (body?.text.length ?? 0) > logBodyFullTextLimit;
   // Large-body preview: only skip the full JSON parse/pretty-print when the actual
   // text is over-length. Otherwise the worker does JSON.parse on a huge object graph
   // and pretty-prints + structured-clones it back, blowing up memory/CPU and surfacing

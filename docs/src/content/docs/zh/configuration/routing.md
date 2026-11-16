@@ -118,7 +118,7 @@ return {
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `input.body` | `Record<string, unknown>` | 完整 JSON 请求体。 |
+| `input.body` | `Record<string, unknown>` | JSON 请求体，最多 2 MiB。 |
 | `input.headers` | `Record<string, string \| string[]>` | 完整请求 Header；可能包含鉴权、Cookie、API Key 和 CCR 内部 Header。 |
 | `input.method` | `string` | HTTP 方法，例如 `POST`。 |
 | `input.url` | `string` | 网关内的请求 URL，例如 `/v1/messages`。 |
@@ -132,6 +132,8 @@ return {
 | `input.summary.messageCount` | `number` | `body.messages` 的元素数量。 |
 | `input.summary.toolNames` | `string[]` | 从 `body.tools` 提取的工具名，最多 128 个。 |
 | `input.summary.hasImage` | `boolean` | 请求体中是否检测到图片内容。 |
+
+序列化后超过 2 MiB 的请求体会在脚本的 `input.body` 中替换为 `{ __ccrBodyTruncated: true, model }`，以保护隔离 Worker 的内存。`input.summary` 和 `input.tokenCount` 仍根据原始请求计算，实际转发的请求体保持完整。直接读取消息前请先检查 `input.body.__ccrBodyTruncated`。
 
 Header 名通常应按小写读取。值可能是字符串数组，可按下面的方式兼容：
 
