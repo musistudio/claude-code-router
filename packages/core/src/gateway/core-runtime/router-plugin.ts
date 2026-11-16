@@ -19,6 +19,7 @@ import {
   ccrCodexBridgeResponseHookKey,
   ccrCodexBridgeStreamHookKey,
   ccrCodexMultiAgentBridgeHeader,
+  ccrClientIdentityHeader,
   ccrLiveTokenRateConfigMessageType,
   ccrLiveTokenRateSnapshotMessageType,
   ccrLiveTokenRateStreamHookKey,
@@ -72,7 +73,7 @@ import type {
   GatewayPluginRequestTransformInput as CcrGatewayPluginRequestTransformInput
 } from "@ccr/core/plugins/service";
 import { isModelAllowedForProfile, profileForApiKey } from "@ccr/core/profiles/model-allowlist";
-import { profileApiKeyId } from "@ccr/core/profiles/api-key";
+import { profileForApiKeyId } from "@ccr/core/profiles/api-key";
 import { adaptRouteRequestBody, restoreRouteRequestBody } from "@ccr/core/routing/protocol-adapter";
 import { requestProtocolForPath, shouldApplyGatewayRouting } from "@ccr/core/routing/protocol-endpoints";
 import { RouteScriptRuntime } from "@ccr/core/routing/route-script-runtime";
@@ -357,6 +358,17 @@ export async function createGatewayPlugin(input: GatewayPluginFactoryInput = {})
     requestHooks: [{
       key: "ccr-public-auth-context",
       beforeAuth: async (requestInput: GatewayRequestHookInput) => {
+        // This metadata is captured after authentication by the raw trace
+        // producer. Never retain an identity supplied by the client, including
+        // requests that fail authentication or use an internal bypass token.
+        const headers = requestInput.request?.headers;
+        if (headers) {
+          for (const header of Object.keys(headers)) {
+            if (header.toLowerCase() === ccrClientIdentityHeader) {
+              delete headers[header];
+            }
+          }
+        }
         if (publicGatewayMode) {
           stripUntrustedCcrRouteHeaders(requestInput.request?.headers);
           const authorization = await resolvePublicGatewayAuth(config, requestInput.request?.headers, {
@@ -956,6 +968,12 @@ function setApiKeyAuthContextHeaders(headers: Record<string, HeaderValue> | unde
   }
   headers["x-auth-api-key-id"] = apiKey.id;
   headers["x-auth-sub"] = apiKey.id;
+  // Encode names so Unicode and punctuation remain safe in header metadata.
+  // Only the id/name snapshot is carried; the API key secret is never copied.
+  headers[ccrClientIdentityHeader] = Buffer.from(JSON.stringify({
+    id: apiKey.id,
+    name: apiKey.name
+  })).toString("base64url");
 }
 
 async function resolveApiKey(
@@ -1116,9 +1134,7 @@ function authenticatedProfileProviderName(
   if (!apiKeyId) {
     return undefined;
   }
-  const profile = config.profile.profiles.find((item) =>
-    item.enabled && profileApiKeyId(item) === apiKeyId
-  );
+  const profile = profileForApiKeyId(config, apiKeyId);
   const profileModel = normalizeRouteSelector(profile?.model);
   const explicitProvider = parseProviderModelSelector(profileModel)?.provider;
   if (explicitProvider) {

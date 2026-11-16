@@ -5,7 +5,7 @@ import {
   cn, Copy, copyTextToClipboard, createApiKeyLimitDraftRow, Dialog, DialogBody,
   DialogContent, DialogFooter, DialogHeader, DialogTitle, disclosureSpringTransition, Field,
   formatApiKeyExpiration, formatApiKeyLimits, Input, KeyRound, limitWindowOptions, LimitWindowPreset,
-  motion, Pencil, Plus, Search, SelectControl, translateOptions,
+  motion, Pencil, Plus, ProfileConfig, Search, SelectControl, translateOptions,
   Trash2, useAppText, useMemo, useState, X
 } from "../shared/index";
 export function ApiKeysView({
@@ -91,6 +91,11 @@ export function ApiKeysView({
                     >
                       <div className="min-w-0">
                         <div className="truncate text-[12px] font-semibold" title={apiKey.name}>{apiKey.name}</div>
+                        {apiKey.profileName ? (
+                          <div className="mt-0.5 truncate text-[11px] text-muted-foreground" title={apiKey.profileName}>
+                            {t("Linked Profile")}: {apiKey.profileName}
+                          </div>
+                        ) : null}
                       </div>
                       <div className="min-w-0">
                         <div className="flex min-w-0 items-center gap-1.5 text-[12px] font-semibold leading-5" title={apiKey.masked}>
@@ -141,7 +146,8 @@ export function AddApiKeyDialog({
   error,
   onChange,
   onClose,
-  onSubmit
+  onSubmit,
+  profiles
 }: {
   canSubmit: boolean;
   draft: AddApiKeyDraft;
@@ -149,9 +155,12 @@ export function AddApiKeyDialog({
   onChange: (patch: Partial<AddApiKeyDraft>) => void;
   onClose: () => void;
   onSubmit: () => void;
+  profiles: ProfileConfig[];
 }) {
   const t = useAppText();
   const expirationOptions = translateOptions(apiKeyExpirationOptions, t);
+  const enabledProfiles = profiles.filter((profile) => profile.enabled);
+  const selectedProfileUnavailable = draft.profileId && !enabledProfiles.some((profile) => profile.id === draft.profileId);
 
   return (
     <Dialog onOpenChange={(open) => !open && onClose()}>
@@ -182,6 +191,20 @@ export function AddApiKeyDialog({
                 <Input type="datetime-local" value={draft.expiresAt} onChange={(event) => onChange({ expiresAt: event.target.value })} />
               </Field>
             ) : null}
+            <Field className="sm:col-span-2" label={t("Linked Profile")} requirement="optional" requirementLabel={t("Optional")}>
+              <SelectControl
+                value={draft.profileId}
+                onChange={(profileId) => onChange({ profileId })}
+                options={[
+                  { label: t("No linked Profile"), value: "" },
+                  ...(selectedProfileUnavailable ? [{ label: t("Profile unavailable"), value: draft.profileId, disabled: true }] : []),
+                  ...enabledProfiles.map((profile) => ({ label: profile.name, value: profile.id }))
+                ]}
+              />
+              <span className="block text-[11px] font-normal text-muted-foreground">
+                {t("Uses the Profile's routing and available models. The key stops working if the Profile is disabled or deleted.")}
+              </span>
+            </Field>
           </motion.div>
           <ApiKeyAdvancedSettings draft={draft} onChange={onChange} />
 

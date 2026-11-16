@@ -3,6 +3,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from "node:http";
 import { Readable, Transform } from "node:stream";
 import { CONTEXT_ARCHIVE_DB_FILE } from "@ccr/core/config/constants";
+import { apiKeyMatchesProfile } from "@ccr/core/profiles/api-key";
 import type {
   ApiKeyConfig,
   AppConfig,
@@ -375,12 +376,12 @@ export function contextArchiveConfigForProfile(
 
 export function contextArchiveConfigForApiKey(
   config: AppConfig,
-  apiKey: Pick<ApiKeyConfig, "id"> | undefined
+  apiKey: Pick<ApiKeyConfig, "id" | "profileId"> | undefined
 ): AppConfig | undefined {
   if (apiKeyMatchesManagedCompactProfile(config, apiKey)) {
     return withManagedContextArchiveEnabled(config);
   }
-  if (apiKeyMatchesProfile(config, apiKey)) {
+  if (apiKeyHasProfile(config, apiKey)) {
     return undefined;
   }
   return contextArchiveEnabled(config) ? config : undefined;
@@ -402,36 +403,26 @@ function withManagedContextArchiveEnabled(config: AppConfig): AppConfig {
 
 function apiKeyMatchesManagedCompactProfile(
   config: AppConfig,
-  apiKey: Pick<ApiKeyConfig, "id"> | undefined
+  apiKey: Pick<ApiKeyConfig, "id" | "profileId"> | undefined
 ): boolean {
-  const id = apiKey?.id?.trim();
-  if (!id || config.profile?.enabled === false) {
+  if (!apiKey || config.profile?.enabled === false) {
     return false;
   }
   const profiles = Array.isArray(config.profile?.profiles) ? config.profile.profiles : [];
   return profiles.some((profile) =>
-    profileManagedCompactEnabled(profile) && id === profileApiKeyId(profile)
+    profileManagedCompactEnabled(profile) && apiKeyMatchesProfile(apiKey, profile)
   );
 }
 
-function apiKeyMatchesProfile(
+function apiKeyHasProfile(
   config: AppConfig,
-  apiKey: Pick<ApiKeyConfig, "id"> | undefined
+  apiKey: Pick<ApiKeyConfig, "id" | "profileId"> | undefined
 ): boolean {
-  const id = apiKey?.id?.trim();
-  if (!id || config.profile?.enabled === false) {
+  if (!apiKey || config.profile?.enabled === false) {
     return false;
   }
   const profiles = Array.isArray(config.profile?.profiles) ? config.profile.profiles : [];
-  return profiles.some((profile) => id === profileApiKeyId(profile));
-}
-
-function profileApiKeyId(profile: Pick<ProfileConfig, "agent" | "id" | "name">): string {
-  return `profile:${sanitizeProfilePathSegment(profile.id || profile.name || profile.agent) || "profile"}`;
-}
-
-function sanitizeProfilePathSegment(value: string): string {
-  return value.trim().replace(/[^a-zA-Z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "");
+  return profiles.some((profile) => apiKeyMatchesProfile(apiKey, profile));
 }
 
 export function contextArchiveMcpServer(

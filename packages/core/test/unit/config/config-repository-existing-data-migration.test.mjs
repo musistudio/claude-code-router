@@ -30,7 +30,9 @@ test("legacy API keys are merged without replacing existing target keys", async 
   });
 
   const {
-    loadPersistedApiKeys
+    ConfigRepository,
+    loadPersistedApiKeys,
+    replacePersistedApiKeys
   } = await import("@ccr/core/config/config-repository.ts");
   const apiKeys = await loadPersistedApiKeys();
   assert.deepEqual(apiKeys.map((apiKey) => apiKey.id), [
@@ -38,6 +40,11 @@ test("legacy API keys are merged without replacing existing target keys", async 
     "legacy-key"
   ]);
   assert.equal(existsSync(LEGACY_API_KEYS_DB_FILE), false);
+
+  const linked = { ...apiKeys[0], profileId: "Work / Team", limits: { rpm: 2 } };
+  await replacePersistedApiKeys([linked, apiKeys[1]]);
+  const reopened = new ConfigRepository(APP_CONFIG_DB_FILE);
+  assert.deepEqual(await reopened.listApiKeys(), [linked, apiKeys[1]]);
 
   const database = createBetterSqliteDatabase(APP_CONFIG_DB_FILE, {
     fileMustExist: true,

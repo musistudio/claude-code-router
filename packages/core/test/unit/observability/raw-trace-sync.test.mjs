@@ -34,6 +34,8 @@ test("raw trace applies metadata-only body privacy while retaining original size
   config.observability.requestLogBodyCapture = "none";
 
   const policy = applyRawTraceRequestLogPolicy(config, {
+    requestedModel: "claude-sonnet-5",
+    resolvedModel: "qwen3.7-max",
     requestBodySizeBytes: 1_024,
     requestId: "privacy-request",
     responseBodySizeBytes: 2_048,
@@ -43,6 +45,8 @@ test("raw trace applies metadata-only body privacy while retaining original size
   assert.equal(policy.action, "enqueue");
   assert.equal(policy.bodyDisposition, "suppress");
   assert.equal(policy.update.requestBodyText, "");
+  assert.equal(policy.update.requestedModel, "claude-sonnet-5");
+  assert.equal(policy.update.resolvedModel, "qwen3.7-max");
   assert.equal(policy.update.requestBodySizeBytes, 1_024);
   assert.equal(policy.update.requestBodyTruncated, true);
   assert.equal(policy.update.responseBodyText, "");

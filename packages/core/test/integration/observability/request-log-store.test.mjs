@@ -36,6 +36,28 @@ test("request log model summaries support routed paths and streamed responses", 
   );
 });
 
+test("standalone traces retain the original requested and resolved models after late updates", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-route-summary-"));
+  const store = new RequestLogStore(path.join(dir, "logs.sqlite"));
+  try {
+    await store.writeBatch([{ sequence: 1, kind: "raw-trace-update", input: {
+      requestId: "route", bundleId: "route-bundle", allowStandaloneRecord: true,
+      method: "POST", path: "/v1/messages", startedAt: new Date().toISOString(), statusCode: 200,
+      model: "client-alias", requestedModel: "client-alias", resolvedModel: "physical-model"
+    } }]);
+    let row = (await store.list()).items[0];
+    assert.equal(row.requestedModel, "client-alias");
+    assert.equal(row.resolvedModel, "physical-model");
+    await store.updateFromRawTrace({ requestId: "route", requestedModel: "physical-model", resolvedModel: "physical-model" });
+    row = (await store.list()).items[0];
+    assert.equal(row.requestedModel, "client-alias");
+    assert.equal(row.resolvedModel, "physical-model");
+  } finally {
+    await store.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("RequestLogStore backfills model summaries when upgrading an existing database", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-model-migration-test-"));
   const dbFile = path.join(dir, "request-logs.sqlite");
@@ -72,6 +94,8 @@ test("RequestLogStore backfills model summaries when upgrading an existing datab
     assert.equal(page.items[0].requestedModel, "request-model");
     assert.equal(page.items[0].resolvedModel, "resolved-model");
     assert.equal(page.items[0].responseModel, "response-model");
+    assert.equal(page.items[0].clientApiKeyId, undefined);
+    assert.equal(page.items[0].clientApiKeyName, undefined);
   } finally {
     await store?.close();
     rmSync(dir, { force: true, recursive: true });
@@ -632,6 +656,8 @@ test("RequestLogStore redacts secrets and records CCR metadata", async () => {
     const startedAt = new Date().toISOString();
 
     await store.record({
+      clientApiKeyId: "client-key-a",
+      clientApiKeyName: "研发团队",
       completedAt: startedAt,
       durationMs: 75,
       method: "POST",
@@ -648,6 +674,8 @@ test("RequestLogStore redacts secrets and records CCR metadata", async () => {
         "ocp-apim-subscription-key": "bing-request-secret",
         "x-amz-security-token": "aws-request-secret",
         "x-auth-token": "custom-request-secret",
+        "x-auth-api-key-id": "client-key-a",
+        "x-auth-sub": "client-key-a",
         "x-ccr-provider-credential-chain": "cred-a, cred-b",
         "x-ccr-provider-credential-id": "cred-a",
         "x-goog-api-key": "google-request-secret"
@@ -673,12 +701,18 @@ test("RequestLogStore redacts secrets and records CCR metadata", async () => {
     const detail = await store.getDetail({ id: page.items[0].id });
 
     assert.ok(detail);
+    assert.equal(page.items[0].clientApiKeyId, "client-key-a");
+    assert.equal(page.items[0].clientApiKeyName, "研发团队");
+    assert.equal(detail.clientApiKeyId, "client-key-a");
+    assert.equal(detail.clientApiKeyName, "研发团队");
     assert.equal(detail.requestHeaders["api-key"], "[redacted]");
     assert.equal(detail.requestHeaders.authorization, "[redacted]");
     assert.equal(detail.requestHeaders.cookie, "[redacted]");
     assert.equal(detail.requestHeaders["ocp-apim-subscription-key"], "[redacted]");
     assert.equal(detail.requestHeaders["x-amz-security-token"], "[redacted]");
     assert.equal(detail.requestHeaders["x-auth-token"], "[redacted]");
+    assert.equal(detail.requestHeaders["x-auth-api-key-id"], "[redacted]");
+    assert.equal(detail.requestHeaders["x-auth-sub"], "[redacted]");
     assert.equal(detail.requestHeaders["x-goog-api-key"], "[redacted]");
     assert.equal(detail.responseHeaders["x-api-key"], "[redacted]");
     assert.equal(detail.responseHeaders["x-company-client-secret"], "[redacted]");
@@ -690,6 +724,16 @@ test("RequestLogStore redacts secrets and records CCR metadata", async () => {
     assert.equal(detail.cacheReadTokens, 10);
     assert.equal(detail.outputTokens, 20);
     assert.equal(detail.totalTokens, 130);
+
+    await store.updateFromRawTrace({
+      clientApiKeyId: "client-key-a",
+      clientApiKeyName: "Renamed after request",
+      requestHeaders: { "x-auth-api-key-id": "upstream-identity" },
+      requestId: "request-log-metadata-test"
+    });
+    const updated = await store.getDetail({ id: detail.id });
+    assert.equal(updated.clientApiKeyId, "client-key-a");
+    assert.equal(updated.clientApiKeyName, "研发团队");
   } finally {
     await store?.close();
     rmSync(dir, { force: true, recursive: true });

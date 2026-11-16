@@ -37,7 +37,7 @@ import { mediaService } from "@ccr/core/media/service";
 import { mediaToolsGatewayEndpoint } from "@ccr/core/mcp/grok-media-config";
 import { browserAutomationMcpEnabled } from "@ccr/core/mcp/toolhub-config";
 import { installSocketTypeOfServiceCompat } from "@ccr/core/platform/socket-compat";
-import { profileApiKeyId } from "@ccr/core/profiles/api-key";
+import { profileForApiKeyId } from "@ccr/core/profiles/api-key";
 import { setExternalLiveTokenRateSnapshot } from "@ccr/core/observability/stream-experience";
 
 installSocketTypeOfServiceCompat();
@@ -55,16 +55,7 @@ function routeScriptTestProfileId(
   config: AppConfig,
   headers: RouteScriptTestHeaders
 ): string | undefined {
-  if (config.profile?.enabled === false) {
-    return undefined;
-  }
-  const apiKeyId = readRouteScriptTestHeader(headers, "x-auth-api-key-id")?.trim();
-  if (!apiKeyId) {
-    return undefined;
-  }
-  return config.profile?.profiles.find((profile) =>
-    profile.enabled && profileApiKeyId(profile) === apiKeyId
-  )?.id;
+  return profileForApiKeyId(config, readRouteScriptTestHeader(headers, "x-auth-api-key-id"))?.id;
 }
 
 function readRouteScriptTestHeader(
