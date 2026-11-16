@@ -40,7 +40,7 @@ import { getOpenRouterProviderCatalog } from "@ccr/core/providers/openrouter-pro
 import { getProviderPresets } from "@ccr/core/providers/presets/index";
 import { checkGatewayProviderConnectivity, probeGatewayProvider, probeGatewayProviderCandidates } from "@ccr/core/providers/probe";
 import { syncProviderModelAutoRefreshService } from "@ccr/core/providers/model-auto-refresh";
-import { applyProfileConfig } from "@ccr/core/profiles/service";
+import { applyProfileConfig, recoverGlobalAgentProfile } from "@ccr/core/profiles/service";
 import { desktopCliCommandName, getProfileOpenCommand, getProfileRuntimeStatus, openProfileFromCcr, stopProfileFromCcr } from "@ccr/core/profiles/launch-service";
 import { findProfileForOpen, resolveProfileOpenSurface } from "@ccr/core/profiles/launch-core";
 import { getPluginMarketplace } from "@ccr/core/plugins/marketplace";
@@ -277,6 +277,7 @@ ipcMain.handle(IPC_CHANNELS.appApplyProfile, async () => {
   const config = await loadAppConfig();
   return applyProfileConfig(config);
 });
+ipcMain.handle(IPC_CHANNELS.appRecoverGlobalProfile, (_event, profileId: string) => recoverGlobalAgentProfile(profileId));
 ipcMain.handle(IPC_CHANNELS.appCheckProviderConnectivity, (_event, request: GatewayProviderConnectivityCheckRequest) => {
   return checkGatewayProviderConnectivity(request);
 });

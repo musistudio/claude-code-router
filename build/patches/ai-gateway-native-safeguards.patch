@@ -1,0 +1,315 @@
+diff --git a/src/adapters/builtins/source/formatters.ts b/src/adapters/builtins/source/formatters.ts
+--- a/src/adapters/builtins/source/formatters.ts
++++ b/src/adapters/builtins/source/formatters.ts
+@@ -1,3 +1,4 @@
++import { nativeAnthropicFields } from '../anthropic-native-fields';
+ import type { StandardResponse, StandardResponseReasoning } from '../../../types';
+ import { anthropicToolId } from '../anthropic-tool-id';
+ import { anthropicInputTokens } from '../../../shared/usage';
+@@ -90,6 +91,7 @@
+   }
+ 
+   return {
++    ...response[nativeAnthropicFields],
+     id: response.id,
+     type: 'message',
+     role: 'assistant',
+diff --git a/src/adapters/builtins/source/parsers.ts b/src/adapters/builtins/source/parsers.ts
+--- a/src/adapters/builtins/source/parsers.ts
++++ b/src/adapters/builtins/source/parsers.ts
+@@ -1,3 +1,4 @@
++import { preserveNativeAnthropicFields } from '../anthropic-native-fields';
+ import type {
+   Result,
+   SourceAdapterRequestInput,
+@@ -148,6 +149,7 @@
+   }
+ 
+   return ok({
++    ...preserveNativeAnthropicFields(body, ['model', 'messages', 'system', 'max_tokens', 'temperature', 'top_p', 'stop_sequences', 'stream', 'tools', 'tool_choice', 'thinking', 'output_config', 'reasoning', 'reasoning_split']),
+     model: asString(body.model),
+     instructions,
+     input,
+diff --git a/src/adapters/builtins/target/anthropic-messages.ts b/src/adapters/builtins/target/anthropic-messages.ts
+--- a/src/adapters/builtins/target/anthropic-messages.ts
++++ b/src/adapters/builtins/target/anthropic-messages.ts
+@@ -1,3 +1,4 @@
++import { nativeAnthropicFields } from '../anthropic-native-fields';
+ import type { StandardRequestInputContent, StandardRequestInputMessage, TargetAdapter } from '../../../types';
+ import { err, ok } from '../../../types';
+ import { asString, collectStandardInputMessages, isObject } from '../../../utils';
+@@ -64,6 +65,7 @@
+       toolContext
+     );
+     const body: Record<string, unknown> = {
++      ...input.standardRequest[nativeAnthropicFields],
+       model: input.standardRequest.model,
+       messages: messages.length > 0 ? messages : [{ role: 'user', content: [{ type: 'text', text: '' }] }],
+       max_tokens: input.standardRequest.max_output_tokens ?? defaultAnthropicMaxTokens
+diff --git a/src/adapters/builtins/target/shared.ts b/src/adapters/builtins/target/shared.ts
+--- a/src/adapters/builtins/target/shared.ts
++++ b/src/adapters/builtins/target/shared.ts
+@@ -1,3 +1,4 @@
++import { preserveNativeAnthropicFields } from '../anthropic-native-fields';
+ import { randomUUID } from 'node:crypto';
+ import type {
+   Result,
+@@ -376,14 +377,14 @@
+     server_tool_use: normalizeServerToolUse(serverToolUse)
+   };
+ 
+-  return ok(createStandardResponse({
++  return ok({ ...createStandardResponse({
+     id: asString(payload.id) || `msg_${randomUUID()}`,
+     model: asString(payload.model) || 'unknown',
+     outputText: text,
+     outputItems: buildStandardResponseOutputItems(text, toolCalls, reasoningItems),
+     usage,
+     finishReason: asString(payload.stop_reason)
+-  }));
++  }), ...preserveNativeAnthropicFields(payload, ['id', 'type', 'role', 'model', 'content', 'stop_reason', 'stop_sequence', 'usage']) });
+ }
+ 
+ export function parseGeminiToStandardResponse(payload: unknown): Result<StandardResponse> {
+diff --git a/src/gateway/handler.ts b/src/gateway/handler.ts
+--- a/src/gateway/handler.ts
++++ b/src/gateway/handler.ts
+@@ -2662,6 +2662,14 @@
+     );
+   }
+ 
++  if (source.adapterKey === 'anthropic_messages' &&
++      Object.prototype.hasOwnProperty.call(adapterInput.body, 'safeguards') &&
++      mergedToolingResult.hasInternalTools) {
++    return sendCountedBadRequest(request, reply, config, sourceAdapter.provider,
++      source.adapterKey, targetProviders[0], virtualTargetModel,
++      'Server safeguards require client-owned tool execution. Select the native provider model or a virtual model without internal gateway tools.');
++  }
++
+   if (
+     virtualModel.profile.execution.mode === 'decorate_only' &&
+     mergedToolingResult.hasInternalTools
+diff --git a/src/gateway/routes.test.ts b/src/gateway/routes.test.ts
+--- a/src/gateway/routes.test.ts
++++ b/src/gateway/routes.test.ts
+@@ -45,6 +45,32 @@
+     await closeBillingPublisher();
+     await closeRawTraceManager();
+     vi.restoreAllMocks();
++  });
++
++  it('rejects server safeguards before any internal virtual tool can execute', async () => {
++    const execute = vi.fn();
++    const fetch = vi.spyOn(globalThis, 'fetch');
++    const config = createConfig([createProviderConfig('native', 'anthropic_messages', ['claude'])], undefined, [{
++      id: 'guarded', key: 'guarded', displayName: 'Guarded', enabled: true,
++      match: { exactAliases: ['guarded'], prefixes: [], suffixes: [] },
++      baseModel: { mode: 'fixed', fixedModel: 'native/claude' },
++      tools: [{ name: 'search_web', visibility: 'internal' }],
++      execution: { mode: 'tool_loop', maxTurns: 2, maxToolCalls: 2, clientToolsPolicy: 'allow', streamMode: 'optimistic' },
++      materialization: { enabled: true, includeInGatewayModels: true }
++    }]);
++    const tools = { listDefinitions: async () => [{ name: 'search_web', description: 'Search', inputSchema: { type: 'object', properties: {} } }],
++      has: async () => true, execute, close: async () => undefined };
++    const app = Fastify({ logger: false });
++    registerGatewayRoutes(app, config, createGatewayRuntime(config, tools as any));
++    try {
++      const response = await app.inject({ method: 'POST', url: '/v1/messages', payload: {
++        model: 'guarded', max_tokens: 32, messages: [{ role: 'user', content: 'hi' }], safeguards: []
++      } });
++      expect(response.statusCode).toBe(400);
++      expect(response.body).toContain('without internal gateway tools');
++      expect(execute).not.toHaveBeenCalled();
++      expect(fetch).not.toHaveBeenCalled();
++    } finally { await app.close(); }
+   });
+ 
+   it('lists gateway models in OpenAI format by default', async () => {
+diff --git a/src/gateway/streaming-conversion.ts b/src/gateway/streaming-conversion.ts
+--- a/src/gateway/streaming-conversion.ts
++++ b/src/gateway/streaming-conversion.ts
+@@ -1,3 +1,4 @@
++import { nativeAnthropicFields, extraAnthropicFields } from '../adapters/builtins/anthropic-native-fields';
+ import { guardStreamTerminalError } from './stream-terminal-error';
+ import { randomUUID } from 'node:crypto';
+ import { Readable } from 'node:stream';
+@@ -92,6 +93,10 @@
+ }
+ 
+ interface AnthropicRelayState {
++  nativeStartFields?: Record<string, unknown>;
++  nativeStartMessageFields?: Record<string, unknown>;
++  nativeResponseFields?: Record<string, unknown>;
++  nativeDelta?: Record<string, unknown>;
+   started: boolean;
+   finished: boolean;
+   messageId: string;
+@@ -247,6 +252,7 @@
+ }
+ 
+ interface AnthropicNonStreamCollectionState {
++  nativeFields?: Record<string, unknown>;
+   id: string;
+   model: string;
+   outputText: string;
+@@ -528,7 +534,9 @@
+     collectAnthropicNonStreamEvent(collectionState, payload, chunk.event);
+ 
+     if (eventType === 'message_start') {
++      relay.state.nativeStartFields = extraAnthropicFields(payload, ['type', 'message']);
+       const message = isObject(payload.message) ? payload.message : undefined;
++      relay.state.nativeStartMessageFields = message ? extraAnthropicFields(message, ['id', 'type', 'role', 'model', 'content', 'stop_reason', 'stop_sequence', 'usage']) : undefined;
+       const messageId = asString(message?.id);
+       if (messageId && !relay.state.started) {
+         relay.state.messageId = messageId;
+@@ -655,6 +663,7 @@
+     }
+ 
+     if (eventType === 'message_delta') {
++      relay.state.nativeDelta = { ...relay.state.nativeDelta, ...(isObject(payload.delta) ? payload.delta : {}) };
+       updateAnthropicRelayUsage(
+         relay.state,
+         isObject(payload.usage) ? payload.usage : undefined,
+@@ -868,6 +877,7 @@
+     applyStandardUsageToAnthropicRelayState(relay.state, usage);
+   }
+   if (isNativeAnthropicPayload) {
++    relay.state.nativeResponseFields = extraAnthropicFields(finalPayload, ['id', 'type', 'role', 'model', 'content', 'stop_reason', 'stop_sequence', 'usage']);
+     relay.state.preserveNativeStopMetadata = true;
+     relay.state.nativeStopReason = asString(finalPayload.stop_reason);
+     relay.state.nativeStopSequence = asString(finalPayload.stop_sequence) ?? null;
+@@ -1127,6 +1137,14 @@
+   sseEvent?: string
+ ): void {
+   const eventType = asString(payload.type) || sseEvent || '';
++  if (eventType === 'message_start' || eventType === 'message_delta') {
++    const message = isObject(payload.message) ? payload.message : {};
++    const delta = isObject(payload.delta) ? payload.delta : {};
++    state.nativeFields = { ...state.nativeFields,
++      ...extraAnthropicFields(message, ['id', 'type', 'role', 'model', 'content', 'stop_reason', 'stop_sequence', 'usage']),
++      ...extraAnthropicFields(payload, ['type', 'message', 'delta', 'usage']),
++      ...extraAnthropicFields(delta, ['stop_reason', 'stop_sequence']) };
++  }
+   if (eventType === 'message_start') {
+     const message = isObject(payload.message) ? payload.message : undefined;
+     const id = asString(message?.id);
+@@ -1272,6 +1290,7 @@
+   }
+ 
+   return {
++    ...state.nativeFields,
+     id: state.id,
+     type: 'message',
+     role: 'assistant',
+@@ -2196,8 +2215,11 @@
+ 
+   frames.push(
+     encodeSseEvent('message_delta', {
++      ...standardResponse[nativeAnthropicFields],
+       type: 'message_delta',
+       delta: {
++        ...(Object.prototype.hasOwnProperty.call(standardResponse[nativeAnthropicFields] ?? {}, 'safeguard_results')
++          ? { safeguard_results: standardResponse[nativeAnthropicFields]?.safeguard_results } : {}),
+         stop_reason: mapFinishReasonToAnthropic(standardResponse.finish_reason),
+         stop_sequence: null
+       },
+@@ -5454,8 +5476,10 @@
+ 
+   frames.push(
+     encodeSseEvent('message_delta', {
++      ...state.nativeResponseFields,
+       type: 'message_delta',
+       delta: {
++        ...state.nativeDelta,
+         stop_reason: state.preserveNativeStopMetadata
+           ? state.nativeStopReason || mapFinishReasonToAnthropic(state.finishReason)
+           : mapFinishReasonToAnthropic(state.finishReason),
+@@ -5490,8 +5514,10 @@
+   addServerToolUseToAnthropicUsage(usage, state.serverToolUse);
+ 
+   return encodeSseEvent('message_start', {
++    ...state.nativeStartFields,
+     type: 'message_start',
+     message: {
++      ...state.nativeStartMessageFields,
+       id: state.messageId,
+       type: 'message',
+       role: 'assistant',
+diff --git a/src/types.ts b/src/types.ts
+--- a/src/types.ts
++++ b/src/types.ts
+@@ -1,3 +1,4 @@
++import { nativeAnthropicFields } from './adapters/builtins/anthropic-native-fields';
+ import type { FastifyReply, FastifyRequest } from 'fastify';
+ 
+ export type BuiltinProvider = 'openai' | 'anthropic' | 'gemini';
+@@ -1076,6 +1077,7 @@
+ }
+ 
+ export interface StandardResponse {
++  [nativeAnthropicFields]?: Record<string, unknown>;
+   id: string;
+   object: 'response';
+   status: 'completed' | 'incomplete';
+@@ -1190,6 +1192,7 @@
+ }
+ 
+ export interface StandardRequest {
++  [nativeAnthropicFields]?: Record<string, unknown>;
+   model?: string;
+   instructions?: string;
+   input: string | StandardRequestInputMessage[];
+diff --git a/src/adapters/builtins/anthropic-native-fields.ts b/src/adapters/builtins/anthropic-native-fields.ts
+new file mode 100644
+--- /dev/null
++++ b/src/adapters/builtins/anthropic-native-fields.ts
+@@ -0,0 +1,12 @@
++// Internal metadata survives StandardRequest/Response spreads but never JSON serialization.
++export const nativeAnthropicFields: unique symbol = Symbol('nativeAnthropicFields');
++
++export function extraAnthropicFields(body: Record<string, unknown>, keys: string[]): Record<string, unknown> {
++  const mapped = new Set(keys);
++  return Object.fromEntries(Object.entries(body).filter(([key]) => !mapped.has(key)));
++}
++
++export function preserveNativeAnthropicFields(body: Record<string, unknown>, keys: string[]): { [nativeAnthropicFields]?: Record<string, unknown> } {
++  const fields = extraAnthropicFields(body, keys);
++  return Object.keys(fields).length ? { [nativeAnthropicFields]: fields } : {};
++}
+diff --git a/src/adapters/builtins/anthropic-native-fields.test.ts b/src/adapters/builtins/anthropic-native-fields.test.ts
+new file mode 100644
+--- /dev/null
++++ b/src/adapters/builtins/anthropic-native-fields.test.ts
+@@ -0,0 +1,32 @@
++import { expect, it } from 'vitest';
++import { parseAnthropicMessagesRequest } from './source/parsers';
++import { anthropicMessagesTargetAdapter } from './target/anthropic-messages';
++import { parseAnthropicToStandardResponse } from './target/shared';
++import { formatAnthropicMessagesResponse } from './source/formatters';
++import { nativeAnthropicFields } from './anthropic-native-fields';
++
++it('round-trips opaque native safeguards and future fields without leaking metadata into other formats', () => {
++  const safeguards = [{ type: 'future-classifier', config: { unknown: ['opaque', 123] } }];
++  const source = parseAnthropicMessagesRequest({ model: 'alias', messages: [{ role: 'user', content: 'hi' }],
++    max_tokens: 32, safeguards, future_native_request: { keep: true } });
++  expect(source.ok).toBe(true); if (!source.ok) return;
++  const request = anthropicMessagesTargetAdapter.buildRequestFromStandard({
++    request: { headers: { 'anthropic-beta': 'future-beta' } }, standardRequest: { ...source.value, model: 'native' },
++    config: { anthropicBaseUrl: 'https://native.invalid', anthropicApiKey: 'test' }
++  } as any);
++  expect(request.ok).toBe(true); if (!request.ok) return;
++  expect(request.value.body).toMatchObject({ model: 'native', safeguards, future_native_request: { keep: true } });
++  const verdict = { toolu_original: { verdict: 'allow', unknown: [1, 'future'] } };
++  const response = parseAnthropicToStandardResponse({ id: 'msg', type: 'message', model: 'native',
++    content: [{ type: 'tool_use', id: 'toolu_original', name: 't', input: {} }],
++    stop_reason: 'tool_use', usage: { input_tokens: 1, output_tokens: 1 }, safeguard_results: verdict,
++    future_native_reply: { keep: true } });
++  expect(response.ok).toBe(true); if (!response.ok) return;
++  const formatted = formatAnthropicMessagesResponse({ ...response.value });
++  expect(formatted).toMatchObject({ safeguard_results: verdict, future_native_reply: { keep: true },
++    content: [{ type: 'tool_use', id: 'toolu_original' }] });
++  expect(response.value[nativeAnthropicFields]?.safeguard_results).toBe(verdict);
++  expect(JSON.stringify(response.value)).not.toContain('future_native_reply');
++  const empty = parseAnthropicMessagesRequest({ model: 'm', messages: [{ role: 'user', content: 'hi' }], safeguards: [] });
++  expect(empty.ok && empty.value[nativeAnthropicFields]?.safeguards).toEqual([]);
++});

@@ -30,6 +30,20 @@ test("DeleteProfileDialog identifies the profile and requires an explicit confir
   assert.match(html, />Delete<\/button>/);
 });
 
+test("#1951 global Claude and Codex cards expose recovery even when already disabled", () => {
+  const config = appConfigFixture();
+  config.profile.profiles = [
+    { ...profile, id: "global-claude", scope: "global" },
+    { ...profile, id: "global-codex", agent: "codex", scope: "global", enabled: false },
+    { ...profile, id: "isolated-claude", scope: "ccr" }
+  ];
+  const html = renderToStaticMarkup(<ProfileView config={config} addProfile={() => undefined} applyError=""
+    copyProfileCliCommand={() => undefined} editProfile={() => undefined} openProfileApp={() => undefined}
+    profileRuntimeStatus={{ profiles: [] }} recoverGlobalProfile={() => undefined} removeProfile={() => undefined}
+    stopProfileApp={() => undefined} updateProfileItem={() => undefined} />);
+  assert.equal((html.match(/Restore original settings/g) ?? []).length, 2);
+});
+
 test("DeleteProfileDialog renders the Chinese confirmation copy", () => {
   const html = renderToStaticMarkup(
     <AppI18nContext.Provider value={appCopy.zh}>

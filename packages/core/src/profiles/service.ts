@@ -6,6 +6,7 @@ import { CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, NO_AVAILABLE_GATEWAY_MO
 import { CLAUDE_CODE_AUTH_MODE_ENV, resolveClaudeCodeGatewayAuthMode, type ClaudeCodeGatewayAuthMode } from "@ccr/core/agents/claude-code/auth-mode";
 import { CLAUDE_CONFIG_DIR_ENV, claudeCodeConfigDirEnv, isDefaultClaudeConfigDir, resolveClaudeCodeGlobalConfigFile } from "@ccr/core/agents/claude-code/config-home";
 import { updatePersistedApiKeys } from "@ccr/core/config/config-repository";
+import { disableGlobalAgentProfile } from "@ccr/core/config/config";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import {
   CLAUDE_CODE_MCP_CONFIG_ENV,
@@ -143,6 +144,67 @@ type GlobalProfileTakeoverRecord = {
 type ApplyProfileConfigOptions = {
   excludeAgents?: readonly ProfileClientKind[];
 };
+
+export async function recoverGlobalAgentProfile(profileId: string) {
+  // Persist the opt-out before touching files, so a failed restore cannot cause
+  // the next startup to silently reinstall the broken override.
+  const config = await disableGlobalAgentProfile(profileId);
+  const profile = config.profile.profiles.find(profile => profile.id === profileId)!;
+  try {
+    if (profile.agent === "claude-code") {
+      const file = resolveClaudeCodeSettingsFile(profile);
+      if (existsSync(file) && !parseJsonContent(readFileSync(file, "utf8"))) throw new Error("The current Claude Code settings file is not valid JSON.");
+      const result = restoreGlobalConfigFile(file, {
+        isManagedContent: (content) => {
+          const settings = parseJsonContent(content);
+          const env = settings && isRecord(settings.env) ? settings.env : {};
+          return Boolean(settings && (isManagedClaudeCodeApiKeyHelper(settings.apiKeyHelper) ||
+            (env.ANTHROPIC_FEDERATION_RULE_ID === claudeCodeWifFederationRuleId && env.ANTHROPIC_ORGANIZATION_ID === claudeCodeWifOrganizationId) ||
+            claudeCodeGatewayEnvKeys.every(key => normalizeUrlForMatch(String(env[key] || "")) === normalizeUrlForMatch(gatewayEndpoint(config)))));
+        },
+        mode: privateFileMode,
+        restoreContent: (current, original) => restoreClaudeCodeOwnedSettings(profile, current, original)
+      });
+      return { config, status: disabledRestoreStatus(profile.agent, file, "Claude Code profile is disabled.", result, profile.name || profile.id) };
+    }
+    return { config, status: disabledProfileStatus(profile) };
+  } catch (error) {
+    return { config, status: { client: profile.agent, enabled: false, ok: false, path: profilePath(profile),
+      message: `This profile is disabled, but its original settings could not be restored: ${formatError(error)}` } };
+  }
+}
+
+function restoreClaudeCodeOwnedSettings(profile: ProfileConfig, current: string, original: string): string {
+  const settings = parseJsonContent(current);
+  const saved = parseJsonContent(original);
+  if (!settings || !saved) throw new Error("Cannot restore Claude Code settings: the current file or original backup is not valid JSON.");
+  const next = cloneJsonObject(settings);
+  const state = readClaudeCodeProfileSettingsState(profile);
+  const env = isRecord(next.env) ? { ...next.env } : {};
+  const savedEnv = isRecord(saved.env) ? saved.env : {};
+  for (const key of new Set([...Object.keys(env), ...Object.keys(savedEnv), ...state.envKeys])) {
+    const managedTimezone = key === "TZ" && env.TZ === "UTC";
+    if (!isManagedClaudeCodeSettingsEnvKey(key) && !state.envKeys.includes(key) && !managedTimezone) continue;
+    if (hasOwn(savedEnv, key)) env[key] = savedEnv[key]; else delete env[key];
+  }
+  if (Object.keys(env).length || hasOwn(saved, "env")) next.env = env; else delete next.env;
+  if (isManagedClaudeCodeApiKeyHelper(next.apiKeyHelper)) {
+    if (hasOwn(saved, "apiKeyHelper")) next.apiKeyHelper = saved.apiKeyHelper; else delete next.apiKeyHelper;
+  }
+  for (const value of state.paths) {
+    const parts = parseClaudeCodeSettingsPath(value);
+    const originalValue = readJsonPath(saved, parts);
+    deleteJsonPath(next, parts);
+    if (originalValue === undefined) continue;
+    let parent = next;
+    for (const part of parts.slice(0, -1)) {
+      if (!hasOwn(parent, part) || !isRecord(parent[part])) Object.defineProperty(parent, part, { value: {}, enumerable: true, writable: true, configurable: true });
+      parent = parent[part] as Record<string, unknown>;
+    }
+    Object.defineProperty(parent, parts.at(-1)!, { value: originalValue, enumerable: true, writable: true, configurable: true });
+  }
+  return jsonValuesEqual(next, saved) ? original : `${JSON.stringify(next, null, 2)}\n`;
+}
 
 export async function applyProfileConfig(
   config: AppConfig,
@@ -3856,6 +3918,7 @@ function restoreGlobalConfigFile(
   options: {
     isManagedContent: (content: string) => boolean;
     mode?: number;
+    restoreContent?: (current: string, original: string) => string;
   }
 ): RestoreFileResult {
   const current = existsSync(file) ? readFileSync(file, "utf8") : undefined;
@@ -3866,14 +3929,15 @@ function restoreGlobalConfigFile(
 
   const snapshot = originalSnapshotCandidate(file, options.isManagedContent);
   if (snapshot) {
-    if (current === snapshot.content) {
+    const restoredContent = current !== undefined && options.restoreContent ? options.restoreContent(current, snapshot.content) : snapshot.content;
+    if (current === restoredContent) {
       chmodFileIfRequested(file, options.mode);
       return { changed: false, file, missingBackup: false, restored: true };
     }
 
     const backupFile = current === undefined ? undefined : backupCurrentConfigFile(file, options.mode);
     mkdirSync(path.dirname(file), { recursive: true });
-    writeFileSync(file, snapshot.content, options.mode === undefined ? "utf8" : { encoding: "utf8", mode: options.mode });
+    writeFileSync(file, restoredContent, options.mode === undefined ? "utf8" : { encoding: "utf8", mode: options.mode });
     chmodFileIfRequested(file, options.mode);
     return { backupFile, changed: true, file, missingBackup: false, restored: true };
   }
@@ -3881,6 +3945,11 @@ function restoreGlobalConfigFile(
   if (existsSync(originalMissingFilePath(file))) {
     if (currentManaged) {
       const backupFile = backupCurrentConfigFile(file, options.mode);
+      const remaining = current !== undefined && options.restoreContent ? options.restoreContent(current, "{}\n") : undefined;
+      if (remaining && Object.keys(parseJsonContent(remaining) ?? {}).length > 0) {
+        writeFileSync(file, remaining, options.mode === undefined ? "utf8" : { encoding: "utf8", mode: options.mode });
+        return { backupFile, changed: true, file, missingBackup: false, restored: true };
+      }
       rmSync(file, { force: true });
       return { backupFile, changed: true, file, missingBackup: false, restored: true };
     }
@@ -4029,7 +4098,7 @@ function isPureManagedClaudeCodeSettings(settings: Record<string, unknown>, mana
   if (!isRecord(settings.env)) {
     return false;
   }
-  return Object.keys(settings.env).every((key) => isManagedClaudeCodeSettingsEnvKey(key));
+  return Object.keys(settings.env).every((key) => isManagedClaudeCodeSettingsEnvKey(key) || (key === "TZ" && (settings.env as Record<string, unknown>).TZ === "UTC"));
 }
 
 function isClaudeCodeProfileManagedSettingsPath(pathValue: string, managedSettingPaths: string[]): boolean {

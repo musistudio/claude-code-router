@@ -36,7 +36,7 @@ import { getOpenRouterProviderCatalog } from "@ccr/core/providers/openrouter-pro
 import { getProviderPresets } from "@ccr/core/providers/presets/index";
 import { checkGatewayProviderConnectivity, probeGatewayProvider, probeGatewayProviderCandidates } from "@ccr/core/providers/probe";
 import { stopProviderModelAutoRefreshService, syncProviderModelAutoRefreshService } from "@ccr/core/providers/model-auto-refresh";
-import { applyProfileConfig } from "@ccr/core/profiles/service";
+import { applyProfileConfig, recoverGlobalAgentProfile } from "@ccr/core/profiles/service";
 import { getProfileOpenCommand, getProfileRuntimeStatus, openProfileFromCcr, stopProfileFromCcr } from "@ccr/core/profiles/launch-service";
 import { getPluginMarketplace } from "@ccr/core/plugins/marketplace";
 import { ensureProxyCertificateAuthority } from "@ccr/core/proxy/certificates";
@@ -318,6 +318,7 @@ const rpcHandlers: Record<string, RpcHandler> = {
     };
   },
   applyProfile: async () => applyProfileConfig(await loadAppConfig()),
+  recoverGlobalProfile: (profileId) => recoverGlobalAgentProfile(readRequiredString(profileId, "Profile ID is required.")),
   cancelBotGatewayQrLogin: (request) => cancelBotGatewayQrLogin(request as BotGatewayQrLoginCancelRequest),
   checkProviderConnectivity: async (request) => {
     const config = await loadAppConfig();

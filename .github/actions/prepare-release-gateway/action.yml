@@ -19,14 +19,15 @@ runs:
       shell: bash
       working-directory: .tmp/release-gateway
       run: |
-        # Keep the patch tied to the pinned source until upstream PR #39 lands.
+        # Apply the CCR patch set to the pinned source before building release artifacts.
         git apply ../../build/patches/ai-gateway-stream-terminal-error.patch
+        git apply ../../build/patches/ai-gateway-native-safeguards.patch
         test -f src/adapters/builtins/anthropic-tool-id.test.ts
         test -f src/raw-trace.test.ts
         npm ci
         npm run typecheck
         npm run typecheck:all
-        npx vitest run src/gateway/routes.test.ts src/gateway/stream-terminal-error.test.ts src/gateway/stream-terminal-events.test.ts src/adapters/builtins/anthropic-tool-id.test.ts src/raw-trace.test.ts
+        npx vitest run
         npm run build
         mkdir -p ../../docker/local-ai-gateway
         npm pack --ignore-scripts --pack-destination ../../docker/local-ai-gateway

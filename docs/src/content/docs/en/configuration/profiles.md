@@ -180,3 +180,11 @@ With a Bot bound, WorkBuddy can relay conversations through the selected IM chan
 ## Repair unavailable model selections
 
 The model picker lists unavailable saved selections separately with a **Remove** button. Saving a profile removes stale entries from its explicit model allowlist and keeps its valid default model. If an enabled profile's default is no longer configured, select an available model or disable that profile before saving. CCR reports the affected provider and its configured models instead of silently broadening an invalid allowlist to all models.
+
+## Recover from a broken system-default provider
+
+On **Agent profiles**, choose **Restore original settings** on the system-default Claude Code or Codex card, then reopen the agent. This saves the profile as disabled before restoring the original configuration, including when the gateway is stopped or unable to start. Restarting CCR keeps the profile disabled. The recovery operation uses the saved configuration, so unrelated invalid model selections do not block it.
+
+Claude Code recovery removes CCR-owned overrides and preserves unrelated user settings, including edits made after the takeover. If the original backup is missing, CCR reports that the restore failed and keeps the profile disabled. The profile's normal toggle remains available if you later want to enable routing again.
+
+Failed upstream requests include the provider, requested model and upstream configuration error in the client-visible message. Requests continue to use your configured fallback chain; restoring the original provider is the explicit recovery action above.

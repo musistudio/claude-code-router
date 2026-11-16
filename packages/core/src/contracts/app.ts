@@ -1884,6 +1884,11 @@ export type AppSaveConfigOptions = {
   applyProfile?: boolean;
 };
 
+export type GlobalProfileRecoveryResult = {
+  config: AppConfig;
+  status: ProfileClientApplyStatus;
+};
+
 export type ClaudeAppGatewayApplyResult = {
   apiKeyGenerated: boolean;
   configFile: string;
