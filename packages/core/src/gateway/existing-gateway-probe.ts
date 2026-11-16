@@ -1,4 +1,5 @@
 import type { ApiKeyConfig, AppConfig } from "@ccr/core/contracts/app";
+import { configuredApiKeys } from "@ccr/core/gateway/auth/api-key-authorizer";
 import { endpoint as gatewayEndpoint } from "@ccr/core/gateway/core-runtime/supervisor";
 import { gatewayRuntimeConfigControlPath, gatewayRuntimeConfigRevision } from "@ccr/core/gateway/runtime-config-control";
 
@@ -37,7 +38,7 @@ export async function probeExistingCcrGateway(
     return { endpoint, status: health.status ?? root?.status, state: "not-ccr" };
   }
 
-  const candidates = existingGatewayApiKeyCandidates(config);
+  const candidates = await existingGatewayApiKeyCandidates(config);
   if (candidates.length === 0) {
     return { endpoint, message: "No configured CCR API key is available.", status: 401, state: "unauthorized" };
   }
@@ -123,7 +124,7 @@ export async function reloadExistingCcrGatewayConfig(
   }
 
   const expectedEndpoint = publicGatewayEndpoint(config);
-  const apiKeys = externalGatewayReloadApiKeys(config, currentKey);
+  const apiKeys = await externalGatewayReloadApiKeys(config, currentKey);
   const deadline = Date.now() + runtimeConfigReloadTimeoutMs;
   let lastReason: string | undefined;
   while (Date.now() < deadline) {
@@ -181,22 +182,24 @@ async function fetchExistingGateway(
   return { reason };
 }
 
-function externalGatewayReloadApiKeys(
+async function externalGatewayReloadApiKeys(
   config: Pick<AppConfig, "APIKEY" | "APIKEYS">,
   currentApiKey: string
-): string[] {
-  const apiKeys = existingGatewayApiKeyCandidates(config).map((candidate) => candidate.key);
+): Promise<string[]> {
+  const apiKeys = (await existingGatewayApiKeyCandidates(config)).map((candidate) => candidate.key);
   if (!apiKeys.includes(currentApiKey)) {
     apiKeys.push(currentApiKey);
   }
   return apiKeys;
 }
 
-function existingGatewayApiKeyCandidates(config: Pick<AppConfig, "APIKEY" | "APIKEYS">): ApiKeyConfig[] {
-  const candidates = [
-    ...(Array.isArray(config.APIKEYS) ? config.APIKEYS : []),
-    ...(config.APIKEY ? [{ createdAt: "", id: "legacy", key: config.APIKEY, name: "Legacy API Key" }] : [])
-  ];
+async function existingGatewayApiKeyCandidates(config: Pick<AppConfig, "APIKEY" | "APIKEYS">): Promise<ApiKeyConfig[]> {
+  // Persisted keys live in the api_keys table, not in the legacy config
+  // fields, so the probe has to ask the canonical resolver. Reading only
+  // config.APIKEYS/APIKEY hides every key on installs that store them in the
+  // database, and the probe then reports "unauthorized" for a gateway that
+  // actually accepts the configured key.
+  const candidates = await configuredApiKeys(config);
   const seen = new Set<string>();
   const result: ApiKeyConfig[] = [];
   for (const candidate of candidates) {

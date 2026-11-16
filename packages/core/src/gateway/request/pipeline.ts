@@ -69,7 +69,7 @@ export type GatewayRequestPipelineDependencies = {
   getConfig: () => AppConfig | undefined;
   getCoreAuthToken: () => string;
   getPlugin: () => ClaudeCodeRouterPlugin | undefined;
-  getStatus: () => { coreEndpoint: string; endpoint: string };
+  getStatus: () => { coreEndpoint: string; endpoint: string; gatewayManagedExternally?: boolean };
 };
 
 function reportedRouteChange(
@@ -130,6 +130,13 @@ export class GatewayRequestPipeline {
   private get coreAuthToken() { return this.dependencies.getCoreAuthToken(); }
   private get plugin() { return this.dependencies.getPlugin(); }
   private get status() { return this.dependencies.getStatus(); }
+
+  // A managed core gateway authenticates the CCR core header; an adopted
+  // external gateway is reached on its public endpoint and expects a normal
+  // bearer credential.
+  private get coreAuthHeader(): string | undefined {
+    return this.status.gatewayManagedExternally ? "authorization" : undefined;
+  }
 
   async proxyRequest(request: IncomingMessage, response: ServerResponse, path: string, apiKey?: ApiKeyConfig): Promise<void> {
       if (!this.config || !this.plugin) {
@@ -373,6 +380,15 @@ export class GatewayRequestPipeline {
       }
 
       if (shouldApplyGatewayRouting(method, path)) {
+        // Without a core auth token the request cannot be forwarded to the core
+        // gateway. That happens while the core runtime is restarting after an
+        // unexpected exit. Answer with a retryable 503 instead of letting the
+        // upstream executor fail with "Core gateway auth token is not
+        // initialized.", which blames the caller's credentials for an outage.
+        if (!this.coreAuthToken) {
+          sendJson(response, 503, { error: { message: "Gateway runtime is not ready. The core gateway is restarting, retry shortly." } });
+          return;
+        }
         const routeAdaptationStartedAt = Date.now();
         const adaptation = adaptRouteRequestBody(path, takeJsonObject(bodyToForward ?? requestBody));
         if (adaptation.modelLocation === "path") {
@@ -389,6 +405,11 @@ export class GatewayRequestPipeline {
           body: adaptation.body,
           coreAuthToken: this.coreAuthToken,
           coreEndpoint: this.status.coreEndpoint,
+          // The core router route only accepts the core auth token of a
+          // managed core gateway. An adopted external gateway authenticates
+          // with a public API key, so the route has to be skipped there and
+          // routing is decided by the local plugin instead.
+          enabled: !this.status.gatewayManagedExternally,
           headers: headers as Record<string, string | string[] | undefined>,
           method,
           path,
@@ -783,6 +804,7 @@ export class GatewayRequestPipeline {
         upstreamResult = await fetchUpstreamWithFallback({
           body: bodyToForward,
           config: this.config,
+          coreAuthHeader: this.coreAuthHeader,
           fallback: routeFallback,
           headers,
           method,
@@ -1256,6 +1278,7 @@ export class GatewayRequestPipeline {
     const result = await fetchUpstreamWithFallback({
       body: input.body,
       config,
+      coreAuthHeader: this.coreAuthHeader,
       fallback: { mode: "off", models: [], retryCount: 1 },
       headers,
       method: input.snapshot.method,
@@ -1278,12 +1301,13 @@ async function routeRequestWithCoreGatewayPlugin(input: {
   body: Record<string, unknown>;
   coreAuthToken: string;
   coreEndpoint: string;
+  enabled?: boolean;
   headers: Record<string, string | string[] | undefined>;
   method: string;
   path: string;
   url: string;
 }): Promise<{ body: Record<string, unknown>; decision: ClaudeCodeRouteDecision } | undefined> {
-  if (!input.coreEndpoint || !input.coreAuthToken) {
+  if (input.enabled === false || !input.coreEndpoint || !input.coreAuthToken) {
     return undefined;
   }
 

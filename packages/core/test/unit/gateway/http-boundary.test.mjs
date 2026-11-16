@@ -102,6 +102,16 @@ test("core gateway auth and upstream response headers stay on their intended bou
   });
   assert.throws(() => withCoreGatewayAuthHeader({}, ""), /not initialized/);
 
+  // An adopted external gateway is reached on its public endpoint and expects
+  // a standard bearer credential instead of the core auth header.
+  assert.deepEqual(withCoreGatewayAuthHeader({}, "api-key", "authorization"), {
+    authorization: "Bearer api-key"
+  });
+  assert.deepEqual(withCoreGatewayAuthHeader({}, "Bearer api-key", "authorization"), {
+    authorization: "Bearer api-key"
+  });
+  assert.throws(() => withCoreGatewayAuthHeader({}, "", "authorization"), /not initialized/);
+
   const headers = new Headers({
     connection: "close",
     "content-encoding": "gzip",
