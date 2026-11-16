@@ -5,6 +5,14 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import {
+  canonicalKnownProvider,
+  canonicalProviderToken,
+  compactObject,
+  isRecord,
+  mergeLimits,
+  readNumber
+} from "./model-catalog.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
@@ -29,45 +37,11 @@ const sources = {
 };
 
 const sourceOrder = ["models.dev", "litellm", "openrouter"];
-const support1MContextThreshold = 1_000_000;
 const schemaVersion = 2;
 const fetchAttempts = 3;
 const fetchRetryDelayMs = 500;
 const fetchTimeoutMs = 15_000;
 const execFileAsync = promisify(execFile);
-
-const firstPartyProviderAliases = new Map(Object.entries({
-  ai21: "ai21",
-  alibaba: "alibaba",
-  anthropic: "anthropic",
-  amazon: "amazon",
-  bedrock: "amazon",
-  cohere: "cohere",
-  deepseek: "deepseek",
-  "deepseek-ai": "deepseek",
-  gemini: "google",
-  google: "google",
-  "google-vertex": "google",
-  llama: "meta-llama",
-  meta: "meta-llama",
-  "meta-llama": "meta-llama",
-  "meta-llama3": "meta-llama",
-  mistral: "mistral",
-  mistralai: "mistral",
-  minimax: "minimax",
-  minimaxai: "minimax",
-  moonshot: "moonshotai",
-  moonshotai: "moonshotai",
-  openai: "openai",
-  perplexity: "perplexity",
-  qwen: "alibaba",
-  xai: "x-ai",
-  "x-ai": "x-ai",
-  zai: "z-ai",
-  "z-ai": "z-ai",
-  "zai-org": "z-ai",
-  zhipuai: "z-ai"
-}));
 
 const providerHints = [
   [/^(chatgpt|codex|dall-e|gpt-|gpt_|o[1345](?:-|$)|omni-|text-embedding-|tts-|whisper-)/i, "openai"],
@@ -407,7 +381,7 @@ function finalizeEntry(entry) {
   const displayName = firstDefined(records.map((record) => record.displayName));
   const family = firstDefined(records.map((record) => record.family));
   const mode = firstDefined(records.map((record) => record.mode));
-  const limits = mergeLimits(records.map((record) => record.limits));
+  const limits = mergeLimits(records, entry.provider);
   const modalities = mergeModalities(records.map((record) => record.modalities));
   const capabilities = mergeCapabilities(records.map((record) => record.capabilities), modalities, limits, mode);
   const pricingOffers = records
@@ -487,7 +461,7 @@ function mergeDedupedModel(identity, records) {
   const sourceRecords = dedupeSourceRecords(sortedRecords.flatMap((record) => record.sourceRecords ?? []))
     .sort(compareSourceRecords);
   const pricingOffers = dedupePricingOffers(sortedRecords.flatMap((record) => record.pricing?.offers ?? []));
-  const limits = mergeLimits(sortedRecords.map((record) => record.limits));
+  const limits = mergeLimits(sortedRecords, identity.provider);
   const modalities = mergeModalities(sortedRecords.map((record) => record.modalities));
   const mode = firstDefined(sortedRecords.map((record) => record.mode));
   const capabilities = mergeCapabilities(sortedRecords.map((record) => record.capabilities), modalities, limits, mode);
@@ -596,26 +570,6 @@ function modelPathSegments(value) {
     .split("/")
     .map((segment) => segment.trim())
     .filter(Boolean);
-}
-
-function canonicalKnownProvider(value) {
-  const normalized = normalizeProviderToken(value);
-  return firstPartyProviderAliases.get(normalized);
-}
-
-function canonicalProviderToken(value) {
-  const normalized = normalizeProviderToken(value);
-  return firstPartyProviderAliases.get(normalized) || normalized || undefined;
-}
-
-function normalizeProviderToken(value) {
-  return String(value || "")
-    .trim()
-    .replace(/^hf:/i, "")
-    .replace(/^@/, "")
-    .replace(/_/g, "-")
-    .replace(/\s+/g, "-")
-    .toLowerCase();
 }
 
 function canonicalModelSlug(value) {
@@ -959,37 +913,6 @@ function inferLiteLlmModalities(model, mode) {
   return { input: Array.from(input).sort(), output: Array.from(output).sort() };
 }
 
-function mergeLimits(limitsList) {
-  const output = {};
-  const numericKeys = [
-    "contextTokens",
-    "inputTokens",
-    "maxAudioLengthHours",
-    "maxAudioPerPrompt",
-    "maxDocumentChunksPerQuery",
-    "maxImagesPerPrompt",
-    "maxPdfSizeMB",
-    "maxQueryTokens",
-    "maxTokens",
-    "maxTokensPerDocumentChunk",
-    "maxVideoLength",
-    "maxVideosPerPrompt",
-    "outputTokens",
-    "outputVectorSize"
-  ];
-
-  for (const key of numericKeys) {
-    const values = limitsList.map((limits) => readNumber(limits?.[key])).filter((value) => value !== undefined);
-    if (values.length > 0) output[key] = Math.max(...values);
-  }
-
-  const contextCandidates = [output.contextTokens, output.inputTokens, output.maxTokens]
-    .filter((value) => Number.isFinite(value));
-  output.supports1MContext = contextCandidates.some((value) => value >= support1MContextThreshold);
-
-  return compactObject(output);
-}
-
 function mergeModalities(modalityList) {
   const input = new Set();
   const output = new Set();
@@ -1142,11 +1065,6 @@ function per1MFromPerToken(value) {
   return value === undefined ? undefined : roundNumber(value * 1_000_000);
 }
 
-function readNumber(value) {
-  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
-}
-
 function readString(value) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
@@ -1169,18 +1087,6 @@ function uniqueStrings(values) {
   return Array.from(new Set(values.filter((value) => typeof value === "string" && value.trim()).map((value) => value.trim()))).sort();
 }
 
-function compactObject(object) {
-  if (!isRecord(object)) return undefined;
-  const output = {};
-  for (const [key, value] of Object.entries(object)) {
-    if (value === undefined || value === null) continue;
-    if (Array.isArray(value) && value.length === 0) continue;
-    if (isRecord(value) && Object.keys(value).length === 0) continue;
-    output[key] = value;
-  }
-  return Object.keys(output).length > 0 ? output : undefined;
-}
-
 function omit(object, keys) {
   const keySet = new Set(keys);
   const output = {};
@@ -1198,10 +1104,6 @@ function epochSecondsToIso(value) {
   const seconds = readNumber(value);
   if (seconds === undefined) return undefined;
   return new Date(seconds * 1000).toISOString();
-}
-
-function isRecord(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 await main().catch((error) => {
