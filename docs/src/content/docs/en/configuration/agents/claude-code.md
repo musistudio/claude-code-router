@@ -96,3 +96,9 @@ If you bind a Bot and open Claude App from CCR, Claude App can relay conversatio
 - **`/model` shows no CCR models:** confirm a provider + model is configured.
 - **Claude App did not pick up the config:** Claude App is already running — reopen it from CCR, or restart it when prompted.
 - **Model aliases have no effect:** aliases only change which provider model a Claude Code tier uses; the value must be a valid `Provider/model` or Fusion model that CCR can serve.
+
+## Gateway model metadata and safeguards
+
+Model discovery exposes `context_window`, `max_context_window`, and `max_input_tokens` at the model's top level when a context limit is known. Set an explicit model context limit for local models. Whether a particular Claude Code version uses that metadata to trigger automatic compaction depends on the client; exposing it does not itself change the client's compaction policy.
+
+For native Anthropic Messages providers, CCR preserves the `safeguards` request field together with its `anthropic-beta` header, `safeguard_results` in JSON and SSE, and tool-use IDs. Server classifier availability and billing eligibility depend on the upstream provider and account. See Anthropic's [gateway protocol](https://code.claude.com/docs/en/llm-gateway-protocol) and [auto-mode classifier billing](https://code.claude.com/docs/en/auto-mode-classifier-billing). CCR does not manufacture eligibility or classifier verdicts.

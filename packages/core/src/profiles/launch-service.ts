@@ -268,7 +268,7 @@ async function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof
       ? workbuddyDesktopAppName
       : codexDesktopAppName;
   const profileGatewayConfig = await ensureProfileGateway(config, profile, appName);
-  if (profile.agent === "codex") await prepareCodexAppNetResponder(CONFIGDIR);
+  if (profile.agent === "codex") await prepareCodexAppNetResponder(CONFIGDIR, profile);
   const existing = runningProfileApp(profile.id, "app");
   if (existing) {
     refreshCodexCompatibleAppProfileFiles(CONFIGDIR, profile, profileGatewayConfig);

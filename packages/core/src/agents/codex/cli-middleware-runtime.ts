@@ -349,7 +349,6 @@ async function runCodexCliMiddleware(args) {
 
   const requestMap = new Map();
   const current = { cwd: "" };
-  const chatGptAuth = loadChatGptAuth();
   const stdinRl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity, terminal: false });
   stdinRl.on("line", (line) => {
     const custom = customAppServerLineResponse(line);
@@ -368,7 +367,7 @@ async function runCodexCliMiddleware(args) {
   const stdoutRl = readline.createInterface({ input: child.stdout, crlfDelay: Infinity, terminal: false });
   stdoutRl.on("line", (line) => {
     cleanupAuthBootstrap();
-    const rewritten = rewriteCodexStdoutLine(line, requestMap, chatGptAuth);
+    const rewritten = rewriteCodexStdoutLine(line, requestMap);
     botBridge().handleJsonRpcLine(rewritten);
     if (!shouldSuppressBotBridgeLine(rewritten)) {
       process.stdout.write(rewritten + "\n");
@@ -603,7 +602,7 @@ function cliConfigString(key, value) {
   return key + "=\"" + tomlEscape(value) + "\"";
 }
 
-function rewriteCodexStdoutLine(line, requestMap, chatGptAuth) {
+function rewriteCodexStdoutLine(line, requestMap) {
   let value;
   try {
     value = JSON.parse(line);
@@ -619,6 +618,15 @@ function rewriteCodexStdoutLine(line, requestMap, chatGptAuth) {
       log("app_server_list_error", { method: request.method, error: value.error });
     }
     return line;
+  }
+  let chatGptAuth;
+  if (request.method === "account/read" || request.method === "getAuthStatus") {
+    const fresh = loadChatGptAuth();
+    const prior = request.chatGptAuth;
+    const identity = auth => auth && (auth.accountId || auth.email || auth.authToken);
+    // Follow the official owner's atomic token refresh, while an in-flight
+    // account request keeps its identity if the login changes underneath it.
+    chatGptAuth = prior && identity(prior) !== identity(fresh) ? prior : fresh;
   }
   if (request.method === "account/read") {
     value.result = codexAppAccountRead(chatGptAuth, value.result);
@@ -1017,6 +1025,7 @@ function trackRequestLine(line, requestMap, current) {
     params.codexlWorkspaceCwd = current.cwd;
   }
   requestMap.set(id, {
+    ...(["account/read", "getAuthStatus"].includes(method) ? { chatGptAuth: loadChatGptAuth() } : {}),
     includeToken: Boolean(value.params && value.params.includeToken),
     method,
     params
@@ -4868,6 +4877,15 @@ function codexAppAccountRead(auth, existingResult) {
     planType: auth.planType || "unknown"
   };
   result.requiresOpenaiAuth = true;
+  if (auth.accountId && auth.accountId !== "ccr-virtual-account" && !isPlainObject(result.workspaceRouting)) {
+    // A custom model provider may make app-server report null even for a real
+    // account. Account APIs belong on the desktop's own Chromium connection.
+    result.workspaceRouting = {
+      chatgptAccountId: auth.accountId,
+      backendOrigin: "https://chatgpt.com",
+      accountRoutingOverride: "NO_CONSTRAINT"
+    };
+  }
   if (auth.accountId === "ccr-virtual-account" && result.workspaceRouting == null) {
     const origin = nonEmptyEnv("CCR_CODEX_WORKSPACE_BACKEND_ORIGIN");
     try {

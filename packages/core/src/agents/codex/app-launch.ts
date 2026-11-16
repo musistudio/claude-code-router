@@ -1,3 +1,4 @@
+import { quarantineLegacyCodexAuth } from "@ccr/core/agents/codex/legacy-auth";
 import { spawn, type ChildProcess } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -52,6 +53,7 @@ export type CodexCompatibleAppModelCatalogWriteResult = {
   changed: boolean;
   file: string;
   userDataDir: string;
+  legacyAuthBackup?: string;
   workbuddyModelsConfig?: WorkbuddyModelsConfigWriteResult;
   workbuddyVirtualAuth?: WorkbuddyVirtualAuthResult;
 };
@@ -291,8 +293,10 @@ export function writeCodexCompatibleAppModelCatalog(
   const spec = codexCompatibleAppSpecForProfile(profile);
   const configFile = resolveCodexConfigFile(configDir, profile);
   const codexHome = codexCompatibleHomeFromConfigFile(spec, configFile);
+  let legacyAuthBackup: string | undefined;
   if (spec.kind === "codex") {
     removeLegacyCodexVirtualAuthMarker(codexHome);
+    if (profile.scope !== "global") legacyAuthBackup = quarantineLegacyCodexAuth(configDir, codexHome);
   }
   const userDataDir = codexElectronUserDataDir(codexHome, profile, spec);
   mkdirSync(userDataDir, { recursive: true });
@@ -309,7 +313,8 @@ export function writeCodexCompatibleAppModelCatalog(
     ? prepareWorkbuddyAppVirtualAuth(codexHome, userDataDir, profile)
     : undefined;
   return {
-    changed: previous !== content || Boolean(workbuddyModelsConfig?.changed),
+    changed: previous !== content || Boolean(workbuddyModelsConfig?.changed) || Boolean(legacyAuthBackup),
+    ...(legacyAuthBackup ? { legacyAuthBackup } : {}),
     file,
     userDataDir,
     workbuddyModelsConfig,
@@ -589,8 +594,8 @@ async function launchCodexCompatibleAppProfile(
   const codexHome = codexCompatibleHomeFromConfigFile(spec, configFile);
   const { modelCatalogFile, userDataDir, workbuddyVirtualAuth } = refreshCodexCompatibleAppProfileFiles(configDir, profile, config);
   if (spec.kind === "codex") prepareCodexAppCdpUserDataDir(userDataDir);
-  const netResponderPort = codexAppNetResponderPort(spec.kind);
-  const localApi = netResponderPort ? await prepareCodexAppNetResponder(configDir) : undefined;
+  const netResponderPort = codexAppUsesSharedAccount(configDir, profile) ? undefined : codexAppNetResponderPort(spec.kind);
+  const localApi = netResponderPort ? await prepareCodexAppNetResponder(configDir, profile) : undefined;
 
   const appEnv: Record<string, string> = {
     ...plan.env,
@@ -603,10 +608,10 @@ async function launchCodexCompatibleAppProfile(
     ...codexAppNetResponderEnv(spec.kind, netResponderPort),
     ELECTRON_ENABLE_LOGGING: "1"
   };
-  const env: NodeJS.ProcessEnv = {
+  const env: NodeJS.ProcessEnv = codexAppAccountNetworkEnv(configDir, profile, {
     ...process.env,
     ...appEnv
-  };
+  });
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.CCR_CODEX_MODEL_CATALOG_B64;
   delete env.CODEXL_CODEX_MODEL_CATALOG_B64;
@@ -677,7 +682,10 @@ function codexProfileEnv(profile: ProfileConfig, appExecutable: string, spec: Co
       CODEXL_CODEX_ISOLATED_IDENTITY: "1",
       CCR_CODEX_CHATGPT_AUTH_FILE: "",
       CODEXL_CODEX_CHATGPT_AUTH_FILE: ""
-    } : codexSharedChatGptAuthEnv()),
+    } : {
+      ...(spec.kind === "codex" ? { CCR_CODEX_ISOLATED_IDENTITY: "0", CODEXL_CODEX_ISOLATED_IDENTITY: "0" } : {}),
+      ...codexSharedChatGptAuthEnv()
+    }),
     CCR_CODEX_MODEL_PROVIDER: providerId,
     CCR_CODEX_PROFILE: providerId,
     CCR_CODEX_REMOTE_FRONTEND_MODE: remoteFrontendMode,
@@ -1017,7 +1025,28 @@ function codexAppNetResponderPort(kind: CodexCompatibleAppKind): number | undefi
   return CODEX_APP_NET_RESPONDER_PORT;
 }
 
-export async function prepareCodexAppNetResponder(configDir: string): Promise<{ certificateSpki: string } | undefined> {
+export function codexAppUsesSharedAccount(configDir: string, profile: ProfileConfig): boolean {
+  if (profile.agent !== "codex" || profile.scope !== "global") return false;
+  const configFile = resolveCodexConfigFile(configDir, profile);
+  const home = codexCompatibleHomeFromConfigFile(codexAppSpec, configFile);
+  return isUsableChatGptAuthFile(path.join(home, "auth.json")) || Boolean(codexSharedChatGptAuthFile(os.homedir()));
+}
+
+export function codexAppAccountNetworkEnv(configDir: string, profile: ProfileConfig, env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  if (!codexAppUsesSharedAccount(configDir, profile)) return env;
+  const result = { ...env };
+  try {
+    const url = new URL(result.CODEX_API_BASE_URL || "");
+    if (["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) && url.port === String(CODEX_APP_NET_RESPONDER_PORT)) {
+      delete result.CODEX_API_BASE_URL;
+    }
+  } catch {}
+  delete result.CCR_CODEX_WORKSPACE_BACKEND_ORIGIN;
+  return result;
+}
+
+export async function prepareCodexAppNetResponder(configDir: string, profile?: ProfileConfig): Promise<{ certificateSpki: string } | undefined> {
+  if (profile && codexAppUsesSharedAccount(configDir, profile)) return undefined;
   const port = codexAppNetResponderPort("codex");
   if (!port) return;
   const logPath = path.join(configDir, "codex-app-inspector.log");

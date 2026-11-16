@@ -1996,7 +1996,7 @@ export function AddProviderForm({
   providers: GatewayProviderConfig[];
 }) {
   const t = useAppText();
-  const [advancedOpen, setAdvancedOpen] = useState(() => Boolean(draft.autoFetchModels));
+  const [advancedOpen, setAdvancedOpen] = useState(() => Boolean(draft.autoFetchModels) || draft.supportsDeferredTools === false);
   const [iconDetecting, setIconDetecting] = useState(false);
   const [autoDetectInfoPosition, setAutoDetectInfoPosition] = useState<{ left: number; top: number }>();
   const [protocolProbeDetails, setProtocolProbeDetails] = useState<ProviderProtocolProbeDetailsState>();
@@ -2454,6 +2454,14 @@ export function AddProviderForm({
                         checked={!manualProtocolDetection}
                         onCheckedChange={updateAutoProtocolDetection}
                       />
+                    </div>
+                    <div className="flex items-center justify-between gap-3 sm:col-span-2">
+                      <div>
+                        <div className="text-[13px] font-medium">{t("Deferred tool loading")}</div>
+                        <div className="text-[12px] text-muted-foreground">{t("When disabled, tool definitions are sent without defer_loading.")}</div>
+                      </div>
+                      <Switch aria-label={t("Deferred tool loading")} checked={draft.supportsDeferredTools}
+                        onCheckedChange={(supportsDeferredTools) => onChange({ supportsDeferredTools })} />
                     </div>
                     <ProviderUsageSettings
                       customEndpoint={customEndpoint}

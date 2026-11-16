@@ -102,6 +102,7 @@ export type AddProviderDraft = {
   credentials: ProviderCredentialDraft[];
   extraBodyText: string;
   extraHeadersText: string;
+  supportsDeferredTools: boolean;
   icon: string;
   modelDescriptions?: Record<string, string>;
   modelDisplayNames?: Record<string, string>;

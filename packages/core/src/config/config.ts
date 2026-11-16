@@ -1,3 +1,4 @@
+import { reconcileProfileModelSelections } from "@ccr/core/profiles/model-selection";
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -393,7 +394,7 @@ export async function saveAppThemePreference(theme: unknown): Promise<AppConfig[
 }
 
 async function saveAppConfigNow(config: AppConfig): Promise<AppConfig> {
-  const normalizedConfig = withSingleEnabledGlobalProfiles(config);
+  const normalizedConfig = reconcileProfileModelSelections(withSingleEnabledGlobalProfiles(config));
   assertProviderApiKeysAreSafe(normalizedConfig);
   const pluginMigration = migrateKnownGatewayPluginConfigs(normalizedConfig.plugins);
   // Credentials have their own save operation. A settings snapshot may predate
@@ -1454,6 +1455,7 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
         extraBody: item.extraBody,
         extraHeaders: item.extraHeaders ?? item.extra_headers ?? item.headers,
         forwardThinkingParameters: readBoolean(item.forwardThinkingParameters ?? item.forward_thinking_parameters),
+        supportsDeferredTools: readBoolean(item.supportsDeferredTools ?? item.supports_deferred_tools),
         icon: readString(item.icon),
         id: readString(item.id),
         enabled: item.enabled === false ? false : undefined,
