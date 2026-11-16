@@ -1453,6 +1453,7 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
         credentials: parseProviderCredentials(item.credentials ?? item.keys ?? item.apiKeys),
         extraBody: item.extraBody,
         extraHeaders: item.extraHeaders ?? item.extra_headers ?? item.headers,
+        forwardThinkingParameters: readBoolean(item.forwardThinkingParameters ?? item.forward_thinking_parameters),
         icon: readString(item.icon),
         id: readString(item.id),
         enabled: item.enabled === false ? false : undefined,
