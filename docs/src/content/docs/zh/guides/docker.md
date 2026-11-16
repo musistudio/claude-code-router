@@ -104,7 +104,7 @@ docker run -d \
 | CCR 客户端 API Key | 模型网关请求鉴权 | UI 的 **API 密钥** 页面 |
 | 上游供应商凭据 | CCR 调用模型供应商 | UI 的 **供应商** 页面 |
 
-不设置 `CCR_WEB_AUTH_TOKEN` 时，EntryPoint 每次启动容器都会生成新的随机 Token，并把管理地址在容器日志中打印一次。Nginx 不会向客户端返回 Token：不带 Token 打开根地址只能加载页面，所有管理请求都会返回 `401`，需要在 URL 中带上 Token。页面会在当前浏览器标签页会话内保留它。持久部署和远程部署应固定一个足够长的强 Token。
+不设置 `CCR_WEB_AUTH_TOKEN` 时，EntryPoint 每次启动容器都会生成新的随机 Token，并把管理地址在容器日志中打印一次。Nginx 不会向客户端返回 Token。不带有效 Token 打开根地址时，页面会先弹出管理令牌输入框，认证通过后才加载配置或初始化向导。带 Token 的 URL 仍然可用，验证通过的 Token 会保留在当前浏览器标签页会话内。Token 无效或过期时会重新提示认证。持久部署和远程部署应固定一个足够长的强 Token。
 
 不要把 Token 直接写进 Shell 历史。可以创建不进入版本控制的环境文件：
 
