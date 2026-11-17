@@ -812,12 +812,29 @@ export type RouteScriptTestResult = RouteScriptValidationResult & {
   output?: unknown;
 };
 
+/**
+ * `rewrite` (default) replaces the response body `model` with the client-visible
+ * model, so a fallback leg does not surface its own model. `passthrough` keeps
+ * the model name the serving endpoint returned.
+ */
+export type GatewayResponseModelPolicy = "rewrite" | "passthrough";
+
 export type GatewayRuntimeConfig = {
   coreHost: string;
   corePort: number;
   enabled: boolean;
   host: string;
   port: number;
+  /**
+   * Controls whether the response body's `model` field carries the client-visible
+   * (requested) model or the serving endpoint's real model.
+   * - "rewrite" (default): body `model` is rewritten to the requested model on
+   *   both Anthropic and OpenAI protocols (backward compatible; the serving
+   *   endpoint's real model is still exposed via the `x-ccr-served-model` header).
+   * - "passthrough": body `model` keeps the upstream's real model name.
+   * The serving truth is always available in `x-ccr-served-model`.
+   */
+  responseModelPolicy?: GatewayResponseModelPolicy;
 };
 
 export type ProxyMode = "gateway" | "transparent";

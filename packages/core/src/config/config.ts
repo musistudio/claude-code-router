@@ -789,6 +789,10 @@ function sanitizeProfileConfigForDisk(profile: AppConfig["profile"]): AppConfig[
   };
 }
 
+export function pickConfigForTest(value: Partial<AppConfig>): LoadedAppConfig {
+  return pickConfig(value);
+}
+
 function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   const config: LoadedAppConfig = {};
 
@@ -870,6 +874,9 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
     const gatewayCorePort = readPort(gateway.corePort);
     if (gatewayCorePort) {
       gatewayConfig.corePort = gatewayCorePort;
+    }
+    if (gateway.responseModelPolicy === "rewrite" || gateway.responseModelPolicy === "passthrough") {
+      gatewayConfig.responseModelPolicy = gateway.responseModelPolicy;
     }
     config.gateway = gatewayConfig;
   }

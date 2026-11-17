@@ -630,6 +630,8 @@ function rewriteCodexStdoutLine(line, requestMap) {
   }
   if (request.method === "account/read") {
     value.result = codexAppAccountRead(chatGptAuth, value.result);
+  } else if (request.method === "initialize") {
+    value.result = codexAppInitialize(value.result);
   } else if (request.method === "getAuthStatus") {
     value.result = codexAppAuthStatus(chatGptAuth, request.includeToken, value.result);
   } else if (request.method === "thread/list") {
@@ -1019,7 +1021,7 @@ function trackRequestLine(line, requestMap, current) {
   if (!id || !method) return;
   const cwd = requestWorkspaceCwd(value, method);
   if (cwd) current.cwd = cwd;
-  if (!["account/read", "getAuthStatus", "thread/list", "config/read", "model/list", "plugin/list", "configRequirements/read"].includes(method)) return;
+  if (!["initialize", "account/read", "getAuthStatus", "thread/list", "config/read", "model/list", "plugin/list", "configRequirements/read"].includes(method)) return;
   const params = clone(value.params || {});
   if (method === "thread/list" && current.cwd && !params.codexlWorkspaceCwd) {
     params.codexlWorkspaceCwd = current.cwd;
@@ -4768,8 +4770,15 @@ function loadChatGptAuth() {
     return virtualChatGptAuth(workspaceName);
   }
   const seen = new Set();
+  // A real file at the profile home carrying the shared login's single-use
+  // refresh token is a stale copy, not a separate session: whichever side
+  // refreshes first invalidates the other (refresh_token_reused). Heal it into
+  // a symlink to the shared file so the app and the CLI read exactly one
+  // refresh chain, then load from the shared chain.
+  const profileAuthFile = path.join(codexRuntimeHome(), "auth.json");
+  const healedSharedAuthFile = healStaleCodexAuthCopy(profileAuthFile);
   for (const authFile of [
-    path.join(codexRuntimeHome(), "auth.json"),
+    healedSharedAuthFile || profileAuthFile,
     nonEmptyEnv("CCR_CODEX_CHATGPT_AUTH_FILE"),
     nonEmptyEnv("CODEXL_CODEX_CHATGPT_AUTH_FILE"),
     defaultCodexChatGptAuthFallback()
@@ -4780,6 +4789,62 @@ function loadChatGptAuth() {
     if (auth) return auth;
   }
   return virtualChatGptAuth(workspaceName);
+}
+
+function chatGptAuthTokens(authFile) {
+  const value = readJsonFile(authFile);
+  if (!value || !isPlainObject(value)) return undefined;
+  if (typeof value.auth_mode === "string" && value.auth_mode !== "chatgpt") return undefined;
+  const tokens = isPlainObject(value.tokens) ? value.tokens : undefined;
+  if (!tokens) return undefined;
+  return {
+    access: stringValue(tokens.access_token) || stringValue(tokens.accessToken),
+    refresh: stringValue(tokens.refresh_token) || stringValue(tokens.refreshToken)
+  };
+}
+
+function healStaleCodexAuthCopy(profileFile) {
+  try {
+    const stat = fs.lstatSync(profileFile);
+    if (stat.isSymbolicLink() || !stat.isFile()) return undefined;
+  } catch {
+    return undefined;
+  }
+  const profileTokens = chatGptAuthTokens(profileFile);
+  if (!profileTokens || !profileTokens.refresh) return undefined;
+  for (const sharedFile of [
+    nonEmptyEnv("CCR_CODEX_CHATGPT_AUTH_FILE"),
+    nonEmptyEnv("CODEXL_CODEX_CHATGPT_AUTH_FILE"),
+    defaultCodexChatGptAuthFallback()
+  ]) {
+    // Same normalized path guards against a misconfiguration that points the
+    // shared file at the profile file itself.
+    if (!sharedFile || path.resolve(sharedFile) === path.resolve(profileFile)) continue;
+    const sharedTokens = chatGptAuthTokens(sharedFile);
+    // A matching single-use refresh token is what marks the profile file as a
+    // copy of the shared session rather than an independent login; the app only
+    // reads CODEX_HOME/auth.json, so healing to the shared chain is the right
+    // default even if the tokens match by coincidence.
+    if (!sharedTokens || sharedTokens.refresh !== profileTokens.refresh) continue;
+    try {
+      // Symlink to a temp name first and rename over the copy: the replacement
+      // is atomic, so a symlink failure (e.g. Windows privileges) leaves the
+      // original file intact instead of deleting it and stranding the app with
+      // no login file at all.
+      const tmpFile = profileFile + ".ccr-heal-tmp";
+      fs.rmSync(tmpFile, { force: true });
+      fs.symlinkSync(sharedFile, tmpFile);
+      fs.renameSync(tmpFile, profileFile);
+      log("codex_auth_stale_copy_healed", { profileFile, sharedFile });
+    } catch (error) {
+      try {
+        fs.rmSync(profileFile + ".ccr-heal-tmp", { force: true });
+      } catch {}
+      log("codex_auth_stale_copy_heal_error", { profileFile, error: formatError(error) });
+    }
+    return sharedFile;
+  }
+  return undefined;
 }
 
 function defaultCodexChatGptAuthFallback() {
@@ -4877,6 +4942,19 @@ function codexAppAccountRead(auth, existingResult) {
     planType: auth.planType || "unknown"
   };
   result.requiresOpenaiAuth = true;
+  // Two routing modes, selected by whether a local TLS workspace origin is set.
+  //
+  // TLS mode (CCR_CODEX_WORKSPACE_BACKEND_ORIGIN=https://localhost:...): 0.155+
+  // requires explicit workspace routing even for local API-key profiles, so pin
+  // the desktop API onto our TLS loopback listener.
+  //
+  // Legacy mode (no origin configured): drop workspaceRouting entirely for the
+  // synthetic local identity. The desktop app rewrites "routing": "workspace"
+  // calls onto workspaceRouting.backendOrigin (https://chatgpt.com), which
+  // bypasses the local responder and 404s, while "legacy" leaves the URL alone so
+  // it stays on CODEX_API_BASE_URL (http://localhost:8000) and the responder can
+  // proxy /wham/* to the real API. Only an absent field selects "legacy", and the
+  // real app-server reports null under a custom model provider.
   if (auth.accountId && auth.accountId !== "ccr-virtual-account" && !isPlainObject(result.workspaceRouting)) {
     // A custom model provider may make app-server report null even for a real
     // account. Account APIs belong on the desktop's own Chromium connection.
@@ -4886,22 +4964,39 @@ function codexAppAccountRead(auth, existingResult) {
       accountRoutingOverride: "NO_CONSTRAINT"
     };
   }
-  if (auth.accountId === "ccr-virtual-account" && result.workspaceRouting == null) {
-    const origin = nonEmptyEnv("CCR_CODEX_WORKSPACE_BACKEND_ORIGIN");
+  const workspaceOrigin = auth.accountId === "ccr-virtual-account"
+    ? nonEmptyEnv("CCR_CODEX_WORKSPACE_BACKEND_ORIGIN")
+    : undefined;
+  let pinnedToLocalTls = isPlainObject(result.workspaceRouting);
+  if (workspaceOrigin) {
     try {
-      const url = new URL(origin);
-      if (url.protocol === "https:" && url.hostname === "localhost" && url.origin === origin) {
-        // 0.155+ requires explicit routing even for local API-key profiles.
+      const url = new URL(workspaceOrigin);
+      if (url.protocol === "https:" && url.hostname === "localhost" && url.origin === workspaceOrigin) {
         // Keep the synthetic identity and desktop requests on our TLS listener.
-        result.workspaceRouting = {
+        result.workspaceRouting = result.workspaceRouting ?? {
           chatgptAccountId: auth.accountId,
-          backendOrigin: origin,
+          backendOrigin: workspaceOrigin,
           accountRoutingOverride: "NO_CONSTRAINT"
         };
+        pinnedToLocalTls = true;
       }
     } catch {}
   }
+  if (!pinnedToLocalTls) {
+    delete result.workspaceRouting;
+  }
   return result;
+}
+
+// The app only takes that "legacy" path when the app-server reports a version
+// inside [0.141.0, 0.155.0-alpha.5); anything newer throws "Workspace routing is
+// unavailable for this account and app-server version". The bundled app-server is
+// newer, so report a version inside the window and leave the rest untouched.
+const CODEX_APP_REPORTED_VERSION = "0.154.0";
+
+function codexAppInitialize(existingResult) {
+  if (!isPlainObject(existingResult) || typeof existingResult.userAgent !== "string") return existingResult;
+  return { ...existingResult, userAgent: existingResult.userAgent.replace(/\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?/, CODEX_APP_REPORTED_VERSION) };
 }
 
 function codexAppAuthStatus(auth, includeToken, existingResult) {

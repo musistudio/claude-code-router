@@ -1,4 +1,6 @@
-@import "tailwindcss";
+/* Disable automatic source detection: the repo root holds large benchmark
+   dumps that make the scan crawl, and every UI source tree is listed below. */
+@import "tailwindcss" source(none);
 @source "../pages/**/*.{html,ts,tsx}";
 @source "../components/**/*.{ts,tsx}";
 @source "../lib/**/*.{ts,tsx}";

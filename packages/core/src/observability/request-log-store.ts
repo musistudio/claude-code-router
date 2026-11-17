@@ -1560,10 +1560,12 @@ export class RequestLogStore {
       ON request_logs(event_id)
       WHERE event_id <> '';
     `);
+    // Retain first: rows past retention would otherwise be scanned by the
+    // stream-flag backfill only to be deleted immediately afterwards.
+    this.pruneOldRequestLogs(database);
     backfillRequestLogStreamFlags(database);
 
     this.database = database;
-    this.pruneOldRequestLogs(database);
     return database;
   }
 
