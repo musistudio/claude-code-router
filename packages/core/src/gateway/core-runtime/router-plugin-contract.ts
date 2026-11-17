@@ -16,6 +16,7 @@ export const ccrRuntimeConfigReloadMessageType = "ccr:runtime-config-reload";
 export const ccrLiveTokenRateConfigMessageType = "ccr:live-token-rate-config";
 export const ccrLiveTokenRateSnapshotMessageType = "ccr:live-token-rate-snapshot";
 export const ccrLiveTokenRateStreamHookKey = "ccr-live-token-rate-stream-hook";
+export const ccrTokenUsageInjectionStreamHookKey = "ccr-token-usage-injection-stream-hook";
 
 export type CcrLiveTokenRateConfigMessage = {
   enabled: boolean;
