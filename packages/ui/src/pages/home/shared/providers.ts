@@ -652,6 +652,7 @@ export function createProviderDraftFromDeepLinkPayload(
     credentials: [],
     extraBodyText: "",
     extraHeadersText: "",
+    supportsDeferredTools: true,
     icon: payload.icon?.trim() || "",
     modelDescriptions: modelDescriptionsForModels(payload.modelDescriptions, models),
     modelDisplayNames: modelDisplayNamesForModels(
@@ -752,6 +753,7 @@ export function createProviderDraft(providers: GatewayProviderConfig[]): AddProv
     credentials: [],
     extraBodyText: "",
     extraHeadersText: "",
+    supportsDeferredTools: true,
     icon: "",
     modelDescriptions: undefined,
     modelDisplayNames: undefined,
@@ -786,6 +788,7 @@ export function createProviderDraftFromProvider(provider: GatewayProviderConfig)
     credentials,
     extraBodyText: providerExtraJsonDraftText(provider.extraBody),
     extraHeadersText: providerExtraJsonDraftText(provider.extraHeaders),
+    supportsDeferredTools: provider.supportsDeferredTools !== false,
     icon: provider.icon ?? "",
     modelDescriptions: modelDescriptionsForModels(provider.modelDescriptions, provider.models),
     modelDisplayNames: modelDisplayNamesForModels(

@@ -178,6 +178,8 @@ export type GatewayProviderConfig = {
    * Must be a JSON boolean; the string `"true"` is ignored, like the other boolean fields.
    */
   forwardThinkingParameters?: boolean;
+  /** Set false for upstreams that reject defer_loading tool declarations. */
+  supportsDeferredTools?: boolean;
   icon?: string;
   id?: string;
   enabled?: boolean;
@@ -1897,6 +1899,11 @@ export type AppConfig = {
 
 export type AppSaveConfigOptions = {
   applyProfile?: boolean;
+};
+
+export type GlobalProfileRecoveryResult = {
+  config: AppConfig;
+  status: ProfileClientApplyStatus;
 };
 
 export type ClaudeAppGatewayApplyResult = {

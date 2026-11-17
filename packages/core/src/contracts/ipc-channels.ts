@@ -39,6 +39,7 @@ export const IPC_CHANNELS = {
   appOpenProfile: "ccr:app:open-profile",
   appApplyClaudeAppGateway: "ccr:app:apply-claude-app-gateway",
   appApplyProfile: "ccr:app:apply-profile",
+  appRecoverGlobalProfile: "ccr:app:recover-global-profile",
   appBotGatewayQrLoginCancel: "ccr:app:bot-gateway-qr-login-cancel",
   appBotGatewayQrLoginStart: "ccr:app:bot-gateway-qr-login-start",
   appBotGatewayQrLoginWait: "ccr:app:bot-gateway-qr-login-wait",

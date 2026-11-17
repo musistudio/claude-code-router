@@ -1,3 +1,4 @@
+import { codexRequiredScopes, localCodexOauthConfig } from "@ccr/core/agents/local-providers/codex-scopes";
 import { createHash, randomUUID } from "node:crypto";
 import { loadAppConfig } from "@ccr/core/config/config";
 import { attachCodexRateLimitResetCreditDetails } from "@ccr/core/agents/local-providers/codex";
@@ -111,8 +112,6 @@ const standardAccountPaths = ["/.well-known/ccr/account", "/v1/account/limits"];
 const codexRateLimitResetCreditConsumeEndpoint = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume";
 const codexOauthTokenEndpoint = "https://auth.openai.com/oauth/token";
 const codexOauthClientId = "app_EMoamEEZ73f0CkXaXp7hrann";
-const codexOauthDefaultScope = "openid profile email offline_access api.connectors.read api.connectors.invoke";
-const codexOauthRequiredScopes = ["api.connectors.read", "api.connectors.invoke"];
 const codexOauthDefaultTimeoutMs = 8_000;
 const cache = new Map<string, CacheEntry>();
 const codexOauthCache = new Map<string, CodexOauthRefreshResult>();
@@ -1501,7 +1500,7 @@ async function localAgentProviderAccountCredential(
   }
   if (isLocalCodexProvider(provider)) {
     return await localCodexAccountCredential({
-      codexOauth: { refreshIfMissingAccessToken: true },
+      codexOauth: { refreshIfMissingAccessToken: true, requiredScopes: [] },
       key: "ccr-local-agent-codex-fallback-codex-oauth",
       providerName: provider.name
     });
@@ -1588,7 +1587,7 @@ function zcodeProviderTextMatches(values: Array<string | undefined>): boolean {
 }
 
 async function localCodexAccountCredential(plugin: Record<string, unknown>): Promise<LocalAgentAccountCredential> {
-  const codexOauth = isRecord(plugin.codexOauth) ? plugin.codexOauth : {};
+  const codexOauth = isRecord(plugin.codexOauth) ? localCodexOauthConfig(plugin) : { requiredScopes: [] };
   const codexAuth = readCodexAuth();
   // Imported plugins contain a point-in-time access token. Prefer the live Codex
   // auth file so account checks follow tokens refreshed by Codex CLI/App.
@@ -1645,7 +1644,7 @@ function shouldRefreshCodexAccountToken(accessToken: string | undefined, codexOa
   if (codexAccessTokenExpired(accessToken)) {
     return true;
   }
-  const missingScopes = codexMissingRequiredScopes(accessToken);
+  const missingScopes = codexMissingRequiredScopes(accessToken, codexRequiredScopes(codexOauth.requiredScopes));
   return Boolean(missingScopes?.length);
 }
 
@@ -1658,7 +1657,7 @@ async function refreshCodexAccountToken(
     readString(process.env.CODEX_REFRESH_TOKEN_URL_OVERRIDE) ||
     codexOauthTokenEndpoint;
   const clientId = readString(codexOauth.clientId) || codexOauthClientId;
-  const scope = codexOauthScope(readString(codexOauth.scope));
+  const scope = codexOauthScope(readString(codexOauth.scope), codexRequiredScopes(codexOauth.requiredScopes));
   const cacheKey = [
     tokenEndpoint,
     clientId,
@@ -1720,14 +1719,14 @@ async function refreshCodexAccountToken(
   }
 }
 
-function codexOauthScope(configuredScope: string | undefined): string {
+function codexOauthScope(configuredScope: string | undefined, requiredScopes: string[]): string {
   const scopes = new Set<string>();
-  for (const scope of (configuredScope || codexOauthDefaultScope).split(/\s+/)) {
+  for (const scope of (configuredScope || "openid profile email offline_access").split(/\s+/)) {
     if (scope.trim()) {
       scopes.add(scope.trim());
     }
   }
-  for (const scope of codexOauthRequiredScopes) {
+  for (const scope of requiredScopes) {
     scopes.add(scope);
   }
   return [...scopes].join(" ");
@@ -1766,7 +1765,7 @@ function codexTokenExpiresAtMs(token: string | undefined): number | undefined {
   return exp ? exp * 1000 : undefined;
 }
 
-function codexMissingRequiredScopes(token: string): string[] | undefined {
+function codexMissingRequiredScopes(token: string, requiredScopes: string[]): string[] | undefined {
   const payload = codexJwtPayload(token);
   if (!payload) {
     return undefined;
@@ -1775,7 +1774,7 @@ function codexMissingRequiredScopes(token: string): string[] | undefined {
   if (scopes.length === 0) {
     return undefined;
   }
-  return codexOauthRequiredScopes.filter((scope) => !scopes.includes(scope));
+  return requiredScopes.filter((scope) => !scopes.includes(scope));
 }
 
 function codexTokenScopes(payload: Record<string, unknown>): string[] {

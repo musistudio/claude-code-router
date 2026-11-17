@@ -342,3 +342,7 @@ docker compose logs --tail=200 ccr
 Management RPC validates browser Origin / Referer, and Nginx forwards the original source headers. For remote access, explicitly change the port binding and set `CCR_PUBLIC_BASE_URL` to the browser-facing URL. Additional trusted origins use `CCR_WEB_ALLOWED_ORIGINS` (comma-separated). CLI calls without source headers still require the management token.
 
 The web config API masks provider keys and sensitive authentication headers with references beginning `[CCR REDACTED]`. Keep the full reference to preserve a saved secret, enter a new value to replace it, or clear the field to remove it. Client gateway keys remain available through their dedicated API Keys page.
+
+The default entrypoint initializes configuration and migrates ownership of an existing root-owned `/data` volume, then drops to the dedicated `ccr` account (UID/GID 10001). PM2, CCR, the gateway child, and nginx all run under that account. The bootstrap requires root only before the services start; nginx listens on the unprivileged port 8080.
+
+默认入口先初始化配置并迁移旧 `/data` 卷的所有权，再切换到专用 `ccr` 用户（UID/GID 10001）。PM2、CCR、网关子进程和 nginx 均以该用户运行；仅服务启动前的初始化阶段使用 root。

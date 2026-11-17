@@ -1,3 +1,4 @@
+import { ModelMultiSelector } from "@ccr/ui/pages/home/components/model-selector.tsx";
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as React from "react";
@@ -27,6 +28,20 @@ test("DeleteProfileDialog identifies the profile and requires an explicit confir
   assert.match(html, /Claude Code/);
   assert.match(html, />Cancel<\/button>/);
   assert.match(html, />Delete<\/button>/);
+});
+
+test("#1951 global Claude and Codex cards expose recovery even when already disabled", () => {
+  const config = appConfigFixture();
+  config.profile.profiles = [
+    { ...profile, id: "global-claude", scope: "global" },
+    { ...profile, id: "global-codex", agent: "codex", scope: "global", enabled: false },
+    { ...profile, id: "isolated-claude", scope: "ccr" }
+  ];
+  const html = renderToStaticMarkup(<ProfileView config={config} addProfile={() => undefined} applyError=""
+    copyProfileCliCommand={() => undefined} editProfile={() => undefined} openProfileApp={() => undefined}
+    profileRuntimeStatus={{ profiles: [] }} recoverGlobalProfile={() => undefined} removeProfile={() => undefined}
+    stopProfileApp={() => undefined} updateProfileItem={() => undefined} />);
+  assert.equal((html.match(/Restore original settings/g) ?? []).length, 2);
 });
 
 test("DeleteProfileDialog renders the Chinese confirmation copy", () => {
@@ -782,4 +797,14 @@ test("Workbuddy profiles support local App configuration", () => {
   assert.equal(profile?.surface, "app");
   assert.match(profileAgentLogoUrl("workbuddy"), /workbuddy/i);
   assert.notEqual(profileAgentLogoUrl("workbuddy"), profileAgentLogoUrl("codex"));
+});
+
+
+test("#1910 stale selected model names remain visible and removable", () => {
+  const html = renderToStaticMarkup(<ModelMultiSelector providers={[{ name: "Local", models: ["valid"] }]}
+    value={["Local/valid", "Gone/stale", "Local/removed"]} onChange={() => undefined} />);
+  assert.match(html, /Unavailable selected models/);
+  assert.match(html, /Gone\/stale/);
+  assert.match(html, /Local\/removed/);
+  assert.equal((html.match(/>Remove<\/button>/g) ?? []).length, 2);
 });

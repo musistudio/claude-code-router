@@ -349,7 +349,6 @@ async function runCodexCliMiddleware(args) {
 
   const requestMap = new Map();
   const current = { cwd: "" };
-  const chatGptAuth = loadChatGptAuth();
   const stdinRl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity, terminal: false });
   stdinRl.on("line", (line) => {
     const custom = customAppServerLineResponse(line);
@@ -368,7 +367,7 @@ async function runCodexCliMiddleware(args) {
   const stdoutRl = readline.createInterface({ input: child.stdout, crlfDelay: Infinity, terminal: false });
   stdoutRl.on("line", (line) => {
     cleanupAuthBootstrap();
-    const rewritten = rewriteCodexStdoutLine(line, requestMap, chatGptAuth);
+    const rewritten = rewriteCodexStdoutLine(line, requestMap);
     botBridge().handleJsonRpcLine(rewritten);
     if (!shouldSuppressBotBridgeLine(rewritten)) {
       process.stdout.write(rewritten + "\n");
@@ -603,7 +602,7 @@ function cliConfigString(key, value) {
   return key + "=\"" + tomlEscape(value) + "\"";
 }
 
-function rewriteCodexStdoutLine(line, requestMap, chatGptAuth) {
+function rewriteCodexStdoutLine(line, requestMap) {
   let value;
   try {
     value = JSON.parse(line);
@@ -619,6 +618,15 @@ function rewriteCodexStdoutLine(line, requestMap, chatGptAuth) {
       log("app_server_list_error", { method: request.method, error: value.error });
     }
     return line;
+  }
+  let chatGptAuth;
+  if (request.method === "account/read" || request.method === "getAuthStatus") {
+    const fresh = loadChatGptAuth();
+    const prior = request.chatGptAuth;
+    const identity = auth => auth && (auth.accountId || auth.email || auth.authToken);
+    // Follow the official owner's atomic token refresh, while an in-flight
+    // account request keeps its identity if the login changes underneath it.
+    chatGptAuth = prior && identity(prior) !== identity(fresh) ? prior : fresh;
   }
   if (request.method === "account/read") {
     value.result = codexAppAccountRead(chatGptAuth, value.result);
@@ -1019,6 +1027,7 @@ function trackRequestLine(line, requestMap, current) {
     params.codexlWorkspaceCwd = current.cwd;
   }
   requestMap.set(id, {
+    ...(["account/read", "getAuthStatus"].includes(method) ? { chatGptAuth: loadChatGptAuth() } : {}),
     includeToken: Boolean(value.params && value.params.includeToken),
     method,
     params
@@ -4939,17 +4948,26 @@ function codexAppAccountRead(auth, existingResult) {
   // requires explicit workspace routing even for local API-key profiles, so pin
   // the desktop API onto our TLS loopback listener.
   //
-  // Legacy mode (no origin configured): drop workspaceRouting entirely. The
-  // desktop app rewrites "routing": "workspace" calls onto
-  // workspaceRouting.backendOrigin (https://chatgpt.com), which bypasses the
-  // local responder and 404s, while "legacy" leaves the URL alone so it stays on
-  // CODEX_API_BASE_URL (http://localhost:8000) and the responder can proxy
-  // /wham/* to the real API. Only an absent field selects "legacy", and the real
-  // app-server reports null under a custom model provider.
+  // Legacy mode (no origin configured): drop workspaceRouting entirely for the
+  // synthetic local identity. The desktop app rewrites "routing": "workspace"
+  // calls onto workspaceRouting.backendOrigin (https://chatgpt.com), which
+  // bypasses the local responder and 404s, while "legacy" leaves the URL alone so
+  // it stays on CODEX_API_BASE_URL (http://localhost:8000) and the responder can
+  // proxy /wham/* to the real API. Only an absent field selects "legacy", and the
+  // real app-server reports null under a custom model provider.
+  if (auth.accountId && auth.accountId !== "ccr-virtual-account" && !isPlainObject(result.workspaceRouting)) {
+    // A custom model provider may make app-server report null even for a real
+    // account. Account APIs belong on the desktop's own Chromium connection.
+    result.workspaceRouting = {
+      chatgptAccountId: auth.accountId,
+      backendOrigin: "https://chatgpt.com",
+      accountRoutingOverride: "NO_CONSTRAINT"
+    };
+  }
   const workspaceOrigin = auth.accountId === "ccr-virtual-account"
     ? nonEmptyEnv("CCR_CODEX_WORKSPACE_BACKEND_ORIGIN")
     : undefined;
-  let pinnedToLocalTls = false;
+  let pinnedToLocalTls = isPlainObject(result.workspaceRouting);
   if (workspaceOrigin) {
     try {
       const url = new URL(workspaceOrigin);
@@ -5010,16 +5028,14 @@ function configRequirementsRead(existingResult) {
     : null;
   // Null requirements must pass through untouched: the ChatGPT app only
   // accepts legacy workspace routing while requirements.application.network
-  // stays absent, and fabricating a requirements object that only contains
-  // fast_mode makes the app expect application network requirements that are
-  // not provided, so it refuses to launch with "This app server did not
-  // provide application network requirements" (see issue #1795).
-  if (requirements == null) {
+  // stays absent, and normalizing null into an application.network object
+  // leaves the composer blocked on "Couldn't load workspace settings".
+  if (!requirements && !fastModeEnabled) {
     return existingResult;
   }
 
   const result = hasResult ? { ...existingResult } : {};
-  const next = requirements;
+  const next = requirements || {};
   if (isPlainObject(next.application)) {
     const application = { ...next.application };
     const applicationNetwork = isPlainObject(application.network) ? { ...application.network } : {};

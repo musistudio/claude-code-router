@@ -280,7 +280,8 @@ export async function importCodexProvider(candidate: LocalAgentProviderCandidate
         ...(auth.accountId ? { accountId: auth.accountId } : {}),
         refreshIfMissingAccessToken: true,
         refreshToken: auth.refreshToken,
-        required: true
+        required: true,
+        requiredScopes: []
       }
     }))
   };

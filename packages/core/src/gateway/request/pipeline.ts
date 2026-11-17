@@ -985,7 +985,11 @@ export class GatewayRequestPipeline {
           response.end();
           return;
         }
-        const outboundErrorText = appendAggregateErrorAttemptSummary(bufferedErrorText, upstreamResult.failedAttempts) ?? bufferedErrorText;
+        const outboundErrorText = appendAggregateErrorAttemptSummary(bufferedErrorText, upstreamResult.failedAttempts, {
+          requestedModel: modelBeforeRouting,
+          recoveryProfile: authenticatedProfile && authenticatedProfile.scope !== "ccr" && authenticatedProfile.scope !== "custom" && ["claude-code", "codex"].includes(authenticatedProfile.agent)
+            ? authenticatedProfile.name || authenticatedProfile.id : undefined
+        }) ?? bufferedErrorText;
         if (outboundErrorText !== bufferedErrorText) {
           responseHeaders.delete("content-length");
         }

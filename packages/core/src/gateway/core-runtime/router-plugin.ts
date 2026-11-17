@@ -1,3 +1,4 @@
+import { withoutDeferredToolFlags } from "@ccr/core/gateway/features/deferred-tools";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { pipeline, Readable } from "node:stream";
@@ -149,6 +150,7 @@ type GatewayRequestTransformInput = {
 
 type UpstreamRequest = {
   body?: unknown;
+  bodyEncoding?: string;
   headers?: Record<string, string>;
   method?: string;
   url?: string;
@@ -189,6 +191,7 @@ type GatewayRouteResolution = {
   reason?: string;
   requestBody?: Record<string, unknown>;
   targetProviderName?: string;
+  targetProviders?: { providerName: string }[];
 };
 
 export async function createGatewayPlugin(input: GatewayPluginFactoryInput = {}) {
@@ -378,6 +381,21 @@ export async function createGatewayPlugin(input: GatewayPluginFactoryInput = {})
         const apiKey = await resolveApiKey(config, requestInput.request?.headers);
         setApiKeyAuthContextHeaders(requestInput.request?.headers, apiKey);
         return undefined;
+      }
+    }],
+    // Apply compatibility after protocol conversion, to this attempt only.
+    // Editing the ingress body here would leak the change into later fallback providers.
+    providerHooks: [{
+      key: "ccr-deferred-tool-compatibility",
+      transformRequest: (input: { upstreamRequest: UpstreamRequest; targetProviderConfig?: { name?: string } }) => {
+        const provider = modelRegistryForConfig(config).findProvider(input.targetProviderConfig?.name);
+        const upstream = input.upstreamRequest;
+        if (provider?.supportsDeferredTools !== false || (upstream.bodyEncoding && upstream.bodyEncoding !== "json")) return { ok: true, value: upstream };
+        const body = readJsonObjectBody(upstream.body);
+        const clean = withoutDeferredToolFlags(body);
+        const encoded = typeof upstream.body === "string" ? JSON.stringify(clean)
+          : Buffer.isBuffer(upstream.body) || upstream.body instanceof Uint8Array ? Buffer.from(JSON.stringify(clean)) : clean;
+        return { ok: true, value: clean === body ? upstream : { ...upstream, body: encoded } };
       }
     }],
     requestTransforms: [{
@@ -1087,19 +1105,41 @@ function resolveCcrGatewayRoute(
     parsedSelector?.provider,
     targetProtocol
   );
-  if (!targetProviderName) {
+  if (!targetProviderName || !targetProtocol) {
     return undefined;
   }
 
+  const credentials = sortProviderCredentialsForConfig(activeProviderCredentials(resolved.provider));
+  const credentialNames = credentials.map((credential) =>
+    providerCredentialInternalName(resolved.provider, targetProtocol, credential));
+  const explicitCredential = parsedSelector?.provider.toLowerCase().includes("::cred:");
+  // Qualify vendor model IDs once so the core parses the outer selector only.
+  // A pool uses its protocol rather than one concrete key, allowing every
+  // credential in the selected chain to resolve the same upstream model.
+  const modelProvider = credentials.length > 1 && !explicitCredential
+    ? targetProtocol.split("_")[0]
+    : targetProviderName;
+  const gatewayModel = resolved.model.includes("/")
+    ? `${modelProvider}/${resolved.model}`
+    : resolved.model;
+  const qualifiedBody = requestBodyWithModel(modelBody, gatewayModel);
   const requestBody = protocol === "anthropic_messages" && targetProtocol !== "anthropic_messages"
-    ? hoistAnthropicToolResultImages(modelBody).value
-    : modelBody;
+    ? hoistAnthropicToolResultImages(qualifiedBody).value
+    : qualifiedBody;
+  // The host has already applied cooldowns, limits and priority. Retain that
+  // ordered chain instead of narrowing the route back down to its first key.
+  const selectedNames = (readHeader(requestInput.request?.headers, "x-target-providers") ?? "")
+    .split(",").map((name) => name.trim()).filter((name) => credentialNames.includes(name));
+  const targetProviders = !explicitCredential && credentialNames.length > 0
+    ? (selectedNames.length > 0 ? selectedNames : credentialNames).map((providerName) => ({ providerName }))
+    : undefined;
 
   return {
-    model: resolved.model,
+    model: gatewayModel,
     reason: readHeader(requestInput.request?.headers, ccrRouteReasonHeader),
     requestBody,
-    targetProviderName
+    targetProviderName,
+    ...(targetProviders ? { targetProviders } : {})
   };
 }
 

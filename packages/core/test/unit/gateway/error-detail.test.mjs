@@ -49,12 +49,26 @@ test("appendAggregateErrorAttemptSummary appends per-attempt summaries to the me
   assert.equal(
     parsed.error.message,
     "All target providers failed. "
-      + "[upstream|429] upstream status 429: Throttling: Request rate increased too quickly. "
-      + "| [upstream|403] upstream status 403: Model access denied."
+      + "[anthropic|upstream|429] upstream status 429: Throttling: Request rate increased too quickly. "
+      + "| [anthropic|upstream|403] upstream status 403: Model access denied."
   );
   // per-attempt details must survive for clients that render them
   assert.equal(parsed.error.attempts.length, 2);
   assert.deepEqual(parsed.error.target_providers, ["anthropic"]);
+});
+
+test("#1951 a client rendering only error.message sees the failed provider, root cause and recovery", () => {
+  const input = JSON.stringify({ error: { message: "All target providers failed.", attempts: [{
+    provider: "openai", provider_name: "Devin", stage: "upstream_response", status: 500,
+    message: "Upstream request failed.", details: { error: { message: "DEVIN_AGENTIC_HOME must be an absolute path inside the bridge sandbox" } }
+  }] } });
+  const context = { requestedModel: "Devin/agent", recoveryProfile: "Codex Main" };
+  const result = appendAggregateErrorAttemptSummary(input, [], context);
+  const message = JSON.parse(result).error.message;
+  assert.match(message, /Devin.*500.*DEVIN_AGENTIC_HOME/);
+  assert.match(message, /Requested model: Devin\/agent/);
+  assert.match(message, /Codex Main.*Agent profiles.*Restore original settings/);
+  assert.equal(appendAggregateErrorAttemptSummary(result, [], context), undefined);
 });
 
 test("appendAggregateErrorAttemptSummary is idempotent", () => {

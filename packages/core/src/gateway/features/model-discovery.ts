@@ -229,6 +229,7 @@ function createOpenAICompatibleGatewayModelsResponse(config: AppConfig, profile?
   const data = buildGatewayDiscoverableModelIds(config, profile).map((id) => {
     const catalogEntry = findModelCatalogEntry(id);
     const metadata = providerModelDiscoveryForSelector(config, id).metadata;
+    const maxInputTokens = claudeGatewayModelContextWindow(catalogEntry, false, metadata);
     const defaultReasoningLevel = metadata?.defaultReasoningLevel;
     const supportedReasoningLevels = metadata?.supportedReasoningLevels;
     return {
@@ -236,6 +237,7 @@ function createOpenAICompatibleGatewayModelsResponse(config: AppConfig, profile?
       object: "model",
       created: 0,
       owned_by: gatewayModelOwner(id),
+      ...(maxInputTokens > 0 ? { context_window: maxInputTokens, max_context_window: maxInputTokens, max_input_tokens: maxInputTokens } : {}),
       type: "model",
       ...(typeof defaultReasoningLevel === "string" && defaultReasoningLevel ? { default_reasoning_level: defaultReasoningLevel } : {}),
       ...(catalogEntry?.displayName ? { display_name: catalogEntry.displayName } : {}),
@@ -336,6 +338,8 @@ function createClaudeAppGatewayModelsResponse(
       display_name: exposeOneMillionContextVariant
         ? `${route.displayName} (1M context)`
         : route.displayName,
+      context_window: maxInputTokens,
+      max_context_window: maxInputTokens,
       max_input_tokens: maxInputTokens,
       max_tokens: maxOutputTokens,
       type: "model"
@@ -375,6 +379,8 @@ function createClaudeCodeModelsResponse(
       }),
       created_at: "1970-01-01T00:00:00Z",
       display_name: formatClaudeCodeModelDisplayName(claudeId, catalogEntry, model.oneMillionContext),
+      context_window: maxInputTokens,
+      max_context_window: maxInputTokens,
       max_input_tokens: maxInputTokens,
       max_tokens: maxOutputTokens,
       type: "model"

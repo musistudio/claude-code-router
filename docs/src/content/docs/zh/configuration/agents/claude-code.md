@@ -96,3 +96,11 @@ Claude Code 会为不同档位选择模型。**模型** 字段设置默认值，
 - **`/model` 看不到 CCR 模型**：确认已配置供应商与模型。
 - **Claude App 没有应用配置**：Claude App 已在运行——从 CCR 重新打开，或按提示重启。
 - **模型档位未生效**：档位只改变 Claude Code 某个内部档位使用哪个供应商模型；取值必须是 CCR 能提供的有效 `供应商/模型` 或 Fusion 模型。
+
+## 网关模型元数据与 safeguards
+
+已知模型上下文限制时，模型发现接口会在模型顶层提供 `context_window`、`max_context_window` 和 `max_input_tokens`。本地模型应显式配置上下文限制。具体 Claude Code 版本是否据此触发自动压缩取决于客户端；提供元数据本身不会改变客户端的压缩策略。
+
+对原生 Anthropic Messages 供应商，CCR 保留请求中的 `safeguards` 及配套的 `anthropic-beta` 请求头、JSON/SSE 中的 `safeguard_results` 和 tool-use ID。服务端分类器是否可用、是否符合计费优惠条件由上游供应商和账号决定。参见 Anthropic 的[网关协议](https://code.claude.com/docs/en/llm-gateway-protocol)与[自动模式分类器计费说明](https://code.claude.com/docs/en/auto-mode-classifier-billing)。CCR 不会伪造资格或分类器结果。
+
+原生 Anthropic 虚拟模型会在 JSON、缓冲 SSE 和即时 SSE 中保留未知请求字段、服务端判定结果及原始 tool-use ID。如果虚拟模型包含网关内部执行的工具，CCR 会在请求上游或执行工具前明确拒绝 safeguards 请求；需要服务端审核时，请选择原生供应商模型或不包含内部工具的虚拟模型。CCR 只转发上游判定，不会为不支持此协议的供应商生成判定结果。免计费资格仍取决于上游平台和账号的开放情况。

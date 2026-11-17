@@ -1843,6 +1843,7 @@ function App() {
       account: accountConfig,
       extraBody,
       extraHeaders,
+      supportsDeferredTools: providerDraft.supportsDeferredTools ? undefined : false,
       credentials: credentials.length > 0 ? credentials : undefined,
       enabled: existingProvider?.enabled === false ? false : undefined,
       icon: providerDraft.icon.trim() || undefined,
@@ -3158,6 +3159,39 @@ function App() {
     });
   }
 
+  async function recoverGlobalProfile(index: number) {
+    const profile = currentDraft.current.profile.profiles[index];
+    if (!profile || !window.ccr?.recoverGlobalProfile) return;
+    ++autoSaveRequestId.current;
+    if (autoSaveTimer.current !== undefined) {
+      window.clearTimeout(autoSaveTimer.current);
+      autoSaveTimer.current = undefined;
+    }
+    explicitConfigSaves.current += 1;
+    setProfileActionBusy({ profileId: profile.id, surface: "cli" });
+    setProfileActionError("");
+    try {
+      const result = await configSaveQueue.current.run(
+        () => window.ccr!.recoverGlobalProfile(profile.id),
+        (result) => {
+          const saved = normalizeConfig(result.config);
+          const draft = normalizeConfig(reconcileSavedConfig(currentSaved.current, currentDraft.current, saved));
+          // An unsaved toggle must never re-enable the recovered takeover.
+          draft.profile.profiles = draft.profile.profiles.map(item => item.id === profile.id ? { ...item, enabled: false } : item);
+          setConfigSnapshots(saved, draft);
+        }
+      );
+      if (!result.status.ok) throw new Error(result.status.message);
+      showToast(t("Original settings restored. This profile is disabled. Reopen the agent."));
+    } catch (error) {
+      setProfileActionError(formatError(error));
+    } finally {
+      explicitConfigSaves.current -= 1;
+      setProfileActionBusy(undefined);
+      setAutoSaveResumeRevision(revision => revision + 1);
+    }
+  }
+
   function removeProfile(index: number) {
     updateConfig((next) => ({
       ...next,
@@ -3331,6 +3365,7 @@ function App() {
                   openProfileApp: (index) => void openProfileAppFromList(index),
                   profileActionBusy,
                   profileRuntimeStatus,
+                  recoverGlobalProfile: (index) => void recoverGlobalProfile(index),
                   removeProfile: setProfileDeleteIndex,
                   stopProfileApp: (index) => void stopProfileAppFromList(index),
                   updateProfileItem

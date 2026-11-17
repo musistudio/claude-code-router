@@ -999,3 +999,41 @@ test("route script circuit breakers are versioned and can be bypassed for test r
     await runtime.close();
   }
 });
+
+
+test("#1928 a 60 MiB request stays within the route worker heap and retains lazy token semantics", { timeout: 30000 }, async () => {
+  const runtime = new RouteScriptRuntime({ workerCount: 1, workerFile });
+  const body = { model: "Provider/alpha", messages: [{ role: "user", content: "x ".repeat(30 * 1024 * 1024) }] };
+  const request = { body, headers: {}, method: "POST", url: "/v1/messages" };
+  const script = routeScript('return { truncated: input.body.__ccrBodyTruncated, model: input.body.model, count: input.tokenCount, messages: input.summary.messageCount, textLength: input.summary.lastUserText.length };', { timeoutMs: 5000 });
+  try {
+    const input = buildRouteScriptInput(request, { deferTokenCount: true });
+    const result = await runtime.execute("large-body", script, input);
+    assert.equal(result.status, "ok", result.error);
+    assert.equal(result.value.truncated, true);
+    assert.equal(result.value.model, "Provider/alpha");
+    assert.ok(result.value.count > 30 * 1024 * 1024);
+    assert.equal(result.value.messages, 1);
+    assert.equal(result.value.textLength, 16 * 1024);
+    const explicit = await runtime.execute("large-explicit-zero", script, buildRouteScriptInput(request, { deferTokenCount: true, tokenCount: 0 }));
+    assert.equal(explicit.status, "ok", explicit.error);
+    assert.equal(explicit.value.count, 0);
+  } finally { await runtime.close(); }
+});
+
+
+test("#1928 a large conversation still selects its script fallback chain", { timeout: 15000 }, async () => {
+  const runtime = new RouteScriptRuntime({ workerCount: 1, workerFile });
+  const script = routeScript(`return input.tokenCount > 0 ? {
+    model: "Provider/beta", fallback: { mode: "model-chain", models: ["Provider/fallback"], retryCount: 0 }
+  } : null;`, { timeoutMs: 5000 });
+  const plugin = new ClaudeCodeRouterPlugin(routingConfig([scriptRule("large-chain", script)]), { scriptRuntime: runtime });
+  const body = { model: "Provider/alpha", messages: [{ role: "user", content: "x".repeat(20 * 1024 * 1024) }] };
+  try {
+    const result = await plugin.routeRequest(routingInput(body));
+    assert.equal(result.decision.model, "Provider/beta");
+    assert.equal(result.decision.fallback.mode, "model-chain");
+    assert.deepEqual(result.decision.fallback.models, ["Provider/fallback"]);
+    assert.equal(body.messages[0].content.length, 20 * 1024 * 1024, "the forwarded request remains complete");
+  } finally { await runtime.close(); }
+});

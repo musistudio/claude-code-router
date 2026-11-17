@@ -1,3 +1,4 @@
+import { createInterface } from "node:readline";
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -595,11 +596,6 @@ test("Codex app-server drops workspace routing when no local TLS origin is confi
   const fakeCodex = path.join(dir, "fake-codex");
   const codexHome = path.join(dir, "codex-home");
   const isolatedHome = path.join(dir, "home");
-  const workspaceRouting = {
-    chatgptAccountId: "acct-123",
-    backendOrigin: "https://chatgpt.com",
-    accountRoutingOverride: "NO_CONSTRAINT"
-  };
   mkdirSync(codexHome, { recursive: true });
   mkdirSync(isolatedHome, { recursive: true });
   writeFileSync(fakeCodex, [
@@ -609,7 +605,8 @@ test("Codex app-server drops workspace routing when no local TLS origin is confi
     "input.on('line', (line) => {",
     "  const request = JSON.parse(line);",
     "  let result = { authMethod: null, authToken: null, requiresOpenaiAuth: false };",
-    "  if (request.method === 'account/read') result = { account: { type: 'chatgpt', email: 'native@example.com', planType: 'pro' }, workspaceRouting: " + JSON.stringify(workspaceRouting) + ", requiresOpenaiAuth: true };",
+    "  // A custom model provider makes the real app-server report null routing.",
+    "  if (request.method === 'account/read') result = { account: { type: 'chatgpt', email: 'native@example.com', planType: 'pro' }, workspaceRouting: null, requiresOpenaiAuth: true };",
     "  if (request.method === 'initialize') result = { userAgent: 'codex_cli_rs/0.161.0 (Mac OS 26.7.2; arm64) unknown (codex; 0.0.1)' };",
     "  process.stdout.write(JSON.stringify({ id: request.id, result }) + '\\n');",
     "});",
@@ -1786,3 +1783,56 @@ function waitForChildExit(child, timeoutMs) {
     });
   });
 }
+
+
+test("#1878 and #1879 shared account routing follows atomic refresh without switching an in-flight identity", { skip: process.platform === "win32", timeout: 20000 }, async () => {
+  const jwt = account => `header.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600,
+    "https://api.openai.com/auth": { chatgpt_account_id: account, chatgpt_plan_type: "plus" } })).toString("base64url")}.signature`;
+  for (const switched of [false, true]) {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-shared-refresh-owner-"));
+    let child;
+    try {
+      const runtime = writeRuntimeScript(dir);
+      const home = path.join(dir, "shared"); mkdirSync(home);
+      const file = path.join(home, "auth.json");
+      const firstToken = jwt("account-one");
+      const nextAccount = switched ? "account-two" : "account-one";
+      const nextToken = jwt(nextAccount) + "-rotated";
+      const initial = { auth_mode: "chatgpt", tokens: { access_token: firstToken, refresh_token: "first-refresh" } };
+      const updated = { auth_mode: "chatgpt", tokens: { access_token: nextToken, refresh_token: "next-refresh" } };
+      writeFileSync(file, JSON.stringify(initial));
+      const fake = path.join(dir, "fake-codex");
+      writeFileSync(fake, `#!/usr/bin/env node
+const fs=require('node:fs'); let first=true;
+require('node:readline').createInterface({input:process.stdin}).on('line',line=>{
+ const request=JSON.parse(line);
+ if(first){first=false;const file=process.env.CCR_TEST_AUTH_FILE;fs.writeFileSync(file+'.tmp',process.env.CCR_TEST_UPDATED_AUTH);fs.renameSync(file+'.tmp',file);}
+ const result=request.method==='account/read'?{account:null,workspaceRouting:null,requiresOpenaiAuth:false}:{authMethod:null,authToken:null,requiresOpenaiAuth:false};
+ process.stdout.write(JSON.stringify({id:request.id,result})+'\\n');
+});`);
+      chmodSync(fake, 0o700);
+      child = spawn(process.execPath, [runtime, "-c", "features.code_mode_host=true", "app-server", "--analytics-default-enabled"], {
+        env: { ...process.env, HOME: dir, CODEX_HOME: home, CCR_REAL_CODEX_CLI_PATH: fake,
+          CCR_CODEX_REMOTE_FRONTEND_MODE: "app", CCR_PROFILE_SCOPE: "global", CCR_CODEX_ISOLATED_IDENTITY: "0", CODEXL_CODEX_ISOLATED_IDENTITY: "0",
+          CCR_TEST_AUTH_FILE: file, CCR_TEST_UPDATED_AUTH: JSON.stringify(updated) }, stdio: ["pipe", "pipe", "pipe"]
+      });
+      const rows = [];
+      let stderr = ""; child.stderr.on("data", chunk => { stderr += chunk; });
+      const lines = createInterface({ input: child.stdout });
+      lines.on("line", line => {
+        const row = JSON.parse(line); rows.push(row);
+        if (row.id === 1) { child.stdin.write(JSON.stringify({ id: 2, method: "account/read" }) + "\n"); child.stdin.end(); }
+      });
+      child.stdin.write(JSON.stringify({ id: 1, method: "getAuthStatus", params: { includeToken: true } }) + "\n");
+      const exit = await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("shared auth middleware timed out: " + stderr)), 10000);
+        child.once("error", reject); child.once("exit", code => { clearTimeout(timer); resolve(code); });
+      });
+      assert.equal(exit, 0, stderr);
+      assert.equal(rows[0].result.authToken, switched ? firstToken : nextToken);
+      assert.deepEqual(rows[1].result.workspaceRouting, { chatgptAccountId: nextAccount,
+        backendOrigin: "https://chatgpt.com", accountRoutingOverride: "NO_CONSTRAINT" });
+      assert.deepEqual(JSON.parse(readFileSync(file, "utf8")), updated);
+    } finally { child?.kill(); rmSync(dir, { recursive: true, force: true }); }
+  }
+});

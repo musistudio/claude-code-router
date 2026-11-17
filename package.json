@@ -1,6 +1,6 @@
 {
   "name": "claude-code-router-monorepo",
-  "version": "3.1.4",
+  "version": "3.1.5",
   "private": true,
   "license": "MIT",
   "description": "Local Claude Code Router gateway with CLI and web management UI.",
@@ -99,7 +99,7 @@
     "@types/react-dom": "^18.3.5",
     "baseui": "^16.1.1",
     "clsx": "^2.1.1",
-    "electron": "^42.3.3",
+    "electron": "^42.11.18",
     "electron-builder": "^26.8.1",
     "esbuild": "^0.27.7",
     "js-yaml": "^4.3.1",
