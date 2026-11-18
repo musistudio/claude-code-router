@@ -1,9 +1,10 @@
 import type { ProviderAccountConfig, ProviderAccountMappingConfig } from "@ccr/core/contracts/app";
 import type { ProviderPreset } from "@ccr/core/providers/presets/types";
-import { standardProviderAccountConfig } from "@ccr/core/providers/presets/types";
 
 // MiniMax M Plan exposes both quota windows (rolling 5 h + weekly) as REMAINING
-// percentages through a documented endpoint.
+// percentages through a documented endpoint. The global and the China
+// deployments serve the same endpoint with the same payload shape, so both
+// presets share one mapping and differ only in origin.
 //
 // `model_remains` carries one entry per model family — "general" (text and
 // coding) and "video" — and the array order is not contractual, so the mapping
@@ -38,17 +39,22 @@ const minimaxQuotaMapping: ProviderAccountMappingConfig = {
   ]
 };
 
-const minimaxGlobalProviderAccountConfig: ProviderAccountConfig = {
-  connectors: [
-    {
-      auth: "provider-api-key",
-      endpoint: "https://www.minimax.io/v1/token_plan/remains",
-      mapping: minimaxQuotaMapping,
-      type: "http-json"
-    }
-  ],
-  enabled: true
-};
+function minimaxProviderAccountConfig(origin: string): ProviderAccountConfig {
+  return {
+    connectors: [
+      {
+        auth: "provider-api-key",
+        endpoint: `${origin}/v1/token_plan/remains`,
+        mapping: minimaxQuotaMapping,
+        type: "http-json"
+      }
+    ],
+    enabled: true
+  };
+}
+
+const minimaxGlobalProviderAccountConfig = minimaxProviderAccountConfig("https://www.minimax.io");
+const minimaxChinaProviderAccountConfig = minimaxProviderAccountConfig("https://api.minimaxi.com");
 
 export const minimaxGlobalProviderPreset: ProviderPreset = {
   account: minimaxGlobalProviderAccountConfig,
@@ -72,7 +78,7 @@ export const minimaxGlobalProviderPreset: ProviderPreset = {
 };
 
 export const minimaxChinaProviderPreset: ProviderPreset = {
-  account: standardProviderAccountConfig,
+  account: minimaxChinaProviderAccountConfig,
   aliases: ["minimax", "minimaxi", "minimax china"],
   defaultModels: ["MiniMax-M3"],
   endpoints: [
