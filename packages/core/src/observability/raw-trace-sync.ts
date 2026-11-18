@@ -1538,6 +1538,7 @@ async function recordUsageCaptureFromRawTrace(
   const responseHeaders = headersFromRawTrace(input.responseHeaders);
   await recordGatewayUsageCaptureIfMissing({
     bodyText: await rawTraceUsageBodyText(input, files.responseBody),
+    client: input.client,
     config,
     durationMs: numberValue(input.durationMs) ?? 0,
     fallbackModel: input.model,
