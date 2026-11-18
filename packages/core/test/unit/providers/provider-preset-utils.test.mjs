@@ -28,6 +28,9 @@ import {
   infistarAiProviderPreset
 } from "@ccr/core/providers/presets/infistar-ai/index.ts";
 import {
+  lazuProviderPreset
+} from "@ccr/core/providers/presets/lazu/index.ts";
+import {
   moonshotChinaProviderPreset,
   moonshotGlobalProviderPreset
 } from "@ccr/core/providers/presets/moonshot/index.ts";
@@ -260,6 +263,27 @@ test("Xiaomi MiMo presets expose official Responses, Chat, and Anthropic endpoin
     assert.equal(providerPresetMatchesBaseUrl(preset, `${openAiBaseUrl}/responses`), true);
     assert.equal(providerPresetMatchesBaseUrl(preset, `${anthropicBaseUrl}/v1/messages`), true);
   }
+});
+
+test("Lazu preset exposes multi-protocol gateway endpoint", () => {
+  assert.equal(providerPresets.find((preset) => preset.id === "lazu"), lazuProviderPreset);
+  assert.equal(lazuProviderPreset.websiteUrl, "https://lazu.ai/");
+  assert.deepEqual(lazuProviderPreset.endpoints, [
+    {
+      baseUrl: "https://api.lazu.ai/v1",
+      protocols: [
+        "anthropic_messages",
+        "openai_responses",
+        "openai_chat_completions",
+        "gemini_generate_content"
+      ]
+    }
+  ]);
+  assert.equal(providerPresetMatchesBaseUrl(lazuProviderPreset, "https://api.lazu.ai/v1"), true);
+  assert.equal(providerPresetMatchesBaseUrl(lazuProviderPreset, "https://api.lazu.ai/v1/messages"), true);
+  assert.equal(providerPresetMatchesBaseUrl(lazuProviderPreset, "https://api.lazu.ai/v1/responses"), true);
+  assert.equal(providerPresetMatchesBaseUrl(lazuProviderPreset, "https://api.lazu.ai/v1/chat/completions"), true);
+  assert.equal(providerPresetMatchesBaseUrl(lazuProviderPreset, "https://lazu.ai/"), false);
 });
 
 test("NVIDIA preset ignores stale Responses detection and converts Codex requests to Chat Completions", () => {
