@@ -95,48 +95,56 @@ test("generated Codex CLI middleware materializes bundled Bot Gateway stdio runn
   assert.equal(readFileSync(expectedRunner, "utf8"), "#!/usr/bin/env node\nconsole.log('ok');\n");
 });
 
-test("Codex app-server uses ChatGPT's bundled Node as a signed supervisor", { skip: process.platform !== "darwin" }, () => {
+test("Codex app-server uses ChatGPT's bundled Node across macOS app layouts", { skip: process.platform !== "darwin" }, (t) => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-signed-supervisor-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const runtimeFile = writeRuntimeScript(dir);
   const resourcesDir = path.join(dir, "ChatGPT.app", "Contents", "Resources");
-  const fakeCodex = path.join(resourcesDir, "codex");
   const bundledNode = path.join(resourcesDir, "cua_node", "bin", "node");
   const observedFile = path.join(dir, "supervisor-args.txt");
   mkdirSync(path.dirname(bundledNode), { recursive: true });
-  writeFileSync(fakeCodex, [
-    "#!/bin/sh",
-    "IFS= read -r request",
-    "printf '%s\\n' '{\"id\":1,\"result\":{\"supervised\":true}}'",
-    ""
-  ].join("\n"));
   writeFileSync(bundledNode, [
     "#!/bin/sh",
     "printf '%s\\n' \"$@\" > \"$CCR_FAKE_SUPERVISOR_ARGS\"",
     "exec \"$CCR_TEST_NODE\" \"$@\"",
     ""
-  ].join("\n"));
-  chmodSync(fakeCodex, 0o700);
-  chmodSync(bundledNode, 0o700);
+  ].join("\n"), { mode: 0o700 });
 
-  const result = spawnSync(process.execPath, [runtimeFile, "app-server"], {
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      CCR_CODEX_REMOTE_FRONTEND_MODE: "app",
-      CCR_FAKE_SUPERVISOR_ARGS: observedFile,
-      CCR_PROFILE_SCOPE: "global",
-      CCR_REAL_CODEX_CLI_PATH: fakeCodex,
-      CCR_TEST_NODE: process.execPath
-    },
-    input: JSON.stringify({ id: 1, method: "probe/supervisor", params: {} }) + "\n"
-  });
+  for (const cli of ["codex", "codex-cli/bin/codex", "codex-cli/CodexCLI.app/Contents/MacOS/codex"]) {
+    const fakeCodex = path.join(resourcesDir, cli);
+    mkdirSync(path.dirname(fakeCodex), { recursive: true });
+    writeFileSync(fakeCodex, [
+      "#!/bin/sh",
+      "IFS= read -r request",
+      "printf '%s\\n' '{\"id\":1,\"result\":{\"supervised\":true}}'",
+      ""
+    ].join("\n"), { mode: 0o700 });
+    rmSync(observedFile, { force: true });
 
-  assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(JSON.parse(result.stdout.trim()).result, { supervised: true });
-  const observed = readFileSync(observedFile, "utf8");
-  assert.match(observed, /^-e\n/);
-  assert.ok(observed.includes(fakeCodex));
-  assert.ok(observed.includes("app-server"));
+    const result = spawnSync(process.execPath, [runtimeFile, "app-server"], {
+      encoding: "utf8",
+      timeout: 10_000,
+      env: {
+        ...process.env,
+        CCR_CODEX_REMOTE_FRONTEND_MODE: "app",
+        CCR_FAKE_SUPERVISOR_ARGS: observedFile,
+        CCR_PROFILE_SCOPE: "global",
+        CCR_REAL_CODEX_CLI_PATH: fakeCodex,
+        CCR_SIGNED_CODEX_SUPERVISOR_NODE_PATH: "",
+        CODEXL_SIGNED_CODEX_SUPERVISOR_NODE_PATH: "",
+        CCR_TEST_NODE: process.execPath
+      },
+      input: JSON.stringify({ id: 1, method: "probe/supervisor", params: {} }) + "\n"
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout.trim()).result, { supervised: true });
+    assert.ok(existsSync(observedFile), `${cli} did not use the bundled Node`);
+    const observed = readFileSync(observedFile, "utf8");
+    assert.match(observed, /^-e\n/);
+    assert.ok(observed.includes(fakeCodex));
+    assert.ok(observed.includes("app-server"));
+  }
 });
 
 test("Codex runtime ignores middleware recursion and uses the bundled real CLI fallback", { skip: process.platform === "win32" }, () => {

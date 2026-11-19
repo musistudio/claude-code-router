@@ -386,8 +386,11 @@ function supervisedCodexAppServerLaunch(runtimeAgent, realCli, realArgs) {
   }
   const configured = nonEmptyEnv("CCR_SIGNED_CODEX_SUPERVISOR_NODE_PATH") ||
     nonEmptyEnv("CODEXL_SIGNED_CODEX_SUPERVISOR_NODE_PATH");
-  const bundled = path.join(path.dirname(realCli), "cua_node", "bin", "node");
-  const node = [configured, bundled].find(isExecutableFile);
+  // The new CLI shim and binary are nested under Resources/codex-cli, but Node stays in Resources.
+  const resourcesDir = path.resolve(realCli).match(/^(.*\.app\/Contents\/Resources)\/codex-cli\//)?.[1];
+  const bundled = resourcesDir && path.join(resourcesDir, "cua_node", "bin", "node");
+  const adjacent = path.join(path.dirname(realCli), "cua_node", "bin", "node");
+  const node = [configured, bundled, adjacent].find(isExecutableFile);
   if (!node) {
     return { command: realCli, args: realArgs };
   }
@@ -403,6 +406,7 @@ function supervisedCodexAppServerLaunch(runtimeAgent, realCli, realArgs) {
 function isExecutableFile(file) {
   if (!file) return false;
   try {
+    fs.accessSync(file, fs.constants.X_OK);
     return fs.statSync(file).isFile();
   } catch {
     return false;
