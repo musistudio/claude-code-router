@@ -137,6 +137,28 @@ test("codex app env points the desktop API base at the loopback responder", () =
   assert.deepEqual(codexAppNetResponderEnv("zcode", 8000), {});
 });
 
+test("official usage endpoint awaits provider data and keeps request identity", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-native-usage-api-"));
+  const received = [];
+  const routes = codexVirtualAccountRoutes(async context => {
+    received.push(context);
+    await Promise.resolve();
+    return { account_id: context.accountId, user_id: "user-9", ambient_usage: { default: { source: { kind: "credits", heading: "额度来源：Provider" }, menu: { rows: [], actions: [] } } } };
+  });
+  const responder = await startCodexAppNetResponder({ listenPort: 0, logPath: path.join(dir, "api.log"), routes });
+  try {
+    const response = await fetch(`${responder.baseUrl}/wham/usage`, { headers: { "chatgpt-account-id": "account-9", authorization: "Bearer fixture-token" } });
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.equal(payload.account_id, "account-9");
+    assert.equal(payload.ambient_usage.default.source.heading, "额度来源：Provider");
+    assert.equal(received[0].authorization, "Bearer fixture-token");
+  } finally {
+    responder.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("codex electron args never carry debug injection switches", () => {
   const args = codexElectronArgsForTest("/tmp/user-data");
   assert.ok(args.includes("--remote-debugging-port=0"));

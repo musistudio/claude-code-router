@@ -6,7 +6,8 @@ import path from "node:path";
 import type { AppConfig, ProfileConfig } from "@ccr/core/contracts/app";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import { buildCodexModelCatalog, type CodexModelCatalog, type CodexModelCatalogItem } from "@ccr/core/agents/codex/model-catalog";
-import { CODEX_APP_NET_RESPONDER_PORT, codexAppApiBaseUrl, ensureCodexAppNetResponder } from "@ccr/core/agents/codex/app-net-responder";
+import { CODEX_APP_NET_RESPONDER_PORT, codexAppApiBaseUrl, codexVirtualAccountRoutes, ensureCodexAppNetResponder } from "@ccr/core/agents/codex/app-net-responder";
+import { codexAppAccountUsage } from "@ccr/core/agents/codex/app-usage-service";
 import { codexAppApiCertificate } from "@ccr/core/agents/codex/app-api-certificate";
 import { prepareCodexAppCdpUserDataDir } from "@ccr/core/agents/codex/media-preview-bridge";
 import { buildProfileLaunchPlan, resolveCodexConfigFile } from "@ccr/core/profiles/launch-core";
@@ -238,6 +239,11 @@ const workbuddyAppSpec: CodexCompatibleAppSpec = {
 
 export function launchCodexAppProfile(configDir: string, profile: ProfileConfig, config?: AppConfig): Promise<CodexAppLaunchResult> {
   return launchCodexCompatibleAppProfile(configDir, profile, codexAppSpec, config);
+}
+
+export function codexAppProfileUserDataDir(configDir: string, profile: ProfileConfig): string {
+  const home = codexCompatibleHomeFromConfigFile(codexAppSpec, resolveCodexConfigFile(configDir, profile));
+  return codexElectronUserDataDir(home, profile, codexAppSpec);
 }
 
 export function findInstalledCodexAppExecutable(profileAppPath?: string): CodexAppLookupResult {
@@ -1052,7 +1058,7 @@ export async function prepareCodexAppNetResponder(configDir: string, profile?: P
   const logPath = path.join(configDir, "codex-app-inspector.log");
   try {
     const certificate = codexAppApiCertificate(configDir);
-    await ensureCodexAppNetResponder({ listenPort: port, logPath, tls: certificate });
+    await ensureCodexAppNetResponder({ listenPort: port, logPath, tls: certificate, routes: codexVirtualAccountRoutes(codexAppAccountUsage) });
     return { certificateSpki: certificate.spki };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

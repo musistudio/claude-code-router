@@ -65,6 +65,10 @@ Use this page to route Codex to a non-OpenAI provider, pin a model, or run separ
   ```
 - **App:** click the play button to open ChatGPT with this profile's model and provider. Reopening the same profile activates the existing window.
 
+Desktop apps opened from CCR use the official sidebar usage component to show the current model provider's balance or remaining allowance. Switching models updates the provider. Hover to see the provider name, balances, usage, reset times, and update times. Fusion models use their underlying model provider. The indicator reuses CCR's account connectors and cache, checks for updates every minute, and works with media tools disabled.
+
+The provider must support or have an account connector configured. The official details menu reports unavailable data or query failures without treating unknown balances as zero. Balances for separate credentials are shown individually. CCR automatically reconnects to managed windows that remain open after a restart. Older windows without a debugging connection need to be reopened from CCR once.
+
 ## Multi-instance
 
 Create separate Codex profiles when you want different models or providers.

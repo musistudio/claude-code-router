@@ -11,7 +11,7 @@ export type CodexVirtualRoute = {
   /** Extra response headers (e.g. Set-Cookie for devicecheck registration). */
   headers?: Record<string, string>;
   /** Dynamic body builder for account-scoped responses. */
-  bodyFor?: (context: { accountId: string }) => unknown;
+  bodyFor?: (context: { accountId: string; authorization?: string }) => unknown;
   body?: unknown;
 };
 
@@ -26,8 +26,9 @@ const VIRTUAL_ACCOUNT_ID = "ccr-virtual-account";
  * a virtual account. Anything not listed here is answered with a 404 and
  * recorded to the responder log so missing routes can be added deliberately.
  */
-export function codexVirtualAccountRoutes(): CodexVirtualRoute[] {
+export function codexVirtualAccountRoutes(usageFor?: CodexVirtualRoute["bodyFor"]): CodexVirtualRoute[] {
   return [
+    ...(usageFor ? [{ pattern: "^/(?:backend-api/)?wham/usage$", bodyFor: usageFor }] : []),
     {
       // Account discovery (Kb schema in the app). A non-workspace structure
       // keeps the whole workspace-policy gate hidden; entries echo the account
@@ -177,6 +178,7 @@ const responders = new Map<number, Promise<CodexAppNetResponder>>();
 export function ensureCodexAppNetResponder(options: {
   listenPort: number;
   logPath: string;
+  routes?: CodexVirtualRoute[];
   tls?: { cert: string; key: string };
 }): Promise<CodexAppNetResponder> {
   const existing = responders.get(options.listenPort);
@@ -233,7 +235,7 @@ export async function startCodexAppNetResponder(options: {
         body: requestBody ? requestBody.slice(0, 4096) : undefined
       });
       if (route) {
-        const body = JSON.stringify(route.bodyFor ? route.bodyFor({ accountId }) : route.body);
+        const body = JSON.stringify(route.bodyFor ? await route.bodyFor({ accountId, authorization: request.headers.authorization }) : route.body);
         response.writeHead(200, {
           "content-type": "application/json",
           "content-length": String(Buffer.byteLength(body)),

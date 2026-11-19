@@ -8,7 +8,7 @@ import { deepLinkService } from "./deep-link";
 import { gatewayService } from "@ccr/core/gateway/service";
 import "./ipc";
 import { applyProfileConfig, restoreGlobalProfileConfigsOnExit } from "@ccr/core/profiles/service";
-import { ensureCcrCliLauncher, persistPreparedCcrCliPath, prepareCcrCliLauncherRuntime, type CcrCliLauncherPreparation } from "@ccr/core/profiles/launch-service";
+import { ensureCcrCliLauncher, persistPreparedCcrCliPath, prepareCcrCliLauncherRuntime, syncRunningCodexAppUsageBridges, type CcrCliLauncherPreparation } from "@ccr/core/profiles/launch-service";
 import { syncLaunchAtLogin } from "./launch-at-login";
 import { proxyService } from "@ccr/core/proxy/service";
 import trayController from "./tray-controller";
@@ -243,6 +243,7 @@ function startConfiguredServices(reason: string): Promise<void> {
             }
           }
         }
+        await syncRunningCodexAppUsageBridges(config);
         if (config.proxy.enabled && config.proxy.systemProxy) {
           const proxyStatus = await proxyService.ensureSystemProxyActive();
           logProxySystemProxyIssue(reason, proxyStatus);

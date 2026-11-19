@@ -8,8 +8,9 @@ import { applyClaudeAppGatewayConfig, readClaudeAppGatewayApiKeyCandidates } fro
 import { launchClaudeAppProfile, resolveClaudeAppProfileUserDataDir } from "@ccr/core/agents/claude-app/launch";
 import { resolveClaudeCodeGatewayAuthMode } from "@ccr/core/agents/claude-code/auth-mode";
 import { claudeCodeUtcTimezoneEnvOverride } from "@ccr/core/agents/claude-code/environment";
-import { codexDesktopAppName, launchCodexAppProfile, launchWorkbuddyAppProfile, launchZcodeAppProfile, prepareCodexAppNetResponder, refreshCodexCompatibleAppProfileFiles, workbuddyDesktopAppName } from "@ccr/core/agents/codex/app-launch";
+import { codexAppProfileUserDataDir, codexDesktopAppName, launchCodexAppProfile, launchWorkbuddyAppProfile, launchZcodeAppProfile, prepareCodexAppNetResponder, refreshCodexCompatibleAppProfileFiles, workbuddyDesktopAppName } from "@ccr/core/agents/codex/app-launch";
 import { CodexAppMediaPreviewBridge, shouldEnableCodexMediaPreviewBridge } from "@ccr/core/agents/codex/media-preview-bridge";
+import { CodexAppUsageBridge } from "@ccr/core/agents/codex/app-usage-bridge";
 import { findRunningOpenCodeAppPid, launchOpenCodeAppProfile, openCodeAppLaunchSignature } from "@ccr/core/agents/opencode/app-launch";
 import { writeOpenCodeGatewayConfig } from "@ccr/core/agents/opencode/profile-config";
 import { codexCliMiddlewareRuntimeScript } from "@ccr/core/agents/codex/cli-middleware-runtime";
@@ -50,6 +51,7 @@ let openCodeAppBotWorkerSignature: string | undefined;
 let openCodeAppBotWorkerStateDir: string | undefined;
 const codexAppBotWorkers = new Map<string, { agent: ProfileConfig["agent"]; child: ChildProcess; stateDir?: string }>();
 const codexAppMediaPreviewBridges = new Map<string, { bridge: CodexAppMediaPreviewBridge; signature: string }>();
+const codexAppUsageBridges = new Map<string, { bridge: CodexAppUsageBridge; userDataDir: string }>();
 
 type ProfileOpenCommandOptions = {
   commandName?: string;
@@ -97,6 +99,7 @@ process.once("exit", () => {
   stopOpenCodeAppBotWorker();
   stopCodexAppBotWorker();
   stopCodexAppMediaPreviewBridge();
+  stopCodexAppUsageBridge();
 });
 
 export async function getProfileOpenCommand(config: AppConfig, request: ProfileOpenRequest, options: ProfileOpenCommandOptions = {}): Promise<ProfileOpenCommandResult> {
@@ -274,6 +277,7 @@ async function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof
     refreshCodexCompatibleAppProfileFiles(CONFIGDIR, profile, profileGatewayConfig);
     startCodexAppBotWorker(profileGatewayConfig, profile);
     startCodexAppMediaPreviewBridge(profileGatewayConfig, profile, existing.userDataDir);
+    startCodexAppUsageBridge(profile, existing.userDataDir);
     activateProfileAppWindow(existing);
     return {
       message: `${appName} is already running with ${profile.name || profile.id}.`,
@@ -293,6 +297,7 @@ async function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof
       });
       startCodexAppBotWorker(profileGatewayConfig, profile);
       startCodexAppMediaPreviewBridge(profileGatewayConfig, profile, entry.userDataDir);
+      startCodexAppUsageBridge(profile, entry.userDataDir);
       activateProfileAppWindow(entry);
       return {
         message: `${appName} is already running with ${profile.name || profile.id}.`,
@@ -322,6 +327,7 @@ async function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof
   activateProfileAppWindow(entry);
   startCodexAppBotWorker(profileGatewayConfig, profile);
   startCodexAppMediaPreviewBridge(profileGatewayConfig, profile, entry.userDataDir);
+  startCodexAppUsageBridge(profile, entry.userDataDir);
   return {
     message: `Opened ${appName} with ${profile.name || profile.id}.`,
     profileId: profile.id,
@@ -858,6 +864,7 @@ export async function stopProfileFromCcr(config: AppConfig, request: ProfileOpen
     } else if (profile.agent === "codex" || profile.agent === "zcode") {
       stopCodexAppBotWorker(profile.id);
       stopCodexAppMediaPreviewBridge(profile.id);
+      stopCodexAppUsageBridge(profile.id);
     }
   }
   return {
@@ -1025,6 +1032,7 @@ function cleanupProfileAppEntry(key: string, entry: RunningProfileApp): void {
   if (entry.agent === "codex" || entry.agent === "zcode") {
     stopCodexAppBotWorker(entry.profileId);
     stopCodexAppMediaPreviewBridge(entry.profileId);
+    stopCodexAppUsageBridge(entry.profileId);
   }
 }
 
@@ -1489,6 +1497,39 @@ function startCodexAppBotWorker(config: AppConfig, profile: ReturnType<typeof fi
     if (codexAppBotWorkers.get(profile.id)?.child === child) codexAppBotWorkers.delete(profile.id);
     console.warn(`[profile] ${profile.agent === "zcode" ? "ZCode" : "Codex"} App bot worker failed: ${formatError(error)}`);
   });
+}
+
+/** Resume the native usage adapter for managed Codex windows surviving a CCR restart. */
+export async function syncRunningCodexAppUsageBridges(config: AppConfig): Promise<void> {
+  const enabled = new Set<string>();
+  for (const profile of config.profile.profiles) {
+    if (config.profile.enabled === false || !profile.enabled || profile.agent !== "codex" || !profileOpenSurfaces(profile).includes("app")) continue;
+    enabled.add(profile.id);
+    const userDataDir = codexAppProfileUserDataDir(CONFIGDIR, profile);
+    if (profileAppMainPid({ userDataDir })) {
+      await prepareCodexAppNetResponder(CONFIGDIR, profile);
+      startCodexAppUsageBridge(profile, userDataDir);
+    }
+  }
+  for (const id of codexAppUsageBridges.keys()) if (!enabled.has(id)) stopCodexAppUsageBridge(id);
+}
+
+function startCodexAppUsageBridge(profile: ProfileConfig, userDataDir: string): void {
+  if (profile.agent !== "codex") return;
+  const existing = codexAppUsageBridges.get(profile.id);
+  if (existing?.userDataDir === userDataDir) return;
+  existing?.bridge.stop();
+  const bridge = new CodexAppUsageBridge({ profile, userDataDir });
+  codexAppUsageBridges.set(profile.id, { bridge, userDataDir });
+  bridge.start();
+}
+
+function stopCodexAppUsageBridge(profileId?: string): void {
+  for (const [id, entry] of codexAppUsageBridges) {
+    if (profileId && id !== profileId) continue;
+    codexAppUsageBridges.delete(id);
+    entry.bridge.stop();
+  }
 }
 
 function startCodexAppMediaPreviewBridge(
