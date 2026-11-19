@@ -597,13 +597,17 @@ async function launchCodexCompatibleAppProfile(
   const netResponderPort = codexAppUsesSharedAccount(configDir, profile) ? undefined : codexAppNetResponderPort(spec.kind);
   const localApi = netResponderPort ? await prepareCodexAppNetResponder(configDir, profile) : undefined;
 
+  const profileEnv = codexProfileEnv(profile, lookup.executable, spec);
+  const cliLauncher = spec.kind === "codex"
+    ? codexAppSpawnableCliLauncher(plan.command, profileEnv.CCR_REAL_CODEX_CLI_PATH)
+    : plan.command;
   const appEnv: Record<string, string> = {
     ...plan.env,
     ...(config ? botGatewayProfileEnv(config, profile, "app") : {}),
-    ...codexProfileEnv(profile, lookup.executable, spec),
+    ...profileEnv,
     CODEXL_PROFILE_SURFACE: "app",
     CCR_PROFILE_SURFACE: "app",
-    ...codexAppAgentEnv(spec, plan.command, codexHome, userDataDir, modelCatalogFile, workbuddyVirtualAuth),
+    ...codexAppAgentEnv(spec, cliLauncher, codexHome, userDataDir, modelCatalogFile, workbuddyVirtualAuth),
     ...codexCompatibleAppGatewayEnv(spec, config),
     ...codexAppNetResponderEnv(spec.kind, netResponderPort),
     ELECTRON_ENABLE_LOGGING: "1"
@@ -634,6 +638,28 @@ async function launchCodexCompatibleAppProfile(
     pid: child.pid,
     userDataDir
   };
+}
+
+/**
+ * The desktop app spawns CODEX_CLI_PATH itself with `shell: false`. Node refuses to
+ * spawn a .cmd/.bat that way on Windows (CVE-2024-27980) and throws `spawn EINVAL`,
+ * so the generated middleware `.cmd` cannot be handed to it there. Fall back to the
+ * real Codex executable, which is spawnable, when the launcher is a batch script.
+ */
+export function codexAppSpawnableCliLauncher(
+  launcher: string,
+  realCliPath: string | undefined,
+  platform: NodeJS.Platform = process.platform
+): string {
+  if (platform !== "win32" || !isWindowsBatchScript(launcher)) {
+    return launcher;
+  }
+  const real = realCliPath?.trim();
+  return real && !isWindowsBatchScript(real) ? real : launcher;
+}
+
+function isWindowsBatchScript(file: string): boolean {
+  return /\.(?:bat|cmd)$/i.test(path.win32.basename(file));
 }
 
 function codexCompatibleAppGatewayEnv(spec: CodexCompatibleAppSpec, config?: AppConfig): Record<string, string> {
