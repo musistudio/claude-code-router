@@ -38,6 +38,11 @@ export const codexDefaultBaseUrl = "https://chatgpt.com/backend-api/codex";
 const codexAccountBaseUrl = "https://chatgpt.com/backend-api";
 const codexDefaultModels = ["gpt-5-codex"];
 const codexProbeTimeoutMs = 8_000;
+const codexNpmLatestUrl = "https://registry.npmjs.org/@openai/codex/latest";
+const codexClientVersionFallback = "0.171.0";
+const codexClientVersionCacheMs = 6 * 60 * 60 * 1000;
+const codexClientVersionTimeoutMs = 3_000;
+let codexClientVersionCache: { expiresAt: number; value: string } | undefined;
 
 export type LocalAgentModelCatalog = {
   modelDisplayNames?: Record<string, string>;
@@ -264,7 +269,7 @@ export async function importCodexProvider(candidate: LocalAgentProviderCandidate
   if (!auth?.refreshToken && !auth?.accessToken) {
     throw new Error("Codex login token was not found.");
   }
-  const probedCandidate = await codexCandidateWithProbedModels(candidate).catch(() => candidate);
+  const probedCandidate = await codexCandidateWithProbedModels(candidate);
   const provider = providerPayload(probedCandidate, uniqueProviderName(providerNames, "Codex API"), codexDefaultBaseUrl, codexProviderAccountConfig());
   return {
     candidate: probedCandidate,
@@ -288,7 +293,7 @@ export async function importCodexProvider(candidate: LocalAgentProviderCandidate
 }
 
 export async function probeCodexProvider(candidate: LocalAgentProviderCandidate): Promise<LocalAgentProviderProbeResult> {
-  const probedCandidate = await codexCandidateWithProbedModels(candidate).catch(() => candidate);
+  const probedCandidate = await codexCandidateWithProbedModels(candidate);
   return {
     candidate: probedCandidate,
     probe: codexProviderProbe(probedCandidate)
@@ -619,16 +624,21 @@ export function readCodexLocalModelCatalog(): LocalAgentModelCatalog {
 }
 
 async function codexCandidateWithProbedModels(candidate: LocalAgentProviderCandidate): Promise<LocalAgentProviderCandidate> {
-  const catalog = await fetchCodexModelCatalog();
-  if (catalog.models.length === 0) {
+  try {
+    const catalog = await fetchCodexModelCatalog();
+    if (catalog.models.length === 0) {
+      return candidate;
+    }
+    return {
+      ...candidate,
+      modelDisplayNames: catalog.modelDisplayNames,
+      modelMetadata: catalog.modelMetadata,
+      models: catalog.models
+    };
+  } catch (error) {
+    console.warn(`[codex] model probe failed; keeping the cached model list: ${error instanceof Error ? error.message : String(error)}`);
     return candidate;
   }
-  return {
-    ...candidate,
-    modelDisplayNames: catalog.modelDisplayNames,
-    modelMetadata: catalog.modelMetadata,
-    models: catalog.models
-  };
 }
 
 async function fetchCodexModelCatalog(): Promise<LocalAgentModelCatalog> {
@@ -637,14 +647,17 @@ async function fetchCodexModelCatalog(): Promise<LocalAgentModelCatalog> {
     throw new Error("Codex access token was not found.");
   }
 
+  const clientVersion = await resolveCodexClientVersion();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), codexProbeTimeoutMs);
   try {
-    const response = await fetchWithSystemProxy(`${codexDefaultBaseUrl}/models`, {
+    const response = await fetchWithSystemProxy(`${codexDefaultBaseUrl}/models?client_version=${encodeURIComponent(clientVersion)}`, {
       headers: {
         accept: "application/json",
         authorization: `Bearer ${auth.accessToken}`,
-        "User-Agent": "codex-cli",
+        originator: "codex_cli_rs",
+        "User-Agent": `codex_cli_rs/${clientVersion}`,
+        version: clientVersion,
         ...(auth.accountId ? { "ChatGPT-Account-Id": auth.accountId } : {}),
         ...(auth.isFedrampAccount ? { "X-OpenAI-Fedramp": "true" } : {})
       },
@@ -664,6 +677,42 @@ async function fetchCodexModelCatalog(): Promise<LocalAgentModelCatalog> {
   } finally {
     clearTimeout(timer);
   }
+}
+
+// The ChatGPT backend requires a client_version query param on /models and gates model
+// visibility on its value without rejecting older clients, so a stale pin silently hides
+// newer SKUs. Track the npm dist-tag, then keep the last known value, then the constant.
+async function resolveCodexClientVersion(): Promise<string> {
+  const now = Date.now();
+  if (codexClientVersionCache && now < codexClientVersionCache.expiresAt) {
+    return codexClientVersionCache.value;
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), codexClientVersionTimeoutMs);
+  try {
+    const response = await fetchWithSystemProxy(codexNpmLatestUrl, {
+      headers: { accept: "application/json" },
+      method: "GET",
+      signal: controller.signal
+    });
+    if (response.ok) {
+      const payload = parseJson(await response.text());
+      const version = isRecord(payload) ? readString(payload.version) : undefined;
+      if (version) {
+        codexClientVersionCache = { expiresAt: now + codexClientVersionCacheMs, value: version };
+        return version;
+      }
+    }
+  } catch {
+    // keep the last known value, if any
+  } finally {
+    clearTimeout(timer);
+  }
+  return codexClientVersionCache?.value ?? codexClientVersionFallback;
+}
+
+export function fetchCodexModelCatalogForTest(): Promise<LocalAgentModelCatalog> {
+  return fetchCodexModelCatalog();
 }
 
 function codexProviderProbe(candidate: LocalAgentProviderCandidate) {
@@ -698,6 +747,12 @@ function codexModelCatalogFromPayload(payload: unknown): LocalAgentModelCatalog 
   const modelDisplayNames: Record<string, string> = {};
   const modelMetadata: Record<string, ProviderModelMetadata> = {};
   for (const item of codexModelCatalogItems(payload)) {
+    if (isRecord(item)) {
+      const visibility = readString(item.visibility)?.toLowerCase();
+      if (visibility === "hide" || visibility === "hidden") {
+        continue;
+      }
+    }
     const model = isRecord(item)
       ? readString(item.slug) || readString(item.id) || readString(item.model) || readString(item.name)
       : readString(item);
