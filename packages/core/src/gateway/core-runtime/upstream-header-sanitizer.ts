@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { CODEX_NATIVE_IMAGE_GENERATION_HEADER, CODEX_NATIVE_IMAGE_GENERATION_MARKER } from "@ccr/core/contracts/app";
 import { applyMetaTokenFloor } from "@ccr/core/gateway/core-runtime/meta-token-floor";
+import { applyOpenAiUpstreamCompat } from "@ccr/core/gateway/core-runtime/openai-upstream-compat";
 import { applyResponsesSessionAffinity, inboundMetadataUserId, resolveResponsesSessionKey } from "@ccr/core/gateway/core-runtime/responses-session-affinity";
 import type { ResponsesSessionAffinityInput } from "@ccr/core/gateway/core-runtime/responses-session-affinity";
 import { applyResponsesToolStrictness } from "@ccr/core/gateway/core-runtime/responses-tool-strictness";
@@ -344,7 +345,7 @@ export function createGatewayPlugin() {
         }
         return {
           ok: true as const,
-          value: applyMetaTokenFloor(upstreamRequest)
+          value: applyMetaTokenFloor(applyOpenAiUpstreamCompat(upstreamRequest))
         };
       },
       transformResponse(input: ProviderPluginResponseInput) {
