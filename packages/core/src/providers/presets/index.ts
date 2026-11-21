@@ -25,6 +25,7 @@ import {
   xiaomiMimoTokenPlanEuropeProviderPreset,
   xiaomiMimoTokenPlanSingaporeProviderPreset
 } from "@ccr/core/providers/presets/xiaomi/index";
+import { worldRouterProviderPreset } from "@ccr/core/providers/presets/worldrouter/index";
 import { yApiProviderPreset } from "@ccr/core/providers/presets/y-api/index";
 import { zaiGlobalCodingProviderPreset } from "@ccr/core/providers/presets/zai-global-coding/index";
 import { zaiGlobalGeneralProviderPreset } from "@ccr/core/providers/presets/zai-global-general/index";
@@ -73,7 +74,8 @@ export const providerPresets: ProviderPreset[] = [
   unity2ProviderPreset,
   code0ProviderPreset,
   claudeApiProviderPreset,
-  yApiProviderPreset
+  yApiProviderPreset,
+  worldRouterProviderPreset
 ];
 
 export function getProviderPresets(): ProviderPreset[] {

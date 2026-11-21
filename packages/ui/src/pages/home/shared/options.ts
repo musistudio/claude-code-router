@@ -61,6 +61,7 @@ import qiniuAiProviderIconUrl from "@/assets/provider-icons/qiniu-ai.png";
 import runapiProviderIconUrl from "@/assets/provider-icons/runapi.jpg";
 import siliconflowProviderIconUrl from "@/assets/provider-icons/siliconflow.png";
 import teamorouterProviderIconUrl from "@/assets/provider-icons/teamorouter.png";
+import worldrouterProviderIconUrl from "@/assets/provider-icons/worldrouter.svg";
 import unity2ProviderIconUrl from "@/assets/provider-icons/unity2.jpg";
 import xiaomiMimoProviderIconUrl from "@/assets/provider-icons/xiaomi-mimo.png";
 import zaiGlobalCodingProviderIconUrl from "@/assets/provider-icons/zai-global-coding.svg";
@@ -394,6 +395,7 @@ export const providerPresetIconUrls: Record<string, string> = {
   siliconflow: siliconflowProviderIconUrl,
   teamorouter: teamorouterProviderIconUrl,
   unity2: unity2ProviderIconUrl,
+  worldrouter: worldrouterProviderIconUrl,
   xiaomi: xiaomiMimoProviderIconUrl,
   "xiaomi-token-plan-ams": xiaomiMimoProviderIconUrl,
   "xiaomi-token-plan-cn": xiaomiMimoProviderIconUrl,
