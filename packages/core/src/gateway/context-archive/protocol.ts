@@ -22,6 +22,8 @@ const compactOutputTokenLimitKeys = [
   "maxTokens"
 ];
 
+const compactOutputTokenLimitFloor = 32000;
+
 export function parseArchiveBody(body: Buffer | undefined): JsonObject | undefined {
   if (!body?.length) {
     return undefined;
@@ -442,8 +444,8 @@ function assertAppendableTurn(body: JsonObject, protocol: GatewayProviderProtoco
 
 function sanitizeCompactHandoffRequest(body: JsonObject, protocol: GatewayProviderProtocol): void {
   removeCompactSignals(body);
+  clampCompactOutputTokenLimits(body);
   removeKeys(body, [
-    ...compactOutputTokenLimitKeys,
     "response_format",
     "responseFormat",
     "stop",
@@ -533,6 +535,18 @@ function normalizeOpenAiResponsesTextFormat(body: JsonObject): void {
   }
   text.format = { type: "text" };
   body.text = text;
+}
+
+function clampCompactOutputTokenLimits(body: JsonObject): void {
+  // Strict Anthropic-Messages-compatible upstreams require max_tokens; raise
+  // undersized values to a floor large enough for the handoff summary instead
+  // of removing the field, which breaks those upstreams with a 400.
+  for (const key of compactOutputTokenLimitKeys) {
+    const value = body[key];
+    if (typeof value === "number" && Number.isFinite(value) && value < compactOutputTokenLimitFloor) {
+      body[key] = compactOutputTokenLimitFloor;
+    }
+  }
 }
 
 function removeKeys(body: JsonObject, keys: string[]): void {

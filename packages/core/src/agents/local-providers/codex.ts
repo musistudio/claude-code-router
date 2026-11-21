@@ -38,6 +38,10 @@ export const codexDefaultBaseUrl = "https://chatgpt.com/backend-api/codex";
 const codexAccountBaseUrl = "https://chatgpt.com/backend-api";
 const codexDefaultModels = ["gpt-5-codex"];
 const codexProbeTimeoutMs = 8_000;
+// The chatgpt.com backend requires `client_version` on /models and gates
+// which model SKUs are visible on its value; without it the probe 400s.
+// Keep in sync with the @openai/codex npm dist-tag.
+const codexClientVersion = "0.171.0";
 
 export type LocalAgentModelCatalog = {
   modelDisplayNames?: Record<string, string>;
@@ -264,7 +268,10 @@ export async function importCodexProvider(candidate: LocalAgentProviderCandidate
   if (!auth?.refreshToken && !auth?.accessToken) {
     throw new Error("Codex login token was not found.");
   }
-  const probedCandidate = await codexCandidateWithProbedModels(candidate).catch(() => candidate);
+  const probedCandidate = await codexCandidateWithProbedModels(candidate).catch((error) => {
+    console.warn("[codex] model probe failed, falling back to local catalog:", error instanceof Error ? error.message : error);
+    return candidate;
+  });
   const provider = providerPayload(probedCandidate, uniqueProviderName(providerNames, "Codex API"), codexDefaultBaseUrl, codexProviderAccountConfig());
   return {
     candidate: probedCandidate,
@@ -288,7 +295,10 @@ export async function importCodexProvider(candidate: LocalAgentProviderCandidate
 }
 
 export async function probeCodexProvider(candidate: LocalAgentProviderCandidate): Promise<LocalAgentProviderProbeResult> {
-  const probedCandidate = await codexCandidateWithProbedModels(candidate).catch(() => candidate);
+  const probedCandidate = await codexCandidateWithProbedModels(candidate).catch((error) => {
+    console.warn("[codex] model probe failed, falling back to local catalog:", error instanceof Error ? error.message : error);
+    return candidate;
+  });
   return {
     candidate: probedCandidate,
     probe: codexProviderProbe(probedCandidate)
@@ -640,9 +650,10 @@ async function fetchCodexModelCatalog(): Promise<LocalAgentModelCatalog> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), codexProbeTimeoutMs);
   try {
-    const response = await fetchWithSystemProxy(`${codexDefaultBaseUrl}/models`, {
+    const response = await fetchWithSystemProxy(`${codexDefaultBaseUrl}/models?client_version=${codexClientVersion}`, {
       headers: {
         accept: "application/json",
+        originator: "codex_cli_rs",
         authorization: `Bearer ${auth.accessToken}`,
         "User-Agent": "codex-cli",
         ...(auth.accountId ? { "ChatGPT-Account-Id": auth.accountId } : {}),
