@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import {
   attachCodexRateLimitResetCreditDetails,
@@ -6,6 +9,7 @@ import {
   codexModelCatalogFromPayloadForTest,
   codexProviderAccountConfig,
   codexRateLimitResetCreditDetails,
+  fetchCodexModelCatalogForTest,
   normalizeCodexProviderAccountConfig
 } from "@ccr/core/agents/local-providers/codex.ts";
 import { localAgentProviderApiKey } from "@ccr/core/agents/local-providers/shared.ts";
@@ -365,4 +369,57 @@ test("Codex model catalog parser ignores invalid context metadata", () => {
   });
 
   assert.equal(catalog.modelMetadata?.["invalid-context-model"], undefined);
+});
+
+test("Codex model catalog parser drops hidden visibility rows", () => {
+  const catalog = codexModelCatalogFromPayloadForTest({
+    data: [
+      { slug: "gpt-6.1-sol", visibility: "list" },
+      { slug: "gpt-reserve", visibility: "hide" },
+      { slug: "codex-auto-review", visibility: "Hidden" },
+      { slug: "gpt-5.5" }
+    ]
+  });
+
+  assert.deepEqual(catalog.models, ["gpt-6.1-sol", "gpt-5.5"]);
+});
+
+test("Codex model probe sends client_version from the npm dist-tag", async () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "ccr-codex-probe-"));
+  const codexDir = path.join(home, ".codex");
+  mkdirSync(codexDir, { recursive: true });
+  writeFileSync(path.join(codexDir, "auth.json"), JSON.stringify({ tokens: { access_token: "test-access-value" } }));
+  const previousHome = process.env.CCR_INTERNAL_HOME_DIR;
+  process.env.CCR_INTERNAL_HOME_DIR = home;
+  const originalFetch = globalThis.fetch;
+  const requestedUrls = [];
+  const requestedHeaders = [];
+  globalThis.fetch = async (input, init) => {
+    const url = typeof input === "string" ? input : input.url;
+    requestedUrls.push(url);
+    if (url.startsWith("https://registry.npmjs.org/")) {
+      return new Response(JSON.stringify({ version: "9.9.9" }), { status: 200 });
+    }
+    requestedHeaders.push(init?.headers);
+    return new Response(JSON.stringify({ data: [{ slug: "gpt-6.2-sol" }] }), { status: 200 });
+  };
+  try {
+    const catalog = await fetchCodexModelCatalogForTest();
+    assert.deepEqual(catalog.models, ["gpt-6.2-sol"]);
+    const probeUrl = requestedUrls.find((url) => url.includes("backend-api/codex/models"));
+    assert.ok(probeUrl, "expected the model probe to run");
+    assert.match(probeUrl, /[?&]client_version=9\.9\.9($|&)/);
+    const headers = requestedHeaders.at(-1);
+    assert.equal(headers?.version, "9.9.9");
+    assert.equal(headers?.originator, "codex_cli_rs");
+    assert.match(headers?.["User-Agent"] ?? "", /^codex_cli_rs\/9\.9\.9$/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousHome === undefined) {
+      delete process.env.CCR_INTERNAL_HOME_DIR;
+    } else {
+      process.env.CCR_INTERNAL_HOME_DIR = previousHome;
+    }
+    rmSync(home, { recursive: true, force: true });
+  }
 });
