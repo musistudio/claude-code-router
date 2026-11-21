@@ -67,9 +67,20 @@ Use this page to route Codex to a non-OpenAI provider, pin a model, or run separ
   ```
 - **App:** click the play button to open ChatGPT with this profile's model and provider. Reopening the same profile activates the existing window.
 
+## Provider usage in the desktop app
+
 Desktop apps opened from CCR use the official sidebar usage component to show the current model provider's balance or remaining allowance. Switching models updates the provider. Hover to see the provider name, balances, usage, reset times, and update times. Fusion models use their underlying model provider. The indicator reuses CCR's account connectors and cache, checks for updates every minute, and works with media tools disabled.
 
 The provider must support or have an account connector configured. The official details menu reports unavailable data or query failures without treating unknown balances as zero. Balances for separate credentials are shown individually. CCR automatically reconnects to managed windows that remain open after a restart. Older windows without a debugging connection need to be reopened from CCR once.
+
+## Native image generation and editing
+
+1. Add a provider that supports the Images API and returns base64 images. [Add a provider](/en/guides/provider/)
+2. In **Agent Config**, edit the Codex profile and turn on **Native image generation** under advanced settings.
+3. Select the provider and model under **Image generation model**. Choose **Codex default (gpt-image-2)** to use the default model.
+4. Save the profile and reopen Codex from CCR. Request an image or attach an image and ask Codex to edit it.
+
+The Grok Imagine integration rejects requests for transparent backgrounds and GIF output. Choose a different image model for those requests.
 
 ## Multi-instance
 

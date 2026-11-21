@@ -127,6 +127,8 @@ CCR supports OpenAI Chat / Responses, Anthropic Messages, Gemini Generate Conten
 
 ## Quick Start
 
+In **v3.1.6**, the Codex desktop app shows the current model provider's balance and usage. Codex profiles can route native image generation and editing through a configured Images API provider. [Release notes](https://github.com/musistudio/claude-code-router/releases/tag/v3.1.6) · [Codex setup](https://ccrdesk.top/en/configuration/agents/codex/)
+
 ### Desktop app (recommended)
 
 1. <details open>
@@ -183,7 +185,7 @@ Your agent is now connected to CCR. To add conditions, retries, request rewrites
 The npm CLI requires Node.js 22 or newer. It starts the same gateway and a browser-based management UI without Electron:
 
 ```sh
-npm install -g @musistudio/claude-code-router
+npm install -g @musistudio/claude-code-router@latest
 ccr ui
 ```
 
