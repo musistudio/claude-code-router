@@ -17,7 +17,7 @@ In desktop/CLI deployments, management and the model gateway use different ports
 
 ## Install the desktop app
 
-1. Open [GitHub Releases](https://github.com/musistudio/claude-code-router/releases).
+1. Open the [latest desktop release](https://github.com/musistudio/claude-code-router/releases/latest).
 2. Download `.dmg`/`.zip` for macOS, `.exe` for Windows, or `.AppImage` for Linux.
 3. Install and open **Claude Code Router**.
 4. Add a provider/model, create a client key under **API Keys**, then click **Start** under **Server**.
@@ -26,10 +26,10 @@ When Server shows Running, the model gateway defaults to `http://127.0.0.1:3456`
 
 ## Install the npm CLI
 
-Node.js 22 or newer is required:
+Use Node.js 22 or newer to install or upgrade to the latest CLI release.
 
 ```sh
-npm install -g @musistudio/claude-code-router
+npm install -g @musistudio/claude-code-router@latest
 ccr ui
 ```
 

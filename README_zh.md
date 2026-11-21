@@ -127,6 +127,8 @@ CCR 支持 OpenAI Chat / Responses、Anthropic Messages、Gemini Generate Conten
 
 ## 快速开始
 
+**v3.1.6** 支持在 Codex 桌面应用中查看当前模型供应商的余额和用量，也可以为 Codex 配置档案指定原生生图和图片编辑所用的供应商与模型。 [发行说明](https://github.com/musistudio/claude-code-router/releases/tag/v3.1.6) · [Codex 配置指南](https://ccrdesk.top/configuration/agents/codex/)
+
 ### 桌面端（推荐）
 
 1. <details open>
@@ -183,7 +185,7 @@ CCR 支持 OpenAI Chat / Responses、Anthropic Messages、Gemini Generate Conten
 npm CLI 要求 Node.js 22 或更高版本。无需 Electron，也能启动相同的模型网关与浏览器管理界面：
 
 ```sh
-npm install -g @musistudio/claude-code-router
+npm install -g @musistudio/claude-code-router@latest
 ccr ui
 ```
 
