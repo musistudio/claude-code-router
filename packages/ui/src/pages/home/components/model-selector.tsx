@@ -34,16 +34,22 @@ import { PopoverPortal } from "@/components/ui/popover";
 const useClientLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 export function ModelSelector({
+  ariaLabel,
+  defaultOption,
   onChange,
   placeholder,
   providers,
   value,
+  valueUnavailable = false,
   virtualModelProfiles = []
 }: {
+  ariaLabel?: string;
+  defaultOption?: string;
   onChange: (value: string) => void;
   placeholder?: string;
   providers: GatewayProviderConfig[];
   value: string;
+  valueUnavailable?: boolean;
   virtualModelProfiles?: VirtualModelProfileConfig[];
 }) {
   const t = useAppText();
@@ -73,7 +79,9 @@ export function ModelSelector({
   const filteredModels = activeProvider
     ? activeProvider.models.filter((model) => profileModelMatchesQuery(activeProvider.name, model, query, profileModelOptionDisplayName(activeProvider, model)))
     : [];
-  const displayValue = profileModelDisplayValue(value, parsedValue, providers, placeholder, virtualModelProfiles);
+  const displayValue = profileModelDisplayValue(value, parsedValue, providers, defaultOption ?? placeholder, virtualModelProfiles);
+  const displayLabel = valueUnavailable ? `${displayValue} (${t("Unavailable")})` : displayValue;
+  const showDefaultOption = defaultOption?.toLowerCase().includes(query.trim().toLowerCase());
 
   useClientLayoutEffect(() => {
     if (!open) {
@@ -99,7 +107,7 @@ export function ModelSelector({
       const placement = below < 240 && above > below ? "above" : "below";
       const availableHeight = Math.max(144, placement === "above" ? above : below);
       const maxHeight = Math.min(360, availableHeight);
-      const gridHeight = Math.max(128, Math.min(280, maxHeight - 58));
+      const gridHeight = Math.max(showDefaultOption ? 72 : 128, Math.min(280, maxHeight - (showDefaultOption ? 98 : 58)));
       setPopoverLayout({
         gridHeight,
         left,
@@ -117,7 +125,7 @@ export function ModelSelector({
       window.removeEventListener("resize", updatePopoverLayout);
       window.removeEventListener("scroll", updatePopoverLayout, true);
     };
-  }, [open]);
+  }, [open, showDefaultOption]);
 
   useEffect(() => {
     if (!open) {
@@ -162,10 +170,11 @@ export function ModelSelector({
     setOpen(false);
     setQuery("");
     setActiveProviderName(providerName);
+    rootRef.current?.querySelector<HTMLElement>("[aria-haspopup]")?.focus({ preventScroll: true });
   }
 
-  function openSelector() {
-    setOpen(true);
+  function toggleSelector() {
+    setOpen(!open);
     setQuery("");
     setActiveProviderName(parsedValue.provider || providerOptions[0]?.name || "");
   }
@@ -188,13 +197,15 @@ export function ModelSelector({
         )}
       >
         <button
+          aria-description={ariaLabel ? displayLabel : undefined}
           aria-expanded={open}
           aria-haspopup="dialog"
+          aria-label={ariaLabel}
           className="min-w-0 flex-1 truncate text-left outline-none"
-          onClick={openSelector}
+          onClick={toggleSelector}
           type="button"
         >
-          {displayValue}
+          {displayLabel}
         </button>
         {value.trim() ? (
           <button
@@ -210,7 +221,7 @@ export function ModelSelector({
         <button
           aria-label={open ? t("Collapse") : t("Expand")}
           className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
-          onClick={openSelector}
+          onClick={toggleSelector}
           title={open ? t("Collapse") : t("Expand")}
           type="button"
         >
@@ -233,7 +244,7 @@ export function ModelSelector({
                   : { top: `${popoverLayout.offset}px` })
               }}
             >
-              <PopoverContent className="w-full overflow-hidden p-2" ref={panelRef}>
+              <PopoverContent aria-label={ariaLabel ?? t("Search models")} className="w-full overflow-hidden p-2" ref={panelRef} role="dialog">
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -245,6 +256,24 @@ export function ModelSelector({
                     value={query}
                   />
                 </div>
+
+                {showDefaultOption ? (
+                  <button
+                    className={cn(
+                      "mt-2 flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md px-2 text-left text-[12px] outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/25",
+                      !value && "bg-primary/10 text-primary"
+                    )}
+                    onClick={() => {
+                      onChange("");
+                      setOpen(false);
+                      rootRef.current?.querySelector<HTMLElement>("[aria-haspopup]")?.focus({ preventScroll: true });
+                    }}
+                    type="button"
+                  >
+                    <span className="truncate">{defaultOption}</span>
+                    {!value ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
+                  </button>
+                ) : null}
 
                 {providerOptions.length === 0 ? (
                   <div className="mt-2 rounded-md border border-dashed border-border bg-muted/30 px-3 py-8 text-center text-[12px] text-muted-foreground">

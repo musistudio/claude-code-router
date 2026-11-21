@@ -186,6 +186,8 @@ export type AddProfileDraft = {
   botHandoffPhoneWifiTargets: string;
   botPlatform: string;
   claudeSettingsText: string;
+  codexNativeImageGeneration: boolean;
+  codexNativeImageModel: string;
   configFile: string;
   envRows: KeyValueDraftRow[];
   fableModel: string;

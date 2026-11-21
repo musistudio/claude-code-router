@@ -10,7 +10,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const readline = require("node:readline");
-const { pathToFileURL } = require("node:url");
+const { fileURLToPath, pathToFileURL } = require("node:url");
 
 const VERSION = "3.0.0";
 const DEFAULT_MODEL = "claude-sonnet-4-6";
@@ -364,13 +364,16 @@ async function runCodexCliMiddleware(args) {
     if (!child.stdin.destroyed) child.stdin.end();
   });
 
+  const imagePreviewFilter = runtimeAgent === "codex" && boolEnv("CCR_CODEX_NATIVE_IMAGE_GENERATION") &&
+    normalizeProfileSurface(nonEmptyEnv("CCR_PROFILE_SURFACE")) !== "cli" ? createNativeImagePreviewFilter() : undefined;
   const stdoutRl = readline.createInterface({ input: child.stdout, crlfDelay: Infinity, terminal: false });
   stdoutRl.on("line", (line) => {
     cleanupAuthBootstrap();
     const rewritten = rewriteCodexStdoutLine(line, requestMap);
     botBridge().handleJsonRpcLine(rewritten);
     if (!shouldSuppressBotBridgeLine(rewritten)) {
-      process.stdout.write(rewritten + "\n");
+      const displayed = imagePreviewFilter ? imagePreviewFilter(rewritten) : rewritten;
+      if (displayed !== undefined) process.stdout.write(displayed + "\n");
     }
   });
 
@@ -386,8 +389,11 @@ function supervisedCodexAppServerLaunch(runtimeAgent, realCli, realArgs) {
   }
   const configured = nonEmptyEnv("CCR_SIGNED_CODEX_SUPERVISOR_NODE_PATH") ||
     nonEmptyEnv("CODEXL_SIGNED_CODEX_SUPERVISOR_NODE_PATH");
-  const bundled = path.join(path.dirname(realCli), "cua_node", "bin", "node");
-  const node = [configured, bundled].find(isExecutableFile);
+  // The new CLI shim and binary are nested under Resources/codex-cli, but Node stays in Resources.
+  const resourcesDir = path.resolve(realCli).match(/^(.*\.app\/Contents\/Resources)\/codex-cli\//)?.[1];
+  const bundled = resourcesDir && path.join(resourcesDir, "cua_node", "bin", "node");
+  const adjacent = path.join(path.dirname(realCli), "cua_node", "bin", "node");
+  const node = [configured, bundled, adjacent].find(isExecutableFile);
   if (!node) {
     return { command: realCli, args: realArgs };
   }
@@ -403,6 +409,7 @@ function supervisedCodexAppServerLaunch(runtimeAgent, realCli, realArgs) {
 function isExecutableFile(file) {
   if (!file) return false;
   try {
+    fs.accessSync(file, fs.constants.X_OK);
     return fs.statSync(file).isFile();
   } catch {
     return false;
@@ -657,6 +664,128 @@ function rewriteCodexStdoutLine(line, requestMap) {
     return line;
   }
   return JSON.stringify(value);
+}
+
+function createNativeImagePreviewFilter() {
+  const turns = new Map();
+  return function filterLine(line) {
+    let value;
+    try { value = JSON.parse(line); } catch { return line; }
+    const params = value?.params || {};
+    const key = turnCaptureKey(params);
+    const item = params.item;
+    const preview = value?.method === "item/completed" && nativeImagePreviewPath(item);
+    if (key && preview) {
+      if (!turns.has(key)) turns.set(key, { paths: new Set(), pending: new Map() });
+      turns.get(key).paths.add(preview);
+      return line;
+    }
+
+    const turn = turns.get(key);
+    if (turn && value.method === "item/agentMessage/delta" && typeof params.delta === "string") {
+      const result = filterNativeImageEmbeds((turn.pending.get(params.itemId) || "") + params.delta, turn.paths, false);
+      if (result.pending) turn.pending.set(params.itemId, result.pending);
+      else turn.pending.delete(params.itemId);
+      if (result.text === params.delta) return line;
+      if (!result.text) return undefined;
+      params.delta = result.text;
+      return JSON.stringify(value);
+    }
+    if (turn && value.method === "item/completed" && item?.type === "agentMessage") {
+      turn.pending.delete(item.id);
+      return filterNativeImageMessage(item, turn.paths) ? JSON.stringify(value) : line;
+    }
+    if (value?.method === "turn/completed") {
+      turns.delete(key);
+      return filterNativeImageTurnItems(params.turn?.items, turn?.paths) ? JSON.stringify(value) : line;
+    }
+
+    // Also filter hydrated turns when the response includes the matching preview.
+    const result = value?.result;
+    const history = result && [result.thread?.turns, result.initialTurnsPage?.data, result.data];
+    let changed = false;
+    for (const page of history || []) {
+      if (!Array.isArray(page)) continue;
+      const entriesByTurn = new Map();
+      for (const entry of page) {
+        changed = filterNativeImageTurnItems(entry?.items) || changed;
+        if (!entry?.turnId || !entry.item || entry.outputDeferred) continue;
+        if (!entriesByTurn.has(entry.turnId)) entriesByTurn.set(entry.turnId, []);
+        entriesByTurn.get(entry.turnId).push(entry.item);
+      }
+      for (const items of entriesByTurn.values()) changed = filterNativeImageTurnItems(items) || changed;
+    }
+    return changed ? JSON.stringify(value) : line;
+  };
+}
+
+function filterNativeImageTurnItems(items, livePaths) {
+  if (!Array.isArray(items)) return false;
+  const paths = livePaths || new Set(items.map(nativeImagePreviewPath).filter(Boolean));
+  if (!paths.size) return false;
+  let changed = false;
+  for (const item of items) changed = filterNativeImageMessage(item, paths) || changed;
+  return changed;
+}
+
+function filterNativeImageMessage(item, paths) {
+  if (item?.type !== "agentMessage" || typeof item.text !== "string") return false;
+  const filtered = filterNativeImageEmbeds(item.text, paths, true).text;
+  if (filtered === item.text) return false;
+  item.text = filtered.trim() ? filtered : "";
+  return true;
+}
+
+function nativeImagePreviewPath(item) {
+  return item?.type === "imageGeneration" && item.status === "completed" &&
+    typeof item.savedPath === "string" ? normalizeNativeImagePath(item.savedPath) : "";
+}
+
+function filterNativeImageEmbeds(text, paths, complete) {
+  const embed = /^!\[(?:\\.|[^\]\\\r\n])*\]\([ \t]*(?:<([^>\r\n]+)>|((?:\\[()]|[^()\r\n])+?))(?:[ \t]+(?:"[^"\r\n]*"|'[^'\r\n]*'))?[ \t]*\)/;
+  const label = /^!\[(?:\\.|[^\]\\\r\n])*\]/;
+  let output = "";
+  let rest = text;
+  for (;;) {
+    const marker = rest.indexOf("![");
+    if (marker < 0) {
+      const split = !complete && rest.endsWith("!") ? rest.length - 1 : rest.length;
+      return { text: output + rest.slice(0, split), pending: rest.slice(split) };
+    }
+    output += rest.slice(0, marker);
+    rest = rest.slice(marker);
+    const match = embed.exec(rest);
+    if (match) {
+      const escapes = output.match(/\\+$/)?.[0].length || 0;
+      if (escapes % 2 || !paths.has(nativeImageEmbedPath(match[1] || match[2]))) output += match[0];
+      rest = rest.slice(match[0].length);
+      continue;
+    }
+    const afterLabel = label.exec(rest)?.[0].length;
+    // An inline image can be split across arbitrarily small RPC deltas.
+    if (!complete && rest.length < 8192 && !/[\r\n]/.test(rest) &&
+      (!afterLabel || rest.length === afterLabel || rest[afterLabel] === "(")) {
+      return { text: output, pending: rest };
+    }
+    output += "!";
+    rest = rest.slice(1);
+  }
+}
+
+function nativeImageEmbedPath(destination) {
+  const target = destination.trim().replace(/\\([()])/g, "$1");
+  try {
+    return normalizeNativeImagePath(target.startsWith("file://") ? fileURLToPath(target) : decodeURIComponent(target));
+  } catch {
+    return normalizeNativeImagePath(target);
+  }
+}
+
+function normalizeNativeImagePath(file) {
+  if (!path.isAbsolute(file)) return "";
+  const normalized = path.normalize(file);
+  // Codex resolves the macOS temp directory, while Markdown can use its short path.
+  return process.platform === "darwin" ? normalized.replace(/^\/private(?=\/(?:var|tmp)\/)/, "") : normalized;
 }
 
 function rewriteCodexStdinLine(line) {

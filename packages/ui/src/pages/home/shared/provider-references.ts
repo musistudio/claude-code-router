@@ -48,9 +48,10 @@ export function renameProviderReferences(config: AppConfig, previousName: string
   rules(next.Router.rules);
   const modelFields = ["model", "fableModel", "haikuModel", "opusModel", "sonnetModel", "smallFastModel"];
   fields(next.profile.claudeCode, modelFields);
-  fields(next.profile.codex, ["model"]);
+  fields(next.profile.codex, ["model", "codexNativeImageModel"]);
   for (const profile of next.profile.profiles) {
     fields(profile, modelFields, ["availableModels"]);
+    if (profile.agent === "codex") fields(profile, ["codexNativeImageModel"]);
     if (profile.routing) rules(profile.routing.rules);
   }
   for (const profile of next.virtualModelProfiles ?? []) {

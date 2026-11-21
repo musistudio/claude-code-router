@@ -16,6 +16,55 @@ test("generated Codex CLI middleware runtime is valid JavaScript", () => {
   execFileSync(process.execPath, ["--check", file], { stdio: "pipe" });
 });
 
+test("Codex App middleware displays a native image preview only once", { skip: process.platform === "win32" }, (t) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "ccr-codex-image-preview-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const runtime = writeRuntimeScript(root);
+  const previewPath = path.join(root, "native image.png");
+  const preview = { type: "imageGeneration", id: "image", status: "completed", savedPath: path.join(realpathSync(root), "native image.png"), image: "image-bytes" };
+  const duplicate = `![image](<${previewPath}>)`;
+  const other = "![other](https://example.test/image.png)";
+  const final = { type: "agentMessage", id: "answer", phase: "finalAnswer", text: `Done ${duplicate}\n${other}` };
+  const notify = (method, params, turnId = "turn") => ({ method, params: { threadId: "thread", turnId, ...params } });
+  const messages = [
+    notify("item/completed", { item: preview }),
+    ...["Done !", "[image](<", previewPath, ">)\n", other].map(delta => notify("item/agentMessage/delta", { itemId: final.id, delta })),
+    notify("item/completed", { item: final }),
+    notify("turn/completed", { turn: { id: "turn", items: [final] } }),
+    notify("item/completed", { item: final }, "another-turn"),
+    { id: 5, result: { data: [{ id: "turn", items: [preview, final] }] } }
+  ];
+  const fakeCli = path.join(root, "codex");
+  writeFileSync(fakeCli, `#!/bin/sh\ncat <<'CCR_TEST_EVENTS'\n${messages.map(item => JSON.stringify(item)).join("\n")}\nCCR_TEST_EVENTS\n`, { mode: 0o700 });
+  for (const enabled of ["1", "0"]) {
+    const result = spawnSync(process.execPath, [runtime, "app-server"], {
+      encoding: "utf8",
+      timeout: 10000,
+      env: {
+        ...process.env,
+        CCR_REAL_CODEX_CLI_PATH: fakeCli,
+        CCR_PROFILE_SURFACE: "app",
+        CCR_PROFILE_SCOPE: "global",
+        CCR_CODEX_NATIVE_IMAGE_GENERATION: enabled
+      }
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const output = result.stdout.trim().split("\n").map(JSON.parse);
+    assert.deepEqual(output[0].params.item, preview);
+    if (enabled === "0") {
+      assert.deepEqual(output, messages);
+      continue;
+    }
+    const expected = `Done \n${other}`;
+    const deltas = output.filter(event => event.method === "item/agentMessage/delta");
+    assert.equal(deltas.map(event => event.params.delta).join(""), expected);
+    assert.equal(output.find(event => event.params?.item?.id === final.id).params.item.text, expected);
+    assert.equal(output.find(event => event.method === "turn/completed").params.turn.items[0].text, expected);
+    assert.equal(output.find(event => event.params?.turnId === "another-turn").params.item.text, final.text);
+    assert.deepEqual(output.at(-1).result.data[0].items, [preview, { ...final, text: expected }]);
+  }
+});
+
 test("#1851 Pi dispatch consumes only the profile selector and preserves the prompt", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-pi-dispatch-"));
   try {
@@ -95,48 +144,56 @@ test("generated Codex CLI middleware materializes bundled Bot Gateway stdio runn
   assert.equal(readFileSync(expectedRunner, "utf8"), "#!/usr/bin/env node\nconsole.log('ok');\n");
 });
 
-test("Codex app-server uses ChatGPT's bundled Node as a signed supervisor", { skip: process.platform !== "darwin" }, () => {
+test("Codex app-server uses ChatGPT's bundled Node across macOS app layouts", { skip: process.platform !== "darwin" }, (t) => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-signed-supervisor-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const runtimeFile = writeRuntimeScript(dir);
   const resourcesDir = path.join(dir, "ChatGPT.app", "Contents", "Resources");
-  const fakeCodex = path.join(resourcesDir, "codex");
   const bundledNode = path.join(resourcesDir, "cua_node", "bin", "node");
   const observedFile = path.join(dir, "supervisor-args.txt");
   mkdirSync(path.dirname(bundledNode), { recursive: true });
-  writeFileSync(fakeCodex, [
-    "#!/bin/sh",
-    "IFS= read -r request",
-    "printf '%s\\n' '{\"id\":1,\"result\":{\"supervised\":true}}'",
-    ""
-  ].join("\n"));
   writeFileSync(bundledNode, [
     "#!/bin/sh",
     "printf '%s\\n' \"$@\" > \"$CCR_FAKE_SUPERVISOR_ARGS\"",
     "exec \"$CCR_TEST_NODE\" \"$@\"",
     ""
-  ].join("\n"));
-  chmodSync(fakeCodex, 0o700);
-  chmodSync(bundledNode, 0o700);
+  ].join("\n"), { mode: 0o700 });
 
-  const result = spawnSync(process.execPath, [runtimeFile, "app-server"], {
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      CCR_CODEX_REMOTE_FRONTEND_MODE: "app",
-      CCR_FAKE_SUPERVISOR_ARGS: observedFile,
-      CCR_PROFILE_SCOPE: "global",
-      CCR_REAL_CODEX_CLI_PATH: fakeCodex,
-      CCR_TEST_NODE: process.execPath
-    },
-    input: JSON.stringify({ id: 1, method: "probe/supervisor", params: {} }) + "\n"
-  });
+  for (const cli of ["codex", "codex-cli/bin/codex", "codex-cli/CodexCLI.app/Contents/MacOS/codex"]) {
+    const fakeCodex = path.join(resourcesDir, cli);
+    mkdirSync(path.dirname(fakeCodex), { recursive: true });
+    writeFileSync(fakeCodex, [
+      "#!/bin/sh",
+      "IFS= read -r request",
+      "printf '%s\\n' '{\"id\":1,\"result\":{\"supervised\":true}}'",
+      ""
+    ].join("\n"), { mode: 0o700 });
+    rmSync(observedFile, { force: true });
 
-  assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(JSON.parse(result.stdout.trim()).result, { supervised: true });
-  const observed = readFileSync(observedFile, "utf8");
-  assert.match(observed, /^-e\n/);
-  assert.ok(observed.includes(fakeCodex));
-  assert.ok(observed.includes("app-server"));
+    const result = spawnSync(process.execPath, [runtimeFile, "app-server"], {
+      encoding: "utf8",
+      timeout: 10_000,
+      env: {
+        ...process.env,
+        CCR_CODEX_REMOTE_FRONTEND_MODE: "app",
+        CCR_FAKE_SUPERVISOR_ARGS: observedFile,
+        CCR_PROFILE_SCOPE: "global",
+        CCR_REAL_CODEX_CLI_PATH: fakeCodex,
+        CCR_SIGNED_CODEX_SUPERVISOR_NODE_PATH: "",
+        CODEXL_SIGNED_CODEX_SUPERVISOR_NODE_PATH: "",
+        CCR_TEST_NODE: process.execPath
+      },
+      input: JSON.stringify({ id: 1, method: "probe/supervisor", params: {} }) + "\n"
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout.trim()).result, { supervised: true });
+    assert.ok(existsSync(observedFile), `${cli} did not use the bundled Node`);
+    const observed = readFileSync(observedFile, "utf8");
+    assert.match(observed, /^-e\n/);
+    assert.ok(observed.includes(fakeCodex));
+    assert.ok(observed.includes("app-server"));
+  }
 });
 
 test("Codex runtime ignores middleware recursion and uses the bundled real CLI fallback", { skip: process.platform === "win32" }, () => {

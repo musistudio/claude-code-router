@@ -1034,10 +1034,30 @@ export function AddProfileForm({
                       {validation.allowedModels ? <ProfileFieldHint>{t(validation.allowedModels)}</ProfileFieldHint> : null}
                     </Field>
                     {draft.agent === "codex" ? (
-                      <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
-                        <span className="text-[12px] font-medium">{t("Show all sessions")}</span>
-                        <Toggle checked={draft.showAllSessions} onChange={(showAllSessions) => onChange({ showAllSessions })} />
-                      </div>
+                      <>
+                        <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
+                          <span className="text-[12px] font-medium">{t("Show all sessions")}</span>
+                          <Toggle checked={draft.showAllSessions} onChange={(showAllSessions) => onChange({ showAllSessions })} />
+                        </div>
+                        <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
+                          <div className="min-w-0">
+                            <div className="text-[12px] font-medium">{t("Native image generation")}</div>
+                            <div className="text-[11px] text-muted-foreground">{t("Uses a configured Images API provider.")}</div>
+                          </div>
+                          <Toggle
+                            ariaLabel={t("Native image generation")}
+                            checked={draft.codexNativeImageGeneration}
+                            onChange={(codexNativeImageGeneration) => onChange({ codexNativeImageGeneration })}
+                          />
+                        </div>
+                        {draft.codexNativeImageGeneration ? (
+                          <CodexImageModelField
+                            onChange={(codexNativeImageModel) => onChange({ codexNativeImageModel })}
+                            providers={providers}
+                            value={draft.codexNativeImageModel}
+                          />
+                        ) : null}
+                      </>
                     ) : null}
                     {draft.agent === "claude-code" || draft.agent === "codex" ? (
                       <div className="sm:col-span-2">
@@ -1810,6 +1830,44 @@ function createProfileRoutingRuleDraftFromRule(rule: RouterRule): AddRoutingRule
         enabled: rule.enabled,
         name: rule.name
       };
+}
+
+function CodexImageModelField({ onChange, providers, value }: {
+  onChange: (value: string) => void;
+  providers: GatewayProviderConfig[];
+  value: string;
+}) {
+  const t = useAppText();
+  const imageProviders = useMemo(() => providers
+    .filter((provider) => provider.enabled !== false && provider.capabilities?.some(({ type }) => type === "openai_image_generations"))
+    .map((provider) => ({
+      ...provider,
+      models: [...provider.models].sort((left, right) => imageModelPriority(right) - imageModelPriority(left))
+    })), [providers]);
+  const unavailable = Boolean(value) && !imageProviders.some((provider) =>
+    provider.models.some((model) => `${provider.name}/${model}` === value)
+  );
+
+  return (
+    <Field className="sm:col-span-2" label={t("Image generation model")}>
+      <ModelSelector
+        ariaLabel={t("Image generation model")}
+        defaultOption={t("Codex default (gpt-image-2)")}
+        onChange={onChange}
+        providers={imageProviders}
+        value={value}
+        valueUnavailable={unavailable}
+      />
+      <div className="text-[11px] leading-4 text-muted-foreground">
+        {t("Applies to Codex image generation and editing. The selected model must return base64 images.")}
+      </div>
+    </Field>
+  );
+}
+
+function imageModelPriority(model: string): number {
+  const id = model.split("/").pop() ?? model;
+  return Number(/^(?:gpt-image|grok-imagine-image|dall-e|imagen|flux|seedream|qwen-image|nano-banana)/i.test(id));
 }
 
 function ProfileFieldHint({ children }: { children: ReactNode }) {

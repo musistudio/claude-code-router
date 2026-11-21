@@ -88,7 +88,8 @@ import {
   providerCredentialInternalName,
   providerProtocolForClientProtocol,
   sanitizeHeaderValue,
-  sortProviderCredentialsForConfig
+  sortProviderCredentialsForConfig,
+  toCoreGatewayProviders
 } from "@ccr/core/providers/runtime-topology";
 
 type GatewayPluginFactoryInput = {
@@ -215,6 +216,7 @@ export async function createGatewayPlugin(input: GatewayPluginFactoryInput = {})
   });
   const openRouterDiscountContext = openRouterDiscountTransformContext(config);
   const liveTokenRatePublisher = coreGatewayLiveTokenRatePublisherFor(config.trayShowTokenRate);
+  const grokImageRequests = new WeakSet<GatewayPluginHttpRequest>();
 
   return {
     httpRoutes: [{
@@ -361,9 +363,12 @@ export async function createGatewayPlugin(input: GatewayPluginFactoryInput = {})
     requestHooks: [{
       key: "ccr-public-auth-context",
       beforeAuth: async (requestInput: GatewayRequestHookInput) => {
+        const request = requestInput.request;
+        const headers = request?.headers;
+        let apiKey: ApiKeyConfig | undefined;
         if (publicGatewayMode) {
-          stripUntrustedCcrRouteHeaders(requestInput.request?.headers);
-          const authorization = await resolvePublicGatewayAuth(config, requestInput.request?.headers, {
+          stripUntrustedCcrRouteHeaders(headers);
+          const authorization = await resolvePublicGatewayAuth(config, headers, {
             coreAuthToken,
             publicAuthKeys,
             rejectMissing: false
@@ -375,11 +380,33 @@ export async function createGatewayPlugin(input: GatewayPluginFactoryInput = {})
               error: authorization.error
             };
           }
-          setApiKeyAuthContextHeaders(requestInput.request?.headers, authorization.apiKey);
-          return undefined;
+          apiKey = authorization.apiKey;
+        } else if (isCoreGatewayRequest(headers, coreAuthToken)) {
+          const authId = readHeader(headers, "x-auth-api-key-id");
+          apiKey = config.APIKEYS.find((key) => key.id === authId);
+        } else {
+          apiKey = await resolveApiKey(config, headers);
         }
-        const apiKey = await resolveApiKey(config, requestInput.request?.headers);
-        setApiKeyAuthContextHeaders(requestInput.request?.headers, apiKey);
+        setApiKeyAuthContextHeaders(headers, apiKey);
+
+        if (!request || !headers || !isCodexNativeImageRequest(request)) return undefined;
+        const profile = profileForApiKey(config, apiKey);
+        const selector = profile?.codexNativeImageModel?.trim();
+        if (profile?.agent !== "codex" || !profile.codexNativeImageGeneration || !selector) return undefined;
+
+        const selected = parseProviderModelSelector(selector) && modelRegistryForConfig(config).resolveProviderModel(selector);
+        const targets = selected ? toCoreGatewayProviders(selected.provider).filter((provider) =>
+          provider.type === "openai_image_generations" && provider.models.includes(selected.model)
+        ) : [];
+        if (!selected || targets.length === 0) {
+          return { ok: false, status: 400, error: `Codex image model "${selector}" is unavailable. Choose a model from an enabled Images API provider.` };
+        }
+        headers["x-target-model"] = selected.model.includes("/") ? `openai/${selected.model}` : selected.model;
+        headers["x-target-providers"] = targets.map((target) => target.name).join(",");
+        delete headers["x-target-provider"];
+        if (selected.model.split("/").pop()?.toLowerCase().startsWith("grok-imagine-image")) {
+          grokImageRequests.add(request);
+        }
         return undefined;
       }
     }],
@@ -396,6 +423,29 @@ export async function createGatewayPlugin(input: GatewayPluginFactoryInput = {})
         const encoded = typeof upstream.body === "string" ? JSON.stringify(clean)
           : Buffer.isBuffer(upstream.body) || upstream.body instanceof Uint8Array ? Buffer.from(JSON.stringify(clean)) : clean;
         return { ok: true, value: clean === body ? upstream : { ...upstream, body: encoded } };
+      }
+    }, {
+      key: "ccr-codex-grok-image-compatibility",
+      transformRequest: ({ request, upstreamRequest }: { request: GatewayPluginHttpRequest; upstreamRequest: UpstreamRequest }) => {
+        if (!grokImageRequests.has(request)) return { ok: true, value: upstreamRequest };
+        const { background, output_format, images, quality, size, ...body } = readJsonObjectBody(upstreamRequest.body);
+        if (background === "transparent" || output_format === "gif") {
+          return { ok: false, error: "Grok Imagine does not support transparent backgrounds or GIFs in Codex. Select another image model for this request." };
+        }
+        const references = Array.isArray(images) ? images.map((image: unknown) =>
+          isRecord(image) ? { type: "image_url", url: image.image_url } : image
+        ) : [];
+        return { ok: true, value: { ...upstreamRequest, body: {
+          ...body,
+          ...(references.length === 1 ? { image: references[0] } : references.length > 1 ? { images: references } : {}),
+          response_format: "b64_json"
+        } } };
+      },
+      transformResponse: ({ request, upstreamPayload }: { request: GatewayPluginHttpRequest; upstreamPayload: unknown }) => {
+        if (!grokImageRequests.has(request) || !isRecord(upstreamPayload) || upstreamPayload.created != null) {
+          return { ok: true, value: upstreamPayload };
+        }
+        return { ok: true, value: { ...upstreamPayload, created: Math.floor(Date.now() / 1000) } };
       }
     }],
     requestTransforms: [{
@@ -982,6 +1032,12 @@ async function resolveApiKey(
   headers: Record<string, HeaderValue> | undefined
 ): Promise<ApiKeyConfig | undefined> {
   return resolveApiKeyFromHeaders(headers ?? {}, config, { includePersisted: false });
+}
+
+function isCodexNativeImageRequest(request: GatewayPluginHttpRequest): boolean {
+  return request.method === "POST" &&
+    /^\/v1\/images\/(?:generations|edits)\/?$/.test(requestPath(request.url ?? "/")) &&
+    Boolean(readHeader(request.headers, "x-codex-image-turn-id")?.trim());
 }
 
 async function routeWithRouter(

@@ -224,7 +224,7 @@ export class CodexAppMediaPreviewBridge {
   }
 }
 
-async function waitForCodexDevToolsPort(userDataDir: string, timeoutMs: number, stopped: () => boolean): Promise<number> {
+export async function waitForCodexDevToolsPort(userDataDir: string, timeoutMs: number, stopped: () => boolean): Promise<number> {
   const file = path.join(userDataDir, codexDevToolsActivePortFile);
   const deadline = Date.now() + timeoutMs;
   let lastError: unknown;
@@ -242,7 +242,7 @@ async function waitForCodexDevToolsPort(userDataDir: string, timeoutMs: number, 
   throw new Error(`Codex App DevTools port was not available${lastError ? `: ${redactBridgeError(lastError)}` : "."}`);
 }
 
-async function waitForCodexPageTarget(port: number, timeoutMs: number, stopped: () => boolean): Promise<DevToolsTarget> {
+export async function waitForCodexPageTarget(port: number, timeoutMs: number, stopped: () => boolean): Promise<DevToolsTarget> {
   const deadline = Date.now() + timeoutMs;
   let lastError: unknown;
   while (!stopped() && Date.now() < deadline) {

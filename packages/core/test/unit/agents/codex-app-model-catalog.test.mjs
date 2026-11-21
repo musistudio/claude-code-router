@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import {
   codexDesktopAppName,
+  codexAppProfileUserDataDir,
   codexSharedChatGptAuthEnvForTest,
   findInstalledCodexAppExecutable,
   findInstalledWorkbuddyAppExecutable,
@@ -72,6 +73,7 @@ test("ChatGPT model catalog write includes patch bridge capabilities", () => {
     };
 
     const result = writeCodexCompatibleAppModelCatalog(configDir, profile, config);
+    assert.equal(codexAppProfileUserDataDir(configDir, profile), result.userDataDir);
     assert.equal(result.changed, true);
     assert.equal(path.basename(result.file), "ccr-codex-model-catalog.json");
     assert.equal(

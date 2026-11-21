@@ -50,6 +50,8 @@ Use this page to route Codex to a non-OpenAI provider, pin a model, or run separ
 | Codex home | Optional directory | Sets `CODEX_HOME`. Fill only when you need a specific home directory. |
 | Remote frontend mode | `app` / `cli` / `claude-code` | Leave default unless you have a specific reason. |
 | CCR managed compact | Toggle | Lets CCR manage context compaction for this profile. |
+| Native image generation | Advanced settings toggle | Enables Codex image generation through an Images API provider. |
+| Image generation model | Shown when native image generation is enabled | Select a provider and model for image generation and editing. The default follows Codex (`gpt-image-2`). Providers must return base64 images. |
 | Environment variables | Key/value rows | Optional advanced overrides; leave empty for normal use. |
 | Bot | Select a saved Bot (App entry only) | Binds an AgentClaw IM bot to the ChatGPT app entry. |
 
@@ -64,6 +66,10 @@ Use this page to route Codex to a non-OpenAI provider, pin a model, or run separ
   ccr "Codex - Work"
   ```
 - **App:** click the play button to open ChatGPT with this profile's model and provider. Reopening the same profile activates the existing window.
+
+Desktop apps opened from CCR use the official sidebar usage component to show the current model provider's balance or remaining allowance. Switching models updates the provider. Hover to see the provider name, balances, usage, reset times, and update times. Fusion models use their underlying model provider. The indicator reuses CCR's account connectors and cache, checks for updates every minute, and works with media tools disabled.
+
+The provider must support or have an account connector configured. The official details menu reports unavailable data or query failures without treating unknown balances as zero. Balances for separate credentials are shown individually. CCR automatically reconnects to managed windows that remain open after a restart. Older windows without a debugging connection need to be reopened from CCR once.
 
 ## Multi-instance
 

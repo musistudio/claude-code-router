@@ -163,6 +163,9 @@ export class GatewayRequestPipeline {
         stripLocalGatewayAuthHeaders(headers);
         headers["x-auth-api-key-id"] = apiKey.id;
         headers["x-auth-sub"] = apiKey.id;
+      } else {
+        delete headers["x-auth-api-key-id"];
+        delete headers["x-auth-sub"];
       }
       headers["x-client-request-id"] = requestId;
       routeTrace?.capture({
