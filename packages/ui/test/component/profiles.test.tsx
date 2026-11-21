@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { ProfileConfig } from "@ccr/core/contracts/app.ts";
 import { AddProfileForm, DeleteProfileDialog, ProfileView } from "@ccr/ui/pages/home/components/profiles.tsx";
 import { AppI18nContext, appCopy } from "@ccr/ui/pages/home/shared/i18n.tsx";
-import { createProfileDraft, createProfileDraftFromProfile, isProfileDraftSubmittable, normalizeUnknownProfileItem, profileAgentLogoUrl, profileConfigFromDraft, profileDraftWithDetectedAppPath, profileSummaryItems } from "@ccr/ui/pages/home/shared/profiles.ts";
+import { createProfileDraft, createProfileDraftFromProfile, isProfileDraftSubmittable, normalizeUnknownProfileItem, profileAgentLogoUrl, profileConfigFromDraft, profileDraftWithDetectedAppPath, profileModelMatchesQuery, profileModelProviderMatchesQuery, profileSummaryItems } from "@ccr/ui/pages/home/shared/profiles.ts";
 import { appConfigFixture } from "../fixtures/index.ts";
 
 const profile: ProfileConfig = {
@@ -176,6 +176,27 @@ test("AddProfileForm uses Codex-specific enhanced route info for Codex profiles"
   assert.equal(isProfileDraftSubmittable(draft), true);
   assert.equal(profileConfigFromDraft(draft, []).providerId, "claude-code-router");
   assert.equal(profileConfigFromDraft(draft, []).providerName, "Claude Code Router");
+  assert.match(html, /aria-label="Native image generation"/);
+  assert.doesNotMatch(html, /aria-label="Image generation model"/);
+  const selected = { ...draft, codexNativeImageGeneration: true, codexNativeImageModel: "Picture API/custom-image" };
+  const enabledHtml = renderToStaticMarkup(
+    <AddProfileForm botConfigs={[]} draft={selected} error="" mode="edit" onChange={() => undefined}
+      onCreateBot={() => undefined} providers={[
+        { name: "Picture API", models: ["custom-image"], capabilities: [{ type: "openai_image_generations", baseUrl: "https://example.test/v1" }] },
+        { name: "Text API", models: ["chat-only"] }
+      ]} />
+  );
+  assert.match(enabledHtml, /<button[^>]*aria-description="Picture API\/custom-image"[^>]*aria-haspopup="dialog"[^>]*aria-label="Image generation model"/);
+  assert.ok(profileModelProviderMatchesQuery({ name: "Picture API", models: ["custom-image"] }, "picture api/custom"));
+  assert.ok(profileModelMatchesQuery("Picture API", "custom-image", "picture api/custom"));
+  assert.equal(profileModelMatchesQuery("Picture API", "other-model", "picture api/custom"), false);
+  const enabled = profileConfigFromDraft(selected, []);
+  const reopened = createProfileDraftFromProfile(enabled);
+  assert.equal(reopened.codexNativeImageGeneration, true);
+  assert.equal(reopened.codexNativeImageModel, selected.codexNativeImageModel);
+  const disabled = profileConfigFromDraft({ ...selected, codexNativeImageGeneration: false }, [enabled], enabled);
+  assert.equal(createProfileDraftFromProfile(disabled).codexNativeImageGeneration, false);
+  assert.equal(createProfileDraftFromProfile(disabled).codexNativeImageModel, selected.codexNativeImageModel);
 });
 
 test("explicit allowed model lists require a default model", () => {

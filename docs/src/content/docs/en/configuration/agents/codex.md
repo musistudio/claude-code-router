@@ -50,6 +50,8 @@ Use this page to route Codex to a non-OpenAI provider, pin a model, or run separ
 | Codex home | Optional directory | Sets `CODEX_HOME`. Fill only when you need a specific home directory. |
 | Remote frontend mode | `app` / `cli` / `claude-code` | Leave default unless you have a specific reason. |
 | CCR managed compact | Toggle | Lets CCR manage context compaction for this profile. |
+| Native image generation | Advanced settings toggle | Enables Codex image generation through an Images API provider. |
+| Image generation model | Shown when native image generation is enabled | Select a provider and model for image generation and editing. The default follows Codex (`gpt-image-2`). Providers must return base64 images. |
 | Environment variables | Key/value rows | Optional advanced overrides; leave empty for normal use. |
 | Bot | Select a saved Bot (App entry only) | Binds an AgentClaw IM bot to the ChatGPT app entry. |
 

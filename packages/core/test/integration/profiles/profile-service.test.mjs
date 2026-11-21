@@ -1018,6 +1018,61 @@ test("Codex profile launcher bypasses middleware for Browser and Computer Use he
   }
 });
 
+test("Codex native image generation preserves the gateway URL, provider ID and model", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const profileId = "codex-native-image-test";
+  const config = createDefaultAppConfig();
+  config.Providers = [{ api_base_url: "https://example.test/v1", models: ["gpt-6.2-sol"], name: "uuroute" }];
+  config.APIKEYS = [{
+    createdAt: "2026-01-01T00:00:00.000Z",
+    id: `profile:${profileId}`,
+    key: "ccr-native-image-test",
+    name: "Profile: Codex Native Image Test"
+  }];
+  config.profile.profiles = [{
+    agent: "codex",
+    codexNativeImageGeneration: true,
+    codexNativeImageModel: "Image provider/custom-image",
+    enabled: true,
+    id: profileId,
+    model: "uuroute/gpt-6.2-sol",
+    name: "Codex Native Image Test",
+    providerId: "test-router",
+    providerName: "Custom Router Name",
+    scope: "ccr"
+  }];
+  await replacePersistedAppConfig(config);
+  const loaded = await loadAppConfig();
+  assert.equal(loaded.profile.profiles[0].codexNativeImageGeneration, true);
+  assert.equal(loaded.profile.profiles[0].codexNativeImageModel, "Image provider/custom-image");
+
+  const configFile = path.join(CONFIGDIR, "profiles", profileId, "codex", "config.toml");
+  const enabled = await applyProfileFixture({ ...loaded, APIKEYS: config.APIKEYS });
+  assert.equal(enabled.clients[0].ok, true);
+  const contents = readFileSync(configFile, "utf8");
+  assert.match(contents, /model_provider = "test-router"/);
+  assert.match(contents, /model = "uuroute\/gpt-6\.2-sol"/);
+  assert.match(contents, /\[model_providers\.test-router\]\nname = "Custom Router Name"/);
+  assert.ok(contents.includes(`base_url = "http://127.0.0.1:${loaded.gateway.port}/v1"`));
+  assert.match(contents, /experimental_bearer_token = "ccr-native-image-test"/);
+  assert.match(contents, /http_headers = \{ x-openai-actor-authorization = "ccr-native-image-generation" \}/);
+  const launcher = path.join(CONFIGDIR, "bin", `ccr-codex-cli-stdio-${profileId}${process.platform === "win32" ? ".cmd" : ""}`);
+  assert.match(readFileSync(launcher, "utf8"), /CCR_CODEX_NATIVE_IMAGE_GENERATION='?1/);
+
+  writeFileSync(configFile, contents.replace(/http_headers = .*\n/, "") + '\n[model_providers."test-router".http_headers]\nx-test = "keep"\n');
+  await applyProfileFixture({ ...loaded, APIKEYS: config.APIKEYS });
+  const withCustomHeaders = readFileSync(configFile, "utf8");
+  assert.match(withCustomHeaders, /http_headers\]\nx-openai-actor-authorization = "ccr-native-image-generation"\nx-test = "keep"/);
+  assert.doesNotMatch(withCustomHeaders, /http_headers = \{/);
+
+  loaded.profile.profiles[0].codexNativeImageGeneration = false;
+  const disabled = await applyProfileFixture({ ...loaded, APIKEYS: config.APIKEYS });
+  assert.equal(disabled.clients[0].ok, true);
+  const disabledContents = readFileSync(configFile, "utf8");
+  assert.match(disabledContents, /http_headers\]\nx-test = "keep"/);
+  assert.doesNotMatch(disabledContents, /ccr-native-image-generation/);
+  assert.match(readFileSync(launcher, "utf8"), /CCR_CODEX_NATIVE_IMAGE_GENERATION='?0/);
+});
+
 test("profile service injects ToolHub MCP into Codex config", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
   const profileId = "codex-toolhub-test";
   const config = createDefaultAppConfig();

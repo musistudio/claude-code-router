@@ -50,6 +50,8 @@ Codex 是 OpenAI 的编码 Agent。CCR 同时支持两种形态：
 | Codex home | 可选目录 | 设置 `CODEX_HOME`；仅当需要特定 home 目录时填写。 |
 | 远程前端模式 | `app` / `cli` / `claude-code` | 无特殊需要请保持默认。 |
 | CCR 托管压缩 | 开关 | 让 CCR 为该配置托管上下文压缩。 |
+| Codex 原生生图 | 高级设置中的开关 | 使用图片生成供应商启用 Codex 生图。 |
+| 生图模型 | 启用原生生图后显示 | 为生图和图片编辑选择供应商与模型。默认使用 Codex 的 `gpt-image-2`。供应商须返回 Base64 图片。 |
 | 环境变量 | 键值对 | 可选高级设置；普通使用保持为空。 |
 | 机器人 | 选择已保存的机器人（仅 App 入口） | 把一个 AgentClaw IM 机器人绑定到 ChatGPT 应用入口。 |
 

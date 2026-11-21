@@ -143,8 +143,7 @@ export function profileModelProviderMatchesQuery(provider: ProfileModelProviderO
   return (
     provider.name.toLowerCase().includes(normalizedQuery) ||
     provider.models.some((model) =>
-      model.toLowerCase().includes(normalizedQuery) ||
-      profileModelOptionDisplayName(provider, model).toLowerCase().includes(normalizedQuery)
+      profileModelMatchesQuery(provider.name, model, normalizedQuery, profileModelOptionDisplayName(provider, model))
     )
   );
 }
@@ -154,9 +153,8 @@ export function profileModelMatchesQuery(providerName: string, model: string, qu
   if (!normalizedQuery) {
     return true;
   }
-  return providerName.toLowerCase().includes(normalizedQuery) ||
-    model.toLowerCase().includes(normalizedQuery) ||
-    (displayName ?? "").toLowerCase().includes(normalizedQuery);
+  return `${providerName}/${model}`.toLowerCase().includes(normalizedQuery) ||
+    (displayName !== undefined && `${providerName}/${displayName}`.toLowerCase().includes(normalizedQuery));
 }
 
 export function profileModelOptionDisplayName(provider: ProfileModelProviderOption | undefined, model: string): string {
@@ -550,6 +548,8 @@ export function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code"
     availableModels: [],
     ...createBotGatewayDraft(),
     claudeSettingsText: "{}",
+    codexNativeImageGeneration: false,
+    codexNativeImageModel: "",
     configFile: defaultCodexConfigFile(agent),
     envRows: agent === "claude-code" ? keyValueRowsFromRecord(claudeCodeProfileEnv()) : [],
     fableModel: "",
@@ -647,6 +647,8 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
     availableModels: profileDraftAvailableModels(profile),
     botConfigId,
     botEnabled: surface !== "cli" && Boolean(selectedBot || profile.botGateway?.enabled),
+    codexNativeImageGeneration: Boolean(profile.codexNativeImageGeneration),
+    codexNativeImageModel: profile.codexNativeImageModel ?? "",
     configFile: profile.configFile ?? defaultCodexConfigFile(profile.agent),
     envRows: keyValueRowsFromRecord(codexCompatibleProfileEnv(profile.env ?? {})),
     managedCompact: Boolean(profile.managedCompact),
@@ -737,6 +739,8 @@ export function profileConfigFromDraft(
     availableModels: profileConfigAvailableModelsFromDraft(draft),
     ...botGateway,
     claudeSettings: draft.agent === "claude-code" ? parseClaudeSettingsDraft(draft.claudeSettingsText) : undefined,
+    codexNativeImageGeneration: draft.codexNativeImageGeneration,
+    codexNativeImageModel: draft.codexNativeImageModel,
     configFile: draft.configFile,
     enabled: existingProfile?.enabled ?? true,
     env: draft.agent === "claude-code"
@@ -1469,6 +1473,8 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
     cliMiddleware: true,
     codexCliPath: "",
     codexHome: "",
+    ...(agent === "codex" && profile.codexNativeImageGeneration ? { codexNativeImageGeneration: true } : {}),
+    ...(agent === "codex" ? { codexNativeImageModel: profile.codexNativeImageModel?.trim() || undefined } : {}),
     configFormat: "separate_profile_files",
     configFile: normalizeCodexConfigFileForAgent(agent, profile.configFile),
     enabled: profile.enabled,
@@ -1520,6 +1526,8 @@ export function legacyProfileItemsFromProfileConfig(profile: AppConfig["profile"
       cliMiddleware: profile.codex.cliMiddleware,
       codexCliPath: profile.codex.codexCliPath,
       codexHome: profile.codex.codexHome,
+      codexNativeImageGeneration: profile.codex.codexNativeImageGeneration,
+      codexNativeImageModel: profile.codex.codexNativeImageModel,
       configFormat: profile.codex.configFormat,
       configFile: profile.codex.configFile,
       enabled: profile.codex.enabled,
@@ -1579,6 +1587,8 @@ export function normalizeUnknownProfileItem(value: Record<string, unknown>, inde
     cliMiddleware: typeof value.cliMiddleware === "boolean" ? value.cliMiddleware : undefined,
     codexCliPath: typeof value.codexCliPath === "string" ? value.codexCliPath : undefined,
     codexHome: typeof value.codexHome === "string" ? value.codexHome : undefined,
+    codexNativeImageGeneration: value.codexNativeImageGeneration === true,
+    codexNativeImageModel: typeof value.codexNativeImageModel === "string" ? value.codexNativeImageModel : undefined,
     configFormat: typeof value.configFormat === "string" ? normalizeCodexConfigFormat(value.configFormat) : undefined,
     configFile: typeof value.configFile === "string" ? value.configFile : undefined,
     enabled: typeof value.enabled === "boolean" ? value.enabled : true,

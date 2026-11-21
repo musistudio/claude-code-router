@@ -514,6 +514,8 @@ function synchronizeLegacyCodexProfile(
     cliMiddleware: profile.cliMiddleware ?? legacy.cliMiddleware,
     codexCliPath: profile.codexCliPath ?? legacy.codexCliPath,
     codexHome: profile.codexHome ?? legacy.codexHome,
+    codexNativeImageGeneration: profile.codexNativeImageGeneration,
+    codexNativeImageModel: profile.codexNativeImageModel,
     configFormat: profile.configFormat ?? legacy.configFormat,
     configFile: profile.configFile ?? legacy.configFile,
     enabled: true,
@@ -3573,6 +3575,10 @@ function parseProfile(value: unknown): LoadedProfileConfig | undefined {
     if (typeof codex.cliMiddleware === "boolean") {
       profile.codex.cliMiddleware = codex.cliMiddleware;
     }
+    if (typeof codex.codexNativeImageGeneration === "boolean") {
+      profile.codex.codexNativeImageGeneration = codex.codexNativeImageGeneration;
+    }
+    profile.codex.codexNativeImageModel = readString(codex.codexNativeImageModel)?.trim() || undefined;
     const codexCliPath = readString(codex.codexCliPath) || readString(codex.cliPath) || readString(codex.codexPath);
     if (codexCliPath) {
       profile.codex.codexCliPath = codexCliPath;
@@ -3752,6 +3758,8 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         cliMiddleware: true,
         codexCliPath: readString(item.codexCliPath) || readString(item.cliPath) || readString(item.codexPath) || "",
         codexHome: readString(item.codexHome) || readString(item.home) || "",
+        ...(agent === "codex" && item.codexNativeImageGeneration === true ? { codexNativeImageGeneration: true } : {}),
+        ...(agent === "codex" ? { codexNativeImageModel: readString(item.codexNativeImageModel)?.trim() || undefined } : {}),
         configFormat: parseCodexProfileConfigFormat(readString(item.configFormat) || readString(item.profileConfigFormat)) || "separate_profile_files",
         configFile: normalizeCodexConfigFileForAgent(agent, readString(item.configFile) || readString(item.settingsFile)),
         enabled,
@@ -3969,6 +3977,8 @@ function profileFromCodexConfig(config: CodexProfileConfig): ProfileConfig {
     cliMiddleware: true,
     codexCliPath: config.codexCliPath,
     codexHome: config.codexHome,
+    ...(config.codexNativeImageGeneration ? { codexNativeImageGeneration: true } : {}),
+    codexNativeImageModel: config.codexNativeImageModel,
     configFormat: config.configFormat,
     configFile: config.configFile,
     enabled: config.enabled,

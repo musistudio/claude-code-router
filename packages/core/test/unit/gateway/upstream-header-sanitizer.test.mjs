@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createGatewayPlugin,
+  mergeUpstreamProviderHeaders,
   rewriteUpstreamProviderUrl,
   sanitizeUpstreamProviderHeaders
 } from "@ccr/core/gateway/core-runtime/upstream-header-sanitizer.ts";
@@ -58,6 +59,16 @@ test("gateway sanitizer hook runs on the final upstream request shape", async ()
     headers: { "content-type": "application/json" }
   });
   assert.equal(upstreamRequest.headers["x-ccr-provider-credential-id"], "credential-id");
+});
+
+test("the Codex native image marker stays inside CCR", () => {
+  const marker = { "X-OpenAI-Actor-Authorization": "ccr-native-image-generation" };
+  const authorization = { authorization: "Bearer provider-token" };
+  assert.deepEqual(mergeUpstreamProviderHeaders(marker, { ...authorization, ...marker }), authorization);
+  assert.deepEqual(mergeUpstreamProviderHeaders(marker, {
+    ...authorization,
+    "x-openai-actor-authorization": "configured-actor-token"
+  }), { ...authorization, "x-openai-actor-authorization": "configured-actor-token" });
 });
 
 test("gateway sanitizer hook forwards client headers without overriding provider headers", async () => {

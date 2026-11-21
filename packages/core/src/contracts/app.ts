@@ -1497,6 +1497,8 @@ export const DEFAULT_TRAY_WIDGETS: TrayWidgetConfig[] = [
 export type ProfileClientKind = "claude-code" | "codex" | "grok" | "kimi" | "kilo" | "opencode" | "pi" | "workbuddy" | "zcode" | "claude-design";
 export type CodexProfileConfigFormat = "legacy" | "separate_profile_files";
 export type CodexRemoteFrontendMode = "app" | "cli" | "claude-code";
+export const CODEX_NATIVE_IMAGE_GENERATION_HEADER = "x-openai-actor-authorization";
+export const CODEX_NATIVE_IMAGE_GENERATION_MARKER = "ccr-native-image-generation";
 export type ProfileScope = "ccr" | "global" | "custom";
 export type ProfileSurface = "auto" | "cli" | "app";
 export type ProfileOpenSurface = "cli" | "app";
@@ -1518,6 +1520,8 @@ export type CodexProfileConfig = {
   cliMiddleware: boolean;
   codexCliPath: string;
   codexHome: string;
+  codexNativeImageGeneration?: boolean;
+  codexNativeImageModel?: string;
   configFormat: CodexProfileConfigFormat;
   configFile: string;
   enabled: boolean;
@@ -1540,6 +1544,8 @@ export type ProfileConfig = {
   claudeSettings?: Record<string, unknown>;
   codexCliPath?: string;
   codexHome?: string;
+  codexNativeImageGeneration?: boolean;
+  codexNativeImageModel?: string;
   configFormat?: CodexProfileConfigFormat;
   enabled: boolean;
   env?: Record<string, string>;
