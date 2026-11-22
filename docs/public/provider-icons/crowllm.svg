@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 82 82" fill="currentColor" role="img">
+  <title>CrowLLM</title>
+  <g transform="translate(0 2)">
+    <path fill-rule="evenodd" d="M28 6 C21 6 14 10 11 17 L2 24 C1 25 1 26 3 27 L13 30 C13 32 13 34 14 36 C9 43 8 52 13 59 C15 62 18 65 22 67 C29 70 37 69 43 66 L60 60 C66 63 72 65 79 66 C80 66 80 65 79 64 L67 54 C70 45 68 34 62 27 C60 22 57 17 53 14 L57 6 L50 10 L52 3 L43 8 C39 7 34 6 28 6 Z M16.5 20.5 a4 4 0 1 1 7.6 1.6 a4 4 0 1 1 -7.6 -1.6 M35 43 C41 38.5 49 37.5 55.5 39.5 C50 42.5 43 44.5 36.5 45 Z M36.5 49 C42 46 48.5 45.5 53 47 C48.5 50 42.5 51.5 37.5 51 Z"/>
+    <path d="M26 68.5 L25.5 74.5 M36 68 L36.5 74" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+  </g>
+</svg>
