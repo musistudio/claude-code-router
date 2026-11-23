@@ -26,7 +26,7 @@ Choose a provider below to get started. CCR shows what will be added before savi
     <span class="provider-import-icon-shell"><img src="../../../provider-icons/openrouter.ico" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">OpenRouter</span><span class="provider-import-meta">OpenAI compatible gateway</span></span>
   </a>
-  <a class="provider-import-button provider-crowllm" href="ccr://provider?name=CrowLLM&amp;base_url=https%3A%2F%2Fcrowllm.com%2Fv1&amp;protocol=openai_chat_completions&amp;models=deepseek-v4-flash%2Cglm-5.3%2Ckimi-k3%2Cclaude-opus-4-7%2Cgemini-3.7-flash%2Cqwen-3.8-27b%3Afree&amp;source=https%3A%2F%2Fcrowllm.com" aria-label="Import CrowLLM provider">
+  <a class="provider-import-button provider-crowllm" href="ccr://provider?name=CrowLLM&amp;base_url=https%3A%2F%2Fcrowllm.com%2Fv1&amp;protocol=openai_chat_completions&amp;models=deepseek-v4-flash%2Cglm-5.3%2Ckimi-k3%2Cclaude-opus-4-7%2Cgemini-3.7-flash%2Cgrok-4.7%3Afree&amp;source=https%3A%2F%2Fcrowllm.com" aria-label="Import CrowLLM provider">
     <span class="provider-import-icon-shell"><img src="../../../provider-icons/crowllm.svg" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">CrowLLM</span><span class="provider-import-meta">OpenAI compatible gateway</span></span>
   </a>
