@@ -22,6 +22,7 @@ runs:
         # Apply the CCR patch set to the pinned source before building release artifacts.
         git apply ../../build/patches/ai-gateway-stream-terminal-error.patch
         git apply ../../build/patches/ai-gateway-native-safeguards.patch
+        git apply ../../build/patches/ai-gateway-nonstream-stream-error.patch
         test -f src/adapters/builtins/anthropic-tool-id.test.ts
         test -f src/raw-trace.test.ts
         npm ci
