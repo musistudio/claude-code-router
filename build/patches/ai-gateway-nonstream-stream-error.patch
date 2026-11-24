@@ -1,5 +1,5 @@
 diff --git a/src/gateway/handler.test.ts b/src/gateway/handler.test.ts
-index 96bdeac..e2386e9 100644
+index 96bdeac..737ffb2 100644
 --- a/src/gateway/handler.test.ts
 +++ b/src/gateway/handler.test.ts
 @@ -1722,6 +1722,51 @@ describe('streamInternalVirtualToolCalls', () => {
@@ -10,9 +10,9 @@ index 96bdeac..e2386e9 100644
 +  it('surfaces the upstream error code and message instead of an empty payload', async () => {
 +    const payload = await collectOpenAINonStreamPayloadFromEventStream(
 +      createSseResponse([
-+        'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_failed_stream","object":"response","model":"gpt-6.2-astra","status":"in_progress","output":[]}}\n\n',
++        'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_failed_stream","object":"response","model":"gpt-6.2-x","status":"in_progress","output":[]}}\n\n',
 +        'event: error\ndata: {"type":"error","error":{"type":"invalid_request","code":"cyber_policy","message":"This content was flagged for possible cybersecurity risk."}}\n\n',
-+        'event: response.failed\ndata: {"type":"response.failed","response":{"id":"resp_failed_stream","object":"response","model":"gpt-6.2-astra","status":"failed","output":[],"error":null}}\n\n',
++        'event: response.failed\ndata: {"type":"response.failed","response":{"id":"resp_failed_stream","object":"response","model":"gpt-6.2-x","status":"failed","output":[],"error":null}}\n\n',
 +        'data: [DONE]\n\n'
 +      ])
 +    );
@@ -27,9 +27,9 @@ index 96bdeac..e2386e9 100644
 +  it('fills output_text when a completed response carries no output but an error preceded it', async () => {
 +    const payload = await collectOpenAINonStreamPayloadFromEventStream(
 +      createSseResponse([
-+        'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_empty_answer","object":"response","model":"gpt-6.2-astra"}}\n\n',
++        'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_empty_answer","object":"response","model":"gpt-6.2-x"}}\n\n',
 +        'event: error\ndata: {"type":"error","error":{"type":"invalid_request","code":"cyber_policy","message":"Blocked by policy."}}\n\n',
-+        'event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_empty_answer","object":"response","model":"gpt-6.2-astra","status":"completed","output_text":"","output":[]}}\n\n',
++        'event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_empty_answer","object":"response","model":"gpt-6.2-x","status":"completed","output_text":"","output":[]}}\n\n',
 +        'data: [DONE]\n\n'
 +      ])
 +    );
@@ -40,9 +40,9 @@ index 96bdeac..e2386e9 100644
 +  it('leaves a stream without an error event untouched', async () => {
 +    const payload = await collectOpenAINonStreamPayloadFromEventStream(
 +      createSseResponse([
-+        'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_ok","object":"response","model":"gpt-6.2-astra"}}\n\n',
++        'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_ok","object":"response","model":"gpt-6.2-x"}}\n\n',
 +        'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"hello"}\n\n',
-+        'event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_ok","object":"response","model":"gpt-6.2-astra","status":"completed","output":[]}}\n\n',
++        'event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_ok","object":"response","model":"gpt-6.2-x","status":"completed","output":[]}}\n\n',
 +        'data: [DONE]\n\n'
 +      ])
 +    );
