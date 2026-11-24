@@ -1,0 +1,137 @@
+diff --git a/src/gateway/handler.test.ts b/src/gateway/handler.test.ts
+index 96bdeac..e2386e9 100644
+--- a/src/gateway/handler.test.ts
++++ b/src/gateway/handler.test.ts
+@@ -1722,6 +1722,51 @@ describe('streamInternalVirtualToolCalls', () => {
+   });
+ });
+ 
++describe('non-stream collection of upstream stream errors', () => {
++  it('surfaces the upstream error code and message instead of an empty payload', async () => {
++    const payload = await collectOpenAINonStreamPayloadFromEventStream(
++      createSseResponse([
++        'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_failed_stream","object":"response","model":"gpt-6.2-astra","status":"in_progress","output":[]}}\n\n',
++        'event: error\ndata: {"type":"error","error":{"type":"invalid_request","code":"cyber_policy","message":"This content was flagged for possible cybersecurity risk."}}\n\n',
++        'event: response.failed\ndata: {"type":"response.failed","response":{"id":"resp_failed_stream","object":"response","model":"gpt-6.2-astra","status":"failed","output":[],"error":null}}\n\n',
++        'data: [DONE]\n\n'
++      ])
++    );
++
++    const choices = payload.choices as Array<{ message?: { content?: string } }> | undefined;
++
++    expect(choices?.[0]?.message?.content).toBe(
++      'Upstream error cyber_policy: This content was flagged for possible cybersecurity risk.'
++    );
++  });
++
++  it('fills output_text when a completed response carries no output but an error preceded it', async () => {
++    const payload = await collectOpenAINonStreamPayloadFromEventStream(
++      createSseResponse([
++        'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_empty_answer","object":"response","model":"gpt-6.2-astra"}}\n\n',
++        'event: error\ndata: {"type":"error","error":{"type":"invalid_request","code":"cyber_policy","message":"Blocked by policy."}}\n\n',
++        'event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_empty_answer","object":"response","model":"gpt-6.2-astra","status":"completed","output_text":"","output":[]}}\n\n',
++        'data: [DONE]\n\n'
++      ])
++    );
++
++    expect(payload.output_text).toBe('Upstream error cyber_policy: Blocked by policy.');
++  });
++
++  it('leaves a stream without an error event untouched', async () => {
++    const payload = await collectOpenAINonStreamPayloadFromEventStream(
++      createSseResponse([
++        'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_ok","object":"response","model":"gpt-6.2-astra"}}\n\n',
++        'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"hello"}\n\n',
++        'event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_ok","object":"response","model":"gpt-6.2-astra","status":"completed","output":[]}}\n\n',
++        'data: [DONE]\n\n'
++      ])
++    );
++
++    expect(payload.output_text).toBe('hello');
++  });
++});
++
+ function createSseResponse(chunks: string[]): Response {
+   const stream = new ReadableStream<Uint8Array>({
+     start(controller) {
+diff --git a/src/gateway/streaming-conversion.ts b/src/gateway/streaming-conversion.ts
+index 85f9757..9398ab7 100644
+--- a/src/gateway/streaming-conversion.ts
++++ b/src/gateway/streaming-conversion.ts
+@@ -220,6 +220,12 @@ interface OpenAIReasoningAccumulator {
+   rawDetails: unknown[];
+ }
+ 
++interface OpenAIStreamError {
++  code?: string;
++  type?: string;
++  message: string;
++}
++
+ interface OpenAINonStreamCollectionState {
+   id: string;
+   model: string;
+@@ -230,6 +236,7 @@ interface OpenAINonStreamCollectionState {
+   outputItems: Record<string, unknown>[];
+   toolCalls: Map<number, OpenAIStreamToolCallAccumulator>;
+   reasoning: OpenAIReasoningAccumulator;
++  streamError?: OpenAIStreamError;
+ }
+ 
+ interface AnthropicStreamToolUseAccumulator {
+@@ -986,6 +993,12 @@ export async function collectOpenAINonStreamPayloadFromEventStream(
+       continue;
+     }
+ 
++    const eventType = asString(payload.type) || chunk.event || '';
++    if (eventType === 'error' || eventType === 'response.error' || eventType === 'response.failed') {
++      state.streamError ??= extractOpenAIStreamError(payload);
++      continue;
++    }
++
+     if (isOpenAIResponsesStreamEvent(payload)) {
+       collectOpenAINonStreamStateFromResponsesEvent(state, payload);
+       continue;
+@@ -1013,9 +1026,42 @@ function createOpenAINonStreamCollectionState(): OpenAINonStreamCollectionState
+   };
+ }
+ 
++function extractOpenAIStreamError(payload: Record<string, unknown>): OpenAIStreamError {
++  const response = isObject(payload.response) ? payload.response : undefined;
++  const error = isObject(payload.error)
++    ? payload.error
++    : isObject(response?.error)
++      ? response.error
++      : undefined;
++  const code = asString(error?.code) || undefined;
++  const type = asString(error?.type) || undefined;
++  return {
++    ...(code ? { code } : {}),
++    ...(type ? { type } : {}),
++    message:
++      asString(error?.message) ||
++      asString(error?.detail) ||
++      asString(error?.reason) ||
++      asString(payload.message) ||
++      'Upstream Responses stream failed.'
++  };
++}
++
+ function buildOpenAINonStreamPayloadFromCollectionState(
+   state: OpenAINonStreamCollectionState
+ ): Record<string, unknown> {
++  // An upstream that answers with an error event (or a failed response) carries no output,
++  // so the aggregated payload would look like an empty model answer. Surface the upstream
++  // reason instead: the response-parse step rejects empty payloads as
++  // "does not contain text output, reasoning output, or tool calls", which hides the real
++  // cause behind a generic 502.
++  if (!state.outputText && state.streamError) {
++    const label = state.streamError.code || state.streamError.type;
++    state.outputText = label
++      ? `Upstream error ${label}: ${state.streamError.message}`
++      : `Upstream error: ${state.streamError.message}`;
++  }
++
+   if (state.completedResponse) {
+     const completedResponse = { ...state.completedResponse };
+     const output = Array.isArray(completedResponse.output) ? completedResponse.output : [];

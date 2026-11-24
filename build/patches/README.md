@@ -13,7 +13,7 @@ provider URLs are never copied into the generated error.
 
 The release action applies this patch to its isolated gateway checkout before
 typechecking, running the upstream regressions, and packing the dependency. For
-a local source build, apply both patches in the order used by the release action to an isolated checkout of that revision, build
+a local source build, apply all three patches in the order used by the release action to an isolated checkout of that revision, build
 the gateway, and set `CCR_GATEWAY_SOURCE_DIR` (or
 `CCR_DOCKER_GATEWAY_SOURCE_DIR` for Docker) to that checkout. Set
 `CCR_TEST_GATEWAY_ENTRY` to its `dist/index.js` when running CCR's wire tests.
@@ -29,6 +29,17 @@ Virtual profiles with internal gateway tools reject safeguards requests before
 an upstream call or tool execution: their tool execution owner differs from the
 client-owned execution expected by the native protocol. Ordinary native models
 and virtual profiles without internal tools support the transparent path.
+
+`ai-gateway-nonstream-stream-error.patch` applies last. The Codex backend can
+answer HTTP 200 and end the stream with an `error` event and an empty `output`,
+for example when a request is blocked by a content policy. The non-stream
+collector dropped that event, so the aggregated payload was empty: callers saw a
+generic 502 for empty model output, the upstream code and message were lost, and
+one automatic retry re-sent a request that could not succeed. The patch records
+the first `error`, `response.error` or `response.failed` event and uses its code
+and message as the content when the payload would otherwise carry no text.
+Streams without an error event are unchanged. It incorporates
+[ai-gateway PR #45](https://github.com/The-NeXT-AI/ai-gateway/pull/45).
 
 The upstream code is MIT licensed:
 
