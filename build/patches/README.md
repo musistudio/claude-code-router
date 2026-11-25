@@ -30,6 +30,15 @@ an upstream call or tool execution: their tool execution owner differs from the
 client-owned execution expected by the native protocol. Ordinary native models
 and virtual profiles without internal tools support the transparent path.
 
+`ai-gateway-anthropic-passthrough-event-names.patch` applies after the safeguards
+patch. Some Anthropic-compatible upstreams relay `data:` only SSE frames in
+passthrough mode; the official Anthropic SDK drops every frame without an
+`event:` name, so clients receive an empty stream and fall back to
+non-streaming. The patch rewrites Anthropic Messages passthrough streams that
+carry known Anthropic event types but no `event:` line, emitting the name from
+the frame payload's `type`. Frames that already carry event names, unknown
+payloads, and non-Anthropic adapters are passed through verbatim.
+
 The upstream code is MIT licensed:
 
 Copyright (c) 2026 musistudio
