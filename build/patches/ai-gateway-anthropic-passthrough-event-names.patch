@@ -1,0 +1,241 @@
+diff --git a/src/gateway/anthropic-passthrough-sse.test.ts b/src/gateway/anthropic-passthrough-sse.test.ts
+new file mode 100644
+index 0000000..595a37b
+--- /dev/null
++++ b/src/gateway/anthropic-passthrough-sse.test.ts
+@@ -0,0 +1,86 @@
++import { describe, expect, it } from 'vitest';
++import { normalizeAnthropicPassthroughStreamEventNames, normalizeSseText } from './anthropic-passthrough-sse';
++
++function sseResponse(body: string): Response {
++  return new Response(body, {
++    status: 200,
++    headers: { 'content-type': 'text/event-stream' }
++  });
++}
++
++async function readAll(response: Response): Promise<string> {
++  return await response.text();
++}
++
++describe('normalizeSseText', () => {
++  it('adds event names to data-only Anthropic frames', () => {
++    const input = [
++      'data: {"type":"message_start","message":{"id":"msg_1"}}',
++      '',
++      'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}',
++      '',
++      'data: {"type":"message_stop"}',
++      ''
++    ].join('\n');
++
++    const output = normalizeSseText(input);
++    expect(output).toContain('event: message_start\ndata: {"type":"message_start"');
++    expect(output).toContain('event: content_block_delta\ndata: {"type":"content_block_delta"');
++    expect(output).toContain('event: message_stop\ndata: {"type":"message_stop"}');
++  });
++
++  it('leaves frames that already carry event names untouched', () => {
++    const input = 'event: message_start\ndata: {"type":"message_start"}\n\n';
++    expect(normalizeSseText(input)).toBe(input);
++  });
++
++  it('leaves unknown or non-JSON data payloads untouched', () => {
++    const input = 'data: not-json\n\ndata: {"type":"something_else"}\n\n';
++    expect(normalizeSseText(input)).toBe(input);
++  });
++
++  it('preserves multi-line data payloads verbatim when no known type exists', () => {
++    const input = 'data: one\ndata: two\n\n';
++    expect(normalizeSseText(input)).toBe(input);
++  });
++});
++
++describe('normalizeAnthropicPassthroughStreamEventNames', () => {
++  it('rewrites data-only event streams', async () => {
++    const input = 'data: {"type":"message_start","message":{"id":"msg_1"}}\n\ndata: {"type":"message_stop"}\n\n';
++    const output = await readAll(normalizeAnthropicPassthroughStreamEventNames(sseResponse(input)));
++    expect(output).toContain('event: message_start');
++    expect(output).toContain('event: message_stop');
++    expect(output).toContain('data: {"type":"message_start","message":{"id":"msg_1"}}');
++  });
++
++  it('passes non-event-stream responses through unchanged', async () => {
++    const response = new Response('{"ok":true}', {
++      status: 200,
++      headers: { 'content-type': 'application/json' }
++    });
++    expect(normalizeAnthropicPassthroughStreamEventNames(response)).toBe(response);
++  });
++
++  it('keeps frame boundaries intact across chunk splits', async () => {
++    const input = 'data: {"type":"ping"}\n\ndata: {"type":"message_stop"}\n\n';
++    const source = sseResponse(input);
++    if (!source.body) {
++      throw new Error('no body');
++    }
++    const rewrapped = new Response(
++      new ReadableStream<Uint8Array>({
++        start(controller) {
++          const bytes = new TextEncoder().encode(input);
++          controller.enqueue(bytes.slice(0, 12));
++          controller.enqueue(bytes.slice(12));
++          controller.close();
++        }
++      }),
++      { headers: { 'content-type': 'text/event-stream' } }
++    );
++    const output = await readAll(normalizeAnthropicPassthroughStreamEventNames(rewrapped));
++    expect(output).toContain('event: ping\ndata: {"type":"ping"}\n\nevent: message_stop\ndata: {"type":"message_stop"}\n\n');
++    void source;
++  });
++});
+diff --git a/src/gateway/anthropic-passthrough-sse.ts b/src/gateway/anthropic-passthrough-sse.ts
+new file mode 100644
+index 0000000..24179a2
+--- /dev/null
++++ b/src/gateway/anthropic-passthrough-sse.ts
+@@ -0,0 +1,121 @@
++/**
++ * Anthropic Messages passthrough SSE normalization.
++ *
++ * When a passthrough forwards an Anthropic-compatible upstream body verbatim,
++ * some upstreams emit `data: {...}` frames without the `event: <name>` line
++ * that the official Anthropic SDK relies on. The SDK then discards every
++ * frame and clients see an empty stream, falling back to non-streaming.
++ *
++ * The conversion path already emits named events, so this only touches the
++ * passthrough relay and only when an event block has no `event:` line and its
++ * JSON payload carries a known Anthropic event type.
++ */
++
++const ANTHROPIC_STREAM_EVENT_TYPES = new Set([
++  'message_start',
++  'message_delta',
++  'message_stop',
++  'content_block_start',
++  'content_block_delta',
++  'content_block_stop',
++  'ping',
++  'error'
++]);
++
++export function normalizeAnthropicPassthroughStreamEventNames(response: Response): Response {
++  const contentType = response.headers.get('content-type');
++  if (!response.body || !contentType || !contentType.toLowerCase().includes('text/event-stream')) {
++    return response;
++  }
++
++  const reader = response.body.getReader();
++  const decoder = new TextDecoder();
++  const encoder = new TextEncoder();
++  let pending = '';
++
++  const stream = new ReadableStream<Uint8Array>({
++    start(controller) {
++      void (async () => {
++        try {
++          while (true) {
++            const chunk = await reader.read();
++            if (chunk.done) {
++              break;
++            }
++            pending += decoder.decode(chunk.value, { stream: true });
++            const lastBoundary = pending.lastIndexOf('\n\n');
++            if (lastBoundary === -1) {
++              continue;
++            }
++            const complete = pending.slice(0, lastBoundary + 2);
++            pending = pending.slice(lastBoundary + 2);
++            controller.enqueue(encoder.encode(normalizeSseText(complete)));
++          }
++          pending += decoder.decode();
++          if (pending) {
++            controller.enqueue(encoder.encode(normalizeSseText(pending)));
++          }
++          controller.close();
++        } catch (error) {
++          controller.error(error);
++        }
++      })();
++    },
++    cancel(reason) {
++      return reader.cancel(reason);
++    }
++  });
++
++  const headers = new Headers(response.headers);
++  return new Response(stream, {
++    status: response.status,
++    statusText: response.statusText,
++    headers
++  });
++}
++
++export function normalizeSseText(text: string): string {
++  if (text.includes('\nevent: ') || text.startsWith('event: ')) {
++    return text;
++  }
++
++  return text
++    .split(/\r?\n\r?\n/)
++    .map((block) => {
++      if (!block) {
++        return block;
++      }
++      const lines = block.split(/\r?\n/);
++      if (lines.some((line) => line.startsWith('event:'))) {
++        return block;
++      }
++      const dataLines = lines.filter((line) => line.startsWith('data:'));
++      if (dataLines.length === 0) {
++        return block;
++      }
++      const payload = dataLines
++        .map((line) => (line.startsWith('data: ') ? line.slice(6) : line.slice(5)))
++        .join('\n');
++      const eventType = readAnthropicEventType(payload);
++      if (!eventType) {
++        return block;
++      }
++      return [`event: ${eventType}`, ...lines].join('\n');
++    })
++    .join('\n\n');
++}
++
++function readAnthropicEventType(payload: string): string | undefined {
++  try {
++    const parsed: unknown = JSON.parse(payload);
++    if (parsed && typeof parsed === 'object' && 'type' in parsed) {
++      const type = (parsed as { type?: unknown }).type;
++      if (typeof type === 'string' && ANTHROPIC_STREAM_EVENT_TYPES.has(type)) {
++        return type;
++      }
++    }
++  } catch {
++    return undefined;
++  }
++  return undefined;
++}
+diff --git a/src/gateway/handler.ts b/src/gateway/handler.ts
+index bdec0b2..0eea758 100644
+--- a/src/gateway/handler.ts
++++ b/src/gateway/handler.ts
+@@ -76,6 +76,7 @@ import {
+   relayConvertedStreamFromStandardResponse,
+   relayConvertedStreamFromUpstreamResponse
+ } from './streaming-conversion';
++import { normalizeAnthropicPassthroughStreamEventNames } from './anthropic-passthrough-sse';
+ import {
+   buildStreamTerminalErrorFrames,
+   guardStreamTerminalError
+@@ -1172,6 +1173,9 @@ export async function handleGatewayRequest(
+       if (shouldForceEventStreamHeaders(source, isStreaming)) {
+         forceEventStreamHeaders(reply);
+       }
++      if (source.adapterKey === 'anthropic_messages') {
++        passthroughStreamResponse = normalizeAnthropicPassthroughStreamEventNames(passthroughStreamResponse);
++      }
+       return relayUpstreamResponse(
+         reply,
+         guardStreamTerminalError(passthroughStreamResponse, {
