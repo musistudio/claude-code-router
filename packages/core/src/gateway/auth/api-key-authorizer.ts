@@ -161,7 +161,10 @@ export function reserveApiKeyLimits(
   return true;
 }
 
-export async function configuredApiKeys(config: AppConfig, options: ConfiguredApiKeyOptions = {}): Promise<ApiKeyConfig[]> {
+export async function configuredApiKeys(
+  config: Pick<AppConfig, "APIKEY" | "APIKEYS">,
+  options: ConfiguredApiKeyOptions = {}
+): Promise<ApiKeyConfig[]> {
   const persistedApiKeys = options.includePersisted === false
     ? []
     : await loadPersistedApiKeysCached(options);

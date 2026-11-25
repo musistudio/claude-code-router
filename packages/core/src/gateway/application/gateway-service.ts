@@ -105,7 +105,11 @@ class GatewayService {
     getConfig: () => this.config,
     getCoreAuthToken: () => this.coreAuthToken,
     getPlugin: () => this.plugin,
-    getStatus: () => ({ coreEndpoint: this.status.coreEndpoint, endpoint: this.status.endpoint })
+    getStatus: () => ({
+      coreEndpoint: this.status.coreEndpoint,
+      endpoint: this.status.endpoint,
+      gatewayManagedExternally: this.status.gatewayManagedExternally
+    })
   });
 
   private browserAutomationMcpIntegration?: BrowserAutomationMcpIntegration;
@@ -699,11 +703,18 @@ class GatewayService {
     this.config = config;
     this.child = undefined;
     this.server = undefined;
-    this.coreAuthToken = "";
+    // The adopted gateway owns its own core runtime and its own core auth
+    // token, so this process cannot authenticate against that internal core
+    // endpoint. It can however authenticate against the gateway's public
+    // endpoint with the API key the probe already validated, so proxy there
+    // and reuse that key. Leaving the token empty made every proxied request
+    // fail with "Core gateway auth token is not initialized." because the
+    // upstream executor refuses to send a request without a credential.
+    this.coreAuthToken = apiKey ?? "";
     setExternalLiveTokenRateSnapshot(coreGatewayLiveTokenRateSourceId);
     this.externalGatewayApiKey = apiKey;
     this.status = {
-      coreEndpoint: endpoint(config.gateway.coreHost, config.gateway.corePort),
+      coreEndpoint: externalEndpoint,
       endpoint: externalEndpoint,
       gatewayManagedExternally: true,
       networkEndpoints: gatewayNetworkEndpoints(config.gateway.host, config.gateway.port),
