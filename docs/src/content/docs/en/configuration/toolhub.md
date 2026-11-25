@@ -19,10 +19,12 @@ Use ToolHub for tools that are useful occasionally but do not need to stay loade
 1. Enable ToolHub in **Settings → ToolHub**.
 2. Select a configured model as the **Resolver model**. It reads the MCP tool catalog and chooses the tools needed for the task. Prefer `deepseek-v4-flash`, or another stable lightweight model in a similar flash-price tier.
 3. Add or import backend MCP servers. ToolHub supports `stdio`, `streamable-http`, and `sse`.
-4. Open Claude Code or Codex from CCR. CCR writes the `ccr-toolhub` MCP server into that agent config.
+4. Open Claude Code, Codex, or the Claude App from CCR. CCR writes the `ccr-toolhub` MCP server into that agent config.
 5. When the agent receives a request about external services, installed MCP capabilities, or business APIs, it calls `tool_hub.resolve` first, then uses `tool_hub.invoke` to run the selected tools.
 
 ToolHub combines MCP servers configured on the ToolHub page with compatible global Agent MCP servers from older configs, and excludes `ccr-toolhub` itself to avoid recursive calls.
+
+When the Claude App is opened through CCR Desktop, CCR adds the managed `ccr-toolhub` entry to the `mcpServers` section of the Claude App's `claude_desktop_config.json`. Servers you configured yourself stay untouched, and CCR removes the managed entry when it restores the app config.
 
 ## Built-in browser automation
 
