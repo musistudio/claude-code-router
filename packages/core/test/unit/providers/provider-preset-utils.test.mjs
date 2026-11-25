@@ -48,6 +48,9 @@ import {
   qiniuAiProviderPreset
 } from "@ccr/core/providers/presets/qiniu-ai/index.ts";
 import {
+  unirouteProviderPreset
+} from "@ccr/core/providers/presets/uniroute/index.ts";
+import {
   unity2ProviderPreset
 } from "@ccr/core/providers/presets/unity2/index.ts";
 import {
@@ -391,4 +394,25 @@ test("provider API key safety does not block official-looking keys on third-part
     }),
     undefined
   );
+});
+
+test("UniRoute preset exposes gateway endpoint, protocols, and URL matching", () => {
+  assert.equal(providerPresets.find((preset) => preset.id === "uniroute"), unirouteProviderPreset);
+  assert.equal(unirouteProviderPreset.name, "UniRoute");
+  assert.equal(unirouteProviderPreset.websiteUrl, "https://uniroute.app/");
+  assert.deepEqual(unirouteProviderPreset.endpoints, [
+    {
+      baseUrl: "https://api.uniroute.app/v1",
+      protocols: [
+        "anthropic_messages",
+        "openai_responses",
+        "openai_chat_completions",
+        "gemini_generate_content"
+      ]
+    }
+  ]);
+  assert.equal(providerPresetMatchesBaseUrl(unirouteProviderPreset, "https://api.uniroute.app/v1/chat/completions"), true);
+  assert.equal(providerPresetMatchesBaseUrl(unirouteProviderPreset, "https://api.uniroute.app/v1/messages"), true);
+  assert.equal(providerPresetMatchesBaseUrl(unirouteProviderPreset, "https://api.uniroute.app"), true);
+  assert.equal(providerPresetMatchesBaseUrl(unirouteProviderPreset, "https://uniroute.app"), false);
 });
