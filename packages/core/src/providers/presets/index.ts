@@ -5,6 +5,7 @@ import { code0ProviderPreset } from "@ccr/core/providers/presets/code0/index";
 import { deepSeekProviderPreset } from "@ccr/core/providers/presets/deepseek/index";
 import { fennoProviderPreset } from "@ccr/core/providers/presets/fenno/index";
 import { geminiProviderPreset } from "@ccr/core/providers/presets/gemini/index";
+import { gmiProviderPreset } from "@ccr/core/providers/presets/gmi/index";
 import { infistarAiProviderPreset } from "@ccr/core/providers/presets/infistar-ai/index";
 import { kimiCodingProviderPreset } from "@ccr/core/providers/presets/kimi-coding/index";
 import { minimaxChinaProviderPreset, minimaxGlobalProviderPreset } from "@ccr/core/providers/presets/minimax/index";
@@ -73,7 +74,8 @@ export const providerPresets: ProviderPreset[] = [
   unity2ProviderPreset,
   code0ProviderPreset,
   claudeApiProviderPreset,
-  yApiProviderPreset
+  yApiProviderPreset,
+  gmiProviderPreset
 ];
 
 export function getProviderPresets(): ProviderPreset[] {
