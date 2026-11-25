@@ -1,3 +1,4 @@
+import { aigrowProviderPreset } from "@ccr/core/providers/presets/aigrow/index";
 import { anthropicProviderPreset } from "@ccr/core/providers/presets/anthropic/index";
 import { bailianProviderPreset } from "@ccr/core/providers/presets/bailian/index";
 import { claudeApiProviderPreset } from "@ccr/core/providers/presets/claudeapi/index";
@@ -73,7 +74,8 @@ export const providerPresets: ProviderPreset[] = [
   unity2ProviderPreset,
   code0ProviderPreset,
   claudeApiProviderPreset,
-  yApiProviderPreset
+  yApiProviderPreset,
+  aigrowProviderPreset
 ];
 
 export function getProviderPresets(): ProviderPreset[] {
