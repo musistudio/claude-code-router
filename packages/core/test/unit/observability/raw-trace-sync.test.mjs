@@ -14,8 +14,10 @@ import {
   createBodySampler,
   isToleratedDirectorySyncErrorForTest,
   readRawTraceRequestLogBundle,
-  RawTraceSynchronizer
+  RawTraceSynchronizer,
+  recordUsageCaptureFromRawTraceForTest
 } from "@ccr/core/observability/raw-trace-sync.ts";
+import { usageStore } from "@ccr/core/usage/store.ts";
 
 test("#1809 raw trace resolves runtime provider aliases and custom pricing", () => {
   const config = createConfig();
@@ -1109,4 +1111,24 @@ test("#1807 accepted but uncommitted bundles retain their retry budget after res
     });
     assert.equal(attempts, 1);
   } finally { await first.stop(); await second.stop(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("#1983 usage recorded from a raw trace keeps the client the gateway detected", async () => {
+  // A model name no other test uses, so the row can be found among recent requests.
+  const model = "raw-trace-client-1983";
+  await recordUsageCaptureFromRawTraceForTest(createConfig(), {
+    client: "Claude Code",
+    durationMs: 12,
+    method: "POST",
+    model,
+    path: "/v1/messages",
+    requestId: "raw-trace-usage-client-1983",
+    responseBodyText: JSON.stringify({ model, usage: { input_tokens: 10, output_tokens: 2 } }),
+    responseHeaders: { "content-type": "application/json" },
+    statusCode: 200
+  }, {});
+  const stats = await usageStore.getStats("today", { includeProxy: true });
+  const row = stats.recentRequests.find((event) => event.label === model);
+  assert.ok(row, "the raw trace usage row was recorded");
+  assert.equal(row.client, "Claude Code");
 });
