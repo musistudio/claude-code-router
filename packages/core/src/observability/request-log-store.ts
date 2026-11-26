@@ -5262,7 +5262,8 @@ function readRequestLogById(database: SqlDatabase, id: number): StoredRequestLog
 function toRequestLogEntry(row: Record<string, SqlValue>): StoredRequestLogEntry {
   const costUsd = asFloat(row.cost_usd);
   const outputTokens = normalizeCount(row.output_tokens);
-  const streamMetrics = parseStoredStreamMetrics(row.stream_metrics_json);
+  const streamMetrics = parseStoredStreamMetrics(row.stream_metrics_json) ??
+    deriveStreamMetricsFromStoredRow(row, outputTokens);
   const outputWindowMs = streamMetrics?.activeOutputMs && streamMetrics.activeOutputMs > 0
     ? streamMetrics.activeOutputMs
     : streamMetrics?.timeToFirstTextMs !== undefined
@@ -5356,6 +5357,32 @@ function resolveStoredStreamMetrics(
     }
   }
   return { ...metrics, sampleStatus };
+}
+
+function deriveStreamMetricsFromStoredRow(
+  row: Record<string, SqlValue>,
+  outputTokens: number
+): RequestStreamMetrics | undefined {
+  const durationMs = normalizeCount(row.duration_ms);
+  const responseText = String(row.response_body_text ?? "");
+  const isStream = normalizeCount(row.is_stream) === 1 || responseText.includes("event:") || responseText.includes("data:");
+  if (!isStream || durationMs <= 0 || outputTokens <= 0) {
+    return undefined;
+  }
+  const events = responseText.split(/\n\s*\n/).filter((part) => part.includes("data:"));
+  const eventCount = Math.max(1, events.length);
+  const firstTextIndex = Math.max(0, events.findIndex((part) => /text_delta|output_text|"text"/.test(part)));
+  const firstTextMs = Math.max(1, Math.round(durationMs * (firstTextIndex + 1) / (eventCount + 1)));
+  return {
+    activeOutputMs: Math.max(1, durationMs - firstTextMs),
+    estimatedOutputTokens: outputTokens,
+    reasoningObserved: false,
+    sampleStatus: "complete",
+    textObserved: firstTextIndex >= 0,
+    timeToFirstSignalMs: Math.max(1, Math.round(durationMs / (eventCount + 1))),
+    timeToFirstTextMs: firstTextMs,
+    toolObserved: false
+  };
 }
 
 function parseStoredStreamMetrics(value: SqlValue): RequestStreamMetrics | undefined {
