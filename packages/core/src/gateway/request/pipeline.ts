@@ -1011,7 +1011,9 @@ export class GatewayRequestPipeline {
       const upstreamBodySource = Readable.fromWeb(upstreamResponse.body as unknown as import("node:stream/web").ReadableStream);
       const upstreamExperienceMeter = createStreamExperienceMeter({
         contentType: contextArchiveSourceContentType,
-        protocol: responseProtocol
+        protocol: responseProtocol,
+        publishLiveRate: true,
+        requestId
       });
       const upstreamBody = upstreamBodySource.pipe(upstreamExperienceMeter.stream);
       const patchedResponseBody = codexApplyPatchBridgeActive
@@ -1094,7 +1096,7 @@ export class GatewayRequestPipeline {
         });
         const clientExperience = clientExperienceMeter.snapshot();
         const upstreamExperience = upstreamExperienceMeter.snapshot();
-        streamMetrics = clientExperience.active || upstreamExperience.active
+        streamMetrics = clientExperience.active || upstreamExperience.active || sampler.read().trimStart().startsWith("event:") || sampler.read().trimStart().startsWith("data:")
           ? combineStreamExperienceMetrics({
               client: clientExperience,
               requestStartedAtMs: requestStartedAtMonoMs,
