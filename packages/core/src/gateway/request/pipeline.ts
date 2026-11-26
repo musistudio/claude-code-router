@@ -54,13 +54,16 @@ import { isModelAllowedForProfile, profileForApiKey } from "@ccr/core/profiles/m
 import { pluginService } from "@ccr/core/plugins/service";
 import { finalizeOpenRouterDiscountProviderRouterSelection } from "@ccr/core/plugins/built-ins/openrouter-discount-provider-router";
 import {
+  ccrAnthropicBillingHeader,
   ccrRouteHeaderNames,
   ccrRouteDiagnosticsHeader,
   ccrRouteReasonHeader,
   ccrRouteSourceHeader,
   ccrRoutedModelHeader,
-  ccrRouterHttpRoutePath
+  ccrRouterHttpRoutePath,
+  encodeCcrAnthropicBillingHeader
 } from "@ccr/core/gateway/core-runtime/router-plugin-contract";
+import { isClaudeCodeBillingSystemBlock } from "@ccr/core/gateway/features/claude-code-billing-header";
 import { isRecord } from "@ccr/core/gateway/internal/value";
 import { combineStreamExperienceMetrics, createStreamExperienceMeter, monotonicNowMs } from "@ccr/core/observability/stream-experience";
 
@@ -206,6 +209,7 @@ export class GatewayRequestPipeline {
           startedAtMs: cursorCompatStartedAt
         });
       }
+      let detachedAnthropicBillingBlock: unknown;
       let routeFallback = this.config.Router.fallback;
       let routedModel: string | undefined;
       let routedSessionId: string | undefined;
@@ -416,6 +420,10 @@ export class GatewayRequestPipeline {
         routedTokenCount = routed.decision.tokenCount;
         if (routedTokenCount === 0 && pluginService.hasGatewayRequestTransforms({ includeBuiltIns: false })) {
           routedTokenCount = this.plugin.countTokens(routed.body).input_tokens;
+        }
+        if (routed.decision.anthropicBillingSystemBlock !== undefined) {
+          detachedAnthropicBillingBlock = routed.decision.anthropicBillingSystemBlock;
+          headers[ccrAnthropicBillingHeader] = encodeCcrAnthropicBillingHeader(detachedAnthropicBillingBlock);
         }
         if (routed.decision.model) {
           headers[ccrRoutedModelHeader] = sanitizeHeaderValue(routed.decision.model);
@@ -736,6 +744,9 @@ export class GatewayRequestPipeline {
           delete headers[name];
         }
         Object.assign(headers, pluginTransform.headers);
+        if (detachedAnthropicBillingBlock !== undefined) {
+          headers[ccrAnthropicBillingHeader] = encodeCcrAnthropicBillingHeader(detachedAnthropicBillingBlock);
+        }
         if (pluginTransform.body) {
           headers["content-type"] = "application/json";
         }
@@ -1344,6 +1355,9 @@ function normalizeCoreRouterPluginResponse(
   return {
     body: payload.body,
     decision: {
+      ...(isClaudeCodeBillingSystemBlock(decision.anthropicBillingSystemBlock)
+        ? { anthropicBillingSystemBlock: decision.anthropicBillingSystemBlock }
+        : {}),
       diagnostics: decision.diagnostics as ClaudeCodeRouteDecision["diagnostics"],
       fallback: decision.fallback as ClaudeCodeRouteDecision["fallback"],
       ...(typeof decision.model === "string" ? { model: decision.model } : {}),

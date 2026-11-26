@@ -19,6 +19,11 @@ import { calculateTokenCount } from "@ccr/core/routing/token-estimator";
 import type { RouteScriptRuntime } from "@ccr/core/routing/route-script-runtime";
 import { profileApiKeyId } from "@ccr/core/profiles/api-key";
 import { isModelAllowedForProfile } from "@ccr/core/profiles/model-allowlist";
+import {
+  detachClaudeCodeBillingSystemBlock,
+  isAnthropicMessagesRequestPath,
+  isClaudeCodeBillingSubagentBlock
+} from "@ccr/core/gateway/features/claude-code-billing-header";
 
 export { normalizeRouteSelector } from "@ccr/core/routing/model-registry";
 
@@ -32,6 +37,7 @@ export type ClaudeCodeRouterPluginOptions = {
 };
 
 export type ClaudeCodeRouteDecision = {
+  anthropicBillingSystemBlock?: unknown;
   diagnostics: RouteDiagnostic[];
   fallback: RouterFallbackConfig;
   model?: string;
@@ -81,12 +87,23 @@ export class ClaudeCodeRouterPlugin {
       method: input.method,
       url: input.url
     };
+    const detachedBilling = isAnthropicMessagesRequestPath(input.url)
+      ? detachClaudeCodeBillingSystemBlock(body)
+      : undefined;
+    if (detachedBilling) {
+      if ("system" in detachedBilling.body) {
+        body.system = detachedBilling.body.system;
+      } else {
+        delete body.system;
+      }
+    }
     applyAgentRequestEnrichers(request, [{
       enrich: (matchedRequest) => {
         const profile = resolveBuiltInAgentProfile(matchedRequest, this.config, "claude-code");
         injectClaudeCodeAgentToolDescription(matchedRequest.body, this.config, profile);
         injectClaudeCodeToolHubInstructions(matchedRequest.body, this.config);
-        matchedRequest.builtInClaudeCodeSubagent = removeClaudeCodeBillingSystemHeader(matchedRequest.body);
+        matchedRequest.builtInClaudeCodeSubagent = detachedBilling !== undefined &&
+          isClaudeCodeBillingSubagentBlock(detachedBilling.block);
         matchedRequest.builtInSubagentModel = extractAndRemoveClaudeCodeSubagentModelTag(matchedRequest.body);
       },
       id: "claude-code",
@@ -188,6 +205,7 @@ export class ClaudeCodeRouterPlugin {
     return {
       body,
       decision: {
+        ...(detachedBilling ? { anthropicBillingSystemBlock: detachedBilling.block } : {}),
         diagnostics: [...this.compiled.diagnostics, ...customDiagnostic, ...runtimeDiagnostics],
         fallback: configuredDecision.fallback,
         model: routedModel,
@@ -769,7 +787,6 @@ const ccrSubagentModelOpenTag = "<CCR-SUBAGENT-MODEL>";
 const ccrSubagentModelCloseTag = "</CCR-SUBAGENT-MODEL>";
 const ccrSubagentModelTagExample = `${ccrSubagentModelOpenTag}Provider/model${ccrSubagentModelCloseTag}`;
 const ccrSubagentModelPlaceholder = "provider/model";
-const claudeCodeBillingSystemHeaderPrefix = "x-anthropic-billing-header";
 const claudeCodeSubagentModelEnv = "CLAUDE_CODE_SUBAGENT_MODEL";
 const ccrSubagentToolModelInstruction =
   `CCR subagent routing is enabled. When calling this tool, the prompt parameter MUST start with ` +
@@ -1060,59 +1077,6 @@ function compareSubagentModelDescriptionRows(
 
 function compareCodeUnitStrings(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
-}
-
-function removeClaudeCodeBillingSystemHeader(body: Record<string, unknown>): boolean {
-  const system = body.system;
-  if (!Array.isArray(system) || system.length === 0) {
-    return false;
-  }
-  const firstBlock = system[0];
-  const firstText = typeof firstBlock === "string"
-    ? firstBlock
-    : isRecord(firstBlock) && firstBlock.type === "text" && typeof firstBlock.text === "string"
-      ? firstBlock.text
-      : undefined;
-  if (!firstText?.startsWith(claudeCodeBillingSystemHeaderPrefix)) {
-    return false;
-  }
-  const isSubagent = claudeCodeBillingMetadataIsSubagent(firstText);
-  system.shift();
-  if (system.length === 0) {
-    delete body.system;
-  }
-  return isSubagent;
-}
-
-function claudeCodeBillingMetadataIsSubagent(text: string): boolean {
-  const prefix = `${claudeCodeBillingSystemHeaderPrefix}:`;
-  if (!text.startsWith(prefix)) {
-    return false;
-  }
-  const payload = text.slice(prefix.length).trim();
-  if (!payload) {
-    return false;
-  }
-  if (payload.startsWith("{")) {
-    try {
-      const metadata = JSON.parse(payload) as unknown;
-      return isRecord(metadata) && metadata.cc_is_subagent === true;
-    } catch {
-      return false;
-    }
-  }
-  const values = payload
-    .split(";")
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .flatMap((part) => {
-      const separator = part.indexOf("=");
-      if (separator < 0 || part.slice(0, separator).trim() !== "cc_is_subagent") {
-        return [];
-      }
-      return [part.slice(separator + 1).trim()];
-    });
-  return values.length === 1 && values[0] === "true";
 }
 
 function extractAndRemoveClaudeCodeSubagentModelTag(body: Record<string, unknown>): string | undefined {

@@ -1,4 +1,5 @@
 import type { RouterFallbackConfig } from "@ccr/core/contracts/app";
+import { isClaudeCodeBillingSystemBlock } from "@ccr/core/gateway/features/claude-code-billing-header";
 
 export const ccrRouterPluginKey = "ccr-router";
 export const ccrRouterRequestTransformKey = "ccr-router-request-transform";
@@ -30,6 +31,7 @@ export type CcrLiveTokenRateSnapshotMessage = {
   type: typeof ccrLiveTokenRateSnapshotMessageType;
 };
 
+export const ccrAnthropicBillingHeader = "x-ccr-anthropic-billing-header";
 export const ccrRouteStageHeader = "x-ccr-route-stage";
 export const ccrRouteReasonHeader = "x-ccr-route-reason";
 export const ccrRouteSourceHeader = "x-ccr-route-source";
@@ -42,6 +44,7 @@ export const ccrCodexApplyPatchBridgeHeader = "x-ccr-codex-apply-patch-bridge";
 export const ccrCodexMultiAgentBridgeHeader = "x-ccr-codex-multi-agent-bridge";
 export const ccrOpenRouterDiscountRequestIdHeader = "x-ccr-openrouter-discount-request-id";
 export const ccrRouteHeaderNames = [
+  ccrAnthropicBillingHeader,
   ccrCodexApplyPatchBridgeHeader,
   ccrCodexMultiAgentBridgeHeader,
   ccrOpenRouterDiscountRequestIdHeader,
@@ -66,6 +69,7 @@ export type CcrRouterPluginRouteRequest = {
 export type CcrRouterPluginRouteResponse = {
   body: Record<string, unknown>;
   decision: {
+    anthropicBillingSystemBlock?: unknown;
     diagnostics: unknown[];
     fallback: RouterFallbackConfig;
     model?: string;
@@ -75,6 +79,22 @@ export type CcrRouterPluginRouteResponse = {
     tokenCount: number;
   };
 };
+
+export function encodeCcrAnthropicBillingHeader(block: unknown): string {
+  return Buffer.from(JSON.stringify(block), "utf8").toString("base64url");
+}
+
+export function decodeCcrAnthropicBillingHeader(value: string | undefined): unknown | undefined {
+  if (!value) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as unknown;
+    return isClaudeCodeBillingSystemBlock(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export function encodeCcrRouteFallbackHeader(fallback: RouterFallbackConfig): string {
   return Buffer.from(JSON.stringify(fallback), "utf8").toString("base64url");

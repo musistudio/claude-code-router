@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  ccrAnthropicBillingHeader,
+  encodeCcrAnthropicBillingHeader
+} from "@ccr/core/gateway/core-runtime/router-plugin-contract.ts";
+import {
   createGatewayPlugin,
   mergeUpstreamProviderHeaders,
   rewriteUpstreamProviderUrl,
@@ -323,4 +327,225 @@ test("gateway sanitizer hook does not forward reverse proxy metadata to provider
     "content-type": "application/json",
     "x-custom-provider-header": "custom-value"
   });
+});
+
+test("#1999 detaches x-anthropic-billing-header before routing and restores it only for official Anthropic Messages", () => {
+  const plugin = createGatewayPlugin();
+  const [beforeRouting] = plugin.requestTransforms;
+  const [providerHook] = plugin.providerHooks;
+  const billingBlock = {
+    text: "x-anthropic-billing-header: cc_version=2.1.332; cc_entrypoint=cli; cch=abcde;",
+    type: "text"
+  };
+  const promptBlock = {
+    cache_control: { type: "ephemeral" },
+    text: "Classify whether this tool action is safe.",
+    type: "text"
+  };
+
+  const request = { headers: { "user-agent": "claude-cli/2.1.332" }, method: "POST", url: "/v1/messages?beta=true" };
+  const detached = beforeRouting.transform({
+    model: "Anthropic/claude-sonnet-4-6",
+    request,
+    requestBody: {
+      messages: [{ content: "check", role: "user" }],
+      model: "claude-sonnet-4-6",
+      system: [billingBlock, promptBlock]
+    },
+    route: { method: "POST", url: "/v1/messages?beta=true" }
+  });
+
+  assert.equal(detached?.model, "Anthropic/claude-sonnet-4-6");
+  assert.deepEqual(detached?.requestBody.system, [promptBlock]);
+
+  // Attempt 1: third-party Anthropic-compatible endpoint stays stripped.
+  const thirdPartyAttempt = providerHook.transformRequest({
+    config: { anthropicBaseUrl: "https://api.anthropic.com" },
+    request,
+    targetProviderConfig: { baseurl: "http://127.0.0.1:4000", type: "anthropic_messages" },
+    upstreamRequest: {
+      body: JSON.stringify(detached.requestBody),
+      headers: { "content-type": "application/json" },
+      url: "https://api.anthropic.com/v1/messages?beta=true"
+    }
+  });
+  assert.equal(thirdPartyAttempt.ok, true);
+  assert.equal(thirdPartyAttempt.value.url, "http://127.0.0.1:4000/v1/messages?beta=true");
+  assert.deepEqual(JSON.parse(thirdPartyAttempt.value.body).system, [promptBlock]);
+
+  // Attempt 2 (fallback on same request): official Anthropic restores the billing block verbatim.
+  const officialAttempt = providerHook.transformRequest({
+    config: { anthropicBaseUrl: "https://api.anthropic.com" },
+    request,
+    targetProviderConfig: { baseurl: "https://api.anthropic.com", type: "anthropic_messages" },
+    upstreamRequest: {
+      body: Buffer.from(JSON.stringify(detached.requestBody)),
+      headers: { "content-type": "application/json" },
+      url: "https://api.anthropic.com/v1/messages?beta=true"
+    }
+  });
+  assert.equal(officialAttempt.ok, true);
+  assert.ok(Buffer.isBuffer(officialAttempt.value.body));
+  assert.deepEqual(JSON.parse(officialAttempt.value.body.toString("utf8")).system, [billingBlock, promptBlock]);
+
+  // Classifier request whose only system block is the billing header.
+  const classifierRequest = { headers: {}, method: "POST", url: "/v1/messages" };
+  const classifierDetached = beforeRouting.transform({
+    model: "claude-sonnet-4-6",
+    request: classifierRequest,
+    requestBody: {
+      messages: [{ content: "classify", role: "user" }],
+      model: "claude-sonnet-4-6",
+      system: [billingBlock]
+    },
+    route: { method: "POST", url: "/v1/messages" }
+  });
+  assert.equal("system" in classifierDetached.requestBody, false);
+
+  const officialClassifier = providerHook.transformRequest({
+    request: classifierRequest,
+    targetProviderConfig: { baseurl: "https://api.anthropic.com", type: "anthropic_messages" },
+    upstreamRequest: {
+      body: { ...classifierDetached.requestBody },
+      bodyEncoding: "json",
+      headers: { "content-type": "application/json" },
+      url: "https://api.anthropic.com/v1/messages"
+    }
+  });
+  assert.equal(officialClassifier.ok, true);
+  assert.deepEqual(officialClassifier.value.body.system, [billingBlock]);
+
+  // Ordinary prose starting with the literal prefix, colonless lookalike, or multiline prompt must not be stripped.
+  for (const proseBlock of [
+    { text: "x-anthropic-billing-header-examples are the topic.", type: "text" },
+    { text: "x-anthropic-billing-header: the topic for today", type: "text" },
+    { text: "x-anthropic-billing-header: foo=bar", type: "text" },
+    { text: "x-anthropic-billing-header: cc_version=1;\nexample=ordinary text", type: "text" }
+  ]) {
+    assert.equal(beforeRouting.transform({
+      model: "claude-sonnet-4-6",
+      request: { headers: {}, method: "POST", url: "/v1/messages" },
+      requestBody: {
+        messages: [{ content: "hi", role: "user" }],
+        model: "claude-sonnet-4-6",
+        system: [proseBlock]
+      },
+      route: { method: "POST", url: "/v1/messages" }
+    }), undefined);
+  }
+
+  // Supported Messages path aliases also detach and restore properly.
+  for (const aliasUrl of ["/messages", "/proxy/v1/messages"]) {
+    const aliasRequest = { headers: {}, method: "POST", url: aliasUrl };
+    const aliasDetached = beforeRouting.transform({
+      model: "claude-sonnet-4-6",
+      request: aliasRequest,
+      requestBody: {
+        messages: [{ content: "hi", role: "user" }],
+        model: "claude-sonnet-4-6",
+        system: [billingBlock, promptBlock]
+      },
+      route: { method: "POST", url: aliasUrl }
+    });
+    assert.deepEqual(aliasDetached?.requestBody.system, [promptBlock]);
+    const aliasOfficial = providerHook.transformRequest({
+      request: aliasRequest,
+      targetProviderConfig: { baseurl: "https://api.anthropic.com", type: "anthropic_messages" },
+      upstreamRequest: {
+        body: { ...aliasDetached.requestBody },
+        bodyEncoding: "json",
+        headers: { "content-type": "application/json" },
+        url: "https://api.anthropic.com/v1/messages"
+      }
+    });
+    assert.deepEqual(aliasOfficial.value.body.system, [billingBlock, promptBlock]);
+  }
+
+  // Out-of-band header carries the billing block past prompt-prepending transforms and preserves
+  // scalar string system rewrites on third-party targets while stripping the internal header.
+  const outOfBandRequest = {
+    headers: { [ccrAnthropicBillingHeader]: encodeCcrAnthropicBillingHeader(billingBlock) },
+    method: "POST",
+    url: "/v1/messages"
+  };
+  assert.equal(beforeRouting.transform({
+    model: "claude-sonnet-4-6",
+    request: outOfBandRequest,
+    requestBody: {
+      messages: [{ content: "hi", role: "user" }],
+      model: "claude-sonnet-4-6",
+      system: "replacement prompt"
+    },
+    route: { method: "POST", url: "/v1/messages" }
+  }), undefined);
+
+  const thirdPartyString = providerHook.transformRequest({
+    config: { anthropicBaseUrl: "https://api.anthropic.com" },
+    request: outOfBandRequest,
+    targetProviderConfig: { baseurl: "http://127.0.0.1:4000", type: "anthropic_messages" },
+    upstreamRequest: {
+      body: { messages: [{ content: "hi", role: "user" }], model: "claude-sonnet-4-6", system: "replacement prompt" },
+      bodyEncoding: "json",
+      headers: { "content-type": "application/json", [ccrAnthropicBillingHeader]: encodeCcrAnthropicBillingHeader(billingBlock) },
+      url: "https://api.anthropic.com/v1/messages"
+    }
+  });
+  assert.equal(thirdPartyString.ok, true);
+  assert.equal(thirdPartyString.value.body.system, "replacement prompt");
+  assert.equal(ccrAnthropicBillingHeader in thirdPartyString.value.headers, false);
+
+  const officialString = providerHook.transformRequest({
+    request: outOfBandRequest,
+    targetProviderConfig: { baseurl: "https://api.anthropic.com", type: "anthropic_messages" },
+    upstreamRequest: {
+      body: { messages: [{ content: "hi", role: "user" }], model: "claude-sonnet-4-6", system: "replacement prompt" },
+      bodyEncoding: "json",
+      headers: { "content-type": "application/json" },
+      url: "https://api.anthropic.com/v1/messages"
+    }
+  });
+  assert.equal(officialString.ok, true);
+  assert.deepEqual(officialString.value.body.system, [billingBlock, { text: "replacement prompt", type: "text" }]);
+
+  // Repeated chained invocations on an already-restored upstream request stay idempotent (1, 1, 1).
+  const chainedSecond = providerHook.transformRequest({
+    request: outOfBandRequest,
+    targetProviderConfig: { baseurl: "https://api.anthropic.com", type: "anthropic_messages" },
+    upstreamRequest: officialString.value
+  });
+  const chainedThird = providerHook.transformRequest({
+    request: outOfBandRequest,
+    targetProviderConfig: { baseurl: "https://api.anthropic.com", type: "anthropic_messages" },
+    upstreamRequest: chainedSecond.value
+  });
+  assert.deepEqual(chainedSecond.value.body.system, [billingBlock, { text: "replacement prompt", type: "text" }]);
+  assert.deepEqual(chainedThird.value.body.system, [billingBlock, { text: "replacement prompt", type: "text" }]);
+
+  // Following system block whose text starts with the same prefix must not suppress restoration.
+  const followUpTopicBlock = { text: "x-anthropic-billing-header: the topic for today", type: "text" };
+  const collisionRequest = { headers: {}, method: "POST", url: "/v1/messages" };
+  const collisionDetached = beforeRouting.transform({
+    model: "claude-sonnet-4-6",
+    request: collisionRequest,
+    requestBody: {
+      messages: [{ content: "hi", role: "user" }],
+      model: "claude-sonnet-4-6",
+      system: [billingBlock, followUpTopicBlock]
+    },
+    route: { method: "POST", url: "/v1/messages" }
+  });
+  assert.deepEqual(collisionDetached?.requestBody.system, [followUpTopicBlock]);
+
+  const officialCollision = providerHook.transformRequest({
+    request: collisionRequest,
+    targetProviderConfig: { baseurl: "https://api.anthropic.com", type: "anthropic_messages" },
+    upstreamRequest: {
+      body: { ...collisionDetached.requestBody },
+      bodyEncoding: "json",
+      headers: { "content-type": "application/json" },
+      url: "https://api.anthropic.com/v1/messages"
+    }
+  });
+  assert.equal(officialCollision.ok, true);
+  assert.deepEqual(officialCollision.value.body.system, [billingBlock, followUpTopicBlock]);
 });

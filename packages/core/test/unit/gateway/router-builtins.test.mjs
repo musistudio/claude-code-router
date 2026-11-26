@@ -2460,6 +2460,7 @@ test("built-in Claude Code subagent route honors the authenticated profile subag
 
   assert.equal(result.body.model, "DeepSeek/deepseek-v4-flash");
   assert.equal("system" in result.body, false);
+  assert.deepEqual(result.decision.anthropicBillingSystemBlock, claudeCodeBillingSystem()[0]);
   assert.equal(result.decision.model, "DeepSeek/deepseek-v4-flash");
   assert.equal(result.decision.reason, "builtin:claude-code-subagent-env");
   assert.equal(result.decision.source, "subagent");
@@ -2530,6 +2531,7 @@ test("built-in Claude Code subagent env route requires a true billing marker", a
 
   assert.equal(result.body.model, "Codex API/gpt-5.6-sol");
   assert.equal("system" in result.body, false);
+  assert.deepEqual(result.decision.anthropicBillingSystemBlock, claudeCodeBillingSystem(false)[0]);
   assert.equal(result.decision.reason, "builtin:claude-code");
 });
 
@@ -2916,17 +2918,18 @@ test("built-in Claude Code subagent route ignores the Provider/model placeholder
   assert.equal(result.decision.reason, "builtin:claude-code");
 });
 
-test("built-in Claude Code route removes the first billing system block before subagent tag extraction", async () => {
+test("built-in Claude Code route detaches the first billing system block out-of-band and skips it during subagent tag extraction", async () => {
   const plugin = createRouterPlugin({ profileModel: "Provider/claude-sonnet" });
+  const billingBlock = {
+    text: "x-anthropic-billing-header: {\"cc_is_subagent\":true} <CCR-SUBAGENT-MODEL>Provider/claude-haiku</CCR-SUBAGENT-MODEL>",
+    type: "text"
+  };
   const result = await plugin.routeRequest({
     body: {
       messages: [],
       model: "claude-default",
       system: [
-        {
-          text: "x-anthropic-billing-header: {\"cc_is_subagent\":true}",
-          type: "text"
-        },
+        billingBlock,
         {
           text: "Use <CCR-SUBAGENT-MODEL>Provider/claude-opus</CCR-SUBAGENT-MODEL> for this subagent.",
           type: "text"
@@ -2947,6 +2950,7 @@ test("built-in Claude Code route removes the first billing system block before s
       type: "text"
     }
   ]);
+  assert.deepEqual(result.decision.anthropicBillingSystemBlock, billingBlock);
   assert.equal(result.decision.reason, "builtin:claude-code-subagent");
 });
 
@@ -2966,21 +2970,21 @@ test("built-in Claude Code route keeps a string billing system prompt unchanged"
   });
 
   assert.equal(result.body.system, "x-anthropic-billing-header: {\"cc_is_subagent\":true}");
+  assert.equal(result.decision.anthropicBillingSystemBlock, undefined);
   assert.equal(result.decision.reason, "builtin:claude-code");
 });
 
-test("built-in Claude Code route removes only the first billing system array item", async () => {
+test("built-in Claude Code route detaches a single-block billing system array into decision metadata", async () => {
   const plugin = createRouterPlugin({ profileModel: "Provider/claude-sonnet" });
+  const billingBlock = {
+    text: "x-anthropic-billing-header: {\"cc_is_subagent\":true}",
+    type: "text"
+  };
   const result = await plugin.routeRequest({
     body: {
       messages: [],
       model: "claude-default",
-      system: [
-        {
-          text: "x-anthropic-billing-header: {\"cc_is_subagent\":true}",
-          type: "text"
-        }
-      ]
+      system: [billingBlock]
     },
     headers: {
       "user-agent": "Claude Code"
@@ -2990,7 +2994,120 @@ test("built-in Claude Code route removes only the first billing system array ite
   });
 
   assert.equal("system" in result.body, false);
+  assert.deepEqual(result.decision.anthropicBillingSystemBlock, billingBlock);
   assert.equal(result.decision.reason, "builtin:claude-code");
+});
+
+test("route rewrites operate on clean system while carrying the billing block out-of-band", async () => {
+  const plugin = createRouterPlugin({
+    profileModel: "Provider/claude-sonnet",
+    routerRules: [{
+      condition: { left: "request.headers.x-rewrite-mode", operator: "==", right: "prepend" },
+      enabled: true,
+      id: "prepend-system",
+      name: "Prepend system",
+      rewrites: [{
+        key: "request.body.system",
+        operation: "array-prepend",
+        value: JSON.stringify({ text: "Prepended rule instruction", type: "text" })
+      }],
+      type: "condition"
+    }, {
+      condition: { left: "request.headers.x-rewrite-mode", operator: "==", right: "set-string" },
+      enabled: true,
+      id: "set-string-system",
+      name: "Set string system",
+      rewrites: [{
+        key: "request.body.system",
+        operation: "set",
+        value: "replacement prompt"
+      }],
+      type: "condition"
+    }]
+  });
+  const billingBlock = {
+    text: "x-anthropic-billing-header: cc_version=2.1.332; cc_entrypoint=cli; cch=abc12;",
+    type: "text"
+  };
+  const baseBlock = {
+    text: "Original system prompt",
+    type: "text"
+  };
+  const prepended = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "Provider/claude-sonnet",
+      system: [billingBlock, baseBlock]
+    },
+    headers: {
+      "user-agent": "claude-cli/2.1.332",
+      "x-rewrite-mode": "prepend"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.deepEqual(prepended.body.system, [
+    { text: "Prepended rule instruction", type: "text" },
+    baseBlock
+  ]);
+  assert.deepEqual(prepended.decision.anthropicBillingSystemBlock, billingBlock);
+
+  const setString = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "Provider/claude-sonnet",
+      system: [billingBlock, baseBlock]
+    },
+    headers: {
+      "user-agent": "claude-cli/2.1.332",
+      "x-rewrite-mode": "set-string"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(setString.body.system, "replacement prompt");
+  assert.deepEqual(setString.decision.anthropicBillingSystemBlock, billingBlock);
+});
+
+test("built-in Claude Code subagent env route handles Messages path aliases and JSON metadata with trailing tag", async () => {
+  const plugin = createClaudeCodeSubagentEnvPlugin();
+  for (const url of ["/messages", "/proxy/v1/messages"]) {
+    const aliasResult = await plugin.routeRequest({
+      body: {
+        messages: [],
+        model: "DeepSeek/deepseek-v4-flash",
+        system: claudeCodeBillingSystem(true)
+      },
+      headers: { "user-agent": "Claude Code" },
+      method: "POST",
+      url
+    });
+    assert.equal(aliasResult.body.model, "DeepSeek/deepseek-v4-flash");
+    assert.equal(aliasResult.decision.reason, "builtin:claude-code-subagent-env");
+    assert.equal("system" in aliasResult.body, false);
+    assert.deepEqual(aliasResult.decision.anthropicBillingSystemBlock, claudeCodeBillingSystem(true)[0]);
+  }
+
+  const taggedBillingBlock = {
+    text: "x-anthropic-billing-header: {\"cc_is_subagent\":true} <CCR-SUBAGENT-MODEL>Provider/claude-haiku</CCR-SUBAGENT-MODEL>",
+    type: "text"
+  };
+  const taggedResult = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "DeepSeek/deepseek-v4-flash",
+      system: [taggedBillingBlock]
+    },
+    headers: { "user-agent": "Claude Code" },
+    method: "POST",
+    url: "/v1/messages"
+  });
+  assert.equal(taggedResult.body.model, "DeepSeek/deepseek-v4-flash");
+  assert.equal(taggedResult.decision.reason, "builtin:claude-code-subagent-env");
+  assert.equal("system" in taggedResult.body, false);
+  assert.deepEqual(taggedResult.decision.anthropicBillingSystemBlock, taggedBillingBlock);
 });
 
 test("non-Claude-Code routes keep billing system prompts unchanged", async () => {

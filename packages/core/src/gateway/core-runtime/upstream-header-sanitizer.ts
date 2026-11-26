@@ -9,7 +9,18 @@ import {
   normalizeDeepSeekCacheUsage,
   normalizeDeepSeekCacheUsageStream
 } from "@ccr/core/gateway/features/opencode-cache-usage";
+import {
+  ccrAnthropicBillingHeader,
+  decodeCcrAnthropicBillingHeader
+} from "@ccr/core/gateway/core-runtime/router-plugin-contract";
+import {
+  detachClaudeCodeBillingSystemBlock,
+  isAnthropicMessagesRequestPath,
+  isOfficialAnthropicMessagesTarget,
+  restoreClaudeCodeBillingSystemBlock
+} from "@ccr/core/gateway/features/claude-code-billing-header";
 import { sdkCompatibleTokenHeaderNames } from "@ccr/core/gateway/internal/shared";
+import { isRecord } from "@ccr/core/gateway/internal/value";
 
 type UpstreamRequest = {
   body: unknown;
@@ -27,6 +38,7 @@ type ProviderPluginRequestInput = {
     body?: unknown;
     id?: string;
     headers?: Record<string, string | string[] | undefined>;
+    url?: string;
   };
   targetProviderConfig?: {
     apikey?: string;
@@ -300,15 +312,81 @@ function joinUrlPath(base: string, remainder: string): string {
   return `${base}/${normalizedRemainder}`;
 }
 
+type GatewayBillingHeaderTransformInput = {
+  model?: string;
+  request?: {
+    headers?: Record<string, string | string[] | undefined>;
+    method?: string;
+    url?: string;
+  };
+  requestBody?: unknown;
+  route?: {
+    method?: string;
+    url?: string;
+  };
+};
+
 export function createGatewayPlugin() {
+  const detachedBillingSystemBlocks = new WeakMap<object, unknown>();
+  const restoredUpstreamRequests = new WeakSet<object>();
+
   return {
+    requestTransforms: [{
+      key: "ccr-claude-code-billing-header-detach",
+      stage: "beforeRouting" as const,
+      transform(input: GatewayBillingHeaderTransformInput) {
+        const method = (input.route?.method ?? input.request?.method ?? "GET").toUpperCase();
+        const url = input.route?.url ?? input.request?.url;
+        if (method !== "POST" || !isAnthropicMessagesRequestPath(url) || !input.request) {
+          return undefined;
+        }
+        const headerBlock = decodeCcrAnthropicBillingHeader(
+          requestHeaderValue(input.request.headers, ccrAnthropicBillingHeader)
+        );
+        if (headerBlock !== undefined) {
+          detachedBillingSystemBlocks.set(input.request, headerBlock);
+          return undefined;
+        }
+        if (!isRecord(input.requestBody)) {
+          return undefined;
+        }
+        const detached = detachClaudeCodeBillingSystemBlock(input.requestBody);
+        if (!detached) {
+          return undefined;
+        }
+        detachedBillingSystemBlocks.set(input.request, detached.block);
+        return {
+          ...(input.model !== undefined ? { model: input.model } : {}),
+          requestBody: detached.body
+        };
+      }
+    }],
     providerHooks: [{
       key: "ccr-upstream-header-sanitizer",
       transformRequest(input: ProviderPluginRequestInput) {
+        const rewrittenUrl = rewriteUpstreamProviderUrl(input.upstreamRequest.url, input.targetProviderConfig, input.config);
+        const savedBillingBlock = input.request
+          ? detachedBillingSystemBlocks.get(input.request) ??
+            (isAnthropicMessagesRequestPath(input.request.url)
+              ? decodeCcrAnthropicBillingHeader(requestHeaderValue(input.request.headers, ccrAnthropicBillingHeader))
+              : undefined)
+          : undefined;
+        const alreadyRestored = restoredUpstreamRequests.has(input.upstreamRequest);
+        const shouldRestore = savedBillingBlock !== undefined &&
+          !alreadyRestored &&
+          isOfficialAnthropicMessagesTarget(rewrittenUrl, input.targetProviderConfig);
+        const body = shouldRestore
+          ? restoreClaudeCodeBillingSystemBlock(
+              input.upstreamRequest.body,
+              savedBillingBlock,
+              input.upstreamRequest.bodyEncoding
+            )
+          : input.upstreamRequest.body;
         const upstreamRequest = {
           ...input.upstreamRequest,
+          body,
           headers: mergeUpstreamProviderHeaders(input.request?.headers, input.upstreamRequest.headers),
-          url: rewriteUpstreamProviderUrl(input.upstreamRequest.url, input.targetProviderConfig, input.config)
+          url: rewrittenUrl
         };
         const apiKey = input.targetProviderConfig?.apikey?.trim();
         if (!upstreamRequest.headers["x-opencode-session"]?.trim()) {
@@ -342,9 +420,13 @@ export function createGatewayPlugin() {
             // Invalid URLs are reported by the upstream transport.
           }
         }
+        const finalized = applyMetaTokenFloor(upstreamRequest);
+        if (alreadyRestored || shouldRestore) {
+          restoredUpstreamRequests.add(finalized);
+        }
         return {
           ok: true as const,
-          value: applyMetaTokenFloor(upstreamRequest)
+          value: finalized
         };
       },
       transformResponse(input: ProviderPluginResponseInput) {
