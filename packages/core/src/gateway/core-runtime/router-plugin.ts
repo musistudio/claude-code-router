@@ -14,6 +14,7 @@ import {
   type ClaudeCodeRouteDecision
 } from "@ccr/core/gateway/claude-code-router-plugin";
 import {
+  ccrAnthropicBillingHeader,
   ccrAnthropicReasoningResponseHookKey,
   ccrCodexApplyPatchBridgeHeader,
   ccrCodexBridgeRequestTransformKey,
@@ -41,6 +42,7 @@ import {
   ccrRouterHttpRoutePath,
   ccrRouterRouteResolverKey,
   ccrRouterRequestTransformKey,
+  encodeCcrAnthropicBillingHeader,
   encodeCcrRouteFallbackHeader,
   type CcrRouterPluginRouteRequest
 } from "@ccr/core/gateway/core-runtime/router-plugin-contract";
@@ -1061,6 +1063,9 @@ async function routeWithRouter(
 
 function decisionHeaders(decision: ClaudeCodeRouteDecision): Record<string, string> {
   return {
+    ...(decision.anthropicBillingSystemBlock !== undefined
+      ? { [ccrAnthropicBillingHeader]: encodeCcrAnthropicBillingHeader(decision.anthropicBillingSystemBlock) }
+      : {}),
     [ccrRouteStageHeader]: "core-gateway-plugin",
     [ccrRouteReasonHeader]: sanitizeHeaderValue(decision.reason),
     [ccrRouteSourceHeader]: decision.source,
