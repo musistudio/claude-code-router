@@ -650,7 +650,7 @@ function applyLiveTokenRateStreamTransform(
   streamInput: GatewayStreamHookInput,
   publisher: CoreGatewayLiveTokenRatePublisher
 ): Response | undefined {
-  if (!publisher.isEnabled() || !streamInput.upstreamResponse.body) {
+  if (!streamInput.upstreamResponse.body) {
     return undefined;
   }
   const protocol = normalizeProviderProtocol(streamInput.targetProviderConfig?.type) ??
