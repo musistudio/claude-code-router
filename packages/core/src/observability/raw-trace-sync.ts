@@ -1143,6 +1143,10 @@ function isToleratedDirectorySyncError(error: unknown): boolean {
   return code !== undefined && toleratedDirectorySyncErrorCodes.has(code);
 }
 
+export const recordUsageCaptureFromRawTraceForTest = (
+  ...args: Parameters<typeof recordUsageCaptureFromRawTrace>
+) => recordUsageCaptureFromRawTrace(...args);
+
 export function isToleratedDirectorySyncErrorForTest(error: unknown): boolean {
   return isToleratedDirectorySyncError(error);
 }
@@ -1538,6 +1542,8 @@ async function recordUsageCaptureFromRawTrace(
   const responseHeaders = headersFromRawTrace(input.responseHeaders);
   await recordGatewayUsageCaptureIfMissing({
     bodyText: await rawTraceUsageBodyText(input, files.responseBody),
+    // The client the gateway detected from the request headers (#1983).
+    client: input.client,
     config,
     durationMs: numberValue(input.durationMs) ?? 0,
     fallbackModel: input.model,
