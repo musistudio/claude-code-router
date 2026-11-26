@@ -155,7 +155,7 @@ export function createStreamExperienceMeter(input: {
 }): StreamExperienceMeter {
   const parser = new StreamExperienceParser(input.contentType, input.protocol, input.now ?? monotonicNowMs);
   const requestId = input.requestId;
-  const publishLiveRate = Boolean(input.publishLiveRate && requestId && parser.active);
+  const publishLiveRate = Boolean(input.publishLiveRate && requestId);
   const rateTracker = input.liveRateTracker ?? liveTokenRateTracker;
   const publishesGlobalRate = rateTracker === liveTokenRateTracker;
   let finished = false;
@@ -189,7 +189,7 @@ export function createStreamExperienceMeter(input: {
       try {
         input.onChunk?.(buffer);
         const estimatedTokens = parser.append(buffer);
-        if (publishLiveRate && requestId && estimatedTokens > 0) {
+        if (publishLiveRate && requestId && parser.active && estimatedTokens > 0) {
           rateTracker.record(requestId, estimatedTokens);
           input.onLiveRateActivity?.(false);
         }
@@ -259,7 +259,7 @@ export function combineStreamExperienceMetrics(input: {
 }
 
 class StreamExperienceParser {
-  readonly active: boolean;
+  private activeState: boolean;
   private currentEvent = "";
   private dataLines: string[] = [];
   private readonly decoder = new StringDecoder("utf8");
@@ -284,16 +284,25 @@ class StreamExperienceParser {
   ) {
     const normalizedContentType = contentType?.toLowerCase() ?? "";
     this.sse = normalizedContentType.includes("text/event-stream");
-    this.active = this.sse ||
+    this.activeState = this.sse ||
       normalizedContentType.includes("application/x-ndjson") ||
       normalizedContentType.includes("application/json-seq");
   }
 
+  get active(): boolean {
+    return this.activeState;
+  }
+
   append(chunk: Buffer): number {
-    if (!this.active) {
+    const text = this.decoder.write(chunk);
+    if (!this.activeState && looksLikeStreamingText(text)) {
+      this.activeState = true;
+      this.sse = true;
+    }
+    if (!this.activeState) {
       return 0;
     }
-    return this.processText(this.decoder.write(chunk));
+    return this.processText(text);
   }
 
   finish(): void {
@@ -553,6 +562,11 @@ function percentile(values: number[], quantile: number): number {
   const sorted = [...values].sort((left, right) => left - right);
   const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * quantile) - 1));
   return sorted[index] ?? 0;
+}
+
+function looksLikeStreamingText(value: string): boolean {
+  const trimmed = value.trimStart();
+  return trimmed.startsWith("event:") || trimmed.startsWith("data:") || trimmed.startsWith("{");
 }
 
 function roundedDuration(value: number): number {

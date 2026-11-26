@@ -5263,9 +5263,13 @@ function toRequestLogEntry(row: Record<string, SqlValue>): StoredRequestLogEntry
   const costUsd = asFloat(row.cost_usd);
   const outputTokens = normalizeCount(row.output_tokens);
   const streamMetrics = parseStoredStreamMetrics(row.stream_metrics_json);
-  const outputTokensPerSecond = streamMetrics?.sampleStatus === "complete" &&
-    streamMetrics.activeOutputMs !== undefined && streamMetrics.activeOutputMs > 0 && outputTokens >= 2
-    ? Math.round(((outputTokens - 1) * 1_000 / streamMetrics.activeOutputMs) * 10) / 10
+  const outputWindowMs = streamMetrics?.activeOutputMs && streamMetrics.activeOutputMs > 0
+    ? streamMetrics.activeOutputMs
+    : streamMetrics?.timeToFirstTextMs !== undefined
+      ? Math.max(1, normalizeCount(row.duration_ms) - streamMetrics.timeToFirstTextMs)
+      : undefined;
+  const outputTokensPerSecond = outputWindowMs !== undefined && outputTokens > 0
+    ? Math.round((outputTokens * 1_000 / outputWindowMs) * 10) / 10
     : undefined;
   const requestBody = bodyFromRow(row, "request") ?? emptyBody();
   const responseBody = bodyFromRow(row, "response");
