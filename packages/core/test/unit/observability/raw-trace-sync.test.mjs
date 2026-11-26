@@ -14,6 +14,7 @@ import {
   createBodySampler,
   isToleratedDirectorySyncErrorForTest,
   readRawTraceRequestLogBundle,
+  rawTraceUsageCaptureInput,
   RawTraceSynchronizer
 } from "@ccr/core/observability/raw-trace-sync.ts";
 
@@ -157,6 +158,40 @@ test("raw trace capture is metadata-only for standalone usage when body logging 
     if (previous === undefined) delete process.env.CCR_RAW_TRACE;
     else process.env.CCR_RAW_TRACE = previous;
   }
+});
+
+test("#1983 raw trace usage capture keeps the client inferred from the client request", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-raw-trace-usage-client-test-"));
+  const spoolDirectory = path.join(dir, "spool");
+  const bundleDirectory = path.join(spoolDirectory, "producer-bundle");
+  const clientMetadataFile = path.join(bundleDirectory, "client_request_metadata.json");
+  const upstreamMetadataFile = path.join(bundleDirectory, "upstream_request_metadata.json");
+  mkdirSync(bundleDirectory, { recursive: true });
+  writeFileSync(clientMetadataFile, JSON.stringify({ headers: { "user-agent": "claude-cli/2.1.330 (external, cli) claude-code" } }));
+  writeFileSync(upstreamMetadataFile, JSON.stringify({ method: "POST", url: "https://api.example.com/v1/messages" }));
+  try {
+    const bundle = await readRawTraceRequestLogBundle({
+      parts: [
+        { filePath: clientMetadataFile, partType: "client_request_metadata" },
+        { filePath: upstreamMetadataFile, partType: "upstream_request_metadata" }
+      ],
+      requestId: "usage-client-request"
+    }, spoolDirectory);
+
+    assert.ok(bundle);
+    assert.equal(bundle.update.client, "Claude Code");
+    const capture = rawTraceUsageCaptureInput(createConfig(), bundle.update, "");
+    assert.equal(capture.client, "Claude Code");
+    assert.equal(capture.path, "/v1/messages");
+    assert.equal(capture.requestId, "usage-client-request");
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("raw trace usage capture leaves client unset when none was inferred", () => {
+  const capture = rawTraceUsageCaptureInput(createConfig(), { path: "/v1/messages", requestId: "no-client", statusCode: 200 }, "");
+  assert.equal("client" in capture, false);
 });
 
 test("raw trace bundle preserves manifest lifecycle metadata", async () => {

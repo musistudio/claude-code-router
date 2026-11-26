@@ -25,6 +25,7 @@ import { maxUsageCaptureBytes, rawTraceSyncHeader, rawTraceSyncPath } from "@ccr
 import type { RawTracePartText } from "@ccr/core/gateway/internal/shared";
 import { resolveResponseProviderProtocol } from "@ccr/core/providers/runtime-topology";
 import { recordGatewayUsageCaptureIfMissing } from "@ccr/core/usage/store";
+import type { UsageCaptureInput } from "@ccr/core/usage/store";
 import { modelRegistryForConfig } from "@ccr/core/routing/model-registry";
 import { providerModelPricingForUsage } from "@ccr/core/models/pricing-service";
 
@@ -1535,9 +1536,25 @@ async function recordUsageCaptureFromRawTrace(
     return;
   }
 
+  await recordGatewayUsageCaptureIfMissing(
+    rawTraceUsageCaptureInput(config, input, await rawTraceUsageBodyText(input, files.responseBody))
+  );
+}
+
+export function rawTraceUsageCaptureInput(
+  config: AppConfig,
+  input: RequestLogRawTraceUpdateInput,
+  bodyText: string
+): UsageCaptureInput {
+  const method = input.method ?? "POST";
+  const path = input.path ?? pathFromUrl(input.url) ?? "/";
   const responseHeaders = headersFromRawTrace(input.responseHeaders);
-  await recordGatewayUsageCaptureIfMissing({
-    bodyText: await rawTraceUsageBodyText(input, files.responseBody),
+  return {
+    bodyText,
+    // The bundle reader infers the client from the original client request
+    // headers (x-ccr-client, then user-agent). Without it every usage row
+    // recorded through this path falls back to `client = 'unknown'` (#1983).
+    ...(input.client ? { client: input.client } : {}),
     config,
     durationMs: numberValue(input.durationMs) ?? 0,
     fallbackModel: input.model,
@@ -1548,7 +1565,7 @@ async function recordUsageCaptureFromRawTrace(
     requestId: input.requestId,
     responseHeaders,
     statusCode: numberValue(input.statusCode) ?? 0
-  });
+  };
 }
 
 async function rawTraceUsageBodyText(
