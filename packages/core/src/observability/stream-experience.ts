@@ -293,12 +293,18 @@ class StreamExperienceParser {
     return this.activeState;
   }
 
+  private activateFromText(text: string): void {
+    if (this.activeState || !looksLikeStreamingText(text)) {
+      return;
+    }
+    this.activeState = true;
+    this.sse = true;
+    this.firstSignalAtMs ??= this.now();
+  }
+
   append(chunk: Buffer): number {
     const text = this.decoder.write(chunk);
-    if (!this.activeState && looksLikeStreamingText(text)) {
-      this.activeState = true;
-      this.sse = true;
-    }
+    this.activateFromText(text);
     if (!this.activeState) {
       return 0;
     }
@@ -309,8 +315,10 @@ class StreamExperienceParser {
     if (this.streamEndAtMs !== undefined) {
       return;
     }
+    const trailing = this.decoder.end();
+    this.activateFromText(trailing);
     if (this.active) {
-      this.processText(this.decoder.end());
+      this.processText(trailing);
       if (this.pendingLine) {
         this.processLine(this.pendingLine.endsWith("\r") ? this.pendingLine.slice(0, -1) : this.pendingLine);
         this.pendingLine = "";
@@ -565,8 +573,7 @@ function percentile(values: number[], quantile: number): number {
 }
 
 function looksLikeStreamingText(value: string): boolean {
-  const trimmed = value.trimStart();
-  return trimmed.startsWith("event:") || trimmed.startsWith("data:") || trimmed.startsWith("{");
+  return /(^|\n)\s*(event:|data:)/.test(value) || value.trimStart().startsWith("{");
 }
 
 function roundedDuration(value: number): number {
