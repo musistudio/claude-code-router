@@ -478,6 +478,7 @@ test("model-chain fallback rebuilds every protocol attempt from the canonical re
         capabilities: [{ baseUrl: "https://anthropic-primary.example", type: "anthropic_messages" }],
         id: "anthropic-primary",
         models: ["claude-primary"],
+        modelMetadata: { "claude-primary": { supportedReasoningLevels: [{ effort: "max" }] } },
         name: "Anthropic Primary"
       },
       {
@@ -490,6 +491,7 @@ test("model-chain fallback rebuilds every protocol attempt from the canonical re
         capabilities: [{ baseUrl: "https://anthropic-recovery.example", type: "anthropic_messages" }],
         id: "anthropic-recovery",
         models: ["claude-recovery"],
+        modelMetadata: { "claude-recovery": { supportedReasoningLevels: [{ effort: "high" }] } },
         name: "Anthropic Recovery"
       }
     ],
@@ -549,6 +551,7 @@ test("model-chain fallback rebuilds every protocol attempt from the canonical re
       "claude-recovery"
     ]);
     assert.deepEqual(captured[0].body.thinking, { type: "adaptive" });
+    assert.equal(captured[0].body.output_config.effort, "max");
     assert.equal(captured[1].body.thinking, undefined);
     assert.deepEqual(captured[2].body.thinking, { type: "adaptive" });
     assert.deepEqual(captured[2].body.context_management, canonicalBody.context_management);
@@ -557,6 +560,13 @@ test("model-chain fallback rebuilds every protocol attempt from the canonical re
     assert.equal(captured[1].headers["x-target-provider"], "openai-fallback::openai_responses");
     assert.equal(captured[2].headers["x-target-provider"], "anthropic-recovery::anthropic_messages");
     const finishedTrace = trace.finish();
+    const effortHops = finishedTrace.hops.filter((hop) => hop.changes.some((change) => change.path === "/body/output_config/effort"));
+    assert.equal(effortHops.length, 1);
+    assert.equal(effortHops[0].attempt, 1);
+    assert.equal(effortHops[0].name, "upstream.attempt.prepare");
+    const effortChange = effortHops[0].changes.find((change) => change.path === "/body/output_config/effort");
+    assert.equal(effortChange.before, "high");
+    assert.equal(effortChange.after, "max");
     const capabilityRoutingHops = finishedTrace.hops
       .filter((hop) => hop.name === "provider.capability-routing");
     assert.deepEqual(

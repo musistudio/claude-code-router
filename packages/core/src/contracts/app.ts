@@ -1541,6 +1541,7 @@ export type ProfileConfig = {
   botGateway?: BotGatewayRuntimeConfig;
   configFile?: string;
   cliMiddleware?: boolean;
+  claudeDefaultModelList?: boolean;
   claudeSettings?: Record<string, unknown>;
   codexCliPath?: string;
   codexHome?: string;

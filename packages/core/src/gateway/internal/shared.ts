@@ -27,6 +27,10 @@ export const fusionModelProviderName = "Fusion";
 
 export const claudeCodeOneMillionContextSuffix = "[1m]";
 
+export function stripOneMillionContextSuffix(model: string): string {
+  return model.trim().replace(/\[1m\]$/i, "").trim();
+}
+
 export const claudeAppGatewayModelRouteOptions: ClaudeAppGatewayModelRouteOptions = {
   displayName: (model) => findModelCatalogEntry(model)?.displayName,
   supportsOneMillionContext: (model) => Boolean(findModelCatalogEntry(model)?.limits?.supports1MContext)
