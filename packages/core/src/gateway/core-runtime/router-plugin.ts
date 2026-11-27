@@ -650,18 +650,30 @@ function applyLiveTokenRateStreamTransform(
   streamInput: GatewayStreamHookInput,
   publisher: CoreGatewayLiveTokenRatePublisher
 ): Response | undefined {
-  if (!publisher.isEnabled() || !streamInput.upstreamResponse.body) {
+  if (!streamInput.upstreamResponse.body) {
     return undefined;
   }
   const protocol = normalizeProviderProtocol(streamInput.targetProviderConfig?.type) ??
     normalizeProviderProtocol(streamInput.targetProviderConfig?.provider) ??
     normalizeProviderProtocol(streamInput.targetProvider);
+  const startedAtMs = monotonicNowMs();
+  const headers = new Headers(streamInput.upstreamResponse.headers);
   const meter = createStreamExperienceMeter({
     contentType: streamInput.upstreamResponse.headers.get("content-type") ?? undefined,
     liveRateTracker: publisher.tracker,
+    now: monotonicNowMs,
+    onChunk: () => {
+      const snapshot = meter.snapshot();
+      if (snapshot.firstSignalAtMs !== undefined && !headers.has("x-ccr-time-to-first-signal-ms")) {
+        headers.set("x-ccr-time-to-first-signal-ms", String(Math.max(0, Math.round(snapshot.firstSignalAtMs - startedAtMs))));
+      }
+      if (snapshot.firstTextAtMs !== undefined && !headers.has("x-ccr-time-to-first-text-ms")) {
+        headers.set("x-ccr-time-to-first-text-ms", String(Math.max(0, Math.round(snapshot.firstTextAtMs - startedAtMs))));
+      }
+    },
     onLiveRateActivity: (urgent) => publisher.notifyActivity(urgent),
     protocol,
-    publishLiveRate: true,
+    publishLiveRate: publisher.isEnabled(),
     requestId: readGatewayRequestId(streamInput) ?? randomUUID()
   });
   const source = Readable.fromWeb(
@@ -671,7 +683,7 @@ function applyLiveTokenRateStreamTransform(
   // with pipe the source's 'error' is unhandled and kills the core process.
   const metered = pipeline(source, meter.stream, () => {});
   return new Response(Readable.toWeb(metered) as ReadableStream<Uint8Array>, {
-    headers: new Headers(streamInput.upstreamResponse.headers),
+    headers,
     status: streamInput.upstreamResponse.status,
     statusText: streamInput.upstreamResponse.statusText
   });

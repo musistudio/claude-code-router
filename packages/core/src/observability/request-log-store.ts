@@ -692,9 +692,12 @@ export class RequestLogStore {
       );
       const isStream = inferRequestLogIsStream({
         path: input.path,
-        requestBodyText: requestBody.encoding === "utf8" ? requestBody.text : undefined,
+        requestBodyText: requestBody.encoding === "utf8"
+          ? streamInferenceBodyText(requestBody, this.bodyDir)
+          : undefined,
         requestHeaders,
-        responseBodyContentType: responseBody.contentType,
+        responseBodyContentType: responseBody.contentType ||
+          inferStreamingContentType(responseBodyText),
         responseHeaders,
         url: input.url
       });
@@ -1037,7 +1040,7 @@ export class RequestLogStore {
     if (hasStreamSignal) {
       pushValue("is_stream", inferRequestLogIsStream({
         path,
-        requestBodyText: input.requestBodyText,
+        requestBodyText: streamInferenceTextForRawTrace(input.requestBodyText, input.requestBodyRef, this.bodyDir),
         requestHeaders: mergedRequestHeaders,
         responseBodyContentType: input.responseBodyContentType,
         responseHeaders,
@@ -4800,6 +4803,8 @@ function backfillRequestLogStreamFlags(database: SqlDatabase): void {
       response_headers,
       request_body_text,
       request_body_encoding,
+      request_body_ref,
+      response_body_text,
       response_body_content_type
     FROM request_logs
     WHERE rowid = ?
@@ -4810,14 +4815,13 @@ function backfillRequestLogStreamFlags(database: SqlDatabase): void {
     if (!row) {
       continue;
     }
-    const requestBodyText = String(row.request_body_encoding ?? "utf8") === "utf8"
-      ? String(row.request_body_text ?? "")
-      : undefined;
+    const storedRequestBodyText = readStoredRequestBodyForStreamInference(database, row);
     const isStream = inferRequestLogIsStream({
       path: String(row.path ?? ""),
-      requestBodyText,
+      requestBodyText: storedRequestBodyText,
       requestHeaders: parseHeaderJson(row.request_headers),
-      responseBodyContentType: String(row.response_body_content_type ?? ""),
+      responseBodyContentType: String(row.response_body_content_type ?? "") ||
+        inferStreamingContentType(String(row.response_body_text ?? "")),
       responseHeaders: parseHeaderJson(row.response_headers),
       url: String(row.url ?? "")
     });
@@ -4836,6 +4840,72 @@ type RequestLogStreamInferenceInput = {
   responseWasStream?: boolean;
   url?: string;
 };
+
+function streamInferenceTextForRawTrace(
+  requestBodyText: string | undefined,
+  requestBodyRef: string | undefined,
+  bodyDir: string
+): string | undefined {
+  if (!isRequestLogPreviewText(requestBodyText)) {
+    return requestBodyText;
+  }
+  const bodyRef = normalizeBodyRef(requestBodyRef);
+  const filePath = bodyRef ? requestLogBodyPath(bodyDir, bodyRef) : undefined;
+  if (!filePath || !existsSync(filePath)) {
+    return requestBodyText;
+  }
+  return readFileSync(filePath).toString("utf8");
+}
+
+function streamInferenceBodyText(body: RequestLogBody, bodyDir: string): string | undefined {
+  if (!body.preview || !body.bodyRef) {
+    return body.text;
+  }
+  const filePath = requestLogBodyPath(bodyDir, body.bodyRef);
+  if (!filePath || !existsSync(filePath)) {
+    return body.text;
+  }
+  return readFileSync(filePath).toString("utf8");
+}
+
+function readStoredRequestBodyForStreamInference(
+  database: SqlDatabase,
+  row: Record<string, SqlValue>
+): string | undefined {
+  const inlineText = String(row.request_body_encoding ?? "utf8") === "utf8"
+    ? String(row.request_body_text ?? "")
+    : undefined;
+  const bodyRef = normalizeBodyRef(String(row.request_body_ref ?? ""));
+  if (!bodyRef || !isRequestLogPreviewText(inlineText)) {
+    return inlineText;
+  }
+  const databasePath = requestLogDatabasePath(database);
+  const filePath = databasePath
+    ? requestLogBodyPath(join(dirname(databasePath), "request-log-bodies"), bodyRef)
+    : undefined;
+  if (!filePath || !existsSync(filePath)) {
+    return inlineText;
+  }
+  return readFileSync(filePath).toString("utf8");
+}
+
+function requestLogDatabasePath(database: SqlDatabase): string | undefined {
+  const row = database.prepare("PRAGMA database_list").get() as { file?: string } | undefined;
+  const file = row?.file?.trim();
+  return file || undefined;
+}
+
+function isRequestLogPreviewText(value: string | undefined): boolean {
+  return Boolean(value && /bytes omitted from preview/.test(value));
+}
+
+function inferStreamingContentType(responseBodyText: string | undefined): string | undefined {
+  const trimmed = responseBodyText?.trimStart() ?? "";
+  if (trimmed.startsWith("event:") || trimmed.startsWith("data:")) {
+    return "text/event-stream";
+  }
+  return undefined;
+}
 
 function inferRequestLogIsStream(input: RequestLogStreamInferenceInput): boolean {
   return Boolean(
@@ -5192,10 +5262,15 @@ function readRequestLogById(database: SqlDatabase, id: number): StoredRequestLog
 function toRequestLogEntry(row: Record<string, SqlValue>): StoredRequestLogEntry {
   const costUsd = asFloat(row.cost_usd);
   const outputTokens = normalizeCount(row.output_tokens);
-  const streamMetrics = parseStoredStreamMetrics(row.stream_metrics_json);
-  const outputTokensPerSecond = streamMetrics?.sampleStatus === "complete" &&
-    streamMetrics.activeOutputMs !== undefined && streamMetrics.activeOutputMs > 0 && outputTokens >= 2
-    ? Math.round(((outputTokens - 1) * 1_000 / streamMetrics.activeOutputMs) * 10) / 10
+  const streamMetrics = parseStoredStreamMetrics(row.stream_metrics_json) ??
+    deriveStreamMetricsFromStoredRow(row, outputTokens);
+  const outputWindowMs = streamMetrics?.activeOutputMs && streamMetrics.activeOutputMs > 0
+    ? streamMetrics.activeOutputMs
+    : streamMetrics?.timeToFirstTextMs !== undefined
+      ? Math.max(1, normalizeCount(row.duration_ms) - streamMetrics.timeToFirstTextMs)
+      : undefined;
+  const outputTokensPerSecond = outputWindowMs !== undefined && outputTokens > 0
+    ? Math.round((outputTokens * 1_000 / outputWindowMs) * 10) / 10
     : undefined;
   const requestBody = bodyFromRow(row, "request") ?? emptyBody();
   const responseBody = bodyFromRow(row, "response");
@@ -5282,6 +5357,32 @@ function resolveStoredStreamMetrics(
     }
   }
   return { ...metrics, sampleStatus };
+}
+
+function deriveStreamMetricsFromStoredRow(
+  row: Record<string, SqlValue>,
+  outputTokens: number
+): RequestStreamMetrics | undefined {
+  const durationMs = normalizeCount(row.duration_ms);
+  const responseText = String(row.response_body_text ?? "");
+  const isStream = normalizeCount(row.is_stream) === 1 || responseText.includes("event:") || responseText.includes("data:");
+  if (!isStream || durationMs <= 0 || outputTokens <= 0) {
+    return undefined;
+  }
+  const events = responseText.split(/\n\s*\n/).filter((part) => part.includes("data:"));
+  const eventCount = Math.max(1, events.length);
+  const firstTextIndex = Math.max(0, events.findIndex((part) => /text_delta|output_text|"text"/.test(part)));
+  const firstTextMs = Math.max(1, Math.round(durationMs * (firstTextIndex + 1) / (eventCount + 1)));
+  return {
+    activeOutputMs: Math.max(1, durationMs - firstTextMs),
+    estimatedOutputTokens: outputTokens,
+    reasoningObserved: false,
+    sampleStatus: "complete",
+    textObserved: firstTextIndex >= 0,
+    timeToFirstSignalMs: Math.max(1, Math.round(durationMs / (eventCount + 1))),
+    timeToFirstTextMs: firstTextMs,
+    toolObserved: false
+  };
 }
 
 function parseStoredStreamMetrics(value: SqlValue): RequestStreamMetrics | undefined {

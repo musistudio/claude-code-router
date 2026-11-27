@@ -39,6 +39,26 @@ test("stream experience meter parses fragmented Anthropic semantic events", asyn
   });
 });
 
+test("stream experience meter starts timing when SSE arrives without a content type", async () => {
+  const timestamps = [100, 260, 400];
+  const meter = createStreamExperienceMeter({
+    now: () => timestamps.shift() ?? 400,
+    protocol: "anthropic_messages"
+  });
+  const body = [
+    'event: message_start\ndata: {"type":"message_start"}\n\n',
+    'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"ok"}}\n\n'
+  ].join("");
+
+  await writeMeter(meter, [Buffer.from(body)]);
+
+  const snapshot = meter.snapshot();
+  assert.equal(snapshot.active, true);
+  assert.equal(snapshot.firstSignalAtMs, 100);
+  assert.equal(snapshot.firstTextAtMs, 100);
+  assert.equal(snapshot.textObserved, true);
+});
+
 test("stream experience meter supports OpenAI chat, Responses, and Gemini NDJSON", async () => {
   const cases = [
     {

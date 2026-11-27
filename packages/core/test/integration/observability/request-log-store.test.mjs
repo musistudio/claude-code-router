@@ -383,6 +383,7 @@ test("RequestLogStore keeps large request bodies in sidecar storage and reads th
       messages: [{ content: "hello", role: "user" }],
       model: "request-model",
       padding: "中🙂".repeat(40 * 1024),
+      stream: true,
       tail: "request-tail"
     });
     const response = JSON.stringify({
@@ -405,8 +406,8 @@ test("RequestLogStore keeps large request bodies in sidecar storage and reads th
       requestBody: Buffer.from(body, "utf8"),
       requestHeaders: { "content-type": "application/json" },
       requestId: "request-log-sidecar-test",
-      responseBodyText: response,
-      responseHeaders: { "content-type": "application/json" },
+      responseBodyText: `event: message_start\ndata: ${response}\n`,
+      responseHeaders: new Headers(),
       startedAt: new Date().toISOString(),
       statusCode: 200,
       url: "http://127.0.0.1:3456/v1/messages"
@@ -422,6 +423,7 @@ test("RequestLogStore keeps large request bodies in sidecar storage and reads th
     assert.ok(detail);
     assert.equal(detail.requestBody.preview, true);
     assert.equal(detail.requestBody.truncated, false);
+    assert.equal(detail.isStream, true);
     assert.match(detail.requestBody.text, /bytes omitted from preview/);
     assert.match(detail.requestBody.text, /request-tail/);
     assert.equal(detail.responseBody?.preview, true);
