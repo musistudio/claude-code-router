@@ -3,10 +3,12 @@ import { mkdirSync } from "node:fs";
 import { installSocketTypeOfServiceCompat } from "@ccr/core/platform/socket-compat";
 import { markDesktopAppRuntime } from "@ccr/core/runtime/desktop-app";
 import { resolveRuntimeDataDir, setRuntimeAppPaths } from "@ccr/core/runtime/app-paths";
+import { installDesktopUserPath } from "@ccr/core/runtime/user-path";
 import { copyMissingDirectoryContents, sameFilesystemPath } from "@ccr/core/storage/migration";
 
 installSocketTypeOfServiceCompat();
 markDesktopAppRuntime();
+installDesktopUserPath();
 
 const appDataPath = readConfiguredRuntimePath("CCR_INTERNAL_APP_DATA_DIR") ?? app.getPath("appData");
 const homePath = readConfiguredRuntimePath("CCR_INTERNAL_HOME_DIR") ?? app.getPath("home");
