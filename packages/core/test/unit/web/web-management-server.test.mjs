@@ -214,6 +214,66 @@ test("startGateway reuses an already healthy CCR gateway on the configured port"
   }
 });
 
+test("#1990 gateway start names the port-in-use cause by default and keeps the child's output", async () => {
+  const { loadAppConfig, saveAppConfig } = await import("@ccr/core/config/config.ts");
+  const { gatewayService } = await import("@ccr/core/gateway/service.ts");
+  await gatewayService.stop();
+  const config = await loadAppConfig();
+  config.gateway.port = await findAvailablePort();
+  config.gateway.corePort = await findAvailablePort();
+  config.Providers = [{
+    api_base_url: "http://127.0.0.1:9/v1",
+    api_key: "test-provider-key",
+    id: "test-provider",
+    models: ["test-model"],
+    name: "Test Provider",
+    type: "openai_chat_completions"
+  }];
+  const savedConfig = await saveAppConfig(config);
+  // Not CCR gateways (404), so they are neither adopted nor reported healthy.
+  // Both ports are held so the child fails to bind whichever one applies; the
+  // minimal config runs a single runtime, which binds gateway.port.
+  const blockers = [createServer((_request, response) => { response.statusCode = 404; response.end(); }),
+    createServer((_request, response) => { response.statusCode = 404; response.end(); })];
+  const previousLogLevel = process.env.GATEWAY_LOG_LEVEL;
+  const previousLogEnabled = process.env.GATEWAY_LOG_ENABLED;
+  try {
+    await listen(blockers[0], savedConfig.gateway.port);
+    await listen(blockers[1], savedConfig.gateway.corePort);
+
+    // Default env: the child exits silently, so the supervisor must name the cause itself.
+    delete process.env.GATEWAY_LOG_LEVEL;
+    delete process.env.GATEWAY_LOG_ENABLED;
+    const silent = await gatewayService.start(savedConfig);
+    assert.equal(silent.state, "error");
+    assert.match(
+      silent.lastError ?? "",
+      new RegExp(`127\\.0\\.0\\.1:${savedConfig.gateway.port} is already in use by another process \\(EADDRINUSE\\)`),
+      `lastError should name the busy port, got: ${silent.lastError}`
+    );
+    await gatewayService.stop();
+
+    // ensureStarted (web startup) keeps the cause and does not adopt the non-CCR holder.
+    const ensured = await gatewayService.ensureStarted(savedConfig);
+    assert.equal(ensured.state, "error");
+    assert.notEqual(ensured.gatewayManagedExternally, true);
+    assert.match(ensured.lastError ?? "", /already in use by another process \(EADDRINUSE\)/);
+    await gatewayService.stop();
+
+    // With gateway logging on, the child's own captured output is appended too.
+    process.env.GATEWAY_LOG_LEVEL = "error";
+    const logged = await gatewayService.start(savedConfig);
+    assert.equal(logged.state, "error");
+    assert.match(logged.lastError ?? "", /already in use by another process \(EADDRINUSE\)/);
+    assert.match(logged.lastError ?? "", /stdout:[\s\S]*EADDRINUSE/, `child output should not be dropped, got: ${logged.lastError}`);
+  } finally {
+    setOptionalEnv("GATEWAY_LOG_LEVEL", previousLogLevel);
+    setOptionalEnv("GATEWAY_LOG_ENABLED", previousLogEnabled);
+    await gatewayService.stop();
+    await Promise.all(blockers.map(closeServer));
+  }
+});
+
 test("#1951 authenticated recovery restores both agent configs while the gateway is down and survives reapply", async () => {
   const { startWebManagementServer } = await import("@ccr/core/web/management-server.ts");
   const { createDefaultAppConfig } = await import("@ccr/core/config/default-config.ts");

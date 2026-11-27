@@ -4,6 +4,7 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { createServer } from "node:net";
 import { networkInterfaces } from "node:os";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { delimiter as pathDelimiter, dirname as pathDirname, join as pathJoin, resolve as pathResolve } from "node:path";
@@ -919,9 +920,9 @@ export async function waitForManagedCoreGatewayReady(
   const deadline = Date.now() + gatewayStartupTimeoutMs;
   let lastHealth: CoreGatewayHealth | undefined;
   while (Date.now() < deadline) {
-    assertGatewayChildRunning(child);
+    await assertGatewayChildRunning(child, coreEndpoint);
     lastHealth = await readCoreGatewayHealth(coreEndpoint);
-    assertGatewayChildRunning(child);
+    await assertGatewayChildRunning(child, coreEndpoint);
     if (lastHealth?.status === "ok") {
       if (lastHealth.runtimeId === runtimeId) {
         return;
@@ -942,9 +943,48 @@ export async function waitForManagedCoreGatewayReady(
   );
 }
 
-function assertGatewayChildRunning(child: ChildProcess): void {
-  if (child.exitCode !== null || child.signalCode !== null || child.killed) {
-    throw new Error(`Core gateway exited during startup with ${child.signalCode ?? child.exitCode ?? "unknown status"}.`);
+async function assertGatewayChildRunning(child: ChildProcess, coreEndpoint: string): Promise<void> {
+  const exited = child.exitCode !== null || child.signalCode !== null;
+  if (!exited && !child.killed) {
+    return;
+  }
+  const status = child.signalCode ?? child.exitCode ?? "unknown status";
+  // The gateway runtime exits silently on listen errors unless its logging is enabled,
+  // so probe the port to report why it could not start.
+  const inUse = exited ? await probeGatewayEndpointInUse(coreEndpoint) : undefined;
+  throw new Error(appendGatewayChildOutput(
+    child,
+    inUse
+      ? `Core gateway exited during startup with ${status}: ${inUse} is already in use by another process (EADDRINUSE).`
+      : `Core gateway exited during startup with ${status}.`
+  ));
+}
+
+async function probeGatewayEndpointInUse(coreEndpoint: string): Promise<string | undefined> {
+  try {
+    const url = new URL(coreEndpoint);
+    const host = url.hostname.replace(/^\[(.*)\]$/, "$1");
+    const port = Number(url.port);
+    if (!host || !port) {
+      return undefined;
+    }
+    const inUse = await new Promise<boolean>((resolve) => {
+      const server = createServer();
+      const timer = setTimeout(() => resolve(false), 1_000);
+      timer.unref?.();
+      server.once("error", (error: NodeJS.ErrnoException) => {
+        clearTimeout(timer);
+        resolve(error.code === "EADDRINUSE");
+      });
+      server.once("listening", () => {
+        clearTimeout(timer);
+        server.close(() => resolve(false));
+      });
+      server.listen({ host, port, exclusive: true });
+    });
+    return inUse ? `${url.hostname}:${port}` : undefined;
+  } catch {
+    return undefined;
   }
 }
 
