@@ -85,7 +85,7 @@ There are two independent authentication layers:
 1. `CCR_WEB_AUTH_TOKEN` protects management RPC. You open the management page with it in the URL (`/?ccr_web_token=<token>`), and the browser sends it to RPC as `x-ccr-web-auth`. Nginx never sends it to a client.
 2. CCR client API keys created in the **API Keys** page protect model gateway requests. These are separate from upstream provider credentials.
 
-If `CCR_WEB_AUTH_TOKEN` is unset, the entrypoint generates a new random token on each container start and prints the management URL once to the container log. Opening `/` without a token loads the page, but every management call fails with `401` until the token is supplied. The page keeps the token for the browser tab session. A stable token is recommended for persistent or remote deployments.
+If `CCR_WEB_AUTH_TOKEN` is unset, the entrypoint generates a new random token on each container start and prints the management URL once to the container log. Opening `/` without a valid token prompts for the management token before loading configuration or onboarding. Tokenized URLs still work, and the page keeps a validated token for the browser tab session. A rejected or expired token prompts for authentication again. A stable token is recommended for persistent or remote deployments.
 
 Avoid putting the token directly in shell history. Create a protected environment file instead:
 

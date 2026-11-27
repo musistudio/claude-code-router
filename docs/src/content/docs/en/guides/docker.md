@@ -104,7 +104,7 @@ The repository also provides `npm run docker:run`. It uses `3458` and `ccr-data`
 | CCR client API key | Model gateway request authentication | **API Keys** page in the UI |
 | Upstream provider credential | CCR calling model providers | **Providers** page in the UI |
 
-Without `CCR_WEB_AUTH_TOKEN`, the entrypoint generates a new random token on every container start and prints the management URL once to the container log. Nginx never sends the token to a client: opening the root address without a token loads the page, but every management call fails with `401` until the token is supplied in the URL. The page keeps it for the browser tab session. Persistent and remote deployments should pin a sufficiently long, strong token.
+Without `CCR_WEB_AUTH_TOKEN`, the entrypoint generates a new random token on every container start and prints the management URL once to the container log. Nginx never sends the token to a client. Opening the root address without a valid token prompts for the management token before loading configuration or onboarding. Tokenized URLs still work, and the page keeps a validated token for the browser tab session. A rejected or expired token prompts for authentication again. Persistent and remote deployments should pin a sufficiently long, strong token.
 
 Do not write the token directly into shell history. Create an environment file that stays out of version control:
 
